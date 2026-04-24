@@ -1,0 +1,19 @@
+{
+  "rateLimit": {
+    "delayMs": 100,
+    "maxRequestsPerMinute": 30,
+    "batchSize": 50,
+    "backoffStrategy": "exponential"
+  },
+  "general": {
+    "defaultHolidayState": "HE",
+    "workStartHour": 9,
+    "workEndHour": 17,
+    "defaultSlaTargetHours": 48
+  },
+  "persistence": {
+    "autoSave": true,
+    "autoRestore": true,
+    "retentionDays": 30
+  }
+}

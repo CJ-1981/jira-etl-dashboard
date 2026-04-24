@@ -1,0 +1,504 @@
+/**
+ * Jira REST API Client
+ * Handles extraction of issues, transitions, and metadata from Jira Cloud/Server.
+ */
+
+export interface JiraConnectionConfig {
+  baseUrl: string;
+  email: string;
+  apiToken: string;
+  projectKeys: string[];
+}
+
+export interface JiraIssue {
+  key: string;
+  self: string;
+  fields: {
+    summary: string;
+    issuetype: { name: string };
+    priority?: { name: string };
+    status: { name: string; statusCategory: { name: string } };
+    assignee?: { displayName: string; emailAddress: string };
+    reporter?: { displayName: string; emailAddress: string };
+    created: string;
+    updated: string;
+    resolutiondate?: string;
+    duedate?: string;
+    customfield_10002?: number; // Story Points (varies by instance)
+    labels?: string[];
+    components?: { name: string }[];
+  };
+  changelog?: {
+    histories: JiraChangelogEntry[];
+  };
+}
+
+export interface JiraChangelogEntry {
+  id: string;
+  author: { displayName: string };
+  created: string;
+  items: JiraChangelogItem[];
+}
+
+export interface JiraChangelogItem {
+  field: string;
+  fieldtype: string;
+  from: string;
+  fromString?: string;
+  to: string;
+  toString?: string;
+}
+
+export interface JiraSearchResult {
+  issues: JiraIssue[];
+  total?: number;
+  maxResults?: number;
+  startAt?: number;
+  nextPageToken?: string;
+  isLast?: boolean;
+}
+
+export interface JiraFieldMapping {
+  storyPointsField: string;
+  sprintField: string;
+  epicLinkField: string;
+}
+
+export class JiraClient {
+  private config: JiraConnectionConfig;
+  private fieldMapping: JiraFieldMapping;
+
+  constructor(config: JiraConnectionConfig, fieldMapping?: Partial<JiraFieldMapping>) {
+    // Normalize baseUrl: ensure it has a protocol
+    let normalizedBaseUrl = config.baseUrl.trim();
+    if (!normalizedBaseUrl.match(/^https?:\/\//i)) {
+      normalizedBaseUrl = `https://${normalizedBaseUrl}`;
+    }
+    // Remove trailing slash
+    normalizedBaseUrl = normalizedBaseUrl.replace(/\/$/, '');
+
+    this.config = {
+      ...config,
+      baseUrl: normalizedBaseUrl
+    };
+    this.fieldMapping = {
+      storyPointsField: fieldMapping?.storyPointsField || 'customfield_10002',
+      sprintField: fieldMapping?.sprintField || 'customfield_10020',
+      epicLinkField: fieldMapping?.epicLinkField || 'customfield_10014',
+    };
+  }
+
+  private getHeaders(): HeadersInit {
+    const auth = Buffer.from(`${this.config.email}:${this.config.apiToken}`).toString('base64');
+    return {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+  }
+
+  private buildUrl(path: string): string {
+    // baseUrl is already normalized in constructor
+    return `${this.config.baseUrl}/rest/api/3${path}`;
+  }
+
+  /**
+   * Test connection to Jira instance
+   */
+  async testConnection(): Promise<{ success: boolean; serverInfo?: Record<string, unknown>; error?: string }> {
+    try {
+      const response = await fetch(this.buildUrl('/serverInfo'), {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
+      }
+
+      const data = await response.json();
+      return { success: true, serverInfo: data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown connection error',
+      };
+    }
+  }
+
+  /**
+   * Get all available projects
+   */
+  async getProjects(): Promise<Array<{ key: string; name: string; style?: string }>> {
+    const response = await fetch(this.buildUrl('/project'), {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch projects: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.map((p: Record<string, string>) => ({
+      key: p.key,
+      name: p.name,
+      style: p.style,
+    }));
+  }
+
+  /**
+   * Get available fields (for field mapping configuration)
+   */
+  async getFields(): Promise<Array<{ id: string; name: string; custom: boolean }>> {
+    const response = await fetch(this.buildUrl('/field'), {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch fields: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.map((f: Record<string, string | boolean>) => ({
+      id: String(f.id),
+      name: String(f.name),
+      custom: Boolean(f.custom),
+    }));
+  }
+
+  /**
+   * Sleep for a given number of milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Handle rate limiting / backoff based on strategy
+   */
+  private async handleBackoff(attempt: number, strategy: string): Promise<void> {
+    if (strategy === 'none') return;
+    if (strategy === 'linear') {
+      await this.sleep(1000 * attempt);
+    } else if (strategy === 'exponential') {
+      await this.sleep(1000 * Math.pow(2, attempt));
+    }
+  }
+
+  /**
+   * Execute fetch with timeout and retry logic
+   */
+  private async fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    maxRetries: number = 3,
+    timeoutMs: number = 60000
+  ): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        // Handle rate limiting
+        if (response.status === 429) {
+          if (attempt < maxRetries) {
+            const waitTime = Math.min(1000 * Math.pow(2, attempt), 30000); // Max 30s
+            console.warn(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+            await this.sleep(waitTime);
+            continue;
+          }
+        }
+
+        // Retry on server errors (5xx) and network errors
+        if (response.status >= 500 || response.status === 0) {
+          if (attempt < maxRetries) {
+            const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10s
+            console.warn(`Server error ${response.status}. Retrying ${attempt + 1}/${maxRetries} after ${waitTime}ms`);
+            await this.sleep(waitTime);
+            continue;
+          }
+        }
+
+        return response;
+
+      } catch (error) {
+        clearTimeout(timeoutId);
+        lastError = error as Error;
+
+        // Don't retry if it's a timeout and we've exceeded attempts
+        if (lastError.name === 'AbortError' && attempt >= maxRetries) {
+          throw new Error(`Request timeout after ${timeoutMs}ms`);
+        }
+
+        // Retry on network errors
+        if (attempt < maxRetries) {
+          const waitTime = Math.min(1000 * Math.pow(2, attempt), 5000);
+          console.warn(`Network error: ${lastError.message}. Retrying ${attempt + 1}/${maxRetries} after ${waitTime}ms`);
+          await this.sleep(waitTime);
+          continue;
+        }
+      }
+    }
+
+    throw lastError || new Error('Max retries exceeded');
+  }
+
+  /**
+   * Extract issues using JQL query with pagination and rate limiting
+   */
+  async extractIssues(
+    jql: string,
+    options: {
+      maxResults?: number;
+      expand?: string[];
+      onProgress?: (progress: number, total: number) => void;
+      delayMs?: number;
+      maxRequestsPerMinute?: number;
+      backoffStrategy?: string;
+    } = {}
+  ): Promise<JiraIssue[]> {
+    // Valid expand values for POST /rest/api/3/search/jql
+    const VALID_EXPAND = new Set(['changelog', 'renderedFields', 'names', 'schema', 'operations', 'editmeta', 'versionedRepresentations']);
+    const {
+      maxResults = 100,
+      expand = ['changelog'],
+      onProgress,
+      delayMs = 0,
+      maxRequestsPerMinute = 60,
+      backoffStrategy = 'none',
+    } = options;
+    // Strip any unknown expand values to prevent 400 errors
+    const safeExpand = expand.filter((e) => VALID_EXPAND.has(e));
+
+    const minIntervalMs = maxRequestsPerMinute > 0 ? (60000 / maxRequestsPerMinute) : 0;
+    const effectiveDelay = Math.max(delayMs, minIntervalMs);
+
+    const allIssues: JiraIssue[] = [];
+    let nextPageToken: string | null = null;
+    let consecutive429Count = 0;
+    let lastRequestTime = 0;
+    let total = 0;
+
+    do {
+      if (effectiveDelay > 0) {
+        const elapsed = Date.now() - lastRequestTime;
+        if (elapsed < effectiveDelay) {
+          await this.sleep(effectiveDelay - elapsed);
+        }
+      }
+
+      const requestBody: Record<string, unknown> = {
+        jql,
+        maxResults,
+        fields: ['summary', 'issuetype', 'priority', 'status', 'assignee', 'reporter',
+                 'created', 'updated', 'resolutiondate', 'duedate',
+                 this.fieldMapping.storyPointsField, 'labels', 'components'],
+      };
+
+      if (safeExpand.length > 0) {
+        requestBody.expand = safeExpand.join(',');
+      }
+      if (nextPageToken) {
+        requestBody.nextPageToken = nextPageToken;
+      }
+
+      lastRequestTime = Date.now();
+
+      try {
+        const response = await this.fetchWithRetry(
+          this.buildUrl('/search/jql'),
+          {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(requestBody),
+          },
+          3, // max retries
+          60000 // 60 second timeout
+        );
+
+        consecutive429Count = 0;
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'No error details available');
+          throw new Error(`JQL query failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const data: JiraSearchResult = await response.json();
+
+        allIssues.push(...data.issues);
+        total = data.total ?? total;
+        nextPageToken = data.nextPageToken || null;
+
+        onProgress?.(allIssues.length, total);
+
+      } catch (error) {
+        // Provide context about which page failed
+        const pageNum = Math.floor(allIssues.length / maxResults) + 1;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        throw new Error(
+          `Failed to fetch page ${pageNum} (already extracted ${allIssues.length} issues): ${errorMessage}`
+        );
+      }
+
+    } while (nextPageToken);
+
+    return allIssues;
+  }
+
+  /**
+   * Build a default JQL for the configured project keys
+   */
+  buildDefaultJql(options: {
+    dateFrom?: string;
+    dateTo?: string;
+    issueTypes?: string[];
+    statuses?: string[];
+    additional?: string;
+  } = {}): string {
+    const validKeys = this.config.projectKeys.filter(k => k && k.trim() !== '' && k.trim() !== '*');
+    
+    const clauses: string[] = [];
+    
+    if (validKeys.length > 0) {
+      const projectClause = validKeys.map((key) => `project = "${key.trim()}"`).join(' OR ');
+      clauses.push(`(${projectClause})`);
+    }
+
+    if (options.dateFrom) {
+      clauses.push(`created >= "${options.dateFrom}"`);
+    }
+    if (options.dateTo) {
+      clauses.push(`created <= "${options.dateTo}"`);
+    }
+    if (options.issueTypes?.length) {
+      const typeClause = options.issueTypes.map((t) => `issuetype = "${t}"`).join(' OR ');
+      clauses.push(`(${typeClause})`);
+    }
+    if (options.statuses?.length) {
+      const statusClause = options.statuses.map((s) => `status = "${s}"`).join(' OR ');
+      clauses.push(`(${statusClause})`);
+    }
+    if (options.additional) {
+      clauses.push(options.additional);
+    }
+
+    // Separate WHERE clauses from ORDER BY clause
+    const whereClause = clauses.join(' AND ');
+    return whereClause ? `${whereClause} ORDER BY created DESC` : 'ORDER BY created DESC';
+  }
+
+  /**
+   * Extract all issues from configured projects with full changelog
+   */
+  async extractAllIssues(options?: {
+    dateFrom?: string;
+    dateTo?: string;
+    onProgress?: (progress: number, total: number) => void;
+  }): Promise<JiraIssue[]> {
+    const jql = this.buildDefaultJql({
+      dateFrom: options?.dateFrom,
+      dateTo: options?.dateTo,
+    });
+
+    return this.extractIssues(jql, {
+      maxResults: 100,
+      expand: ['changelog'],
+      onProgress: options?.onProgress,
+    });
+  }
+}
+
+/**
+ * Transform raw Jira issues into a flat, analysis-ready format
+ */
+export function transformIssue(issue: JiraIssue) {
+  const transitions = extractTransitions(issue);
+  return {
+    key: issue.key,
+    summary: issue.fields.summary,
+    issueType: issue.fields.issuetype.name,
+    priority: issue.fields.priority?.name || null,
+    status: issue.fields.status.name,
+    statusCategory: issue.fields.status.statusCategory?.name || 'Unknown',
+    assignee: issue.fields.assignee?.displayName || 'Unassigned',
+    reporter: issue.fields.reporter?.displayName || 'Unknown',
+    created: issue.fields.created,
+    updated: issue.fields.updated,
+    resolved: issue.fields.resolutiondate || null,
+    dueDate: issue.fields.duedate || null,
+    storyPoints: (issue.fields as Record<string, unknown>)[JIRA_FIELD_MAP.storyPointsField] as number | null,
+    labels: issue.fields.labels || [],
+    components: issue.fields.components?.map((c) => c.name) || [],
+    transitions,
+    timeInStatus: calculateTimeInStatus(transitions),
+  };
+}
+
+const JIRA_FIELD_MAP = {
+  storyPointsField: 'customfield_10002',
+};
+
+function extractTransitions(issue: JiraIssue): Array<{
+  fromStatus: string | null;
+  toStatus: string;
+  author: string;
+  occurredAt: string;
+}> {
+  if (!issue.changelog?.histories) return [];
+
+  const transitions: Array<{
+    fromStatus: string | null;
+    toStatus: string;
+    author: string;
+    occurredAt: string;
+  }> = [];
+
+  for (const history of issue.changelog.histories) {
+    for (const item of history.items) {
+      if (item.field === 'status') {
+        transitions.push({
+          fromStatus: item.fromString || null,
+          toStatus: item.toString || 'Unknown',
+          author: history.author.displayName,
+          occurredAt: history.created,
+        });
+      }
+    }
+  }
+
+  return transitions;
+}
+
+function calculateTimeInStatus(transitions: Array<{
+  fromStatus: string | null;
+  toStatus: string;
+  author: string;
+  occurredAt: string;
+}>): Record<string, number> {
+  const timeInStatus: Record<string, number> = {};
+
+  for (let i = 0; i < transitions.length; i++) {
+    const current = transitions[i];
+    const nextTime = transitions[i + 1]
+      ? new Date(transitions[i + 1].occurredAt).getTime()
+      : Date.now();
+    const currentTime = new Date(current.occurredAt).getTime();
+    const durationMs = nextTime - currentTime;
+    const durationHours = durationMs / (1000 * 60 * 60);
+
+    const status = current.toStatus;
+    timeInStatus[status] = (timeInStatus[status] || 0) + durationHours;
+  }
+
+  return timeInStatus;
+}

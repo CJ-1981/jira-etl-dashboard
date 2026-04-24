@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model JiraConnection {
+  id          String   @id @default(cuid())
+  name        String
+  baseUrl     String
+  apiToken    String
+  email       String
+  projectKeys String   // comma-separated project keys
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  etlPipelines EtlPipeline[]
+}
+
+model EtlPipeline {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  jiraConnectionId String
+  connection      JiraConnection @relation(fields: [jiraConnectionId], references: [id])
+  schedule        String?  // cron expression
+  enabled         Boolean  @default(true)
+  lastRunAt       DateTime?
+  status          String   @default("idle") // idle, running, completed, failed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  runs            EtlRun[]
+}
+
+model EtlRun {
+  id              String   @id @default(cuid())
+  pipelineId      String?
+  pipeline        EtlPipeline? @relation(fields: [pipelineId], references: [id])
+  status          String   // started, extracting, transforming, loading, completed, failed
+  ticketsProcessed Int     @default(0)
+  errorLog        String?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  // Session persistence fields
+  jql             String?
+  dateFrom        String?
+  dateTo          String?
+  connectionId    String?
+  autoSave        Boolean  @default(true)
+  metadata        String?  // JSON: { version, extractParams, etc }
+  sizeBytes       Int?
+
+  ticketSnapshots TicketSnapshot[]
+
+  @@index([completedAt])
+  @@index([status])
+}
+
+model TicketSnapshot {
+  id              String   @id @default(cuid())
+  etlRunId        String
+  etlRun          EtlRun @relation(fields: [etlRunId], references: [id])
+  jiraKey         String
+  summary         String
+  issueType       String
+  priority        String?
+  status          String
+  assignee        String?
+  reporter        String?
+  created         DateTime
+  updated         DateTime
+  resolved        DateTime?
+  dueDate         DateTime?
+  storyPoints     Float?
+  labels          String   // JSON array stored as string
+  components      String?  // JSON array stored as string
+  transitions     TicketTransition[]
+}
+
+model TicketTransition {
+  id              String   @id @default(cuid())
+  ticketSnapshotId String
+  ticket          TicketSnapshot @relation(fields: [ticketSnapshotId], references: [id])
+  fromStatus      String?
+  toStatus        String
+  author          String?
+  occurredAt      DateTime
+}
+
+model KpiDefinition {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  category        String   // processing_time, turnaround, throughput, sla, custom
+  formula         String   // JSON formula definition
+  pluginType      String   @default("builtin") // builtin, custom
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  results         KpiResult[]
+}
+
+model KpiResult {
+  id                String   @id @default(cuid())
+  kpiDefinitionId   String
+  kpiDefinition     KpiDefinition @relation(fields: [kpiDefinitionId], references: [id])
+  etlRunId          String?
+  value             Float
+  unit              String?
+  dimensions        String   // JSON: { project: "...", assignee: "...", etc. }
+  periodStart       DateTime
+  periodEnd         DateTime
+  calculatedAt      DateTime @default(now())
+}
+
+model PostgresConnection {
+  id          String   @id @default(cuid())
+  name        String
+  host        String
+  port        Int      @default(5432)
+  database    String
+  username    String
+  password    String
+  sslMode     String   @default("prefer") // disable, prefer, require, verify-ca, verify-full
+  schemaName  String   @default("public")
+  tableName   String   @default("jira_kpi_results")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MetabaseConnection {
+  id          String   @id @default(cuid())
+  name        String
+  baseUrl     String   // e.g. https://metabase.example.com
+  username    String   // Metabase username
+  password    String   // Metabase password (for session auth)
+  apiKey      String?  // Optional: Metabase API key (header X-API-Key)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GermanHolidayConfig {
+  id              String   @id @default(cuid())
+  year            Int
+  region          String   @default("national") // national, BW, BY, BE, BB, HB, HH, HE, MV, NI, NW, RP, SL, SN, ST, SH, TH
+  holidayDate     DateTime
+  holidayName     String
+  isFullHoliday   Boolean  @default(true)
+  createdAt       DateTime @default(now())
+}

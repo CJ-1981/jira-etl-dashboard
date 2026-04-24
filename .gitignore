@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+test*.js
+docu/*
+db/
+prisma/db/
+*.db
+*.db-journal
+scripts/*
+
