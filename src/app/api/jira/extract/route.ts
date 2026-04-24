@@ -254,6 +254,67 @@ export async function POST(request: Request) {
       throw new Error('Database error: Failed to save extracted data. The extraction succeeded but could not be saved. Please try again.');
     }
 
+    // Update master dataset - accumulate all tickets for KPI calculations
+    try {
+      console.log('Updating master dataset...');
+
+      for (const issue of issues) {
+        const rawSp = (issue.fields as Record<string, unknown>)['customfield_10002'];
+        const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
+
+        await (db as any).masterTicket.upsert({
+          where: {
+            connectionId_jiraKey: {
+              connectionId: connectionId,
+              jiraKey: issue.key
+            }
+          },
+          create: {
+            connectionId: connectionId,
+            jiraKey: issue.key,
+            summary: issue.fields.summary,
+            issueType: issue.fields.issuetype.name,
+            priority: issue.fields.priority?.name,
+            status: issue.fields.status.name,
+            assignee: issue.fields.assignee?.displayName,
+            reporter: issue.fields.reporter?.displayName,
+            created: new Date(issue.fields.created),
+            updated: new Date(issue.fields.updated),
+            resolved: issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate) : null,
+            dueDate: issue.fields.duedate ? new Date(issue.fields.duedate) : null,
+            storyPoints: storyPoints,
+            labels: JSON.stringify(issue.fields.labels || []),
+            components: JSON.stringify(issue.fields.components?.map((c) => c.name) || []),
+            rawData: JSON.stringify(issue),
+            firstSeenAt: new Date(),
+            lastUpdatedAt: new Date()
+          },
+          update: {
+            summary: issue.fields.summary,
+            issueType: issue.fields.issuetype.name,
+            priority: issue.fields.priority?.name,
+            status: issue.fields.status.name,
+            assignee: issue.fields.assignee?.displayName,
+            reporter: issue.fields.reporter?.displayName,
+            updated: new Date(issue.fields.updated),
+            resolved: issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate) : null,
+            dueDate: issue.fields.duedate ? new Date(issue.fields.duedate) : null,
+            storyPoints: storyPoints,
+            labels: JSON.stringify(issue.fields.labels || []),
+            components: JSON.stringify(issue.fields.components?.map((c) => c.name) || []),
+            rawData: JSON.stringify(issue),
+            lastUpdatedAt: new Date()
+          }
+        });
+      }
+
+      console.log('Master dataset updated successfully');
+    } catch (masterError) {
+      console.error('Failed to update master dataset:', masterError);
+      // Don't fail the extraction if master dataset update fails
+      // Just log the error and continue
+    }
+
     // Return summary + raw issues for KPI calculation
     return NextResponse.json({
       success: true,

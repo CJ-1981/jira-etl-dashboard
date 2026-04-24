@@ -1,0 +1,551 @@
+/**
+ * Time-Series KPI Plugin
+ *
+ * Generates time-series data for KPIs grouped by time intervals (daily, weekly, monthly)
+ */
+
+import { calculateBusinessHours } from '../holidays/german-holidays';
+import type { KpiPlugin, KpiContext, TransformedIssue, StatusTransition } from './engine';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface TimeSeriesResult {
+  name: string;
+  value: number;
+  unit: string;
+  timeSeries?: TimeSeriesDataPoint[];
+  dimensions?: Record<string, string>;
+  details?: Array<{
+    label: string;
+    value: number;
+    unit?: string;
+  }>;
+}
+
+export interface TimeSeriesDataPoint {
+  period: string;
+  date: Date;
+  value: number;
+  count: number;
+}
+
+export type TimeInterval = 'daily' | 'weekly' | 'monthly';
+
+// ─── Time-Series Plugin ────────────────────────────────────────────────────────
+
+/**
+ * Processing Time Trend - Average processing hours grouped by time interval
+ */
+export const processingTimeTrendPlugin: KpiPlugin = {
+  id: 'processing_time_trend',
+  name: 'Processing Time Trend',
+  description: 'Average business hours to resolve tickets, grouped by week/month/day',
+  category: 'processing_time',
+  unit: 'hours',
+  calculate(context) {
+    // Default to weekly grouping
+    return calculateProcessingTimeTrend(context, 'weekly');
+  },
+};
+
+/**
+ * Throughput Trend - Tickets resolved per time interval
+ */
+export const throughputTrendPlugin: KpiPlugin = {
+  id: 'throughput_trend',
+  name: 'Throughput Trend',
+  description: 'Number of tickets resolved per week/month/day',
+  category: 'throughput',
+  unit: 'tickets',
+  calculate(context) {
+    return calculateThroughputTrend(context, 'weekly');
+  },
+};
+
+/**
+ * SLA Trend - SLA compliance rate per time interval
+ */
+export const slaTrendPlugin: KpiPlugin = {
+  id: 'sla_trend',
+  name: 'SLA Trend',
+  description: 'SLA compliance rate per week/month/day',
+  category: 'sla',
+  unit: '%',
+  calculate(context) {
+    return calculateSlaTrend(context, 'weekly');
+  },
+};
+
+/**
+ * Turnaround Time by Status Trend - Average time in each status per time period
+ */
+export const timeInStatusTrendPlugin: KpiPlugin = {
+  id: 'time_in_status_trend',
+  name: 'Turnaround Time by Status Trend',
+  description: 'Average business hours tickets spend in each workflow status, grouped by week',
+  category: 'turnaround',
+  unit: 'hours',
+  calculate(context) {
+    return calculateTimeInStatusTrend(context, 'weekly');
+  },
+};
+
+// ─── Calculation Functions ─────────────────────────────────────────────────────
+
+function calculateProcessingTimeTrend(
+  context: KpiContext,
+  interval: TimeInterval
+): TimeSeriesResult[] {
+  const resolvedIssues = context.issues.filter((i) => i.resolved);
+
+  if (resolvedIssues.length === 0) {
+    return [{
+      name: 'Avg. Processing Time',
+      value: 0,
+      unit: 'hours',
+      timeSeries: [],
+    }];
+  }
+
+  // Group issues by time interval
+  const grouped = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved!);
+
+  // Calculate average processing time per period, filtering incomplete periods
+  const timeSeries: TimeSeriesDataPoint[] = [];
+  let hasIncompletePeriod = false;
+
+  for (const [periodKey, issues] of Object.entries(grouped)) {
+    const periodEnd = getPeriodEnd(periodKey, interval);
+    const isComplete = isPeriodComplete(periodEnd);
+
+    // Skip incomplete periods to avoid misleading spikes
+    if (!isComplete) {
+      hasIncompletePeriod = true;
+      continue;
+    }
+
+    const processingTimes = issues.map((issue) =>
+      calculateBusinessHours(issue.created, issue.resolved!, context.holidays)
+    );
+
+    const avgTime = processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length;
+
+    timeSeries.push({
+      period: periodKey,
+      date: periodEnd,
+      value: Math.round(avgTime * 100) / 100,
+      count: issues.length,
+    });
+  }
+
+  // Sort by date
+  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Calculate overall average from complete periods only
+  const overallAvg = timeSeries.length > 0
+    ? timeSeries.reduce((sum, point) => sum + point.value * point.count, 0) /
+      timeSeries.reduce((sum, point) => sum + point.count, 0)
+    : 0;
+
+  const details: Array<{ label: string; value: number; unit?: string }> = [
+    { label: 'Complete Periods', value: timeSeries.length },
+    { label: 'Total Resolved', value: resolvedIssues.length },
+  ];
+
+  if (timeSeries.length > 0) {
+    details.push(
+      { label: 'Min Time', value: Math.round(Math.min(...timeSeries.map(t => t.value)) * 100) / 100, unit: 'hours' },
+      { label: 'Max Time', value: Math.round(Math.max(...timeSeries.map(t => t.value)) * 100) / 100, unit: 'hours' }
+    );
+  }
+
+  if (hasIncompletePeriod) {
+    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+  }
+
+  return [{
+    name: 'Avg. Processing Time',
+    value: Math.round(overallAvg * 100) / 100,
+    unit: 'hours',
+    timeSeries,
+    details,
+  }];
+}
+
+function calculateThroughputTrend(
+  context: KpiContext,
+  interval: TimeInterval
+): TimeSeriesResult[] {
+  const resolvedIssues = context.issues.filter((i) => i.resolved);
+
+  if (resolvedIssues.length === 0) {
+    return [{
+      name: 'Throughput',
+      value: 0,
+      unit: 'tickets',
+      timeSeries: [],
+    }];
+  }
+
+  // Group issues by time interval
+  const grouped = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved!);
+
+  // Calculate throughput per period, filtering incomplete periods
+  const timeSeries: TimeSeriesDataPoint[] = [];
+  let hasIncompletePeriod = false;
+
+  for (const [periodKey, issues] of Object.entries(grouped)) {
+    const periodEnd = getPeriodEnd(periodKey, interval);
+    const isComplete = isPeriodComplete(periodEnd);
+
+    // Skip incomplete periods
+    if (!isComplete) {
+      hasIncompletePeriod = true;
+      continue;
+    }
+
+    timeSeries.push({
+      period: periodKey,
+      date: periodEnd,
+      value: issues.length,
+      count: issues.length,
+    });
+  }
+
+  // Sort by date
+  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const totalResolved = resolvedIssues.length;
+  const avgThroughput = timeSeries.length > 0 ? totalResolved / timeSeries.length : 0;
+
+  const details: Array<{ label: string; value: number; unit?: string }> = [
+    { label: 'Complete Periods', value: timeSeries.length },
+    { label: 'Total Resolved', value: totalResolved },
+    { label: 'Avg Throughput', value: Math.round(avgThroughput * 100) / 100, unit: 'tickets/period' },
+  ];
+
+  if (timeSeries.length > 0) {
+    details.push({ label: 'Peak Period', value: Math.round(Math.max(...timeSeries.map(t => t.value))), unit: 'tickets' });
+  }
+
+  if (hasIncompletePeriod) {
+    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+  }
+
+  return [{
+    name: 'Throughput',
+    value: Math.round(avgThroughput * 100) / 100,
+    unit: 'tickets/period',
+    timeSeries,
+    details,
+  }];
+}
+
+function calculateSlaTrend(
+  context: KpiContext,
+  interval: TimeInterval
+): TimeSeriesResult[] {
+  const slaTargetHours = context.holidays.slaTargetHours || 40;
+  const resolvedIssues = context.issues.filter((i) => i.resolved);
+
+  if (resolvedIssues.length === 0) {
+    return [{
+      name: 'SLA Compliance',
+      value: 0,
+      unit: '%',
+      timeSeries: [],
+    }];
+  }
+
+  // Group issues by time interval
+  const grouped = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved!);
+
+  // Calculate SLA compliance per period, filtering incomplete periods
+  const timeSeries: TimeSeriesDataPoint[] = [];
+  let hasIncompletePeriod = false;
+
+  for (const [periodKey, issues] of Object.entries(grouped)) {
+    const periodEnd = getPeriodEnd(periodKey, interval);
+    const isComplete = isPeriodComplete(periodEnd);
+
+    // Skip incomplete periods
+    if (!isComplete) {
+      hasIncompletePeriod = true;
+      continue;
+    }
+
+    const withinSla = issues.filter((issue) => {
+      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
+      return hours <= slaTargetHours;
+    }).length;
+
+    const complianceRate = (withinSla / issues.length) * 100;
+
+    timeSeries.push({
+      period: periodKey,
+      date: periodEnd,
+      value: Math.round(complianceRate * 100) / 100,
+      count: issues.length,
+    });
+  }
+
+  // Sort by date
+  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Calculate overall compliance from complete periods only
+  const overallCompliance = timeSeries.length > 0
+    ? timeSeries.reduce((sum, point) => sum + point.value * point.count, 0) /
+      timeSeries.reduce((sum, point) => sum + point.count, 0)
+    : 0;
+
+  const details: Array<{ label: string; value: number; unit?: string }> = [
+    { label: 'Complete Periods', value: timeSeries.length },
+    { label: 'Total Resolved', value: resolvedIssues.length },
+    { label: 'SLA Target', value: slaTargetHours, unit: 'hours' },
+  ];
+
+  if (timeSeries.length > 0) {
+    const minCompliance = Math.min(...timeSeries.map(t => t.value));
+    const maxCompliance = Math.max(...timeSeries.map(t => t.value));
+    details.push(
+      { label: 'Worst Period', value: Math.round(minCompliance), unit: '%' },
+      { label: 'Best Period', value: Math.round(maxCompliance), unit: '%' }
+    );
+  }
+
+  if (hasIncompletePeriod) {
+    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+  }
+
+  return [{
+    name: 'SLA Compliance',
+    value: Math.round(overallCompliance * 100) / 100,
+    unit: '%',
+    timeSeries,
+    details,
+  }];
+}
+
+function calculateTimeInStatusTrend(
+  context: KpiContext,
+  interval: TimeInterval
+): TimeSeriesResult[] {
+  const resolvedIssues = context.issues.filter((i) => i.resolved);
+
+  if (resolvedIssues.length === 0) {
+    return [{
+      name: 'Turnaround Time by Status',
+      value: 0,
+      unit: 'hours',
+      timeSeries: [],
+    }];
+  }
+
+  // Group issues by time interval (based on resolution date)
+  const groupedByPeriod = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved!);
+
+  // For each period, calculate time in each status
+  const periodStatusData: Record<string, Record<string, { totalHours: number; count: number }>> = {};
+
+  for (const [periodKey, periodIssues] of Object.entries(groupedByPeriod)) {
+    periodStatusData[periodKey] = {};
+
+    for (const issue of periodIssues) {
+      for (const transition of issue.transitions) {
+        const status = transition.toStatus;
+        const nextTime = issue.transitions[issue.transitions.indexOf(transition) + 1]
+          ? issue.transitions[issue.transitions.indexOf(transition) + 1].occurredAt
+          : issue.resolved!;
+
+        const hours = calculateBusinessHours(transition.occurredAt, nextTime, context.holidays);
+
+        if (!periodStatusData[periodKey][status]) {
+          periodStatusData[periodKey][status] = { totalHours: 0, count: 0 };
+        }
+
+        periodStatusData[periodKey][status].totalHours += hours;
+        periodStatusData[periodKey][status].count++;
+      }
+    }
+  }
+
+  // Build time-series data - multiple results (one per status) for multi-line chart
+  const statusResults: TimeSeriesResult[] = [];
+  let hasIncompletePeriod = false;
+
+  // Get all unique statuses across all periods
+  const allStatuses = new Set<string>();
+  for (const periodData of Object.values(periodStatusData)) {
+    Object.keys(periodData).forEach(status => allStatuses.add(status));
+  }
+
+  // For each status, create a time-series result
+  for (const status of allStatuses) {
+    const timeSeries: TimeSeriesDataPoint[] = [];
+
+    for (const [periodKey, periodData] of Object.entries(periodStatusData)) {
+      const statusData = periodData[status];
+      if (!statusData) continue; // This status didn't appear in this period
+
+      const periodEnd = getPeriodEnd(periodKey, interval);
+      const isComplete = isPeriodComplete(periodEnd);
+
+      // Skip incomplete periods
+      if (!isComplete) {
+        hasIncompletePeriod = true;
+        continue;
+      }
+
+      const avgHours = statusData.count > 0 ? statusData.totalHours / statusData.count : 0;
+
+      timeSeries.push({
+        period: periodKey,
+        date: periodEnd,
+        value: Math.round(avgHours * 100) / 100,
+        count: statusData.count,
+      });
+    }
+
+    // Sort by date
+    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    // Calculate overall average for this status
+    const overallAvg = timeSeries.length > 0
+      ? timeSeries.reduce((sum, point) => sum + point.value, 0) / timeSeries.length
+      : 0;
+
+    statusResults.push({
+      name: `Time in ${status}`,
+      value: Math.round(overallAvg * 100) / 100,
+      unit: 'hours',
+      dimensions: { status },
+      timeSeries,
+    });
+  }
+
+  const details: Array<{ label: string; value: number; unit?: string }> = [
+    { label: 'Statuses Analyzed', value: statusResults.length },
+  ];
+
+  if (hasIncompletePeriod) {
+    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+  }
+
+  // Return multiple results (one per status) for multi-line chart
+  return statusResults;
+}
+
+// ─── Utility Functions ─────────────────────────────────────────────────────────
+
+/**
+ * Group issues by time interval
+ */
+function groupByTimeInterval(
+  issues: TransformedIssue[],
+  interval: TimeInterval,
+  dateExtractor: (issue: TransformedIssue) => Date
+): Record<string, TransformedIssue[]> {
+  const grouped: Record<string, TransformedIssue[]> = {};
+
+  for (const issue of issues) {
+    const date = dateExtractor(issue);
+    const key = getPeriodKey(date, interval);
+
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push(issue);
+  }
+
+  return grouped;
+}
+
+/**
+ * Get period key for a date based on interval
+ */
+function getPeriodKey(date: Date, interval: TimeInterval): string {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const week = getWeekNumber(date);
+
+  switch (interval) {
+    case 'daily':
+      return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    case 'weekly':
+      return `${year}-W${week.toString().padStart(2, '0')}`;
+    case 'monthly':
+      return `${year}-${month.toString().padStart(2, '0')}`;
+    default:
+      return `${year}-${month}`;
+  }
+}
+
+/**
+ * Get the end date of a time period
+ */
+function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
+  const [yearStr, rest] = periodKey.split('-');
+  const year = parseInt(yearStr, 10);
+
+  switch (interval) {
+    case 'daily':
+      return new Date(year, parseInt(rest.split('-')[0], 10) - 1, parseInt(rest.split('-')[1], 10));
+    case 'weekly':
+      const week = parseInt(rest.replace('W', ''), 10);
+      return getWeekEndDate(year, week);
+    case 'monthly':
+      const month = parseInt(rest, 10);
+      return new Date(year, month, 0); // Last day of month
+    default:
+      return new Date();
+  }
+}
+
+/**
+ * Get the end date of an ISO week
+ */
+function getWeekEndDate(year: number, week: number): Date {
+  const jan1 = new Date(year, 0, 1);
+  const days = (week - 1) * 7 + 4 - jan1.getDay();
+  const endDate = new Date(year, 0, 1 + days);
+  // Set to Sunday (end of ISO week)
+  endDate.setDate(endDate.getDate() + (7 - endDate.getDay()) % 7);
+  endDate.setHours(23, 59, 59, 999);
+  return endDate;
+}
+
+/**
+ * Check if a period is complete (not the current partial period)
+ */
+function isPeriodComplete(periodEnd: Date, currentDate: Date = new Date()): boolean {
+  // Add 1 day buffer to ensure period is fully complete
+  const bufferDays = 1;
+  const completeThreshold = new Date(periodEnd);
+  completeThreshold.setDate(completeThreshold.getDate() + bufferDays);
+
+  return currentDate > completeThreshold;
+}
+
+/**
+ * Get ISO week number
+ */
+function getWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+// ─── Plugin Registration Helper ────────────────────────────────────────────────
+
+/**
+ * Register all time-series plugins with the KPI engine
+ */
+export function registerTimeSeriesPlugins(engine: { register: (plugin: KpiPlugin) => void }): void {
+  engine.register(processingTimeTrendPlugin);
+  engine.register(throughputTrendPlugin);
+  engine.register(slaTrendPlugin);
+  engine.register(timeInStatusTrendPlugin);
+}

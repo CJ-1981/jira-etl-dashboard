@@ -91,6 +91,38 @@ export const PostgresConnectionCreateSchema = z.object({
     .default('jira_kpi_results')
 });
 
+// Schema for updating PostgreSQL connections (password is optional)
+export const PostgresConnectionUpdateSchema = z.object({
+  name: NameSchema.optional(),
+  host: z.string()
+    .min(1, 'Host is required')
+    .max(255, 'Host must be less than 255 characters')
+    .refine(val => !val.includes(' '), 'Host cannot contain spaces')
+    .optional(),
+  port: z.number()
+    .int('Port must be an integer')
+    .min(1, 'Port must be between 1 and 65535')
+    .max(65535, 'Port must be between 1 and 65535')
+    .optional(),
+  database: z.string()
+    .min(1, 'Database name is required')
+    .max(100, 'Database name must be less than 100 characters')
+    .regex(/^[a-zA-Z0-9_]+$/, 'Database name contains invalid characters')
+    .optional(),
+  username: z.string()
+    .min(1, 'Username is required')
+    .max(100, 'Username must be less than 100 characters')
+    .optional(),
+  password: z.string().max(255, 'Password too long').optional(), // Optional for updates
+  sslMode: z.enum(['disable', 'prefer', 'require', 'verify-ca', 'verify-full']).optional(),
+  schemaName: z.string()
+    .regex(/^[a-zA-Z0-9_]+$/, 'Schema name contains invalid characters')
+    .optional(),
+  tableName: z.string()
+    .regex(/^[a-zA-Z0-9_]+$/, 'Table name contains invalid characters')
+    .optional(),
+}).partial(); // Make all fields optional for partial updates
+
 /**
  * Metabase Connection schemas
  */

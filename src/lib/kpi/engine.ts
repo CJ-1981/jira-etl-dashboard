@@ -5,9 +5,9 @@
  * Supports custom plugins via the KpiPlugin interface.
  */
 
-import { calculateBusinessHours, calculateWorkingDays, isWorkingDay, type GermanState } from '../holidays/german-holidays';
+import { calculateBusinessHours, calculateWorkingDays, type GermanState } from '../holidays/german-holidays';
 import type { JiraIssue } from '../jira/client';
-import { extractTransitions } from '../jira/client';
+import { registerTimeSeriesPlugins } from './time-series-plugin';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -461,6 +461,9 @@ export class KpiEngine {
     this.register(avgWorkingDaysPlugin);
     this.register(slaByPriorityPlugin);
     this.register(reassignmentPlugin);
+
+    // Register time-series plugins
+    registerTimeSeriesPlugins(this);
   }
 
   register(plugin: KpiPlugin) {
@@ -484,6 +487,50 @@ export class KpiEngine {
   }
 
   /**
+   * Filter issues to those relevant to the specified period.
+   * Includes issues created, resolved, or active during the period.
+   */
+  private filterIssuesByPeriod(
+    issues: JiraIssue[],
+    period: { start: Date; end: Date }
+  ): JiraIssue[] {
+    return issues.filter((issue) => {
+      const created = issue.fields?.created
+        ? new Date(issue.fields.created)
+        : (issue as any).created
+          ? new Date((issue as any).created)
+          : null;
+      const resolved = issue.fields?.resolutiondate
+        ? new Date(issue.fields.resolutiondate)
+        : (issue as any).resolved
+          ? new Date((issue as any).resolved)
+          : null;
+
+      // Include if created within period
+      if (created && created >= period.start && created <= period.end) {
+        return true;
+      }
+
+      // Include if resolved within period
+      if (resolved && resolved >= period.start && resolved <= period.end) {
+        return true;
+      }
+
+      // Include if open during period (created before period end, not resolved)
+      if (created && created < period.end && !resolved) {
+        return true;
+      }
+
+      // Include if active during period (created before, resolved after)
+      if (created && created < period.start && resolved && resolved > period.start) {
+        return true;
+      }
+
+      return false;
+    });
+  }
+
+  /**
    * Run a specific KPI calculation
    */
   calculate(
@@ -495,8 +542,11 @@ export class KpiEngine {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) throw new Error(`KPI plugin not found: ${pluginId}`);
 
+    // Filter issues to those relevant for the period
+    const filteredIssues = this.filterIssuesByPeriod(issues, period);
+
     const context: KpiContext = {
-      issues: issues.map(transformIssueForKpi),
+      issues: filteredIssues.map(transformIssueForKpi),
       holidays: {
         regions: holidays.regions,
         workStartHour: holidays.workStartHour || 9,
@@ -517,9 +567,23 @@ export class KpiEngine {
     holidays: { regions: GermanState[]; workStartHour?: number; workEndHour?: number; slaTargetHours?: number },
     period: { start: Date; end: Date }
   ): Record<string, KpiResult[]> {
+    // Filter issues once for all plugins to ensure consistent data
+    const filteredIssues = this.filterIssuesByPeriod(issues, period);
+
     const results: Record<string, KpiResult[]> = {};
     for (const [id, plugin] of this.plugins) {
-      results[id] = this.calculate(id, issues, holidays, period);
+      const context: KpiContext = {
+        issues: filteredIssues.map(transformIssueForKpi),
+        holidays: {
+          regions: holidays.regions,
+          workStartHour: holidays.workStartHour || 9,
+          workEndHour: holidays.workEndHour || 17,
+          slaTargetHours: holidays.slaTargetHours || 40,
+        },
+        period,
+      };
+
+      results[id] = plugin.calculate(context);
     }
     return results;
   }

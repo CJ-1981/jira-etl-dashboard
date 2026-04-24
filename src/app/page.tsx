@@ -1,6 +1,16 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import {
+  transformForBarChart,
+  transformForPieChart,
+  transformForLineChart,
+  getKpiOptions,
+  getRecommendedChartType,
+  formatChartValue,
+  isTimeSeriesPlugin,
+  CHART_COLORS,
+} from '@/lib/chart-data-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +30,10 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import {
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import {
   Database, RefreshCw, Download, Settings, BarChart3,
   Clock, AlertTriangle, TrendingUp, Zap, Plug, Calendar,
@@ -193,6 +207,9 @@ export default function Home() {
   const [extractionResult, setExtractionResult] = useState<{
     total: number; etlRunId: string; issues: ExtractedIssue[];
   } | null>(null);
+  const [masterDatasetInfo, setMasterDatasetInfo] = useState<{
+    totalExtracted: number; dateRange?: { from: string; to: string }; lastUpdated: string;
+  } | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [region, setRegion] = useState('national');
@@ -291,6 +308,25 @@ export default function Home() {
         console.log('Failed to load extraction for connection:', error);
         setExtractionResult(null);
       }
+
+      // Load master dataset info
+      try {
+        const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`);
+        const masterData = await masterRes.json();
+
+        if (masterData.success && masterData.data) {
+          setMasterDatasetInfo({
+            totalExtracted: masterData.data.totalExtracted,
+            dateRange: masterData.data.dateRange,
+            lastUpdated: masterData.data.lastUpdated
+          });
+        } else {
+          setMasterDatasetInfo(null);
+        }
+      } catch (error) {
+        console.log('Failed to load master dataset info:', error);
+        setMasterDatasetInfo(null);
+      }
     };
 
     handleConnectionSwitch();
@@ -359,36 +395,39 @@ export default function Home() {
       {/* Main Content */}
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1 h-auto flex flex-wrap sm:flex-nowrap gap-1 justify-start overflow-x-auto no-scrollbar">
-            <TabsTrigger value="connections" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-              <Server className="h-4 w-4" />
-              <span className="hidden sm:inline">Connections</span>
-            </TabsTrigger>
-            <TabsTrigger value="extract" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Extract</span>
-            </TabsTrigger>
-            <TabsTrigger value="kpi" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-              <BarChart3 className="h-4 w-4" />
-              <span className="hidden sm:inline">KPI Dashboard</span>
-            </TabsTrigger>
-            <TabsTrigger value="plugins" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-              <Plug className="h-4 w-4" />
-              <span className="hidden sm:inline">Plugins</span>
-            </TabsTrigger>
-            <TabsTrigger value="holidays" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-              <Calendar className="h-4 w-4" />
-              <span className="hidden sm:inline">Holidays</span>
-            </TabsTrigger>
-            <TabsTrigger value="export" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-              <FileJson className="h-4 w-4" />
-              <span className="hidden sm:inline">Export</span>
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-              <Settings className="h-4 w-4" />
-              <span className="hidden sm:inline">Settings</span>
-            </TabsTrigger>
-          </TabsList>
+          {/* Sticky Tab Navigation */}
+          <div className="sticky top-0 z-50 bg-white dark:bg-slate-900 py-2">
+            <TabsList className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1 h-auto flex flex-wrap sm:flex-nowrap gap-1 justify-start overflow-x-auto no-scrollbar shadow-sm">
+              <TabsTrigger value="connections" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <Server className="h-4 w-4" />
+                <span className="hidden sm:inline">Connections</span>
+              </TabsTrigger>
+              <TabsTrigger value="extract" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Extract</span>
+              </TabsTrigger>
+              <TabsTrigger value="kpi" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <BarChart3 className="h-4 w-4" />
+                <span className="hidden sm:inline">KPI Dashboard</span>
+              </TabsTrigger>
+              <TabsTrigger value="plugins" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <Plug className="h-4 w-4" />
+                <span className="hidden sm:inline">Plugins</span>
+              </TabsTrigger>
+              <TabsTrigger value="holidays" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <Calendar className="h-4 w-4" />
+                <span className="hidden sm:inline">Holidays</span>
+              </TabsTrigger>
+              <TabsTrigger value="export" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <FileJson className="h-4 w-4" />
+                <span className="hidden sm:inline">Export</span>
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Settings</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="connections" className="space-y-6">
             <ConnectionsPanel
@@ -404,6 +443,8 @@ export default function Home() {
               connections={connections}
               extractionResult={extractionResult}
               setExtractionResult={setExtractionResult}
+              masterDatasetInfo={masterDatasetInfo}
+              setMasterDatasetInfo={setMasterDatasetInfo}
               dateFrom={dateFrom}
               setDateFrom={setDateFrom}
               dateTo={dateTo}
@@ -419,6 +460,8 @@ export default function Home() {
             <KpiDashboard
               connections={connections}
               extractionResult={extractionResult}
+              masterDatasetInfo={masterDatasetInfo}
+              setMasterDatasetInfo={setMasterDatasetInfo}
               dateFrom={dateFrom}
               setDateFrom={setDateFrom}
               dateTo={dateTo}
@@ -599,10 +642,12 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
     name: '', host: '', port: '5432', database: '', username: '', password: '',
     sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results',
   });
+  const [editingPgId, setEditingPgId] = useState<string | null>(null);
 
   const [mbForm, setMbForm] = useState({
     name: '', baseUrl: '', username: '', password: '', apiKey: '',
   });
+  const [editingMbId, setEditingMbId] = useState<string | null>(null);
 
   const loadConnections = useCallback(async () => {
     setLoading(true);
@@ -664,21 +709,68 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
   };
 
   const handleSavePg = async () => {
-    if (!pgForm.name || !pgForm.host || !pgForm.database || !pgForm.username || !pgForm.password) {
-      toast.error('All fields are required'); return;
+    if (!pgForm.name || !pgForm.host || !pgForm.database || !pgForm.username) {
+      toast.error('Name, host, database, and username are required'); return;
+    }
+
+    // Check for Supabase pooler URL and warn user
+    if (pgForm.host.includes('.pooler.supabase.com')) {
+      toast.error('Please use the direct connection URL (db.<project-ref>.supabase.co), not the pooler URL. Pooler URLs require additional parameters.', { duration: 5000 });
+      return;
+    }
+
+    // Password is required for new connections, but optional for updates
+    if (!editingPgId && !pgForm.password) {
+      toast.error('Password is required for new connections'); return;
     }
     try {
-      const res = await fetch('/api/pg/connections', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...pgForm, port: parseInt(pgForm.port) || 5432 }),
+      const url = editingPgId ? `/api/pg/connections?id=${editingPgId}` : '/api/pg/connections';
+      const method = editingPgId ? 'PUT' : 'POST';
+
+      // Build payload - only include password if creating new connection or if user typed a new password
+      const payload: any = {
+        name: pgForm.name,
+        host: pgForm.host,
+        port: parseInt(pgForm.port) || 5432,
+        database: pgForm.database,
+        username: pgForm.username,
+        sslMode: pgForm.sslMode,
+        schemaName: pgForm.schemaName,
+        tableName: pgForm.tableName,
+      };
+
+      // Only send password if creating new connection OR if user typed a new password (not empty)
+      if (!editingPgId || pgForm.password.trim() !== '') {
+        payload.password = pgForm.password;
+      }
+
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('PostgreSQL connection saved');
+        toast.success(editingPgId ? 'PostgreSQL connection updated' : 'PostgreSQL connection saved');
         setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
+        setEditingPgId(null);
         loadConnections();
       } else toast.error(data.error);
     } catch { toast.error('Network error'); }
+  };
+
+  const handleEditPg = (conn: any) => {
+    setPgForm({
+      name: conn.name,
+      host: conn.host,
+      port: conn.port.toString(),
+      database: conn.database,
+      username: conn.username,
+      password: '', // Start empty - user only types if they want to change
+      sslMode: conn.sslMode || 'prefer',
+      schemaName: conn.schemaName || 'public',
+      tableName: conn.tableName || 'jira_kpi_results',
+    });
+    setEditingPgId(conn.id);
   };
 
   const handleTest = async (conn: JiraConnection) => {
@@ -745,12 +837,18 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
   };
 
   const handleTestPg = async (conn: PgConnection) => {
+    // Check for Supabase pooler URL and warn user before testing
+    if (conn.host.includes('.pooler.supabase.com')) {
+      toast.error('Cannot test pooler URL. Please use the direct connection URL (db.<project-ref>.supabase.co)', { duration: 5000 });
+      return;
+    }
+
     setTestingPg(conn.id);
     setTestStatus(prev => ({ ...prev, [conn.id]: null }));
     try {
       const res = await fetch('/api/pg/test', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: conn.host, port: conn.port, database: conn.database, username: conn.username, password: conn.password, sslMode: conn.sslMode }),
+        body: JSON.stringify({ id: conn.id }),
       });
       const data = await res.json();
 
@@ -840,21 +938,54 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
   };
 
   const handleSaveMb = async () => {
-    if (!mbForm.name || !mbForm.baseUrl || !mbForm.username || !mbForm.password) {
-      toast.error('Name, URL, username, and password are required'); return;
+    if (!mbForm.name || !mbForm.baseUrl || !mbForm.username) {
+      toast.error('Name, URL, and username are required'); return;
+    }
+    // Password is required for new connections, but optional for updates
+    if (!editingMbId && !mbForm.password) {
+      toast.error('Password is required for new connections'); return;
     }
     try {
-      const res = await fetch('/api/metabase/connections', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save', ...mbForm }),
+      const url = editingMbId ? `/api/metabase/connections?id=${editingMbId}` : '/api/metabase/connections';
+      const method = editingMbId ? 'PUT' : 'POST';
+
+      // Build payload - only include password if creating new connection or if user typed a new password
+      const payload: any = {
+        action: 'save',
+        name: mbForm.name,
+        baseUrl: mbForm.baseUrl,
+        username: mbForm.username,
+        apiKey: mbForm.apiKey,
+      };
+
+      // Only send password if creating new connection OR if user typed a new password (not empty)
+      if (!editingMbId || mbForm.password.trim() !== '') {
+        payload.password = mbForm.password;
+      }
+
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Metabase connection saved');
+        toast.success(editingMbId ? 'Metabase connection updated' : 'Metabase connection saved');
         setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' });
+        setEditingMbId(null);
         loadConnections();
       } else toast.error(data.error);
     } catch { toast.error('Network error'); }
+  };
+
+  const handleEditMb = (conn: any) => {
+    setMbForm({
+      name: conn.name,
+      baseUrl: conn.baseUrl,
+      username: conn.username,
+      password: '', // Start empty - user only types if they want to change
+      apiKey: conn.apiKey || '',
+    });
+    setEditingMbId(conn.id);
   };
 
   const handleTestMb = async (conn: MetabaseConnection) => {
@@ -1057,6 +1188,9 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
                             <CheckCircle2 className={`h-3 w-3 mr-1 ${testStatus[conn.id] === 'success' ? 'text-emerald-500' : testStatus[conn.id] === 'error' ? 'text-red-500' : ''}`} />
                           )}Test
                         </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleEditPg(conn)} className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700 text-xs">
+                          <Edit2 className="h-3 w-3 mr-1" />Edit
+                        </Button>
                         <Button variant="outline" size="sm" onClick={() => handleDeletePg(conn.id)} className="border-red-200 dark:border-red-900/30 text-red-400 hover:bg-red-50 dark:bg-red-900/20 text-xs">
                           <Trash2 className="h-3 w-3 mr-1" />Remove
                         </Button>
@@ -1086,6 +1220,9 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
                             <CheckCircle2 className={`h-3 w-3 mr-1 ${testStatus[conn.id] === 'success' ? 'text-emerald-500' : testStatus[conn.id] === 'error' ? 'text-red-500' : ''}`} />
                           )}Test
                         </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleEditMb(conn)} className="border-cyan-500/30 hover:bg-cyan-100 dark:hover:bg-cyan-500/10 text-xs text-cyan-400">
+                          <Edit2 className="h-3 w-3 mr-1" />Edit
+                        </Button>
                         <Button variant="outline" size="sm" onClick={() => handleDeleteMb(conn.id)} className="border-red-200 dark:border-red-900/30 text-red-400 hover:bg-red-50 dark:bg-red-900/20 text-xs">
                           <Trash2 className="h-3 w-3 mr-1" />Remove
                         </Button>
@@ -1103,7 +1240,8 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       <Card className="border-violet-500/20 bg-violet-50 dark:bg-violet-500/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <HardDrive className="h-5 w-5 text-violet-400" /> Add PostgreSQL Connection
+            {editingPgId ? <Edit2 className="h-5 w-5 text-violet-400" /> : <HardDrive className="h-5 w-5 text-violet-400" />}
+            {editingPgId ? 'Edit PostgreSQL Connection' : 'Add PostgreSQL Connection'}
           </CardTitle>
           <CardDescription className="text-slate-600 dark:text-slate-400">
             Connect to an external PostgreSQL database to push KPI data directly. Ideal for production Metabase setups with large or complex datasets.
@@ -1133,7 +1271,13 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
             </div>
             <div className="space-y-2">
               <Label className="text-slate-700 dark:text-slate-300">Password</Label>
-              <Input placeholder="Database password" type="password" value={pgForm.password} onChange={(e) => setPgForm({ ...pgForm, password: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+              <Input
+                placeholder={editingPgId ? "Leave empty to keep existing password" : "Database password"}
+                type="password"
+                value={pgForm.password}
+                onChange={(e) => setPgForm({ ...pgForm, password: e.target.value })}
+                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-slate-700 dark:text-slate-300">SSL Mode</Label>
@@ -1159,9 +1303,22 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
               <Input placeholder="jira_kpi_results" value={pgForm.tableName} onChange={(e) => setPgForm({ ...pgForm, tableName: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
             </div>
           </div>
-          <Button onClick={handleSavePg} className="w-full bg-violet-600 hover:bg-violet-700">
-            <HardDrive className="mr-2 h-4 w-4" /> Save PostgreSQL Connection
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleSavePg} className="flex-1 bg-violet-600 hover:bg-violet-700">
+              <HardDrive className="mr-2 h-4 w-4" /> {editingPgId ? 'Update Connection' : 'Save PostgreSQL Connection'}
+            </Button>
+            {editingPgId && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingPgId(null);
+                  setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
+                }}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -1169,7 +1326,8 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       <Card className="border-cyan-500/20 bg-cyan-50 dark:bg-cyan-500/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Globe className="h-5 w-5 text-cyan-400" /> Add Metabase Connection
+            {editingMbId ? <Edit2 className="h-5 w-5 text-cyan-400" /> : <Globe className="h-5 w-5 text-cyan-400" />}
+            {editingMbId ? 'Edit Metabase Connection' : 'Add Metabase Connection'}
           </CardTitle>
           <CardDescription className="text-slate-600 dark:text-slate-400">
             Connect to your Metabase instance for direct data push, auto-sync, and dashboard card creation. Supports both session auth (username/password) and API key authentication.
@@ -1191,7 +1349,13 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
             </div>
             <div className="space-y-2">
               <Label className="text-slate-700 dark:text-slate-300">Password</Label>
-              <Input placeholder="Metabase password" type="password" value={mbForm.password} onChange={(e) => setMbForm({ ...mbForm, password: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+              <Input
+                placeholder={editingMbId ? "Leave empty to keep existing password" : "Metabase password"}
+                type="password"
+                value={mbForm.password}
+                onChange={(e) => setMbForm({ ...mbForm, password: e.target.value })}
+                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-slate-700 dark:text-slate-300">API Key <span className="text-slate-400 dark:text-slate-500 text-xs">(optional)</span></Label>
@@ -1207,9 +1371,22 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
               <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>Requires Metabase admin privileges for data upload and card creation</span></li>
             </ul>
           </div>
-          <Button onClick={handleSaveMb} className="w-full bg-cyan-600 hover:bg-cyan-700">
-            <Globe className="mr-2 h-4 w-4" /> Save Metabase Connection
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleSaveMb} className="flex-1 bg-cyan-600 hover:bg-cyan-700">
+              <Globe className="mr-2 h-4 w-4" /> {editingMbId ? 'Update Connection' : 'Save Metabase Connection'}
+            </Button>
+            {editingMbId && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingMbId(null);
+                  setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' });
+                }}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -1219,13 +1396,15 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
 // ─── Extract Panel ────────────────────────────────────────────────────────────
 
 function ExtractPanel({
-  connections, extractionResult, setExtractionResult,
+  connections, extractionResult, setExtractionResult, masterDatasetInfo, setMasterDatasetInfo,
   dateFrom, setDateFrom, dateTo, setDateTo,
   activeConnectionId, settings, setSettings, setKpiResults
 }: {
   connections: JiraConnection[],
   extractionResult: any,
   setExtractionResult: any,
+  masterDatasetInfo: any,
+  setMasterDatasetInfo: any,
   dateFrom: string, setDateFrom: any,
   dateTo: string, setDateTo: any,
   activeConnectionId: string,
@@ -1305,6 +1484,21 @@ function ExtractPanel({
         setExtractionResult({ total: data.summary.totalExtracted, etlRunId: data.etlRunId, issues: data.issues });
         const saveMsg = saveThisExtraction ? ' and saved to database' : '';
         toast.success(`Extracted ${data.summary.totalExtracted} issues${saveMsg}`);
+
+        // Reload master dataset info after extraction
+        try {
+          const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`);
+          const masterData = await masterRes.json();
+          if (masterData.success && masterData.data) {
+            setMasterDatasetInfo({
+              totalExtracted: masterData.data.totalExtracted,
+              dateRange: masterData.data.dateRange,
+              lastUpdated: masterData.data.lastUpdated
+            });
+          }
+        } catch (error) {
+          console.log('Failed to reload master dataset info:', error);
+        }
       } else {
         // Handle different error codes with specific messages
         if (res.status === 401) {
@@ -1336,10 +1530,12 @@ function ExtractPanel({
   };
 
   const handleCustomDaysBack = () => {
-    const days = parseInt(document.getElementById('customDaysBack') as unknown as string) || 0;
+    const days = parseInt((document.getElementById('customDaysBack') as HTMLInputElement)?.value || '0', 10);
     if (days > 0) {
       handleQuickPull(days);
       toast.success(`Set date range to last ${days} days`);
+    } else {
+      toast.error('Please enter a valid number of days');
     }
   };
 
@@ -1628,18 +1824,63 @@ function ExtractPanel({
 // ─── KPI Dashboard (unchanged from previous version) ─────────────────────────
 
 function KpiDashboard({
-  connections, extractionResult, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults
+  connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults
 }: any) {
   const [calculating, setCalculating] = useState(false);
 
+  // Chart section state
+  const [charts, setCharts] = useState<ChartConfig[]>([
+    { id: 'chart-1', kpiId: '', type: 'bar', width: 'md' }
+  ]);
+
+  const handleAddChart = () => {
+    if (charts.length >= 6) {
+      toast.error('Maximum 6 charts allowed');
+      return;
+    }
+    const newChart: ChartConfig = {
+      id: `chart-${Date.now()}`,
+      kpiId: '',
+      type: 'bar',
+      width: 'md',
+    };
+    setCharts([...charts, newChart]);
+  };
+
+  const handleRemoveChart = (chartId: string) => {
+    if (charts.length === 1) {
+      toast.error('At least one chart must remain');
+      return;
+    }
+    setCharts(charts.filter((c) => c.id !== chartId));
+  };
+
+  const handleUpdateChart = (chartId: string, newConfig: ChartConfig) => {
+    setCharts(charts.map((c) => (c.id === chartId ? newConfig : c)));
+  };
+
   const handleCalculate = async () => {
-    if (!extractionResult) { toast.error('No data found. Please run ETL Extraction in the Extract tab first.'); return; }
+    if (!activeConnectionId) { toast.error('No active connection. Please select a connection first.'); return; }
     setCalculating(true); setKpiResults([]);
+
     try {
+      // Load master dataset (all historical tickets)
+      const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`);
+      const masterData = await masterRes.json();
+
+      if (!masterData.success || !masterData.data?.issues) {
+        toast.error('No master dataset found. Please extract data first to build the master dataset.');
+        setCalculating(false);
+        return;
+      }
+
+      const issues = masterData.data.issues;
+
+      // Calculate KPIs on the full master dataset
       const kpiRes = await fetch('/api/kpi/calculate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          issues: extractionResult.issues,
+          issues: issues,
           holidays: {
             regions: region === 'all' ? [] : [region],
             slaTargetHours: settings?.general?.defaultSlaTargetHours || 40
@@ -1648,15 +1889,25 @@ function KpiDashboard({
           dateTo: dateTo || undefined
         }),
       });
+
       const kpiData = await kpiRes.json();
-      if (kpiData.success) { setKpiResults(kpiData.results); toast.success(`Calculated ${Object.keys(kpiData.results).length} KPI categories`); }
+      if (kpiData.success) {
+        setKpiResults(kpiData.results);
+        const dateRange = masterData.data.dateRange;
+        const ticketCount = issues.length;
+        toast.success(
+          `Calculated ${Object.keys(kpiData.results).length} KPI categories using ${ticketCount} tickets ` +
+          `${dateRange?.from ? `from ${new Date(dateRange.from).toLocaleDateString()} ` : ''}` +
+          `${dateRange?.to ? `to ${new Date(dateRange.to).toLocaleDateString()}` : ''}`
+        );
+      }
     } catch { toast.error('Error during KPI calculation'); }
     setCalculating(false);
   };
 
-  const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority);
-  const statusKpis = kpiResults.filter((r) => r.results[0]?.dimensions?.status);
-  const priorityKpis = kpiResults.filter((r) => r.results[0]?.dimensions?.priority);
+  const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
+  const statusKpis = kpiResults.filter((r) => r.results[0]?.dimensions?.status && !isTimeSeriesPlugin(r.pluginId));
+  const priorityKpis = kpiResults.filter((r) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
 
   return (
     <div className="space-y-6">
@@ -1668,29 +1919,22 @@ function KpiDashboard({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Extraction Status</Label>
+              <Label className="text-slate-700 dark:text-slate-300">Master Dataset</Label>
               <div className="h-10 flex items-center px-3 bg-gray-100 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700">
-                {extractionResult ? (
+                {masterDatasetInfo ? (
                   <div className="flex items-center gap-2 text-emerald-500">
                     <CheckCircle2 className="h-4 w-4" />
-                    <span className="text-sm font-medium">{extractionResult.issues.length} Issues Loaded</span>
-                    {extractionResult.issues.length > 0 && (() => {
-                      const dates = extractionResult.issues
-                        .map((i: any) => i.fields?.created || i.created)
-                        .filter((d: any) => d)
-                        .map((d: any) => new Date(d).getTime());
-                      const oldestDate = dates.length > 0 ? new Date(Math.min(...dates)) : null;
-                      return oldestDate ? (
-                        <Badge variant="outline" className="text-[10px] h-4">
-                          {oldestDate.toLocaleDateString()}
-                        </Badge>
-                      ) : null;
-                    })()}
+                    <span className="text-sm font-medium">{masterDatasetInfo.totalExtracted} Tickets</span>
+                    {masterDatasetInfo.dateRange?.from && (
+                      <Badge variant="outline" className="text-[10px] h-4">
+                        {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} - {new Date(masterDatasetInfo.dateRange.to).toLocaleDateString()}
+                      </Badge>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-amber-500">
                     <AlertTriangle className="h-4 w-4" />
-                    <span className="text-sm">No data extracted</span>
+                    <span className="text-sm">No master dataset</span>
                   </div>
                 )}
               </div>
@@ -1766,6 +2010,51 @@ function KpiDashboard({
             </CardContent>
           </Card>
         )}
+
+        {/* Chart Section */}
+        {kpiResults.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-emerald-500" />
+                Visualizations
+              </h3>
+              {charts.length < 6 && (
+                <Button
+                  onClick={handleAddChart}
+                  variant="outline"
+                  size="sm"
+                  className="border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Chart
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {charts.map((chartConfig) => {
+                const widthClass = {
+                  sm: 'col-span-1',      // 25% width (1 of 4 columns)
+                  md: 'col-span-2',       // 50% width (2 of 4 columns)
+                  lg: 'col-span-3',       // 75% width (3 of 4 columns)
+                  full: 'col-span-4',     // 100% width (4 of 4 columns)
+                }[chartConfig.width];
+
+                return (
+                  <div key={chartConfig.id} className={widthClass}>
+                    <ChartCard
+                      config={chartConfig}
+                      kpiResults={kpiResults}
+                      onRemove={handleRemoveChart}
+                      onChange={handleUpdateChart}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </>)}
       {kpiResults.length === 0 && !calculating && (
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50"><CardContent className="py-16 text-center text-slate-400 dark:text-slate-500"><BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" /><p className="text-lg font-medium">No KPI results yet</p></CardContent></Card>
@@ -1802,6 +2091,309 @@ function KpiCard({ result, pluginId }: { result: { name: string; value: number; 
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{result.name}</p>
         {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{result.unit}</p>}
         {result.details && <><Separator className="my-3 bg-gray-100 dark:bg-slate-800" /><div className="space-y-1.5">{result.details.map((d, i) => (<div key={i} className="flex items-center justify-between text-xs"><span className="text-slate-400 dark:text-slate-500">{d.label}</span><span className="font-mono text-slate-700 dark:text-slate-300">{d.value}{d.unit ? ` ${d.unit}` : ''}</span></div>))}</div></>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Chart Card (Configurable Chart Component) ────────────────────────────────
+
+interface ChartConfig {
+  id: string;
+  kpiId: string;
+  type: 'bar' | 'line' | 'pie';
+  width: 'sm' | 'md' | 'lg' | 'full';
+}
+
+interface ChartCardProps {
+  config: ChartConfig;
+  kpiResults: any[];
+  onRemove: (id: string) => void;
+  onChange: (id: string, newConfig: ChartConfig) => void;
+}
+
+function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
+  const kpiOptions = useMemo(() => getKpiOptions(kpiResults), [kpiResults]);
+
+  // Check if selected KPI is a time-series plugin
+  const isTimeSeries = config.kpiId ? isTimeSeriesPlugin(config.kpiId) : false;
+
+  // Width mapping for Tailwind classes
+  const widthClasses = {
+    sm: 'col-span-1',      // 25% width (4 per row)
+    md: 'lg:col-span-2',   // 50% width (2 per row)
+    lg: 'lg:col-span-3',   // 75% width
+    full: 'lg:col-span-3', // Full width
+  };
+
+  const widthLabels = {
+    sm: 'Narrow (25%)',
+    md: 'Medium (50%)',
+    lg: 'Wide (75%)',
+    full: 'Full Width',
+  };
+
+  const selectedKpiData = useMemo(() => {
+    if (!config.kpiId) return null;
+
+    switch (config.type) {
+      case 'bar':
+        return transformForBarChart(kpiResults, config.kpiId);
+      case 'pie':
+        return transformForPieChart(kpiResults, config.kpiId);
+      case 'line':
+        return transformForLineChart(kpiResults, config.kpiId);
+      default:
+        return [];
+    }
+  }, [config.kpiId, config.type, kpiResults]);
+
+  const handleKpiChange = (kpiId: string) => {
+    const recommendedType = getRecommendedChartType(kpiResults, kpiId);
+    onChange(config.id, { ...config, kpiId, type: recommendedType });
+  };
+
+  const renderChart = () => {
+    if (!config.kpiId || !selectedKpiData || selectedKpiData.length === 0) {
+      return (
+        <div className="h-64 flex items-center justify-center text-slate-400 dark:text-slate-500">
+          <div className="text-center">
+            <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">Select a KPI to visualize</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Dynamic height based on width
+    const chartHeight = {
+      sm: 250,   // Narrow - smaller
+      md: 300,   // Medium - default
+      lg: 350,   // Wide - taller
+      full: 400,  // Full - tallest
+    }[config.width];
+
+    const kpi = kpiResults.find((k) => k.pluginId === config.kpiId);
+    const unit = kpi?.results?.[0]?.unit || '';
+
+    switch (config.type) {
+      case 'bar':
+        return (
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <BarChart data={selectedKpiData}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+              <XAxis dataKey="name" className="text-xs" />
+              <YAxis className="text-xs" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  border: '1px solid rgba(148, 163, 184, 0.2)',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#e2e8f0' }}
+                formatter={(value: number) => formatChartValue(value, unit)}
+              />
+              <Bar dataKey="value" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        );
+
+      case 'line':
+        // Check if this is a multi-series chart (multiple results with timeSeries)
+        const hasMultipleSeries = kpi?.results && kpi.results.length > 1 &&
+          kpi.results.every(r => r.timeSeries && r.timeSeries.length > 0);
+
+        if (hasMultipleSeries) {
+          // Merge all timeSeries data by period
+          const allPeriods = new Set<string>();
+          kpi.results.forEach(result => {
+            result.timeSeries?.forEach(point => allPeriods.add(point.period));
+          });
+
+          const sortedPeriods = Array.from(allPeriods).sort();
+          const mergedData = sortedPeriods.map(period => {
+            const dataPoint: any = { name: period };
+            kpi.results.forEach((result, idx) => {
+              const point = result.timeSeries?.find(p => p.period === period);
+              dataPoint[`series${idx}`] = point?.value || 0;
+            });
+            return dataPoint;
+          });
+
+          return (
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <LineChart data={mergedData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                <XAxis dataKey="name" className="text-xs" />
+                <YAxis className="text-xs" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px',
+                  }}
+                  labelStyle={{ color: '#e2e8f0' }}
+                  formatter={(value: number) => formatChartValue(value, unit)}
+                />
+                <Legend />
+                {kpi.results.map((result, idx) => (
+                  <Line
+                    key={result.name || idx}
+                    type="monotone"
+                    dataKey={`series${idx}`}
+                    name={result.name}
+                    stroke={CHART_COLORS[idx % CHART_COLORS.length]}
+                    strokeWidth={2}
+                    dot={{ fill: CHART_COLORS[idx % CHART_COLORS.length] }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          );
+        }
+
+        // Single series line chart
+        return (
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <LineChart data={selectedKpiData}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+              <XAxis dataKey="name" className="text-xs" />
+              <YAxis className="text-xs" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  border: '1px solid rgba(148, 163, 184, 0.2)',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#e2e8f0' }}
+                formatter={(value: number) => formatChartValue(value, unit)}
+              />
+              <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        );
+
+      case 'pie':
+        return (
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <PieChart>
+              <Pie
+                data={selectedKpiData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {selectedKpiData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  border: '1px solid rgba(148, 163, 184, 0.2)',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#e2e8f0' }}
+                formatter={(value: number) => formatChartValue(value, unit)}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`rounded-lg p-2 ${isTimeSeries ? 'bg-blue-100 dark:bg-blue-500/10' : 'bg-emerald-100 dark:bg-emerald-500/10'}`}>
+              <BarChart3 className={`h-5 w-5 ${isTimeSeries ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
+            </div>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg">Chart Visualization</CardTitle>
+              {isTimeSeries && (
+                <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/30">
+                  📈 Trend
+                </Badge>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRemove(config.id)}
+            className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Inline Controls */}
+        <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">KPI Metric</Label>
+            <Select value={config.kpiId} onValueChange={handleKpiChange}>
+              <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                <SelectValue placeholder="Select KPI..." />
+              </SelectTrigger>
+              <SelectContent>
+                {kpiOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-[140px]">
+            <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Chart Type</Label>
+            <Select
+              value={config.type}
+              onValueChange={(type: 'bar' | 'line' | 'pie') => onChange(config.id, { ...config, type })}
+              disabled={!config.kpiId}
+            >
+              <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bar">Bar Chart</SelectItem>
+                <SelectItem value="line">Line Chart</SelectItem>
+                <SelectItem value="pie">Pie Chart</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-[120px]">
+            <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Width</Label>
+            <Select
+              value={config.width}
+              onValueChange={(width: 'sm' | 'md' | 'lg' | 'full') => onChange(config.id, { ...config, width })}
+            >
+              <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sm">Narrow</SelectItem>
+                <SelectItem value="md">Medium</SelectItem>
+                <SelectItem value="lg">Wide</SelectItem>
+                <SelectItem value="full">Full</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Chart Area */}
+        <div className="mt-4">{renderChart()}</div>
       </CardContent>
     </Card>
   );
@@ -2174,7 +2766,7 @@ function ExportPanel({
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<Record<string, unknown> | null>(null);
   const [pgResult, setPgResult] = useState<{ rowsExported: number; totalRows: number; table: string; message: string } | null>(null);
-  const [createSchema, setCreateSchema] = useState(false);
+  const [createSchema, setCreateSchema] = useState(true);
   const [truncateTable, setTruncateTable] = useState(false);
 
   // Metabase-specific state

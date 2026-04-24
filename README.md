@@ -98,7 +98,10 @@ scripts/                            # Maintenance & Health check scripts
 └── test-api.bat                    # API validation
 
 prisma/
-└── schema.prisma                   # Database schema
+├── schema.prisma                   # Database schema
+├── migrations/                     # Migration history (optional for dev)
+└── db/
+    └── custom.db                   # SQLite database (Git ignored)
 
 data/                               # Local configuration storage
 └── settings.json                   # App-wide preferences
@@ -151,6 +154,102 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
+## Database Management
+
+### Development Workflow
+
+This project uses **Prisma ORM** with SQLite for local development. The database schema is defined in `prisma/schema.prisma`.
+
+### When Schema Changes Don't Match Database
+
+If you encounter Prisma errors like "column does not exist in the current database", it means the database schema is out of sync with `prisma/schema.prisma`.
+
+### Options for Schema Synchronization
+
+#### Option 1: Regenerate Database (Recommended for Development)
+
+For new projects or when you don't need to preserve existing data:
+
+```bash
+# Delete existing database
+rm prisma/db/custom.db
+
+# Push current schema to create fresh database
+npx prisma db push
+
+# Regenerate Prisma Client
+npx prisma generate
+```
+
+**When to use:**
+- ✅ New development projects without production data
+- ✅ Local development when you can safely reset data
+- ✅ Schema changes during active development
+
+**Advantages:**
+- No migration files to manage
+- Clean slate with correct schema
+- Faster iteration
+
+#### Option 2: Create Migration (Recommended for Production)
+
+For production environments with existing data you need to preserve:
+
+```bash
+# Create migration based on schema changes
+npx prisma migrate dev --name describe_your_change
+
+# Apply migration to database
+npx prisma migrate deploy
+```
+
+**When to use:**
+- ✅ Production databases with user data
+- ✅ When you need to preserve existing records
+- ✅ Team collaboration on schema changes
+
+**Advantages:**
+- Data preservation
+- Version-controlled schema history
+- Rollback capability
+
+### Database File Location
+
+- **Development**: `prisma/db/custom.db` (Git ignored)
+- **Production**: PostgreSQL (Vercel) or SQLite (local)
+
+### Common Commands
+
+```bash
+# Check database schema status
+npx prisma db pull
+
+# Open Prisma Studio (visual database editor)
+npx prisma studio
+
+# Reset database (WARNING: deletes all data)
+npx prisma migrate reset
+
+# Format Prisma schema file
+npx prisma format
+```
+
+### Troubleshooting Database Errors
+
+**Error**: "The column X does not exist in the current database"
+
+**Solution**: Your database is out of sync with the schema. Use one of the synchronization options above.
+
+**Error**: "Prisma Client needs to be regenerated"
+
+**Solution**: Run `npx prisma generate`
+
+**Error**: Foreign key constraint errors
+
+**Solution**: Check that related tables exist and have correct IDs. Use `npx prisma studio` to inspect data.
+
+---
+
 ## Maintenance & Troubleshooting
 
 For system health checks, memory issues, or port conflicts, refer to the [Scripts Documentation](scripts/README.md).
@@ -159,6 +258,24 @@ Key maintenance commands:
 - `scripts\memory-health.bat` (Windows) - Check memory and clear cache
 - `npm run dev:clean` - Clean cache and restart dev server
 - `npm run dev:low-memory` - Run with reduced memory footprint
+- `rm prisma/db/custom.db && npx prisma db push` - Reset database to match schema (development only)
+
+### Quick Database Reset
+
+If you encounter schema mismatch errors, use this one-liner:
+
+```bash
+# Linux/Mac
+rm prisma/db/custom.db && npx prisma db push
+
+# Windows (PowerShell)
+Remove-Item prisma\db\custom.db; npx prisma db push
+
+# Windows (CMD)
+del prisma\db\custom.db && npx prisma db push
+```
+
+⚠️ **Warning**: This deletes all data. Only use in development when you can afford to lose data.
 
 ---
 

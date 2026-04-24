@@ -14,6 +14,11 @@ export async function GET() {
 
     const activeConnectionIds = activeConnections.map(c => c.id);
 
+    // Get master dataset total tickets (across all connections)
+    const totalMasterTickets = await (db as any).masterTicket.count({
+      where: { connectionId: { in: activeConnectionIds } }
+    });
+
     const totalExtractions = await (db as any).etlRun.count({
       where: {
         autoSave: true,
@@ -53,14 +58,18 @@ export async function GET() {
         });
 
         const totalSize = runs.reduce((sum, run) => sum + (run.sizeBytes || 0), 0);
-        const totalTickets = runs.reduce((sum, run) => sum + run.ticketsProcessed, 0);
+
+        // Get master dataset ticket count (accumulated data)
+        const masterTicketCount = await (db as any).masterTicket.count({
+          where: { connectionId: connection.id }
+        });
 
         return {
           connectionId: connection.id,
           connectionName: connection.name,
           extractions: runs.length,
           totalSizeMB: totalSize / (1024 * 1024),
-          totalTickets,
+          totalTickets: masterTicketCount, // Use master dataset instead of ETL runs
           oldestExtraction: runs.length > 0 ? runs[runs.length - 1].completedAt : null,
           newestExtraction: runs.length > 0 ? runs[0].completedAt : null,
         };
@@ -82,6 +91,7 @@ export async function GET() {
       success: true,
       storage: {
         totalExtractions,
+        totalTickets: totalMasterTickets, // Total unique tickets in master dataset
         totalSizeMB: (sizeResult._sum.sizeBytes || 0) / (1024 * 1024),
         oldestExtraction: sizeResult._min.completedAt,
         newestExtraction: sizeResult._max.completedAt,

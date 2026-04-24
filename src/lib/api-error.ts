@@ -113,8 +113,8 @@ export function handleApiError(error: unknown, includeStack = false): NextRespon
   // Handle Zod validation errors - check multiple ways
   let zodErrors: any[] = [];
 
-  if (error instanceof ZodError && error.errors) {
-    zodErrors = error.errors;
+  if (error instanceof ZodError && error.issues) {
+    zodErrors = error.issues;
   } else if (isError(error) && error.name === 'ZodError') {
     try {
       const parsed = JSON.parse(error.message);
@@ -122,7 +122,7 @@ export function handleApiError(error: unknown, includeStack = false): NextRespon
         zodErrors = parsed;
       }
     } catch {
-      // Try to access error.issues if it exists (alternative ZodError format)
+      // Try to access error.issues if it exists (when instanceof check fails)
       if ('issues' in error && Array.isArray((error as any).issues)) {
         zodErrors = (error as any).issues;
       }
@@ -159,7 +159,7 @@ export function handleApiError(error: unknown, includeStack = false): NextRespon
   const statusCode = isError(error) && error.message.includes('not found') ? 404 : 500;
   return NextResponse.json(
     formatErrorResponse(error, includeStack),
-    { status }
+    { status: statusCode }
   );
 }
 

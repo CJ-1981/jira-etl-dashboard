@@ -159,6 +159,53 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PUT(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const body = await request.json();
+    const { action, name, baseUrl, username, password, apiKey } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+    }
+
+    if (action === 'save') {
+      // Check if connection exists
+      const existing = await db.metabaseConnection.findUnique({ where: { id } });
+      if (!existing) {
+        return NextResponse.json({ success: false, error: 'Connection not found' }, { status: 404 });
+      }
+
+      // Only update password if provided
+      const updateData: any = {
+        name,
+        baseUrl: baseUrl.replace(/\/+$/, ''),
+        username,
+        apiKey: apiKey || null,
+      };
+
+      if (password) {
+        updateData.password = password;
+      }
+
+      const updated = await db.metabaseConnection.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return NextResponse.json({ success: true, connection: updated });
+    }
+
+    return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

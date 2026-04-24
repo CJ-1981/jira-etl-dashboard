@@ -159,6 +159,22 @@ export async function exportToPostgres(
       );
     `);
 
+    // Create indexes for better query performance (ignore if already exist)
+    const indexes = [
+      `CREATE INDEX IF NOT EXISTS idx_${table}_kpi_id ON "${schema}"."${table}" (kpi_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_${table}_period ON "${schema}"."${table}" (period_start, period_end)`,
+      `CREATE INDEX IF NOT EXISTS idx_${table}_region ON "${schema}"."${table}" (region)`,
+      `CREATE INDEX IF NOT EXISTS idx_${table}_calculated_at ON "${schema}"."${table}" (calculated_at)`,
+    ];
+
+    for (const indexSql of indexes) {
+      try {
+        await client.query(indexSql);
+      } catch {
+        // Index may already exist - that's fine
+      }
+    }
+
     // Create unique constraint for upsert (idempotent re-runs)
     try {
       await client.query(`

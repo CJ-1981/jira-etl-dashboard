@@ -8,6 +8,7 @@ import {
 } from '@/lib/api-error';
 import {
   PostgresConnectionCreateSchema,
+  PostgresConnectionUpdateSchema,
   PaginationSchema,
   IdQuerySchema,
   validateBody,
@@ -86,6 +87,66 @@ export async function POST(request: Request) {
       success: true,
       connection: safeConnection
     }, { status: 201 });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const { id } = validateQuery(IdQuerySchema, url.searchParams);
+    const data = await validateBody(PostgresConnectionUpdateSchema, request);
+
+    // Check if connection exists
+    const connection = await db.postgresConnection.findUnique({
+      where: { id }
+    });
+
+    if (!connection) {
+      throw new NotFoundError('PostgreSQL connection');
+    }
+
+    // Check if another connection with the same name already exists
+    if (data.name) {
+      const existing = await db.postgresConnection.findFirst({
+        where: {
+          name: data.name,
+          isActive: true,
+          id: { not: id } // Exclude current connection
+        }
+      });
+
+      if (existing) {
+        throw new ValidationError(`A connection with name "${data.name}" already exists`);
+      }
+    }
+
+    // Only update fields that are provided
+    const updateData: any = {};
+
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.host !== undefined) updateData.host = data.host.replace(/\/+$/, '');
+    if (data.port !== undefined) updateData.port = data.port;
+    if (data.database !== undefined) updateData.database = data.database;
+    if (data.username !== undefined) updateData.username = data.username;
+    if (data.password !== undefined) updateData.password = data.password;
+    if (data.sslMode !== undefined) updateData.sslMode = data.sslMode;
+    if (data.schemaName !== undefined) updateData.schemaName = data.schemaName;
+    if (data.tableName !== undefined) updateData.tableName = data.tableName;
+
+    const updated = await db.postgresConnection.update({
+      where: { id },
+      data: updateData,
+    });
+
+    // Return connection without password
+    const { password: _, ...safeConnection } = updated;
+
+    return NextResponse.json({
+      success: true,
+      connection: safeConnection
+    });
   } catch (error) {
     return handleApiError(error);
   }
