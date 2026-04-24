@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    let host: string, port: string | number, database: string, username: string, password: string, sslMode: string;
+    let host: string, port: string | number, database: string, username: string, password: string, sslMode: string, resolvedPort: number;
     // capturedHost is used in the catch block for Supabase-specific suggestions
 
     // testById: look up the real password server-side so we never rely on the masked client value
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     }
 
     capturedHost = host;
+    resolvedPort = typeof port === 'number' ? port : (parseInt(port as string, 10) || 5432);
 
     if (!host || !database || !username || !password) {
       throw new ValidationError('host, database, username, and password are required');
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
 
     log.info('Testing PostgreSQL connection', 'POST /api/pg/test', {
       host,
-      port: parseInt(port) || 5432,
+      port: resolvedPort,
       database,
       username
     });
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
 
     const pool = new Pool({
       host,
-      port: parseInt(port) || 5432,
+      port: resolvedPort,
       database,
       user: username,
       password,
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
         diagnostics: {
           responseTime: `${responseTime}ms`,
           host,
-          port: parseInt(port) || 5432,
+          port: resolvedPort,
           database: currentDatabase,
           sslMode,
           timestamp: new Date().toISOString()
