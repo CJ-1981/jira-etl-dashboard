@@ -55,13 +55,51 @@ export async function POST(
         }
       });
     } else if (action === 'delete') {
-      const result = await (db as any).masterTicket.deleteMany({
+      // Find all ETL runs for this connection
+      const etlRuns = await (db as any).etlRun.findMany({
+        where: { connectionRef: connectionId },
+        select: { id: true }
+      });
+      const etlRunIds = etlRuns.map((r: any) => r.id);
+
+      // Delete all related data in cascading order
+      let deletedCount = 0;
+
+      if (etlRunIds.length > 0) {
+        // Delete KPI results
+        const kpiResults = await (db as any).kpiResult.deleteMany({
+          where: { etlRunId: { in: etlRunIds } }
+        });
+        deletedCount += kpiResults.count;
+
+        // Delete ticket transitions
+        const transitions = await (db as any).ticketTransition.deleteMany({
+          where: { etlRunId: { in: etlRunIds } }
+        });
+        deletedCount += transitions.count;
+
+        // Delete ticket snapshots
+        const snapshots = await (db as any).ticketSnapshot.deleteMany({
+          where: { etlRunId: { in: etlRunIds } }
+        });
+        deletedCount += snapshots.count;
+
+        // Delete ETL runs
+        const runs = await (db as any).etlRun.deleteMany({
+          where: { id: { in: etlRunIds } }
+        });
+        deletedCount += runs.count;
+      }
+
+      // Delete master tickets
+      const masterTickets = await (db as any).masterTicket.deleteMany({
         where: { connectionRef: connectionId }
       });
+      deletedCount += masterTickets.count;
 
       return NextResponse.json({
         success: true,
-        message: `Cleared ${result.count} tickets from master dataset.`
+        message: `Cleared ${etlRunIds.length} extractions, ${masterTickets.count} master tickets, and ${deletedCount} related records.`
       });
     }
 
@@ -84,10 +122,52 @@ export async function DELETE(
   const { connectionId } = await params;
   const db = getDb(); // Fallback to default
   try {
-    const result = await (db as any).masterTicket.deleteMany({
+    // Find all ETL runs for this connection
+    const etlRuns = await (db as any).etlRun.findMany({
+      where: { connectionRef: connectionId },
+      select: { id: true }
+    });
+    const etlRunIds = etlRuns.map((r: any) => r.id);
+
+    // Delete all related data in cascading order
+    let deletedCount = 0;
+
+    if (etlRunIds.length > 0) {
+      // Delete KPI results
+      const kpiResults = await (db as any).kpiResult.deleteMany({
+        where: { etlRunId: { in: etlRunIds } }
+      });
+      deletedCount += kpiResults.count;
+
+      // Delete ticket transitions
+      const transitions = await (db as any).ticketTransition.deleteMany({
+        where: { etlRunId: { in: etlRunIds } }
+      });
+      deletedCount += transitions.count;
+
+      // Delete ticket snapshots
+      const snapshots = await (db as any).ticketSnapshot.deleteMany({
+        where: { etlRunId: { in: etlRunIds } }
+      });
+      deletedCount += snapshots.count;
+
+      // Delete ETL runs
+      const runs = await (db as any).etlRun.deleteMany({
+        where: { id: { in: etlRunIds } }
+      });
+      deletedCount += runs.count;
+    }
+
+    // Delete master tickets
+    const masterTickets = await (db as any).masterTicket.deleteMany({
       where: { connectionRef: connectionId }
     });
-    return NextResponse.json({ success: true, message: `Cleared ${result.count} tickets.` });
+    deletedCount += masterTickets.count;
+
+    return NextResponse.json({
+      success: true,
+      message: `Cleared ${etlRunIds.length} extractions, ${masterTickets.count} master tickets, and ${deletedCount} related records.`
+    });
   } catch (e) {
     return NextResponse.json({ success: false, error: 'Delete failed' }, { status: 500 });
   }

@@ -1279,9 +1279,17 @@ function ExtractPanel({
       const data = await res.json();
 
       if (res.ok && data.success) {
-        setExtractionResult({ total: data.summary.totalExtracted, etlRunId: data.etlRunId, issues: data.issues });
-        const saveMsg = saveThisExtraction ? ' and saved to database' : '';
-        toast.success(`Extracted ${data.summary.totalExtracted} issues${saveMsg}`);
+        const extractedCount = data.summary.totalExtracted;
+
+        // If extraction returned 0 issues, show warning instead of success
+        if (extractedCount === 0) {
+          toast.warning('Extraction returned 0 issues. This could be due to: invalid/expired API token, incorrect project key, or no issues in the date range. Try testing your connection and checking credentials.', { duration: 8000 });
+        } else {
+          const saveMsg = saveThisExtraction ? ' and saved to database' : '';
+          toast.success(`Extracted ${extractedCount} issues${saveMsg}`);
+        }
+
+        setExtractionResult({ total: extractedCount, etlRunId: data.etlRunId, issues: data.issues });
 
         // Reload master dataset info after extraction
         try {
@@ -1527,6 +1535,8 @@ function ExtractPanel({
                     if (data.success) {
                       toast.success(data.message);
                       setMasterDatasetInfo({ totalExtracted: 0, lastUpdated: new Date().toISOString() });
+                      setExtractionResult(null); // Clear extraction list display
+                      setKpiResults([]); // Clear KPI results
                     }
                   } catch (e) {
                     toast.error('Failed to clear master dataset');
@@ -1694,6 +1704,7 @@ function KpiDashboard({
             regions: region === 'all' ? [] : [region],
             slaTargetHours: settings?.general?.defaultSlaTargetHours || 40
           },
+          slaTargets: settings?.sla?.statusTargets || {},
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined
         }),
@@ -1716,10 +1727,18 @@ function KpiDashboard({
 
   const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
   const statusKpis = kpiResults
-    .filter((r) => r.results[0]?.dimensions?.status && !isTimeSeriesPlugin(r.pluginId))
+    .filter((r) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId))
     .map(kpi => ({
       ...kpi,
-      results: [...kpi.results].sort((a, b) => 
+      results: [...kpi.results].sort((a, b) =>
+        (a.dimensions?.status || '').localeCompare(b.dimensions?.status || '', undefined, { numeric: true, sensitivity: 'base' })
+      )
+    }));
+  const slaStatusKpis = kpiResults
+    .filter((r) => r.pluginId === 'sla_by_status')
+    .map(kpi => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) =>
         (a.dimensions?.status || '').localeCompare(b.dimensions?.status || '', undefined, { numeric: true, sensitivity: 'base' })
       )
     }));
@@ -1727,7 +1746,7 @@ function KpiDashboard({
     .filter((r) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId))
     .map(kpi => ({
       ...kpi,
-      results: [...kpi.results].sort((a, b) => 
+      results: [...kpi.results].sort((a, b) =>
         (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true, sensitivity: 'base' })
       )
     }));
@@ -1828,6 +1847,26 @@ function KpiDashboard({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{priorityKpis.map((kpi) => kpi.results.map((result, idx) => (
                 <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4">
                   <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.priority}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
+                </div>
+              )))}</div>
+            </CardContent>
+          </Card>
+        )}
+        {slaStatusKpis.length > 0 && (
+          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+            <CardHeader><CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
+              <CardDescription className="text-slate-600 dark:text-slate-400">Compliance with per-status SLA targets. Assignee comments reset the clock.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{slaStatusKpis.map((kpi) => kpi.results.map((result, idx) => (
+                <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4">
+                  <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
+                  {result.details && (
+                    <div className="space-y-1 mt-2">
+                      <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find(d => d.label === 'Target')?.value || '-'}h</span></div>
+                      <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find(d => d.label === 'Within SLA')?.value || 0}/{result.details.find(d => d.label === 'Total')?.value || 0}</span></div>
+                    </div>
+                  )}
                 </div>
               )))}</div>
             </CardContent>
@@ -3058,10 +3097,12 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
     rateLimit: { delayMs: number; maxRequestsPerMinute: number; batchSize: number; backoffStrategy: string };
     general: { defaultHolidayState: string; workStartHour: number; workEndHour: number; defaultSlaTargetHours: number };
     persistence: { autoSave: boolean; autoRestore: boolean; retentionDays: number | 'never' };
+    sla: { statusTargets: Record<string, number> };
   }>({
     rateLimit: { delayMs: 0, maxRequestsPerMinute: 60, batchSize: 50, backoffStrategy: 'none' },
     general: { defaultHolidayState: 'national', workStartHour: 9, workEndHour: 17, defaultSlaTargetHours: 40 },
     persistence: { autoSave: true, autoRestore: true, retentionDays: 30 },
+    sla: { statusTargets: {} },
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -3266,6 +3307,122 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
             </Button>
             <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportConfig} />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* SLA Targets by Status */}
+      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Assignee comments reset the SLA clock.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
+            <p className="text-xs text-amber-800 dark:text-amber-400">
+              <Info className="inline h-3 w-3 mr-1" />
+              When the assignee comments on a ticket during a status, the SLA clock resets to that comment. Only the time from the last assignee comment (or status entry if no comment) to the status exit counts against the target.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                // Detect statuses from master dataset
+                try {
+                  const activeConn = localConfig.getActiveConnectionId();
+                  if (!activeConn) { toast.error('Select a connection first'); return; }
+                  const storageCfg = localConfig.getStorageConfig();
+                  const res = await fetch(`/api/jira/master/${activeConn}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'get', storageConfig: storageCfg })
+                  });
+                  const data = await res.json();
+                  if (!data.success || !data.data?.issues) { toast.error('No extraction data found. Extract data first.'); return; }
+
+                  const statusSet = new Set<string>();
+                  for (const issue of data.data.issues) {
+                    const changelog = issue.changelog?.histories || [];
+                    for (const h of changelog) {
+                      for (const item of h.items) {
+                        if (item.field === 'status' && item.toString) statusSet.add(item.toString);
+                      }
+                    }
+                    if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
+                  }
+
+                  const currentTargets = { ...(settings.sla?.statusTargets || {}) };
+                  for (const s of statusSet) {
+                    if (!(s in currentTargets)) currentTargets[s] = 0;
+                  }
+                  setSettings({ ...settings, sla: { ...settings.sla, statusTargets: currentTargets } });
+                  toast.success(`Detected ${statusSet.size} unique statuses`);
+                } catch { toast.error('Failed to detect statuses'); }
+              }}
+              className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+            >
+              <Activity className="mr-2 h-4 w-4" /> Detect Statuses from Data
+            </Button>
+            <span className="text-xs text-slate-400">{Object.keys(settings.sla?.statusTargets || {}).length} statuses configured</span>
+          </div>
+          {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+              {Object.entries(settings.sla?.statusTargets || {})
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([status, hours]) => (
+                  <div key={status} className="flex items-center gap-3">
+                    <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0 = disabled"
+                      value={hours || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setSettings({
+                          ...settings,
+                          sla: {
+                            ...settings.sla,
+                            statusTargets: { ...settings.sla.statusTargets, [status]: val }
+                          }
+                        });
+                      }}
+                      className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                    />
+                    <span className="text-xs text-slate-400">hours</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-slate-400 hover:text-red-500"
+                      onClick={() => {
+                        const updated = { ...settings.sla.statusTargets };
+                        delete updated[status];
+                        setSettings({ ...settings, sla: { ...settings.sla, statusTargets: updated } });
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          )}
+          {Object.keys(settings.sla?.statusTargets || {}).length === 0 && (
+            <div className="text-center py-8 text-slate-400 dark:text-slate-500">
+              <Target className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No SLA targets configured yet</p>
+              <p className="text-xs mt-1">Click "Detect Statuses" to auto-populate from your extraction data</p>
+            </div>
+          )}
+          <Button onClick={() => {
+            localConfig.saveSettings(settings);
+            setInitialSettings(settings);
+            setHasUnsavedChanges(false);
+            if (onSettingsUpdate) onSettingsUpdate(settings);
+            toast.success('SLA targets saved');
+          }} className="bg-amber-600 hover:bg-amber-700" disabled={!hasUnsavedChanges}>
+            <Save className="mr-2 h-4 w-4" /> Save SLA Targets
+          </Button>
         </CardContent>
       </Card>
 

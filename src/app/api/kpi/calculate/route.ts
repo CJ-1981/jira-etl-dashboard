@@ -5,7 +5,7 @@ import type { JiraIssue } from '@/lib/jira/client';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { issues, pluginIds, holidays, period, dateFrom, dateTo } = body;
+    const { issues, pluginIds, holidays, period, dateFrom, dateTo, slaTargets } = body;
 
     if (!issues || !Array.isArray(issues)) {
       return NextResponse.json(
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       results = {};
       for (const id of pluginIds) {
         try {
-          results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end });
+          results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, slaTargets);
         } catch (err) {
           results[id] = [{
             name: `Error: ${id}`,
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         }
       }
     } else {
-      results = engine.calculateAll(typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end });
+      results = engine.calculateAll(typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, slaTargets);
     }
 
     // Flatten results for easier consumption

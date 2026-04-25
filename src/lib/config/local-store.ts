@@ -53,6 +53,9 @@ export interface AppSettings {
     autoRestore: boolean;
     retentionDays: number | string;
   };
+  sla: {
+    statusTargets: Record<string, number>;
+  };
 }
 
 export interface StorageConfig {
@@ -92,6 +95,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     autoSave: true,
     autoRestore: true,
     retentionDays: 30,
+  },
+  sla: {
+    statusTargets: {},
   },
 };
 

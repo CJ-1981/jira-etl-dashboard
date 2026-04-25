@@ -51,6 +51,97 @@ export async function POST(request: Request) {
       projectKeys: jiraCredentials.projectKeys ? jiraCredentials.projectKeys.split(',') : [],
     });
 
+    // Normalize baseUrl (ensure it has https:// protocol)
+    let normalizedBaseUrl = jiraCredentials.baseUrl.trim();
+    if (!normalizedBaseUrl.match(/^https?:\/\//i)) {
+      normalizedBaseUrl = `https://${normalizedBaseUrl}`;
+    }
+
+    // Validate API token BEFORE extraction
+    console.log('[Token Validation] Starting API token validation...');
+    console.log('[Token Validation] Using baseUrl:', normalizedBaseUrl);
+
+    // Method 1: Try to get current user (most reliable for detecting bad tokens)
+    let tokenValid = false;
+    try {
+      console.log('[Token Validation] Method 1: Checking /myself endpoint');
+      const myselfResponse = await fetch(`${normalizedBaseUrl}/rest/api/3/myself`, {
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`${jiraCredentials.email}:${jiraCredentials.apiToken}`).toString('base64')}`,
+          'Accept': 'application/json'
+        }
+      });
+      console.log(`[Token Validation] /myself returned status: ${myselfResponse.status}`);
+
+      if (myselfResponse.ok) {
+        const userData = await myselfResponse.json();
+        console.log(`[Token Validation] ✓ Token VALID - authenticated as: ${userData.displayName || userData.emailAddress || userData.name}`);
+        tokenValid = true;
+      } else if (myselfResponse.status === 401) {
+        console.error('[Token Validation] ✗ Token INVALID - 401 from /myself');
+        return NextResponse.json({
+          success: false,
+          error: 'Authentication failed (HTTP 401). Your API token is invalid or expired. Please check your connection settings.'
+        }, { status: 401 });
+      } else if (myselfResponse.status === 403) {
+        console.error('[Token Validation] ✗ Token lacks permission - 403 from /myself');
+        return NextResponse.json({
+          success: false,
+          error: 'Access denied (HTTP 403). Your API token does not have permission to access this Jira instance.'
+        }, { status: 403 });
+      } else {
+        console.warn(`[Token Validation] /myself returned unexpected status: ${myselfResponse.status}`);
+      }
+    } catch (e) {
+      console.warn('[Token Validation] /myself endpoint check failed with exception:', e);
+    }
+
+    // If /myself didn't give us a definitive answer, try search
+    if (!tokenValid) {
+      console.log('[Token Validation] Method 2: Checking /search endpoint');
+      try {
+        const searchResponse = await fetch(`${normalizedBaseUrl}/rest/api/3/search`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${Buffer.from(`${jiraCredentials.email}:${jiraCredentials.apiToken}`).toString('base64')}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            jql: 'key = "NONEXISTENT-123"',
+            maxResults: 1,
+            fields: ['key']
+          })
+        });
+        console.log(`[Token Validation] /search returned status: ${searchResponse.status}`);
+
+        if (searchResponse.ok) {
+          console.log('[Token Validation] ✓ Token appears valid (search succeeded)');
+          tokenValid = true;
+        } else if (searchResponse.status === 401) {
+          console.error('[Token Validation] ✗ Token INVALID - 401 from /search');
+          return NextResponse.json({
+            success: false,
+            error: 'Authentication failed (HTTP 401). Your API token is invalid or expired.'
+          }, { status: 401 });
+        } else if (searchResponse.status === 403) {
+          console.error('[Token Validation] ✗ Token lacks permission - 403 from /search');
+          return NextResponse.json({
+            success: false,
+            error: 'Access denied (HTTP 403). Your API token does not have permission to search issues.'
+          }, { status: 403 });
+        }
+      } catch (e) {
+        console.warn('[Token Validation] /search endpoint check failed with exception:', e);
+      }
+    }
+
+    // If neither method could validate the token, we're in an ambiguous state
+    if (!tokenValid) {
+      console.warn('[Token Validation] ⚠ Could not validate token - Jira may allow anonymous access. Proceeding with extraction but results may be incomplete.');
+      // Don't fail here - let the extraction proceed and we'll warn if we get 0 results
+    }
+
     // Build JQL
     let finalJql = jql;
     if (!finalJql) {

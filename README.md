@@ -19,7 +19,7 @@ Built with **Next.js 16.1**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 - **Primary Operational Storage** — Toggle between local SQLite and external PostgreSQL/Supabase directly from the UI
 
 ### KPI Calculation Engine
-**9 built-in plugins:**
+**10 built-in plugins:**
 
 | Plugin | Category | What It Measures |
 |--------|----------|-----------------|
@@ -28,12 +28,19 @@ Built with **Next.js 16.1**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 | Time in Status | Turnaround | Avg business hours per workflow status |
 | SLA Compliance Rate | SLA | % tickets resolved within SLA target |
 | SLA by Priority | SLA | Per-priority SLA compliance (8h/24h/40h/80h/120h) |
+| SLA by Status | SLA | Per-status SLA compliance with comment-based clock reset |
 | Throughput | Throughput | Tickets created and resolved per period |
 | Resolution Rate | Quality | % of created tickets that are resolved |
 | Avg. Working Days | Processing Time | Avg working days to resolution |
 | Avg. Reassignments | Quality | Avg assignee changes per ticket |
 
 All time-based KPIs **exclude weekends and German holidays**, with configurable work hours (default 09:00–17:00).
+
+**SLA by Status Plugin** — Per-status SLA compliance with comment-based clock reset:
+- Configure target hours per workflow status (e.g., "In Progress": 8h, "Done": 24h)
+- Auto-detect statuses from extraction data with one click
+- **Comment-based clock reset**: When the assignee comments on a ticket during a status, the SLA clock resets to that comment timestamp
+- Only time from the last assignee comment (or status entry if no comment) to status exit counts against the target
 
 **Custom KPI Plugin System** — Create plugins via:
 - **4-step Wizard UI** (no code required): Metric Type → Filters → Output → Save
@@ -62,6 +69,7 @@ Manage connections for:
 ### Configuration
 - **Rate limit settings** — Delay, max RPM, batch size, backoff strategy
 - **General settings** — Default holiday state, work hours, SLA target
+- **SLA Targets by Status** — Configure per-status SLA hours with auto-detection from extraction data
 - **Save/load configuration** as JSON file (credentials excluded for safe sharing)
 - **Dark/light theme** toggle with persistence
 
@@ -144,8 +152,9 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### First Steps
 1. **Connections tab** — Add your Jira connection (base URL, email, API token)
 2. **Extract tab** — Select a connection and run extraction (try Quick Pull: "Last 7 days")
-3. **KPI Dashboard** — Click "Extract & Calculate All KPIs" to see results
-4. **Export tab** — Export as CSV, JSON, or push to PostgreSQL/Metabase
+3. **Settings tab** — Configure SLA targets by status (click "Detect Statuses" to auto-populate)
+4. **KPI Dashboard** — Click "Extract & Calculate All KPIs" to see results including SLA by Status
+5. **Export tab** — Export as CSV, JSON, or push to PostgreSQL/Metabase
 
 ### Environment Variables
 
@@ -284,7 +293,7 @@ del prisma\db\custom.db && npx prisma db push
 
 ## API Overview
 
-The application exposes **19 server-side API routes**:
+The application exposes **24 server-side API routes**:
 
 ```
 GET/POST/DELETE  /api/jira/connections     # Manage Jira connections
@@ -296,7 +305,7 @@ GET              /api/pg/tables             # List PG tables
 GET/POST/DELETE  /api/metabase/connections  # Manage Metabase connections
 POST             /api/metabase/push         # Push to Metabase
 POST             /api/metabase/export       # CSV/JSON file export
-POST             /api/kpi/calculate         # Calculate KPIs
+POST             /api/kpi/calculate         # Calculate KPIs (accepts slaTargets for per-status SLA)
 GET/POST         /api/kpi/plugins           # List/create plugins
 GET              /api/holidays              # German holiday calendar
 GET/POST         /api/settings              # App settings

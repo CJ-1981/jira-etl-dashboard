@@ -104,19 +104,59 @@ export class JiraClient {
 
   /**
    * Test connection to Jira instance
+   * Verifies credentials by checking the current user (requires valid authentication)
    */
   async testConnection(): Promise<{ success: boolean; serverInfo?: Record<string, unknown>; error?: string }> {
     try {
-      const response = await fetch(this.buildUrl('/serverInfo'), {
+      // Step 1: Check serverInfo (basic connectivity)
+      const serverResponse = await fetch(this.buildUrl('/serverInfo'), {
         headers: this.getHeaders(),
       });
 
-      if (!response.ok) {
-        return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
+      if (!serverResponse.ok) {
+        return { success: false, error: `Server unavailable (HTTP ${serverResponse.status}: ${serverResponse.statusText})` };
       }
 
-      const data = await response.json();
-      return { success: true, serverInfo: data };
+      const serverData = await serverResponse.json();
+
+      // Step 2: Verify authentication by fetching current user
+      // This endpoint REQUIRES valid credentials - will fail with 401/403 for bad tokens
+      const userResponse = await fetch(this.buildUrl('/myself'), {
+        headers: this.getHeaders(),
+      });
+
+      if (!userResponse.ok) {
+        if (userResponse.status === 401) {
+          return { success: false, error: 'Authentication failed (401). Your API token is invalid or expired.' };
+        }
+        if (userResponse.status === 403) {
+          return { success: false, error: 'Access denied (403). Your API token does not have permission to access this Jira instance.' };
+        }
+        // Don't fail the entire test if /myself fails - some Jira instances restrict this endpoint
+        console.warn(`/myself endpoint returned ${userResponse.status}, but continuing with test`);
+      }
+
+      // Step 3: Verify we can actually search issues (required for extraction)
+      // Use a JQL that should return 0 results but proves search works
+      const searchResponse = await fetch(this.buildUrl('/search'), {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          jql: 'key = "NONEXISTENT-123"',
+          maxResults: 1,
+          fields: ['key']
+        }),
+      });
+
+      if (!searchResponse.ok) {
+        if (searchResponse.status === 401 || searchResponse.status === 403) {
+          return { success: false, error: `Search permission denied (HTTP ${searchResponse.status}). Your API token may not have browse permissions.` };
+        }
+        // Log the issue but don't fail - search endpoint might have different requirements
+        console.warn(`/search endpoint returned ${searchResponse.status}, but serverInfo was successful`);
+      }
+
+      return { success: true, serverInfo: serverData };
     } catch (error) {
       return {
         success: false,
@@ -166,6 +206,28 @@ export class JiraClient {
   }
 
   /**
+   * Get a single issue by key (for testing access to specific issues)
+   */
+  async getIssue(issueKey: string): Promise<JiraIssue | null> {
+    try {
+      const response = await fetch(this.buildUrl(`/issue/${issueKey}`), {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        console.warn(`[JiraClient] Failed to fetch issue ${issueKey}: ${response.status} ${response.statusText}`);
+        return null;
+      }
+
+      const data = await response.json();
+      return data as JiraIssue;
+    } catch (error) {
+      console.error(`[JiraClient] Error fetching issue ${issueKey}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Sleep for a given number of milliseconds
    */
   private sleep(ms: number): Promise<void> {
@@ -196,10 +258,11 @@ export class JiraClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      let timeoutId: NodeJS.Timeout | undefined;
       try {
         // Create abort controller for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
         const response = await fetch(url, {
           ...options,
@@ -207,6 +270,11 @@ export class JiraClient {
         });
 
         clearTimeout(timeoutId);
+
+        // Fail fast on authentication errors - don't retry these
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(`Authentication failed (HTTP ${response.status}). Please check your API token.`);
+        }
 
         // Handle rate limiting
         if (response.status === 429) {
@@ -329,10 +397,31 @@ export class JiraClient {
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'No error details available');
+
+          // Specific error messages for authentication/permission failures
+          if (response.status === 401) {
+            throw new Error('Authentication failed (HTTP 401). Your API token is invalid or expired. Please check your connection settings.');
+          }
+          if (response.status === 403) {
+            throw new Error('Access denied (HTTP 403). Your API token does not have permission to browse issues in this project.');
+          }
+
           throw new Error(`JQL query failed: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const data: JiraSearchResult = await response.json();
+
+        // Detailed debugging for zero results
+        console.log(`[Jira API] Response: total=${data.total}, maxResults=${data.maxResults}, issues.length=${data.issues.length}`);
+        if (data.total === 0) {
+          console.warn(`[Jira API] No issues found for JQL: ${jql}`);
+          console.warn(`[Jira API] Request body was:`, JSON.stringify(requestBody, null, 2));
+          console.warn(`[Jira API] Possible causes:
+  1. Project key "${this.config.projectKeys.join(', ')}" might not exist in this Jira instance
+  2. No tickets created within the specified date range
+  3. API token permissions differ from web UI permissions
+  4. Project key case sensitivity (try uppercase/lowercase)`);
+        }
 
         allIssues.push(...data.issues);
         total = data.total ?? total;
@@ -366,7 +455,11 @@ export class JiraClient {
     additional?: string;
   } = {}): string {
     const validKeys = this.config.projectKeys.filter(k => k && k.trim() !== '' && k.trim() !== '*');
-    
+
+    // Debug logging
+    console.log(`[JiraClient] Building JQL with projectKeys:`, JSON.stringify(this.config.projectKeys));
+    console.log(`[JiraClient] Filtered validKeys:`, JSON.stringify(validKeys));
+
     const clauses: string[] = [];
     
     if (validKeys.length > 0) {
