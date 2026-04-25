@@ -42,9 +42,9 @@ All time-based KPIs **exclude weekends and German holidays**, with configurable 
 - **Comment-based clock reset**: When the assignee comments on a ticket during a status, the SLA clock resets to that comment timestamp
 - Only time from the last assignee comment (or status entry if no comment) to status exit counts against the target
 
-**Custom KPI Plugin System** — Create plugins via:
-- **4-step Wizard UI** (no code required): Metric Type → Filters → Output → Save
-- **Formula DSL**: `COUNT(...)`, `AVG(...)`, `SUM(...)`, `PERCENTAGE(...) OF ... WHERE ...`
+**Custom KPI Plugin System** — Create plugins via the Unified Builder:
+- **Visual Builder (DSL)**: No-code interface to select Metric Type → Filters → Output, automatically generating a Formula DSL (`COUNT(...)`, `AVG(...)`, etc.).
+- **Code Editor (JavaScript)**: Write raw JavaScript functions to execute advanced calculations directly against ticket data, running securely in the browser.
 
 ### German Holiday Calendar
 - All **16 federal states** supported (National, BW, BY, BE, BB, HB, HH, HE, MV, NI, NW, RP, SL, SN, ST, SH, TH)
@@ -333,15 +333,26 @@ GET/POST         /api/config                # Import/export configuration
 
 ---
 
-## KPI Formula DSL
+## Custom KPI Plugins (DSL & JavaScript)
 
-Create custom KPIs using the formula DSL in the Plugin Wizard or via API:
+Create custom KPIs using the built-in Plugin Builder:
 
+### Formula DSL (Visual Mode)
 ```
 COUNT(*) WHERE status = "Done"
 AVG(storyPoints) WHERE priority = "High" AND issuetype = "Story"
 SUM(timeestimate) WHERE project = "PROJ"
 PERCENTAGE(*) OF status = "Resolved" WHERE priority = "Critical"
+```
+
+### JavaScript Execution (Code Mode)
+For advanced needs, write native JavaScript logic. Your code executes inside a function receiving the `context` (which includes `context.issues`).
+```javascript
+// Example JavaScript plugin
+const resolved = context.issues.filter(i => i.fields?.resolutiondate);
+return [
+  { name: 'Resolved Count', value: resolved.length, unit: 'count' }
+];
 ```
 
 ---
