@@ -19,7 +19,9 @@ export const metadata: Metadata = {
   keywords: ["Jira", "ETL", "Metabase", "KPI", "Dashboard", "German Holidays", "Plugin System", "SLA"],
   authors: [{ name: "Jira ETL Team" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
   },
   openGraph: {
     title: "Jira ETL Dashboard",

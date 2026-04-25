@@ -366,10 +366,6 @@ export default function Home() {
             <Button variant="ghost" size="sm" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className="h-8 w-8 p-0">
               {theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-600" />}
             </Button>
-            <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-50 dark:bg-emerald-500/5">
-              <Activity className="mr-1 h-3 w-3" />
-              Plugin System Active
-            </Badge>
           </div>
         </div>
       </header>
@@ -2248,10 +2244,27 @@ function PluginsPanel() {
     // Step 4 - Preview
   });
 
-  const loadPlugins = useCallback(() => {
+  const loadPlugins = useCallback(async () => {
     setLoading(true);
     try {
-      const allPlugins = localConfig.getKpiPlugins();
+      // 1. Load custom plugins from localStorage
+      const customPlugins = localConfig.getKpiPlugins();
+      
+      // 2. Load built-in plugins from API
+      let allPlugins = [...customPlugins];
+      try {
+        const res = await fetch('/api/kpi/plugins');
+        const data = await res.json();
+        if (data.success && data.plugins) {
+          // Merge built-in plugins, avoiding duplicates by ID
+          const customIds = new Set(customPlugins.map(p => p.id));
+          const builtins = data.plugins.filter((p: any) => !customIds.has(p.id));
+          allPlugins = [...allPlugins, ...builtins];
+        }
+      } catch (err) {
+        console.error('Failed to fetch built-in plugins:', err);
+      }
+
       // Group by category
       const grouped = allPlugins.reduce((acc, p: any) => {
         const cat = p.category || 'custom';
@@ -2259,6 +2272,7 @@ function PluginsPanel() {
         acc[cat].push(p as KpiPlugin);
         return acc;
       }, {} as Record<string, KpiPlugin[]>);
+      
       setPlugins(grouped);
     } catch {
       toast.error('Failed to load plugins');
@@ -2518,7 +2532,20 @@ function PluginsPanel() {
                   <div key={category}>
                     <div className="flex items-center gap-2 mb-2"><Badge className={categoryLabels[category]?.color}>{categoryLabels[category]?.label || category}</Badge><span className="text-xs text-slate-400 dark:text-slate-500">{pluginList.length}</span></div>
                     <div className="space-y-2">{pluginList.map((plugin) => (
-                      <div key={plugin.id} className="rounded-lg border border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30 p-3"><div className="flex items-center justify-between"><div><h4 className="font-semibold text-sm">{plugin.name}</h4><p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p></div><Badge variant="outline" className="text-xs">{plugin.unit}</Badge></div></div>
+                      <div key={plugin.id} className="rounded-lg border border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30 p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-semibold text-sm">{plugin.name}</h4>
+                              <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">
+                                {plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p>
+                          </div>
+                          <Badge variant="outline" className="text-xs">{plugin.unit}</Badge>
+                        </div>
+                      </div>
                     ))}</div>
                   </div>
                 ))}
