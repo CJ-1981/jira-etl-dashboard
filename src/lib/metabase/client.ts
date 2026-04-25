@@ -428,7 +428,7 @@ export async function pushKpiToMetabase(
   success: boolean;
   upload?: MetabaseUploadResult;
   sync?: MetabaseSyncResult;
-  card?: { cardId?: number; url?: string; error?: string };
+  card?: { success: boolean; cardId?: number; url?: string; error?: string };
   error?: string;
 }> {
   // Step 1: Upload CSV
@@ -441,7 +441,7 @@ export async function pushKpiToMetabase(
     success: boolean;
     upload: MetabaseUploadResult;
     sync?: MetabaseSyncResult;
-    card?: { cardId?: number; url?: string; error?: string };
+    card?: { success: boolean; cardId?: number; url?: string; error?: string };
     error?: string;
   } = {
     success: true,

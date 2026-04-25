@@ -128,9 +128,11 @@ export async function POST(request: Request) {
             }
           }
         }
-      }
       csvData = rows.join('\n');
     }
+  }
+
+    const rowCount = csvData.split('\n').length - 1;
     const tableName = body.tableName || `jira_kpi_${Date.now()}`;
 
     // Push to Metabase
@@ -145,7 +147,7 @@ export async function POST(request: Request) {
       success: pushResult.success,
       mode: 'upload',
       tableName,
-      rowCount: rows.length - 1, // minus header
+      rowCount,
       upload: pushResult.upload
         ? {
             success: pushResult.upload.success,
