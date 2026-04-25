@@ -1,19 +1,21 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
-export async function GET(
+export async function POST(
   request: Request,
   { params }: { params: Promise<{ connectionId: string }> }
 ) {
   const { connectionId } = await params;
+  const body = await request.json();
+  const { storageConfig } = body;
+
+  const db = getDb(storageConfig?.url);
 
   try {
     // Find the latest completed ETL run for this specific connection
-    // Note: Using 'any' cast here because the Prisma Client types might be stale 
-    // due to a file lock on the dev server preventing regeneration.
     const latestRun = await (db as any).etlRun.findFirst({
       where: { 
-        connectionId: connectionId,
+        connectionRef: connectionId,
         status: 'completed',
         autoSave: true 
       },
@@ -48,7 +50,7 @@ export async function GET(
             ? new Date(snapshot.resolved).toISOString() 
             : (['Done', 'Closed', 'Resolved'].includes(snapshot.status) ? new Date().toISOString() : null),
           duedate: snapshot.dueDate ? new Date(snapshot.dueDate).toISOString() : null,
-          customfield_10002: snapshot.storyPoints, // Story points mapping
+          customfield_10002: snapshot.storyPoints,
           labels: JSON.parse(snapshot.labels || '[]'),
           components: JSON.parse(snapshot.components || '[]').map((name: string) => ({ name })),
         },

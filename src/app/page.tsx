@@ -55,13 +55,8 @@ import {
   useSensors,
   DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin } from '@/lib/config/local-store';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,13 +123,6 @@ interface ExtractedIssue {
   };
 }
 
-interface KpiPluginInfo {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  unit: string;
-}
 
 interface KpiCalcResult {
   pluginId: string;
@@ -216,33 +204,31 @@ export default function Home() {
   const [activeConnectionId, setActiveConnectionId] = useState<string>('');
   const [settings, setSettings] = useState<any>(null);
   const [kpiResults, setKpiResults] = useState<any>([]);
+  const [storageConfig, setStorageConfig] = useState<{ provider: 'sqlite' | 'postgresql', url: string, directUrl?: string, isCustom: boolean }>({ provider: 'sqlite', url: '', isCustom: false });
 
   useEffect(() => {
-    // Load connections
-    fetch('/api/jira/connections')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) {
-          setConnections(d.connections);
-          // Auto-select first connection if none selected
-          if (d.connections.length > 0 && !activeConnectionId) {
-            setActiveConnectionId(d.connections[0].id);
-          }
-        }
-      });
+    // Load connections from localStorage
+    const savedConnections = localConfig.getJiraConnections();
+    setConnections(savedConnections);
+    
+    // Restore active connection
+    const savedActiveId = localConfig.getActiveConnectionId();
+    if (savedActiveId && savedConnections.some(c => c.id === savedActiveId)) {
+      setActiveConnectionId(savedActiveId);
+    } else if (savedConnections.length > 0) {
+      setActiveConnectionId(savedConnections[0].id);
+    }
 
-    // Load general settings to set default region
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) {
-          if (d.settings?.general?.defaultHolidayState) {
-            setRegion(d.settings.general.defaultHolidayState);
-          }
-          // Store full settings for KPI dashboard
-          setSettings(d.settings);
-        }
-      });
+    // Load settings from localStorage
+    const savedSettings = localConfig.getSettings();
+    setSettings(savedSettings);
+    if (savedSettings.general?.defaultHolidayState) {
+      setRegion(savedSettings.general.defaultHolidayState);
+    }
+
+    // Load storage config
+    const savedStorage = localConfig.getStorageConfig();
+    setStorageConfig(savedStorage);
   }, []);
 
   // Handle connection switching and auto-restore
@@ -253,11 +239,12 @@ export default function Home() {
       // Clear KPI results when connection changes
       setKpiResults([]);
 
-      // Check if auto-restore is enabled
-      const settingsRes = await fetch('/api/settings');
-      const settingsData = await settingsRes.json();
+      // Save active connection ID
+      localConfig.setActiveConnectionId(activeConnectionId);
 
-      if (!settingsData.success || !settingsData.settings?.persistence?.autoRestore) {
+      // Check if auto-restore is enabled
+      const currentSettings = localConfig.getSettings();
+      if (!currentSettings.persistence?.autoRestore) {
         // Auto-restore disabled, clear results
         setExtractionResult(null);
         return;
@@ -265,7 +252,12 @@ export default function Home() {
 
       // Try to load extraction for this connection
       try {
-        const res = await fetch(`/api/jira/extract/latest/${activeConnectionId}`);
+        const storageConfig = localConfig.getStorageConfig();
+        const res = await fetch(`/api/jira/extract/latest/${activeConnectionId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storageConfig })
+        });
         const data = await res.json();
 
         if (data.success && data.data) {
@@ -311,7 +303,12 @@ export default function Home() {
 
       // Load master dataset info
       try {
-        const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`);
+        const storageConfig = localConfig.getStorageConfig();
+        const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get', storageConfig })
+        });
         const masterData = await masterRes.json();
 
         if (masterData.success && masterData.data) {
@@ -426,6 +423,10 @@ export default function Home() {
                 <Settings className="h-4 w-4" />
                 <span className="hidden sm:inline">Settings</span>
               </TabsTrigger>
+              <TabsTrigger value="storage" className="flex-1 gap-2 data-[state=active]:bg-violet-600/20 data-[state=active]:text-violet-400">
+                <HardDrive className="h-4 w-4" />
+                <span className="hidden sm:inline">Storage</span>
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -435,6 +436,8 @@ export default function Home() {
               setConnections={setConnections}
               activeConnectionId={activeConnectionId}
               setActiveConnectionId={setActiveConnectionId}
+              storageConfig={storageConfig}
+              setStorageConfig={setStorageConfig}
             />
           </TabsContent>
 
@@ -453,6 +456,7 @@ export default function Home() {
               settings={settings}
               setSettings={setSettings}
               setKpiResults={setKpiResults}
+              storageConfig={storageConfig}
             />
           </TabsContent>
 
@@ -472,6 +476,7 @@ export default function Home() {
               settings={settings}
               kpiResults={kpiResults}
               setKpiResults={setKpiResults}
+              storageConfig={storageConfig}
             />
           </TabsContent>
 
@@ -492,11 +497,16 @@ export default function Home() {
               setDateTo={setDateTo}
               region={region}
               setRegion={setRegion}
+              storageConfig={storageConfig}
             />
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
-            <SettingsPanel onSettingsUpdate={handleSettingsUpdate} />
+            <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
+          </TabsContent>
+
+          <TabsContent value="storage" className="space-y-6">
+            <StoragePanel storageConfig={storageConfig} setStorageConfig={setStorageConfig} />
           </TabsContent>
         </Tabs>
       </main>
@@ -580,21 +590,18 @@ function SortableConnectionItem({
   );
 }
 
-function ConnectionsPanel({ connections, setConnections, activeConnectionId, setActiveConnectionId }: {
+function ConnectionsPanel({ connections, setConnections, activeConnectionId, setActiveConnectionId, storageConfig, setStorageConfig }: {
   connections: JiraConnection[];
   setConnections: any;
   activeConnectionId: string;
   setActiveConnectionId: (id: string) => void;
+  storageConfig: any;
+  setStorageConfig: any;
 }) {
-  const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
-  const [metabaseConnections, setMetabaseConnections] = useState<MetabaseConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
-  const [testingPg, setTestingPg] = useState<string | null>(null);
-  const [testingMb, setTestingMb] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});
 
-  // Drag-and-drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -602,99 +609,44 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
     })
   );
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      const oldIndex = connections.findIndex((c) => c.id === active.id);
-      const newIndex = connections.findIndex((c) => c.id === over.id);
-
-      const newConnections = arrayMove(connections, oldIndex, newIndex);
-      setConnections(newConnections);
-
-      // Update orders in database
-      const reorderedConnections = newConnections.map((conn, index) => ({
-        id: conn.id,
-        order: index,
-      }));
-
-      try {
-        await fetch('/api/jira/connections', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ connections: reorderedConnections }),
-        });
-        toast.success('Connections reordered');
-      } catch (error) {
-        toast.error('Failed to save new order');
-        // Revert on error
-        setConnections(connections);
-      }
-    }
-  };
-
   const [form, setForm] = useState({
     name: '', baseUrl: '', apiToken: '', email: '', projectKeys: '',
   });
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [pgForm, setPgForm] = useState({
-    name: '', host: '', port: '5432', database: '', username: '', password: '',
-    sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results',
-  });
-  const [editingPgId, setEditingPgId] = useState<string | null>(null);
-
-  const [mbForm, setMbForm] = useState({
-    name: '', baseUrl: '', username: '', password: '', apiKey: '',
-  });
-  const [editingMbId, setEditingMbId] = useState<string | null>(null);
-
   const loadConnections = useCallback(async () => {
     setLoading(true);
-    try {
-      const [jiraRes, pgRes, mbRes] = await Promise.all([
-        fetch('/api/jira/connections'),
-        fetch('/api/pg/connections'),
-        fetch('/api/metabase/connections'),
-      ]);
-      const jiraData = await jiraRes.json();
-      const pgData = await pgRes.json();
-      const mbData = await mbRes.json();
-      if (jiraData.success) setConnections(jiraData.connections);
-      if (pgData.success) setPgConnections(pgData.connections);
-      if (mbData.success) setMetabaseConnections(mbData.connections);
-    } catch {
-      toast.error('Failed to load connections');
-    }
+    setConnections(localConfig.getJiraConnections());
     setLoading(false);
-  }, []);
+  }, [setConnections]);
 
-  React.useEffect(() => { loadConnections(); }, [loadConnections]);
+  useEffect(() => { loadConnections(); }, [loadConnections]);
 
-  const handleSaveJira = async () => {
+  const handleSaveJira = () => {
     if (!form.name || !form.baseUrl || !form.apiToken || !form.email) {
       toast.error('All fields except Project Keys are required'); return;
     }
-    try {
-      const method = editingId ? 'PUT' : 'POST';
-      const bodyPayload = {
-        ...form,
-        projectKeys: form.projectKeys.split(',').map((k) => k.trim()),
-        ...(editingId ? { id: editingId } : {})
-      };
+    
+    const allConns = localConfig.getJiraConnections();
+    const newConn: JiraConnection = {
+      id: editingId || crypto.randomUUID(),
+      name: form.name,
+      baseUrl: form.baseUrl,
+      apiToken: form.apiToken,
+      email: form.email,
+      projectKeys: form.projectKeys,
+      isActive: true,
+    };
 
-      const res = await fetch('/api/jira/connections', {
-        method, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyPayload),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(editingId ? 'Jira connection updated' : 'Jira connection saved');
-        setForm({ name: '', baseUrl: '', apiToken: '', email: '', projectKeys: '' });
-        setEditingId(null);
-        loadConnections();
-      } else toast.error(data.error);
-    } catch { toast.error('Network error'); }
+    const updatedConns = editingId 
+      ? allConns.map(c => c.id === editingId ? newConn : c)
+      : [...allConns, newConn];
+
+    localConfig.saveJiraConnections(updatedConns);
+    toast.success(editingId ? 'Jira connection updated' : 'Jira connection saved');
+    setForm({ name: '', baseUrl: '', apiToken: '', email: '', projectKeys: '' });
+    setEditingId(null);
+    loadConnections();
   };
 
   const handleEdit = (conn: JiraConnection) => {
@@ -706,71 +658,6 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       projectKeys: conn.projectKeys,
     });
     setEditingId(conn.id);
-  };
-
-  const handleSavePg = async () => {
-    if (!pgForm.name || !pgForm.host || !pgForm.database || !pgForm.username) {
-      toast.error('Name, host, database, and username are required'); return;
-    }
-
-    // Check for Supabase pooler URL and warn user
-    if (pgForm.host.includes('.pooler.supabase.com')) {
-      toast.error('Please use the direct connection URL (db.<project-ref>.supabase.co), not the pooler URL. Pooler URLs require additional parameters.', { duration: 5000 });
-      return;
-    }
-
-    // Password is required for new connections, but optional for updates
-    if (!editingPgId && !pgForm.password) {
-      toast.error('Password is required for new connections'); return;
-    }
-    try {
-      const url = editingPgId ? `/api/pg/connections?id=${editingPgId}` : '/api/pg/connections';
-      const method = editingPgId ? 'PUT' : 'POST';
-
-      // Build payload - only include password if creating new connection or if user typed a new password
-      const payload: any = {
-        name: pgForm.name,
-        host: pgForm.host,
-        port: parseInt(pgForm.port) || 5432,
-        database: pgForm.database,
-        username: pgForm.username,
-        sslMode: pgForm.sslMode,
-        schemaName: pgForm.schemaName,
-        tableName: pgForm.tableName,
-      };
-
-      // Only send password if creating new connection OR if user typed a new password (not empty)
-      if (!editingPgId || pgForm.password.trim() !== '') {
-        payload.password = pgForm.password;
-      }
-
-      const res = await fetch(url, {
-        method, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(editingPgId ? 'PostgreSQL connection updated' : 'PostgreSQL connection saved');
-        setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
-        setEditingPgId(null);
-        loadConnections();
-      } else toast.error(data.error);
-    } catch { toast.error('Network error'); }
-  };
-
-  const handleEditPg = (conn: any) => {
-    setPgForm({
-      name: conn.name,
-      host: conn.host,
-      port: conn.port.toString(),
-      database: conn.database,
-      username: conn.username,
-      password: '', // Start empty - user only types if they want to change
-      sslMode: conn.sslMode || 'prefer',
-      schemaName: conn.schemaName || 'public',
-      tableName: conn.tableName || 'jira_kpi_results',
-    });
-    setEditingPgId(conn.id);
   };
 
   const handleTest = async (conn: JiraConnection) => {
@@ -791,38 +678,18 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
         const version = (serverInfo?.version as string) || 'Unknown';
         const responseTime = data.diagnostics?.responseTime || 'N/A';
 
-        // Show detailed success message with sonner
         toast.success(`✅ Connected to ${serverTitle}`, {
           description: `Jira ${deploymentType} (v${version}) - ${responseTime}`,
           duration: 5000,
           position: 'top-right'
         });
-
-        // Also log to console for debugging
-        console.log('✅ Connection Test Successful:', {
-          connection: conn.name,
-          serverTitle,
-          deploymentType,
-          version,
-          responseTime,
-          serverInfo
-        });
       } else {
         setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-        // Show detailed error message
-        const errorMessage = data.error || 'Connection failed';
-        const suggestions = data.diagnostics?.suggestions as string[] || [];
-
         toast.error(`❌ Connection Failed`, {
-          description: errorMessage,
+          description: data.error || 'Connection failed',
           duration: 5000,
           position: 'top-right'
         });
-
-        // Log suggestions to console
-        if (suggestions.length > 0) {
-          console.log('❌ Connection Test Failed. Suggestions:', suggestions);
-        }
       }
     } catch (error) {
       setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
@@ -831,228 +698,57 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
         duration: 5000,
         position: 'top-right'
       });
-      console.error('Connection test error:', error);
     }
     setTesting(null);
-  };
-
-  const handleTestPg = async (conn: PgConnection) => {
-    // Check for Supabase pooler URL and warn user before testing
-    if (conn.host.includes('.pooler.supabase.com')) {
-      toast.error('Cannot test pooler URL. Please use the direct connection URL (db.<project-ref>.supabase.co)', { duration: 5000 });
-      return;
-    }
-
-    setTestingPg(conn.id);
-    setTestStatus(prev => ({ ...prev, [conn.id]: null }));
-    try {
-      const res = await fetch('/api/pg/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: conn.id }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
-        const serverInfo = data.serverInfo as Record<string, unknown>;
-        const version = (serverInfo?.version as string) || 'Unknown';
-        const database = (serverInfo?.database as string) || conn.database;
-        const user = (serverInfo?.user as string) || 'Unknown';
-        const responseTime = data.diagnostics?.responseTime || 'N/A';
-
-        // Show detailed success message
-        toast.success(`✅ Connected to PostgreSQL`, {
-          description: `${conn.host}:${conn.port}/${database} (User: ${user}) - ${responseTime}`,
-          duration: 5000,
-          position: 'top-right'
-        });
-
-        console.log('✅ PostgreSQL Connection Test Successful:', {
-          connection: conn.name,
-          host: conn.host,
-          port: conn.port,
-          database,
-          user,
-          version: version.split(' ')[0],
-          responseTime
-        });
-      } else {
-        setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-        const errorMessage = data.error || 'Connection failed';
-        const suggestions = data.diagnostics?.suggestions as string[] || [];
-
-        toast.error(`❌ Connection Failed`, {
-          description: errorMessage,
-          duration: 5000,
-          position: 'top-right'
-        });
-
-        if (suggestions.length > 0) {
-          console.log('❌ PostgreSQL Connection Test Failed. Suggestions:', suggestions);
-        }
-      }
-    } catch (error) {
-      setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-      toast.error('❌ Network Error', {
-        description: 'Could not reach the test server',
-        duration: 5000,
-        position: 'top-right'
-      });
-      console.error('PostgreSQL connection test error:', error);
-    }
-    setTestingPg(null);
   };
 
   const handleDelete = async (id: string) => {
     const connection = connections.find(c => c.id === id);
     if (!connection) return;
 
-    if (!confirm(`Are you sure you want to delete connection "${connection.name}"?\n\nThis will also delete all associated extraction data (ETL runs, tickets, transitions). This action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete connection "${connection.name}"?\n\nThis will also delete all associated EXTRACTION data in the database. Configuration is only deleted in this browser.`)) {
       return;
     }
 
     try {
-      const res = await fetch(`/api/jira/connections?id=${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        const message = data.deleted?.etlRuns > 0
-          ? `Connection "${connection.name}" deleted (cleaned up ${data.deleted.etlRuns} extractions)`
-          : `Connection "${connection.name}" deleted`;
-        toast.success(message);
-        loadConnections();
-      } else {
-        toast.error(data.error || 'Failed to delete connection');
+      await fetch(`/api/jira/master/${id}`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', storageConfig })
+      });
+      await fetch(`/api/jira/extract/cleanup`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig }) 
+      });
+      
+      const updatedConns = connections.filter(c => c.id !== id);
+      localConfig.saveJiraConnections(updatedConns);
+      
+      toast.success(`Connection "${connection.name}" and its database data deleted`);
+      loadConnections();
+      if (activeConnectionId === id) {
+        setActiveConnectionId(updatedConns.length > 0 ? updatedConns[0].id : '');
       }
     } catch (error) {
-      toast.error('Failed to delete connection');
-      console.error('Delete connection error:', error);
+      toast.error('Failed to clean up server-side data');
     }
   };
 
-  const handleDeletePg = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this PostgreSQL connection?')) {
-      return;
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (active.id !== over.id) {
+      const oldIndex = connections.findIndex((c) => c.id === active.id);
+      const newIndex = connections.findIndex((c) => c.id === over.id);
+      const newConnections = arrayMove(connections, oldIndex, newIndex);
+      setConnections(newConnections);
+      localConfig.saveJiraConnections(newConnections);
+      toast.success('Connections reordered');
     }
-    await fetch(`/api/pg/connections?id=${id}`, { method: 'DELETE' });
-    toast.success('PG connection deactivated'); loadConnections();
-  };
-
-  const handleSaveMb = async () => {
-    if (!mbForm.name || !mbForm.baseUrl || !mbForm.username) {
-      toast.error('Name, URL, and username are required'); return;
-    }
-    // Password is required for new connections, but optional for updates
-    if (!editingMbId && !mbForm.password) {
-      toast.error('Password is required for new connections'); return;
-    }
-    try {
-      const url = editingMbId ? `/api/metabase/connections?id=${editingMbId}` : '/api/metabase/connections';
-      const method = editingMbId ? 'PUT' : 'POST';
-
-      // Build payload - only include password if creating new connection or if user typed a new password
-      const payload: any = {
-        action: 'save',
-        name: mbForm.name,
-        baseUrl: mbForm.baseUrl,
-        username: mbForm.username,
-        apiKey: mbForm.apiKey,
-      };
-
-      // Only send password if creating new connection OR if user typed a new password (not empty)
-      if (!editingMbId || mbForm.password.trim() !== '') {
-        payload.password = mbForm.password;
-      }
-
-      const res = await fetch(url, {
-        method, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(editingMbId ? 'Metabase connection updated' : 'Metabase connection saved');
-        setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' });
-        setEditingMbId(null);
-        loadConnections();
-      } else toast.error(data.error);
-    } catch { toast.error('Network error'); }
-  };
-
-  const handleEditMb = (conn: any) => {
-    setMbForm({
-      name: conn.name,
-      baseUrl: conn.baseUrl,
-      username: conn.username,
-      password: '', // Start empty - user only types if they want to change
-      apiKey: conn.apiKey || '',
-    });
-    setEditingMbId(conn.id);
-  };
-
-  const handleTestMb = async (conn: MetabaseConnection) => {
-    setTestingMb(conn.id);
-    setTestStatus(prev => ({ ...prev, [conn.id]: null }));
-    try {
-      const res = await fetch('/api/metabase/connections', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'testById', id: conn.id }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
-        const version = data.version as string || 'Unknown';
-        const databaseCount = data.databases?.length || 0;
-        const userEmail = data.user?.email as string || conn.username;
-
-        // Show detailed success message
-        toast.success(`✅ Connected to Metabase`, {
-          description: `v${version} — ${databaseCount} databases, user: ${userEmail}`,
-          duration: 5000,
-          position: 'top-right'
-        });
-
-        console.log('✅ Metabase Connection Test Successful:', {
-          connection: conn.name,
-          version,
-          databaseCount,
-          userEmail
-        });
-      } else {
-        setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-        toast.error(`❌ Connection Failed`, {
-          description: data.error || 'Authentication failed',
-          duration: 5000,
-          position: 'top-right'
-        });
-
-        console.log('❌ Metabase Connection Test Failed:', {
-          connection: conn.name,
-          error: data.error
-        });
-      }
-    } catch (error) {
-      setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-      toast.error('❌ Network Error', {
-        description: 'Could not reach the test server',
-        duration: 5000,
-        position: 'top-right'
-      });
-      console.error('Metabase connection test error:', error);
-    }
-    setTestingMb(null);
-  };
-
-  const handleDeleteMb = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this Metabase connection?')) {
-      return;
-    }
-    await fetch(`/api/metabase/connections?id=${id}`, { method: 'DELETE' });
-    toast.success('Metabase connection deactivated'); loadConnections();
   };
 
   return (
     <div className="space-y-6">
-      {/* Active Connection Selector */}
       <Card className="border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1063,7 +759,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
             Select the Jira connection to use for extraction and polling
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <Select value={activeConnectionId} onValueChange={setActiveConnectionId}>
             <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
               <SelectValue placeholder="Select a connection..." />
@@ -1084,7 +780,6 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
         </CardContent>
       </Card>
 
-      {/* Jira Connections */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
           <CardHeader>
@@ -1138,10 +833,10 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
           <CardContent>
             {loading ? (
               <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full bg-gray-100 dark:bg-slate-800" />)}</div>
-            ) : connections.length === 0 && pgConnections.length === 0 ? (
+            ) : connections.length === 0 ? (
               <div className="text-center py-12 text-slate-400 dark:text-slate-500">
                 <Server className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>No connections configured yet</p>
+                <p>No Jira connections configured yet</p>
               </div>
             ) : (
               <ScrollArea>
@@ -1161,234 +856,472 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
                           handleEdit={handleEdit}
                           handleDelete={handleDelete}
                           testing={testing}
-                          testStatus={testStatus}
+                          testStatus={testStatus || {}}
                         />
                       ))}
                     </SortableContext>
                   </DndContext>
-                  {pgConnections.length > 0 && (
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-4 mb-1">PostgreSQL Connections</p>
-                  )}
-                  {pgConnections.map((conn) => (
-                    <div key={conn.id} className="rounded-lg border border-slate-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/50 p-3 hover:border-slate-200 dark:border-slate-700 transition-colors">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold text-sm truncate">{conn.name}</h4>
-                            <Badge variant="outline" className="text-[10px] text-violet-400 border-violet-500/30 shrink-0">POSTGRES</Badge>
-                          </div>
-                          <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">{conn.host}:{conn.port}/{conn.database}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Button variant="outline" size="sm" onClick={() => handleTestPg(conn)} disabled={testingPg === conn.id} className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700 text-xs">
-                          {testingPg === conn.id ? (
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className={`h-3 w-3 mr-1 ${testStatus[conn.id] === 'success' ? 'text-emerald-500' : testStatus[conn.id] === 'error' ? 'text-red-500' : ''}`} />
-                          )}Test
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleEditPg(conn)} className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700 text-xs">
-                          <Edit2 className="h-3 w-3 mr-1" />Edit
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeletePg(conn.id)} className="border-red-200 dark:border-red-900/30 text-red-400 hover:bg-red-50 dark:bg-red-900/20 text-xs">
-                          <Trash2 className="h-3 w-3 mr-1" />Remove
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {metabaseConnections.length > 0 && (
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-4 mb-1">Metabase Connections</p>
-                  )}
-                  {metabaseConnections.map((conn) => (
-                    <div key={conn.id} className="rounded-lg border border-cyan-500/20 dark:border-cyan-500/10 bg-cyan-50 dark:bg-cyan-500/5 p-3 hover:border-cyan-500/30 transition-colors">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold text-sm truncate">{conn.name}</h4>
-                            <Badge variant="outline" className="text-[10px] text-cyan-400 border-cyan-500/30 shrink-0">METABASE</Badge>
-                          </div>
-                          <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">{conn.baseUrl}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Button variant="outline" size="sm" onClick={() => handleTestMb(conn)} disabled={testingMb === conn.id} className="border-cyan-500/30 hover:bg-cyan-100 dark:hover:bg-cyan-500/10 text-xs text-cyan-400">
-                          {testingMb === conn.id ? (
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className={`h-3 w-3 mr-1 ${testStatus[conn.id] === 'success' ? 'text-emerald-500' : testStatus[conn.id] === 'error' ? 'text-red-500' : ''}`} />
-                          )}Test
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleEditMb(conn)} className="border-cyan-500/30 hover:bg-cyan-100 dark:hover:bg-cyan-500/10 text-xs text-cyan-400">
-                          <Edit2 className="h-3 w-3 mr-1" />Edit
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeleteMb(conn.id)} className="border-red-200 dark:border-red-900/30 text-red-400 hover:bg-red-50 dark:bg-red-900/20 text-xs">
-                          <Trash2 className="h-3 w-3 mr-1" />Remove
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </ScrollArea>
             )}
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
 
-      {/* PostgreSQL Connection Form */}
-      <Card className="border-violet-500/20 bg-violet-50 dark:bg-violet-500/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {editingPgId ? <Edit2 className="h-5 w-5 text-violet-400" /> : <HardDrive className="h-5 w-5 text-violet-400" />}
-            {editingPgId ? 'Edit PostgreSQL Connection' : 'Add PostgreSQL Connection'}
-          </CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">
-            Connect to an external PostgreSQL database to push KPI data directly. Ideal for production Metabase setups with large or complex datasets.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Connection Name</Label>
-              <Input placeholder="e.g. Metabase DB" value={pgForm.name} onChange={(e) => setPgForm({ ...pgForm, name: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+// ─── Storage Panel ────────────────────────────────────────────────────────────
+
+function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any, setStorageConfig: any }) {
+  const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
+  const [metabaseConnections, setMetabaseConnections] = useState<MetabaseConnection[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});
+
+  const [pgForm, setPgForm] = useState({
+    name: '', host: '', port: '5432', database: '', username: '', password: '',
+    sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results',
+  });
+  const [editingPgId, setEditingPgId] = useState<string | null>(null);
+
+  const [mbForm, setMbForm] = useState({
+    name: '', baseUrl: '', username: '', password: '', apiKey: '',
+  });
+  const [editingMbId, setEditingMbId] = useState<string | null>(null);
+
+  const loadAll = useCallback(() => {
+    setLoading(true);
+    setPgConnections(localConfig.getPgConnections());
+    setMetabaseConnections(localConfig.getMetabaseConnections());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const handleSavePg = () => {
+    if (!pgForm.name || !pgForm.host || !pgForm.database || !pgForm.username) {
+      toast.error('Name, host, database, and username are required'); return;
+    }
+    const all = localConfig.getPgConnections();
+    const newConn: PgConnection = {
+      id: editingPgId || crypto.randomUUID(),
+      name: pgForm.name,
+      host: pgForm.host,
+      port: parseInt(pgForm.port) || 5432,
+      database: pgForm.database,
+      username: pgForm.username,
+      password: pgForm.password,
+      sslMode: pgForm.sslMode,
+      schemaName: pgForm.schemaName,
+      tableName: pgForm.tableName,
+      isActive: true,
+    };
+    const updated = editingPgId ? all.map(c => c.id === editingPgId ? newConn : c) : [...all, newConn];
+    localConfig.savePgConnections(updated);
+    toast.success('PostgreSQL connection saved');
+    setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
+    setEditingPgId(null);
+    loadAll();
+  };
+
+  const handleTestPg = async (conn: PgConnection) => {
+    setTestingId(conn.id);
+    try {
+      const res = await fetch('/api/pg/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host: conn.host, port: conn.port, database: conn.database, username: conn.username, password: conn.password, sslMode: conn.sslMode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`✅ Connected to ${conn.name}`);
+        setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
+      } else {
+        toast.error(data.error || 'Connection failed');
+        setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
+      }
+    } catch { toast.error('Network error testing connection'); }
+    setTestingId(null);
+  };
+
+  const handleSetPrimary = (conn: PgConnection) => {
+    const url = buildPgConnectionUrl(conn);
+    setStorageConfig({
+      ...storageConfig,
+      provider: 'postgresql',
+      url,
+      isCustom: true,
+      connectionId: conn.id
+    });
+    localConfig.saveStorageConfig({
+      ...storageConfig,
+      provider: 'postgresql',
+      url,
+      isCustom: true,
+      connectionId: conn.id
+    });
+    toast.success(`${conn.name} set as Primary Storage`);
+  };
+
+  const handleSaveMb = () => {
+    if (!mbForm.name || !mbForm.baseUrl || !mbForm.username) {
+      toast.error('Required fields missing'); return;
+    }
+    const all = localConfig.getMetabaseConnections();
+    const newConn: MetabaseConnection = {
+      id: editingMbId || crypto.randomUUID(),
+      name: mbForm.name,
+      baseUrl: mbForm.baseUrl,
+      username: mbForm.username,
+      password: mbForm.password,
+      apiKey: mbForm.apiKey || null,
+      isActive: true,
+    };
+    const updated = editingMbId ? all.map(c => c.id === editingMbId ? newConn : c) : [...all, newConn];
+    localConfig.saveMetabaseConnections(updated);
+    toast.success('Metabase connection saved');
+    setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' });
+    setEditingMbId(null);
+    loadAll();
+  };
+
+  const handleTestMb = async (conn: MetabaseConnection) => {
+    setTestingId(conn.id);
+    try {
+      const res = await fetch('/api/metabase/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: conn.baseUrl, username: conn.username, password: conn.password, apiKey: conn.apiKey }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('✅ Connected to Metabase');
+        setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
+      } else {
+        toast.error(data.error || 'Connection failed');
+        setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
+      }
+    } catch { toast.error('Network error testing Metabase'); }
+    setTestingId(null);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Section 1: Primary Storage Selector */}
+      <Card className="border-violet-500/30 bg-violet-50 dark:bg-violet-500/5 overflow-hidden">
+        <div className="bg-violet-600/10 px-4 py-2 border-b border-violet-500/20 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-violet-400" />
+            <span className="text-xs font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Primary Operational Storage</span>
+          </div>
+          <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-400 border-violet-500/30">
+            {storageConfig.provider === 'sqlite' ? 'LOCAL SQLITE' : isSupabaseUrl(storageConfig.url) ? 'SUPABASE' : 'POSTGRESQL'}
+          </Badge>
+        </div>
+        <CardContent className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div 
+              onClick={() => {
+                const cfg = { ...storageConfig, provider: 'sqlite', url: '', isCustom: false, connectionId: undefined };
+                setStorageConfig(cfg);
+                localConfig.saveStorageConfig(cfg);
+                toast.info('Switched to Local SQLite');
+              }}
+              className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${storageConfig.provider === 'sqlite' ? 'border-violet-500 bg-violet-500/10' : 'border-slate-200 dark:border-slate-800 hover:border-violet-500/50'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${storageConfig.provider === 'sqlite' ? 'bg-violet-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                  <HardDrive className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">Local SQLite</h4>
+                  <p className="text-xs text-slate-500">dev.db (Not for Vercel)</p>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Host</Label>
-              <Input placeholder="e.g. db.example.com" value={pgForm.host} onChange={(e) => setPgForm({ ...pgForm, host: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Port</Label>
-              <Input placeholder="5432" value={pgForm.port} onChange={(e) => setPgForm({ ...pgForm, port: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Database</Label>
-              <Input placeholder="e.g. metabase_analytics" value={pgForm.database} onChange={(e) => setPgForm({ ...pgForm, database: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Username</Label>
-              <Input placeholder="e.g. analytics_user" value={pgForm.username} onChange={(e) => setPgForm({ ...pgForm, username: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Password</Label>
-              <Input
-                placeholder={editingPgId ? "Leave empty to keep existing password" : "Database password"}
-                type="password"
-                value={pgForm.password}
-                onChange={(e) => setPgForm({ ...pgForm, password: e.target.value })}
-                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">SSL Mode</Label>
-              <Select value={pgForm.sslMode} onValueChange={(v) => setPgForm({ ...pgForm, sslMode: v })}>
-                <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="disable">Disable</SelectItem>
-                  <SelectItem value="prefer">Prefer (default)</SelectItem>
-                  <SelectItem value="require">Require</SelectItem>
-                  <SelectItem value="verify-ca">Verify CA</SelectItem>
-                  <SelectItem value="verify-full">Verify Full</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Schema</Label>
-              <Input placeholder="public" value={pgForm.schemaName} onChange={(e) => setPgForm({ ...pgForm, schemaName: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Table Name</Label>
-              <Input placeholder="jira_kpi_results" value={pgForm.tableName} onChange={(e) => setPgForm({ ...pgForm, tableName: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+
+            <div 
+              onClick={() => {
+                if (pgConnections.length > 0 && !storageConfig.connectionId) {
+                  handleSetPrimary(pgConnections[0]);
+                } else if (storageConfig.provider !== 'postgresql') {
+                   setStorageConfig({ ...storageConfig, provider: 'postgresql', isCustom: true });
+                }
+              }}
+              className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${storageConfig.provider === 'postgresql' ? 'border-violet-500 bg-violet-500/10' : 'border-slate-200 dark:border-slate-800 hover:border-violet-500/50'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${storageConfig.provider === 'postgresql' ? 'bg-violet-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                  <Database className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">PostgreSQL / Supabase</h4>
+                  <p className="text-xs text-slate-500">External DB (Cloud Ready)</p>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button onClick={handleSavePg} className="flex-1 bg-violet-600 hover:bg-violet-700">
-              <HardDrive className="mr-2 h-4 w-4" /> {editingPgId ? 'Update Connection' : 'Save PostgreSQL Connection'}
-            </Button>
-            {editingPgId && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingPgId(null);
-                  setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
-                }}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
+
+          {storageConfig.provider === 'postgresql' && (
+            <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium text-slate-500">Active Connection</Label>
+                <Select 
+                  value={storageConfig.connectionId || 'custom'} 
+                  onValueChange={(val) => {
+                    if (val === 'custom') {
+                      setStorageConfig({ ...storageConfig, connectionId: undefined });
+                    } else {
+                      const conn = pgConnections.find(c => c.id === val);
+                      if (conn) handleSetPrimary(conn);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="bg-white dark:bg-slate-950 border-violet-500/20">
+                    <SelectValue placeholder="Select a saved database..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="custom">-- Use Raw URL --</SelectItem>
+                    {pgConnections.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(!storageConfig.connectionId || storageConfig.connectionId === 'custom') && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-slate-500">Custom Connection String</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      type="password" 
+                      placeholder="postgres://user:pass@host:port/db" 
+                      value={storageConfig.url} 
+                      onChange={(e) => setStorageConfig({ ...storageConfig, url: e.target.value })}
+                      className="bg-white dark:bg-slate-950 border-violet-500/20"
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        localConfig.saveStorageConfig(storageConfig);
+                        toast.success('Raw URL storage configuration saved');
+                      }}
+                      className="border-violet-500/30"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Metabase Connection Form */}
-      <Card className="border-cyan-500/20 bg-cyan-50 dark:bg-cyan-500/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {editingMbId ? <Edit2 className="h-5 w-5 text-cyan-400" /> : <Globe className="h-5 w-5 text-cyan-400" />}
-            {editingMbId ? 'Edit Metabase Connection' : 'Add Metabase Connection'}
-          </CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">
-            Connect to your Metabase instance for direct data push, auto-sync, and dashboard card creation. Supports both session auth (username/password) and API key authentication.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Connection Name</Label>
-              <Input placeholder="e.g. Production Metabase" value={mbForm.name} onChange={(e) => setMbForm({ ...mbForm, name: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Metabase URL</Label>
-              <Input placeholder="https://metabase.example.com" value={mbForm.baseUrl} onChange={(e) => setMbForm({ ...mbForm, baseUrl: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Username</Label>
-              <Input placeholder="Metabase username" value={mbForm.username} onChange={(e) => setMbForm({ ...mbForm, username: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Password</Label>
-              <Input
-                placeholder={editingMbId ? "Leave empty to keep existing password" : "Metabase password"}
-                type="password"
-                value={mbForm.password}
-                onChange={(e) => setMbForm({ ...mbForm, password: e.target.value })}
-                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">API Key <span className="text-slate-400 dark:text-slate-500 text-xs">(optional)</span></Label>
-              <Input placeholder="X-API-Key (alternative to session)" value={mbForm.apiKey} onChange={(e) => setMbForm({ ...mbForm, apiKey: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
+      {/* Section 2: Saved Database Backends */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Saved DB Connections</h3>
+            <Badge variant="outline">{pgConnections.length + metabaseConnections.length} Backends</Badge>
           </div>
-          <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3">
-            <div className="flex items-center gap-2 mb-2"><Info className="h-3.5 w-3.5 text-cyan-400" /><span className="text-xs font-semibold text-slate-700 dark:text-slate-300">How it works</span></div>
-            <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-              <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>Uploads KPI data as CSV directly into Metabase (creates a new table)</span></li>
-              <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>Triggers a database sync so Metabase picks up the new data immediately</span></li>
-              <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>Optionally auto-creates a Metabase question (card) from the pushed table</span></li>
-              <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>Requires Metabase admin privileges for data upload and card creation</span></li>
-            </ul>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleSaveMb} className="flex-1 bg-cyan-600 hover:bg-cyan-700">
-              <Globe className="mr-2 h-4 w-4" /> {editingMbId ? 'Update Connection' : 'Save Metabase Connection'}
-            </Button>
-            {editingMbId && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingMbId(null);
-                  setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' });
-                }}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+
+          <ScrollArea className="h-[400px] pr-4">
+            <div className="space-y-3">
+              {pgConnections.map(conn => {
+                const isPrimary = storageConfig.connectionId === conn.id;
+                const isSupabase = isSupabaseUrl(buildPgConnectionUrl(conn));
+                return (
+                  <Card key={conn.id} className={`border-slate-200 dark:border-slate-800 transition-all ${isPrimary ? 'ring-2 ring-violet-500 border-transparent shadow-lg' : ''}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex gap-3">
+                          <div className={`p-2 rounded-lg ${isPrimary ? 'bg-violet-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                            <Server className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-sm">{conn.name}</h4>
+                              <Badge variant="outline" className="text-[10px] uppercase font-bold text-violet-400 border-violet-500/30">
+                                {isSupabase ? 'SUPABASE' : 'POSTGRES'}
+                              </Badge>
+                            </div>
+                            <p className="text-[10px] text-slate-500 truncate max-w-[200px] mt-1">{conn.host}:{conn.port}/{conn.database}</p>
+                          </div>
+                        </div>
+                        {isPrimary ? (
+                          <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px]">PRIMARY</Badge>
+                        ) : (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleSetPrimary(conn)}
+                            className="text-[10px] h-7 px-2 border-violet-500/30 text-violet-500 hover:bg-violet-500/10"
+                          >
+                            Set as Primary
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleTestPg(conn)} 
+                          disabled={testingId === conn.id}
+                          className="text-[10px] h-7 px-2 flex-1"
+                        >
+                          {testingId === conn.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                          Test
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => {
+                            setPgForm({ ...conn, port: conn.port.toString(), password: '' });
+                            setEditingPgId(conn.id);
+                          }}
+                          className="text-[10px] h-7 px-2 flex-1"
+                        >
+                          <Edit2 className="h-3 w-3 mr-1" /> Edit
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => {
+                            if (confirm('Delete this connection?')) {
+                              const updated = pgConnections.filter(c => c.id !== conn.id);
+                              localConfig.savePgConnections(updated);
+                              loadAll();
+                            }
+                          }}
+                          className="text-[10px] h-7 px-2 flex-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" /> Delete
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+
+              {metabaseConnections.map(conn => (
+                <Card key={conn.id} className="border-slate-200 dark:border-slate-800">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex gap-3">
+                        <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400">
+                          <Globe className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-sm">{conn.name}</h4>
+                            <Badge variant="outline" className="text-[10px] uppercase font-bold text-cyan-400 border-cyan-500/30">METABASE</Badge>
+                          </div>
+                          <p className="text-[10px] text-slate-500 truncate max-w-[200px] mt-1">{conn.baseUrl}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <Button variant="ghost" size="sm" onClick={() => handleTestMb(conn)} disabled={testingId === conn.id} className="text-[10px] h-7 px-2 flex-1">
+                        {testingId === conn.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                        Test
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => {
+                          setMbForm({ ...conn, password: '', apiKey: conn.apiKey || '' });
+                          setEditingMbId(conn.id);
+                        }}
+                        className="text-[10px] h-7 px-2 flex-1"
+                      >
+                        <Edit2 className="h-3 w-3 mr-1" /> Edit
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => {
+                          if (confirm('Delete Metabase connection?')) {
+                            const updated = metabaseConnections.filter(c => c.id !== conn.id);
+                            localConfig.saveMetabaseConnections(updated);
+                            loadAll();
+                          }
+                        }}
+                        className="text-[10px] h-7 px-2 flex-1 text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" /> Delete
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* Section 3: Add New Forms */}
+        <div className="space-y-6">
+          <Card className="border-slate-200 dark:border-slate-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                {editingPgId ? <Edit2 className="h-4 w-4 text-violet-400" /> : <Plus className="h-4 w-4 text-violet-400" />}
+                {editingPgId ? 'Edit PostgreSQL' : 'Add PostgreSQL'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Connection Name" value={pgForm.name} onChange={(e) => setPgForm({ ...pgForm, name: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              <div className="grid grid-cols-3 gap-2">
+                <Input placeholder="Host" value={pgForm.host} onChange={(e) => setPgForm({ ...pgForm, host: e.target.value })} className="col-span-2 h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                <Input placeholder="Port" value={pgForm.port} onChange={(e) => setPgForm({ ...pgForm, port: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Database" value={pgForm.database} onChange={(e) => setPgForm({ ...pgForm, database: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                <Input placeholder="Username" value={pgForm.username} onChange={(e) => setPgForm({ ...pgForm, username: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              </div>
+              <Input placeholder="Password" type="password" value={pgForm.password} onChange={(e) => setPgForm({ ...pgForm, password: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              
+              <div className="flex gap-2 pt-1">
+                <Button onClick={handleSavePg} className="flex-1 h-8 text-xs bg-violet-600 hover:bg-violet-700">
+                  {editingPgId ? 'Update Backend' : 'Save Backend'}
+                </Button>
+                {editingPgId && (
+                  <Button variant="outline" size="sm" onClick={() => { setEditingPgId(null); setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' }); }} className="h-8 text-xs">
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 dark:border-slate-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                {editingMbId ? <Edit2 className="h-4 w-4 text-cyan-400" /> : <Plus className="h-4 w-4 text-cyan-400" />}
+                {editingMbId ? 'Edit Metabase' : 'Add Metabase'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Instance Name" value={mbForm.name} onChange={(e) => setMbForm({ ...mbForm, name: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              <Input placeholder="Metabase URL" value={mbForm.baseUrl} onChange={(e) => setMbForm({ ...mbForm, baseUrl: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Username" value={mbForm.username} onChange={(e) => setMbForm({ ...mbForm, username: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                <Input placeholder="Password" type="password" value={mbForm.password} onChange={(e) => setMbForm({ ...mbForm, password: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              </div>
+              
+              <div className="flex gap-2 pt-1">
+                <Button onClick={handleSaveMb} className="flex-1 h-8 text-xs bg-cyan-600 hover:bg-cyan-700">
+                  {editingMbId ? 'Update Instance' : 'Save Instance'}
+                </Button>
+                {editingMbId && (
+                  <Button variant="outline" size="sm" onClick={() => { setEditingMbId(null); setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' }); }} className="h-8 text-xs">
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1398,7 +1331,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
 function ExtractPanel({
   connections, extractionResult, setExtractionResult, masterDatasetInfo, setMasterDatasetInfo,
   dateFrom, setDateFrom, dateTo, setDateTo,
-  activeConnectionId, settings, setSettings, setKpiResults
+  activeConnectionId, settings, setSettings, setKpiResults, storageConfig
 }: {
   connections: JiraConnection[],
   extractionResult: any,
@@ -1411,6 +1344,7 @@ function ExtractPanel({
   settings: any,
   setSettings: any,
   setKpiResults: any,
+  storageConfig: any,
 }) {
   const [jql, setJql] = useState('');
   const [extracting, setExtracting] = useState(false);
@@ -1442,15 +1376,9 @@ function ExtractPanel({
 
   // Load settings for persistence
   React.useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) {
-          setSettings(d.settings);
-          setSaveThisExtraction(d.settings.persistence?.autoSave ?? true);
-        }
-      })
-      .catch(() => console.log('Failed to load settings'));
+    const savedSettings = localConfig.getSettings();
+    setSettings(savedSettings);
+    setSaveThisExtraction(savedSettings.persistence?.autoSave ?? true);
   }, []);
 
   const handleExtract = async (daysBack?: number) => {
@@ -1461,12 +1389,25 @@ function ExtractPanel({
     const loadingToast = toast.loading('Extracting issues from Jira...', { duration: 0 });
 
     try {
+      const activeConn = connections.find(c => c.id === activeConnectionId);
+      if (!activeConn) throw new Error('Selected connection not found');
+
       const body: Record<string, unknown> = {
-        connectionId: activeConnectionId,
+        connectionRef: activeConnectionId,
+        jiraCredentials: {
+          baseUrl: activeConn.baseUrl,
+          email: activeConn.email,
+          apiToken: activeConn.apiToken,
+          projectKeys: activeConn.projectKeys
+        },
+        rateLimit: settings?.rateLimit,
+        generalSettings: settings?.general,
+        customPlugins: localConfig.getKpiPlugins(),
         jql: jql || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         saveExtraction: saveThisExtraction,
+        storageConfig
       };
       if (daysBack) body.daysBack = daysBack;
 
@@ -1487,7 +1428,11 @@ function ExtractPanel({
 
         // Reload master dataset info after extraction
         try {
-          const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`);
+          const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'get', storageConfig })
+          });
           const masterData = await masterRes.json();
           if (masterData.success && masterData.data) {
             setMasterDatasetInfo({
@@ -1691,50 +1636,52 @@ function ExtractPanel({
         </CardContent>
       </Card>
 
-      {/* Feature 2: Polling Card */}
-      <Card className="border-amber-500/20 bg-amber-50 dark:bg-amber-500/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Gauge className="h-5 w-5 text-amber-400" /> Polling</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Automatically extract data at a configured interval</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Switch checked={pollEnabled} onCheckedChange={(v) => handleTogglePolling(v)} disabled={pollSaving} className="data-[state=checked]:bg-amber-600" />
-              <Label className="text-slate-700 dark:text-slate-300">{pollEnabled ? 'Polling Active' : 'Polling Disabled'}</Label>
+      {/* Master Dataset Info */}
+      {masterDatasetInfo && (
+        <Card className="border-blue-500/20 bg-blue-50 dark:bg-blue-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-lg">< HardDrive className="h-5 w-5 text-blue-400" /> Master Dataset</CardTitle>
+            <CardDescription className="text-slate-600 dark:text-slate-400">Total tickets accumulated from all extractions for this connection</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-slate-500">Total Unique Tickets:</span>
+              <span className="font-bold text-blue-400">{masterDatasetInfo.totalExtracted}</span>
             </div>
-            <div className="flex items-center gap-2">
-              {polling?.status === 'running' && <Loader2 className="h-4 w-4 text-amber-400 animate-spin" />}
-              <Badge variant="outline" className={polling?.enabled ? 'text-emerald-400 border-emerald-500/30' : 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700'}>
-                {polling?.status || 'idle'}
-              </Badge>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-slate-500">Date Range:</span>
+              <span className="text-slate-700 dark:text-slate-300">
+                {masterDatasetInfo.dateRange?.from ? `${new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} - ${new Date(masterDatasetInfo.dateRange.to).toLocaleDateString()}` : 'N/A'}
+              </span>
             </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Interval</Label>
-              <Select value={pollInterval} onValueChange={setPollInterval} disabled={!pollEnabled}>
-                <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {intervalOptions.map((opt) => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
-                </SelectContent>
-              </Select>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-slate-500">Last Updated:</span>
+              <span className="text-slate-700 dark:text-slate-300">{new Date(masterDatasetInfo.lastUpdated).toLocaleString()}</span>
             </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Status Info</Label>
-              <div className="rounded-md bg-gray-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 space-y-1 text-xs">
-                <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Last run:</span><span className="text-slate-700 dark:text-slate-300">{polling?.lastRunAt ? new Date(polling.lastRunAt).toLocaleTimeString() : 'Never'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Next run:</span><span className="text-slate-700 dark:text-slate-300">{polling?.nextRunAt ? new Date(polling.nextRunAt).toLocaleTimeString() : 'N/A'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Run count:</span><span className="text-amber-400 font-mono">{polling?.runCount || 0}</span></div>
-                {polling?.lastError && <div className="text-red-400 mt-1">Error: {polling.lastError}</div>}
-              </div>
-            </div>
-          </div>
-          <Button onClick={() => handleTogglePolling()} disabled={pollSaving || (!pollEnabled && !activeConnectionId)} className={pollEnabled ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}>
-            {pollSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : pollEnabled ? <><Pause className="mr-2 h-4 w-4" />Stop Polling</> : <><Play className="mr-2 h-4 w-4" />Start Polling</>}
-          </Button>
-        </CardContent>
-      </Card>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full mt-2 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
+              onClick={async () => {
+                if (confirm('Are you sure you want to clear the entire master dataset for this connection? This cannot be undone.')) {
+                  try {
+                    const res = await fetch(`/api/jira/master/${activeConnectionId}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                      toast.success(data.message);
+                      setMasterDatasetInfo({ totalExtracted: 0, lastUpdated: new Date().toISOString() });
+                    }
+                  } catch (e) {
+                    toast.error('Failed to clear master dataset');
+                  }
+                }
+              }}
+            >
+              <Trash2 className="h-3 w-3 mr-1" /> Clear Master Dataset
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {extractionResult && (
         <Card className="border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5">
@@ -1824,7 +1771,7 @@ function ExtractPanel({
 // ─── KPI Dashboard (unchanged from previous version) ─────────────────────────
 
 function KpiDashboard({
-  connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults
+  connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults, storageConfig
 }: any) {
   const [calculating, setCalculating] = useState(false);
 
@@ -1865,7 +1812,11 @@ function KpiDashboard({
 
     try {
       // Load master dataset (all historical tickets)
-      const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`);
+      const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', storageConfig })
+      });
       const masterData = await masterRes.json();
 
       if (!masterData.success || !masterData.data?.issues) {
@@ -2410,9 +2361,10 @@ const METRIC_TYPES = [
 ];
 
 function PluginsPanel() {
-  const [plugins, setPlugins] = useState<Record<string, KpiPluginInfo[]>>({});
+  const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', category: 'custom', unit: 'value', formula: '' });
+  const totalWizardSteps = 4;
 
   // Wizard state (Feature 4)
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -2434,22 +2386,42 @@ function PluginsPanel() {
     // Step 4 - Preview
   });
 
-  const totalWizardSteps = 4;
-
-  const loadPlugins = useCallback(async () => {
+  const loadPlugins = useCallback(() => {
     setLoading(true);
-    try { const res = await fetch('/api/kpi/plugins'); const data = await res.json(); if (data.success) setPlugins(data.plugins); } catch { toast.error('Failed to load plugins'); }
+    try {
+      const allPlugins = localConfig.getKpiPlugins();
+      // Group by category
+      const grouped = allPlugins.reduce((acc, p: any) => {
+        const cat = p.category || 'custom';
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(p as KpiPlugin);
+        return acc;
+      }, {} as Record<string, KpiPlugin[]>);
+      setPlugins(grouped);
+    } catch {
+      toast.error('Failed to load plugins');
+    }
     setLoading(false);
   }, []);
   React.useEffect(() => { loadPlugins(); }, [loadPlugins]);
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!form.name || !form.formula) { toast.error('Name and formula are required'); return; }
     try {
-      const res = await fetch('/api/kpi/plugins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-      const data = await res.json();
-      if (data.success) { toast.success(`Plugin "${form.name}" created`); setForm({ name: '', description: '', category: 'custom', unit: 'value', formula: '' }); loadPlugins(); }
-    } catch { toast.error('Failed to create plugin'); }
+      const newPlugin: KpiPlugin = {
+        id: `plugin-${Date.now()}`,
+        ...form,
+        pluginType: 'custom',
+        isActive: true
+      };
+      const current = localConfig.getKpiPlugins();
+      localConfig.saveKpiPlugins([...current, newPlugin]);
+      toast.success(`Plugin "${form.name}" created`);
+      setForm({ name: '', description: '', category: 'custom', unit: 'value', formula: '' });
+      loadPlugins();
+    } catch {
+      toast.error('Failed to create plugin');
+    }
   };
 
   const generateFormula = (): string => {
@@ -2472,29 +2444,30 @@ function PluginsPanel() {
     }
   };
 
-  const handleWizardSave = async () => {
+  const handleWizardSave = () => {
     if (!wizardData.kpiName) { toast.error('KPI Name is required'); return; }
     const formula = generateFormula();
     try {
-      const res = await fetch('/api/kpi/plugins', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: wizardData.kpiName,
-          description: `Custom KPI built with wizard (${wizardData.metricType})`,
-          category: wizardData.category,
-          unit: wizardData.unit,
-          formula,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`KPI Plugin "${wizardData.kpiName}" created`);
-        setWizardOpen(false);
-        setWizardStep(0);
-        setWizardData({ metricType: 'count', statuses: [], priorities: [], issueTypes: [], assignees: [], dateField: 'created', customJql: '', kpiName: '', unit: 'count', category: 'custom', groupBy: 'none' });
-        loadPlugins();
-      } else toast.error(data.error);
-    } catch { toast.error('Failed to create KPI plugin'); }
+      const newPlugin: KpiPlugin = {
+        id: `plugin-wizard-${Date.now()}`,
+        name: wizardData.kpiName,
+        description: `Custom KPI built with wizard (${wizardData.metricType})`,
+        category: wizardData.category,
+        unit: wizardData.unit,
+        formula,
+        pluginType: 'custom',
+        isActive: true
+      };
+      const current = localConfig.getKpiPlugins();
+      localConfig.saveKpiPlugins([...current, newPlugin]);
+      toast.success(`KPI Plugin "${wizardData.kpiName}" created`);
+      setWizardOpen(false);
+      setWizardStep(0);
+      setWizardData({ metricType: 'count', statuses: [], priorities: [], issueTypes: [], assignees: [], dateField: 'created', customJql: '', kpiName: '', unit: 'count', category: 'custom', groupBy: 'none' });
+      loadPlugins();
+    } catch {
+      toast.error('Failed to create KPI plugin');
+    }
   };
 
   const categoryLabels: Record<string, { label: string; color: string }> = {
@@ -2754,24 +2727,15 @@ function HolidaysPanel({ region, setRegion }: { region: string, setRegion: any }
 // ─── Export Panel (REVAMPED with CSV / PostgreSQL dual mode) ──────────────────
 
 function ExportPanel({
-  extractionResult, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion
+  extractionResult, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, storageConfig
 }: any) {
-  const [exportMode, setExportMode] = useState<'file' | 'postgres' | 'metabase'>('file');
-  const [jiraConnections, setJiraConnections] = useState<JiraConnection[]>([]);
-  const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
+  const [exportMode, setExportMode] = useState<'file' | 'metabase' | 'config'>('file');
   const [metabaseConnections, setMetabaseConnections] = useState<MetabaseConnection[]>([]);
-  const [selectedJiraConn, setSelectedJiraConn] = useState('');
-  const [selectedPgConn, setSelectedPgConn] = useState('');
   const [selectedMbConn, setSelectedMbConn] = useState('');
-  const [exporting, setExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<Record<string, unknown> | null>(null);
-  const [pgResult, setPgResult] = useState<{ rowsExported: number; totalRows: number; table: string; message: string } | null>(null);
-  const [createSchema, setCreateSchema] = useState(true);
-  const [truncateTable, setTruncateTable] = useState(false);
-
-  // Metabase-specific state
-  const [mbDatabases, setMbDatabases] = useState<MetabaseDatabase[]>([]);
   const [selectedMbDb, setSelectedMbDb] = useState('');
+  const [mbDatabases, setMbDatabases] = useState<any[]>([]);
+  const [loadingMbDbs, setLoadingMbDbs] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [mbTableName, setMbTableName] = useState('jira_kpi_data');
   const [mbFullSync, setMbFullSync] = useState(false);
   const [mbCreateCard, setMbCreateCard] = useState(true);
@@ -2779,19 +2743,10 @@ function ExportPanel({
     tableName: string; rowCount: number; uploaded: boolean; synced: boolean;
     cardCreated: boolean; cardUrl?: string; error?: string;
   } | null>(null);
-  const [loadingMbDbs, setLoadingMbDbs] = useState(false);
   const [exportDataType, setExportDataType] = useState<'kpi' | 'tickets'>('kpi');
 
   React.useEffect(() => {
-    Promise.all([
-      fetch('/api/jira/connections').then((r) => r.json()),
-      fetch('/api/pg/connections').then((r) => r.json()),
-      fetch('/api/metabase/connections').then((r) => r.json()),
-    ]).then(([jiraData, pgData, mbData]) => {
-      if (jiraData.success) setJiraConnections(jiraData.connections);
-      if (pgData.success) setPgConnections(pgData.connections);
-      if (mbData.success) setMetabaseConnections(mbData.connections);
-    });
+    setMetabaseConnections(localConfig.getMetabaseConnections());
   }, []);
 
   const handleFileExport = async (format: string) => {
@@ -2864,32 +2819,30 @@ function ExportPanel({
     setExporting(false);
   };
 
-  const handlePgExport = async () => {
-    if (!extractionResult) { toast.error('No extracted data found. Please run ETL Extraction in the Extract tab first.'); return; }
-    if (!selectedPgConn) { toast.error('Select a PostgreSQL connection'); return; }
-    setExporting(true); setPgResult(null);
-    try {
-      const pgRes = await fetch('/api/pg/export', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connectionId: selectedPgConn,
-          issues: extractionResult.issues,
-          holidays: { regions: region === 'all' ? [] : [region] },
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          createSchema,
-          truncate: truncateTable,
-        }),
-      });
-      const pgData = await pgRes.json();
-      if (pgData.success) {
-        setPgResult({ rowsExported: pgData.rowsExported, totalRows: pgData.totalRows, table: pgData.table, message: pgData.message });
-        toast.success(pgData.message);
-      } else {
-        toast.error(pgData.error || 'PostgreSQL export failed');
+  const handleExportConfig = () => {
+    const config = localConfig.exportConfig();
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `jira-etl-config-${new Date().toISOString().split('T')[0]}.json`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Configuration exported successfully');
+  };
+
+  const handleImportConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const config = JSON.parse(event.target?.result as string);
+        localConfig.importConfig(config);
+        toast.success('Configuration imported successfully. Please refresh the page.');
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (error) {
+        toast.error('Invalid configuration file');
       }
-    } catch { toast.error('PostgreSQL export failed'); }
-    setExporting(false);
+    };
+    reader.readAsText(file);
   };
 
   // Load Metabase databases when connection is selected
@@ -2913,23 +2866,32 @@ function ExportPanel({
   const handleMbPush = async () => {
     if (!extractionResult) { toast.error('No extracted data found. Please run ETL Extraction in the Extract tab first.'); return; }
     if (!selectedMbConn) { toast.error('Select a Metabase connection'); return; }
+    
+    const mbConn = metabaseConnections.find(c => c.id === selectedMbConn);
+    if (!mbConn) { toast.error('Selected Metabase connection not found'); return; }
+
     setExporting(true); setMbResult(null);
     try {
-      // Step 2: Push to Metabase
       const pushRes = await fetch('/api/metabase/push', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'upload',
-          connectionId: selectedMbConn,
+          metabaseCredentials: {
+            baseUrl: mbConn.baseUrl,
+            username: mbConn.username,
+            password: mbConn.password,
+            apiKey: mbConn.apiKey
+          },
           issues: extractionResult.issues,
+          exportDataType,
           holidays: { regions: region === 'all' ? [] : [region] },
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
-          tableName: mbTableName || `jira_kpi_${Date.now()}`,
-          syncDatabaseId: selectedMbDb ? parseInt(selectedMbDb) : undefined,
+          tableName: mbTableName || `jira_data_${Date.now()}`,
+          syncDatabaseId: selectedMbDb || undefined,
           fullSync: mbFullSync,
           createCard: mbCreateCard,
-          cardName: `Jira KPI Dashboard - ${new Date().toISOString().split('T')[0]}`,
+          cardName: `Jira ${exportDataType === 'tickets' ? 'Raw Tickets' : 'KPIs'} - ${new Date().toISOString().split('T')[0]}`,
         }),
       });
       const pushData = await pushRes.json();
@@ -2973,18 +2935,18 @@ function ExportPanel({
           </CardHeader>
         </Card>
 
-        {/* PostgreSQL Export Mode */}
-        <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'postgres' ? 'border-violet-500/50 bg-violet-50 dark:bg-violet-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('postgres')}>
+        {/* Configuration Backup Mode */}
+        <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'config' ? 'border-violet-500/50 bg-violet-50 dark:bg-violet-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('config')}>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
-              <div className={`rounded-lg p-2.5 ${exportMode === 'postgres' ? 'bg-violet-600' : 'bg-gray-100 dark:bg-slate-800'}`}>
-                <HardDrive className={`h-5 w-5 ${exportMode === 'postgres' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+              <div className={`rounded-lg p-2.5 ${exportMode === 'config' ? 'bg-violet-600' : 'bg-gray-100 dark:bg-slate-800'}`}>
+                <Settings className={`h-5 w-5 ${exportMode === 'config' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
               </div>
               <div className="flex-1">
-                <CardTitle className="text-base">PostgreSQL Push</CardTitle>
-                <CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">Direct DB write. Production pipelines, large datasets.</CardDescription>
+                <CardTitle className="text-base">Config Backup</CardTitle>
+                <CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">Export/Import connections & settings as JSON.</CardDescription>
               </div>
-              {exportMode === 'postgres' && <CheckCircle2 className="h-5 w-5 text-violet-400" />}
+              {exportMode === 'config' && <CheckCircle2 className="h-5 w-5 text-violet-400" />}
             </div>
           </CardHeader>
         </Card>
@@ -3020,11 +2982,11 @@ function ExportPanel({
               </ul>
             </div>
             <div className="rounded-lg bg-violet-50 dark:bg-violet-500/5 border border-violet-500/20 p-3 space-y-2">
-              <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">PostgreSQL Direct</p>
+              <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Config Backup</p>
               <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Live Metabase connection</span></li>
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Large / growing datasets</span></li>
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Idempotent upserts</span></li>
+                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Move to another browser</span></li>
+                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Backup your connections</span></li>
+                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Reset / Restore state</span></li>
               </ul>
             </div>
             <div className="rounded-lg bg-cyan-50 dark:bg-cyan-500/5 border border-cyan-500/20 p-3 space-y-2">
@@ -3118,60 +3080,31 @@ function ExportPanel({
             </div>
           </div>
 
-          {/* PostgreSQL-specific config */}
-          {exportMode === 'postgres' && (
+          {/* Config Backup specific config */}
+          {exportMode === 'config' && (
             <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">PostgreSQL Target</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">PostgreSQL Connection</Label>
-                  <Select value={selectedPgConn} onValueChange={setSelectedPgConn}>
-                    <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue placeholder="Select a PG connection..." /></SelectTrigger>
-                    <SelectContent>
-                      {pgConnections.length === 0 && <SelectItem value="__none" disabled>No PG connections configured</SelectItem>}
-                      {pgConnections.map((c) => (<SelectItem key={c.id} value={c.id}>{c.name} ({c.host}:{c.port}/{c.database})</SelectItem>))}
-                    </SelectContent>
-                  </Select>
+              <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Configuration Backup and Restore</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label className="text-slate-700 dark:text-slate-300">Export Backup</Label>
+                  <p className="text-xs text-slate-500">Download all your connections, KPI plugins, and settings as a JSON file.</p>
+                  <Button onClick={handleExportConfig} className="w-full bg-violet-600 hover:bg-violet-700">
+                    <Download className="mr-2 h-4 w-4" /> Export Config JSON
+                  </Button>
                 </div>
-                {selectedPgConn && (() => {
-                  const conn = pgConnections.find((c) => c.id === selectedPgConn);
-                  return conn ? (
-                    <div className="flex items-end">
-                      <div className="rounded-lg bg-violet-100 dark:bg-violet-500/10 border border-violet-500/20 p-3 text-xs space-y-1 w-full">
-                        <div className="flex items-center gap-2"><Badge variant="outline" className="text-[10px] text-violet-400 border-violet-500/30">TARGET</Badge><span className="text-slate-700 dark:text-slate-300 font-mono">{conn.schemaName}.{conn.tableName}</span></div>
-                        <p className="text-slate-400 dark:text-slate-500">{conn.host}:{conn.port}/{conn.database} (SSL: {conn.sslMode})</p>
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-              <div className="flex flex-wrap gap-6">
-                <div className="flex items-center gap-2">
-                  <Checkbox id="createSchema" checked={createSchema} onCheckedChange={(v) => setCreateSchema(v === true)} className="border-slate-300 dark:border-slate-600 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600" />
-                  <label htmlFor="createSchema" className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer">Create schema if missing</label>
+                <div className="space-y-3">
+                  <Label className="text-slate-700 dark:text-slate-300">Import Backup</Label>
+                  <p className="text-xs text-slate-500">Restore your configuration from a previously exported JSON file.</p>
+                  <div className="flex gap-2">
+                    <Input 
+                      type="file" 
+                      accept=".json" 
+                      onChange={handleImportConfig} 
+                      className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs" 
+                    />
+                  </div>
+                  <p className="text-[10px] text-amber-500">Warning: This will overwrite your current browser configuration.</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox id="truncate" checked={truncateTable} onCheckedChange={(v) => setTruncateTable(v === true)} className="border-slate-300 dark:border-slate-600 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600" />
-                  <label htmlFor="truncate" className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer">Truncate table before insert</label>
-                </div>
-              </div>
-              <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3">
-                <div className="flex items-center gap-2 mb-2"><Table className="h-3.5 w-3.5 text-violet-400" /><span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Auto-created Table Schema</span></div>
-                <pre className="text-xs text-slate-500 dark:text-slate-400 font-mono whitespace-pre-wrap leading-relaxed">{`CREATE TABLE IF NOT EXISTS "schema"."table_name" (
-  id            BIGSERIAL PRIMARY KEY,
-  kpi_id        TEXT NOT NULL,
-  kpi_name      TEXT NOT NULL,
-  value         DOUBLE PRECISION,
-  unit          TEXT,
-  calculated_at TIMESTAMPTZ,
-  period_start  TIMESTAMPTZ,
-  period_end    TIMESTAMPTZ,
-  region        TEXT,
-  priority      TEXT,
-  status        TEXT,
-  is_detail     BOOLEAN,
-  UNIQUE (kpi_id, kpi_name, period_start, period_end, region)  -- upsert key
-);`}</pre>
               </div>
             </div>
           )}
@@ -3270,47 +3203,24 @@ function ExportPanel({
                 <FileSpreadsheet className="mr-2 h-4 w-4" />Export CSV
               </Button>
             </div>
-          ) : exportMode === 'postgres' ? (
-            <Button onClick={handlePgExport} disabled={exporting || !extractionResult || !selectedPgConn} className="w-full bg-violet-600 hover:bg-violet-700">
-              {exporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating & Pushing to PostgreSQL...</> : <><Upload className="mr-2 h-4 w-4" />Calculate KPIs & Push to PostgreSQL</>}
+          ) : exportMode === 'metabase' ? (
+            <Button onClick={handleMbPush} disabled={exporting || !extractionResult || !selectedMbConn} className="w-full bg-cyan-600 hover:bg-cyan-700">
+              {exporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Pushing to Metabase...</> : <><Globe className="mr-2 h-4 w-4" />Push KPI Data to Metabase</>}
             </Button>
           ) : (
-            <Button onClick={handleMbPush} disabled={exporting || !extractionResult || !selectedMbConn} className="w-full bg-cyan-600 hover:bg-cyan-700">
-              {exporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating & Pushing to Metabase...</> : <><Send className="mr-2 h-4 w-4" />Calculate KPIs & Push to Metabase</>}
-            </Button>
+            <div className="flex items-center justify-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+              <div className="text-center space-y-2">
+                <Shield className="h-10 w-10 text-violet-400 mx-auto mb-2 opacity-50" />
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Backup & Restore Area</p>
+                <p className="text-xs text-slate-500">Use the configuration options above to manage your browser state.</p>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
 
 
-      {exportMode === 'postgres' && pgResult && (
-        <Card className="border-violet-500/30 bg-violet-50 dark:bg-violet-500/5">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-violet-400"><CheckCircle2 className="h-5 w-5" />PostgreSQL Export Complete</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 text-center">
-                <p className="text-3xl font-bold text-violet-400">{pgResult.rowsExported}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Rows Exported</p>
-              </div>
-              <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 text-center">
-                <p className="text-3xl font-bold text-emerald-400">{pgResult.totalRows}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Total Rows in Table</p>
-              </div>
-              <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 text-center">
-                <p className="text-sm font-mono text-blue-400 mt-1">{pgResult.table}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Target Table</p>
-              </div>
-            </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 space-y-2">
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Metabase Setup</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">1. In Metabase, go to <span className="text-emerald-400 font-mono">Admin &gt; Databases &gt; Add database</span></p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">2. Select <span className="text-emerald-400 font-mono">PostgreSQL</span> and enter the same host, port, database, and credentials</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">3. The table <span className="text-violet-400 font-mono">{pgResult.table}</span> will be available automatically for dashboard queries</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">4. Re-running this export will <span className="text-amber-400">upsert</span> (update existing rows, insert new ones) for safe idempotent operation</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {exportMode === 'metabase' && mbResult && (
         <Card className={mbResult.uploaded ? 'border-cyan-500/30 bg-cyan-50 dark:bg-cyan-500/5' : 'border-red-500/30 bg-red-50 dark:bg-red-500/5'}>
@@ -3362,7 +3272,7 @@ function ExportPanel({
 
 // ─── Settings Panel (Feature 3: Rate Limit + Feature 5: Config Import/Export) ─
 
-function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any) => void }) {
+function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?: (settings: any) => void, storageConfig: any }) {
   const [settings, setSettings] = useState<{
     rateLimit: { delayMs: number; maxRequestsPerMinute: number; batchSize: number; backoffStrategy: string };
     general: { defaultHolidayState: string; workStartHour: number; workEndHour: number; defaultSlaTargetHours: number };
@@ -3384,6 +3294,7 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
   const [storageInfo, setStorageInfo] = useState<{
     totalExtractions: number;
     totalSizeMB: number;
+    totalTickets: number;
     oldestExtraction: string;
     newestExtraction: string;
     orphanedExtractions: number;
@@ -3401,13 +3312,11 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
 
   React.useEffect(() => {
     setLoading(true);
-    fetch('/api/settings').then((r) => r.json()).then((d) => {
-      if (d.success) {
-        setSettings(d.settings);
-        setInitialSettings(d.settings);
-        setHasUnsavedChanges(false);
-      }
-    }).catch(() => toast.error('Failed to load settings')).finally(() => setLoading(false));
+    const savedSettings = localConfig.getSettings() as any;
+    setSettings(savedSettings);
+    setInitialSettings(savedSettings);
+    setHasUnsavedChanges(false);
+    setLoading(false);
   }, []);
 
   // Detect unsaved changes
@@ -3418,39 +3327,26 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
     }
   }, [settings, initialSettings]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setSaving(true);
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Settings saved successfully');
-        setInitialSettings(settings);
-        setHasUnsavedChanges(false);
-        if (onSettingsUpdate) onSettingsUpdate(settings);
-      } else toast.error(data.error);
-    } catch { toast.error('Failed to save settings'); }
+    localConfig.saveSettings(settings);
+    toast.success('Settings saved to browser storage');
+    setInitialSettings(settings);
+    setHasUnsavedChanges(false);
+    if (onSettingsUpdate) onSettingsUpdate(settings);
     setSaving(false);
   };
 
-  const handleExportConfig = async () => {
+  const handleExportConfig = () => {
     setConfigExporting(true);
-    try {
-      const res = await fetch('/api/config');
-      const data = await res.json();
-      if (data.success) {
-        const blob = new Blob([JSON.stringify(data.config, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const date = new Date().toISOString().split('T')[0];
-        a.href = url; a.download = `jira-etl-config-${date}.json`; a.click();
-        URL.revokeObjectURL(url);
-        toast.success('Configuration exported');
-      } else toast.error(data.error);
-    } catch { toast.error('Failed to export configuration'); }
+    const config = localConfig.exportConfig();
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().split('T')[0];
+    a.href = url; a.download = `jira-etl-config-${date}.json`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Configuration exported');
     setConfigExporting(false);
   };
 
@@ -3461,21 +3357,9 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
     try {
       const text = await file.text();
       const config = JSON.parse(text);
-      if (!config.version) { toast.error('Invalid configuration file'); setConfigImporting(false); return; }
-
-      const res = await fetch('/api/config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(data.message);
-        if (data.results) {
-          const summary = data.results.map((r: { type: string; count: number; errors: string[] }) => `${r.type}: ${r.count} imported`).join(', ');
-          toast.info(summary);
-        }
-        if (data.note) toast.info(data.note);
-      } else toast.error(data.error);
+      localConfig.importConfig(config);
+      toast.success('Configuration imported successfully. Please refresh.');
+      setTimeout(() => window.location.reload(), 1500);
     } catch { toast.error('Failed to import configuration'); }
     setConfigImporting(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -3484,7 +3368,12 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
   const handleRefreshStorage = async () => {
     setLoadingStorage(true);
     try {
-      const res = await fetch('/api/jira/extract/storage');
+      const activeConnections = localConfig.getJiraConnections();
+      const res = await fetch('/api/jira/extract/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activeConnections, storageConfig })
+      });
       const data = await res.json();
       if (data.success) {
         setStorageInfo(data.storage);
@@ -3508,7 +3397,7 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
       const res = await fetch('/api/jira/extract/cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ retentionDays }),
+        body: JSON.stringify({ retentionDays, storageConfig }),
       });
       const data = await res.json();
       if (data.success) {
@@ -3531,7 +3420,7 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
       const res = await fetch('/api/jira/extract/cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beforeDate: new Date().toISOString() }),
+        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig }),
       });
       const data = await res.json();
       if (data.success) {
@@ -3554,7 +3443,7 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
       const res = await fetch('/api/jira/extract/cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cleanupOrphaned: true }),
+        body: JSON.stringify({ cleanupOrphaned: true, storageConfig }),
       });
       const data = await res.json();
       if (data.success) {
@@ -3717,7 +3606,7 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
                   Stored Extractions
                 </p>
                 <p className="text-xs text-blue-700 dark:text-blue-500">
-                  {storageInfo?.totalExtractions || 0} extractions, ~{storageInfo?.totalSizeMB?.toFixed(1) || '0.0'} MB
+                  {storageInfo?.totalExtractions || 0} extractions, {storageInfo?.totalTickets || 0} total tickets, ~{storageInfo?.totalSizeMB?.toFixed(1) || '0.0'} MB
                 </p>
               </div>
               <Button
@@ -3740,7 +3629,7 @@ function SettingsPanel({ onSettingsUpdate }: { onSettingsUpdate?: (settings: any
                     <div className="flex-1">
                       <p className="font-medium text-blue-900 dark:text-blue-300">{conn.connectionName}</p>
                       <p className="text-blue-700 dark:text-blue-500">
-                        {conn.extractions} extractions, {conn.totalTickets} tickets
+                        {conn.extractions} extractions, <span className="font-semibold text-blue-600 dark:text-blue-400">{conn.totalTickets} master tickets</span>
                       </p>
                     </div>
                     <div className="text-right">

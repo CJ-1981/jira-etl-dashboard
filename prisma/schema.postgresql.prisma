@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model EtlRun {
+  id               String    @id @default(cuid())
+  connectionRef    String    // localStorage connection ID — no FK
+  status           String    // started, extracting, transforming, loading, completed, failed
+  ticketsProcessed Int       @default(0)
+  errorLog         String?
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+
+  // Session persistence fields
+  jql             String?
+  dateFrom        String?
+  dateTo          String?
+  autoSave        Boolean    @default(true)
+  metadata        String?    // JSON: { version, extractParams, etc }
+  sizeBytes       Int?
+
+  ticketSnapshots TicketSnapshot[]
+  kpiResults      KpiResult[]
+
+  @@index([connectionRef])
+  @@index([completedAt])
+  @@index([status])
+}
+
+model TicketSnapshot {
+  id              String   @id @default(cuid())
+  etlRunId        String
+  etlRun          EtlRun   @relation(fields: [etlRunId], references: [id])
+  jiraKey         String
+  summary         String
+  issueType       String
+  priority        String?
+  status          String
+  assignee        String?
+  reporter        String?
+  created         DateTime
+  updated         DateTime
+  resolved        DateTime?
+  dueDate         DateTime?
+  storyPoints     Float?
+  labels          String   // JSON array stored as string
+  components      String?  // JSON array stored as string
+  transitions     TicketTransition[]
+}
+
+model TicketTransition {
+  id              String   @id @default(cuid())
+  ticketSnapshotId String
+  ticket          TicketSnapshot @relation(fields: [ticketSnapshotId], references: [id])
+  fromStatus      String?
+  toStatus        String
+  author          String?
+  occurredAt      DateTime
+}
+
+model KpiResult {
+  id                String   @id @default(cuid())
+  connectionRef     String   // localStorage connection ID — no FK
+  etlRunId          String?
+  etlRun            EtlRun?  @relation(fields: [etlRunId], references: [id])
+  kpiId             String   // plugin ID (localStorage UUID or builtin ID)
+  kpiName           String
+  value             Float
+  unit              String?
+  dimensions        String   // JSON: { project: "...", assignee: "...", etc. }
+  periodStart       DateTime
+  periodEnd         DateTime
+  calculatedAt      DateTime @default(now())
+
+  @@index([connectionRef])
+  @@index([kpiId])
+  @@index([periodStart, periodEnd])
+  @@index([calculatedAt])
+}
+
+// Master ticket collection - accumulates all tickets ever extracted for KPI calculations
+// Keeps the latest version of each ticket (deduplicated by jiraKey)
+model MasterTicket {
+  id              String   @id @default(cuid())
+  connectionRef   String
+
+  // Jira issue fields
+  jiraKey         String   // Unique identifier (e.g., PROJ-123)
+  summary         String
+  issueType       String
+  priority        String?
+  status          String
+  assignee        String?
+  reporter        String?
+  created         DateTime
+  updated         DateTime
+  resolved        DateTime?
+  dueDate         DateTime?
+  storyPoints     Float?
+  labels          String   // JSON array stored as string
+  components      String?  // JSON array stored as string
+
+  // Raw issue data (full JSON for flexibility)
+  rawData         String   // Complete issue JSON
+
+  // Metadata
+  firstSeenAt     DateTime @default(now())  // When this ticket was first extracted
+  lastUpdatedAt   DateTime @default(now())  // When this ticket was last updated
+
+  @@unique([connectionRef, jiraKey])  // One ticket per key per connection
+  @@index([connectionRef])
+  @@index([jiraKey])
+  @@index([status])
+  @@index([created])
+}
