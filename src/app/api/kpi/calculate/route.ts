@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getKpiEngine } from '@/lib/kpi/engine';
+import { KpiEngine } from '@/lib/kpi/engine';
 import type { JiraIssue } from '@/lib/jira/client';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { issues, pluginIds, holidays, period, dateFrom, dateTo, slaTargets } = body;
+    const { issues, pluginIds, holidays, period, dateFrom, dateTo, slaTargets, activePluginIds, customPlugins } = body;
 
     if (!issues || !Array.isArray(issues)) {
       return NextResponse.json(
@@ -14,7 +14,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const engine = getKpiEngine();
+    const engine = new KpiEngine();
+
+    // Register custom plugins if provided
+    if (customPlugins && Array.isArray(customPlugins)) {
+      for (const pluginDef of customPlugins) {
+        try {
+          engine.registerCustomPlugin(pluginDef);
+        } catch (err) {
+          console.error(`Failed to register custom plugin ${pluginDef.id}:`, err);
+        }
+      }
+    }
 
     const start = dateFrom ? new Date(dateFrom) : new Date('2024-01-01');
     const end = dateTo ? new Date(dateTo) : new Date();
@@ -28,22 +39,32 @@ export async function POST(request: Request) {
 
     let results: Record<string, ReturnType<typeof engine.calculate>>;
 
-    if (pluginIds && pluginIds.length > 0) {
-      results = {};
-      for (const id of pluginIds) {
-        try {
-          results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, slaTargets);
-        } catch (err) {
-          results[id] = [{
-            name: `Error: ${id}`,
-            value: 0,
-            unit: '',
-            details: [{ label: 'Error', value: 0 }],
-          }];
-        }
-      }
+    // Determine which plugins to calculate
+    let pluginsToCalculate: string[] = [];
+    if (activePluginIds && Array.isArray(activePluginIds) && activePluginIds.length > 0) {
+      // Use only selected active plugins
+      pluginsToCalculate = activePluginIds;
+    } else if (pluginIds && pluginIds.length > 0) {
+      // Legacy support for pluginIds parameter
+      pluginsToCalculate = pluginIds;
     } else {
-      results = engine.calculateAll(typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, slaTargets);
+      // Calculate all plugins (default behavior)
+      pluginsToCalculate = engine.getAllPlugins().map(p => p.id);
+    }
+
+    // Calculate only the specified plugins
+    results = {};
+    for (const id of pluginsToCalculate) {
+      try {
+        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, slaTargets);
+      } catch (err) {
+        results[id] = [{
+          name: `Error: ${id}`,
+          value: 0,
+          unit: '',
+          details: [{ label: 'Error', value: 0 }],
+        }];
+      }
     }
 
     // Flatten results for easier consumption

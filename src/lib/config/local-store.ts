@@ -32,6 +32,7 @@ export interface KpiPlugin {
   unit: string;
   formula: string | any;
   pluginType: 'custom' | 'builtin';
+  language?: 'dsl' | 'javascript';
   isActive: boolean;
 }
 

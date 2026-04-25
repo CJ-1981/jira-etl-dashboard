@@ -1696,6 +1696,11 @@ function KpiDashboard({
       const issues = masterData.data.issues;
 
       // Calculate KPIs on the full master dataset
+      // Get active plugins from localStorage
+      const activePluginIdsStr = localStorage.getItem('cfg_active_plugins');
+      const activePluginIds = activePluginIdsStr ? JSON.parse(activePluginIdsStr) : undefined;
+      const customPlugins = localConfig.getKpiPlugins();
+
       const kpiRes = await fetch('/api/kpi/calculate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1706,13 +1711,36 @@ function KpiDashboard({
           },
           slaTargets: settings?.sla?.statusTargets || {},
           dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined
+          dateTo: dateTo || undefined,
+          activePluginIds,
+          customPlugins
         }),
       });
 
       const kpiData = await kpiRes.json();
       if (kpiData.success) {
-        setKpiResults(kpiData.results);
+        // Convert date strings in timeSeries to Date objects (JSON serialization)
+        const processedResults: any[] = [];
+        for (const item of kpiData.results) {
+          const pluginId = item.pluginId;
+          const results = item.results as any[];
+          processedResults.push({
+            pluginId,
+            results: results.map((result: any) => {
+              if (!result.timeSeries || result.timeSeries.length === 0) {
+                return result; // No timeSeries data, return as-is
+              }
+              return {
+                ...result,
+                timeSeries: result.timeSeries.map((ts: any) => ({
+                  ...ts,
+                  date: new Date(ts.date)
+                }))
+              };
+            })
+          });
+        }
+        setKpiResults(processedResults);
         const dateRange = masterData.data.dateRange;
         const ticketCount = issues.length;
         toast.success(
@@ -1749,6 +1777,23 @@ function KpiDashboard({
       results: [...kpi.results].sort((a, b) =>
         (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true, sensitivity: 'base' })
       )
+    }));
+
+  // Time-series trend KPIs - show in separate section with time-series indicator
+  const trendKpis = kpiResults
+    .filter((r) => isTimeSeriesPlugin(r.pluginId))
+    .map(kpi => ({
+      ...kpi,
+      results: kpi.results.map(result => ({
+        ...result,
+        // Convert date strings to Date objects and sort by date
+        timeSeries: result.timeSeries
+          ?.map((ts) => ({
+            ...ts,
+            date: ts.date instanceof Date ? ts.date : new Date(ts.date as string)
+          }))
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+      }))
     }));
 
   return (
@@ -1869,6 +1914,52 @@ function KpiDashboard({
                   )}
                 </div>
               )))}</div>
+            </CardContent>
+          </Card>
+        )}
+        {trendKpis.length > 0 && (
+          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-purple-400" />
+                Time-Series Trends
+              </CardTitle>
+              <CardDescription className="text-slate-600 dark:text-slate-400">
+                KPIs tracked over time with weekly grouping. Use charts below to visualize trends.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {trendKpis.map((kpi) => kpi.results.map((result, idx) => (
+                  <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {result.dimensions?.status || 'Overall'}
+                        </Badge>
+                        <Badge className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                          Trend
+                        </Badge>
+                      </div>
+                      <span className="text-lg font-bold text-purple-400">
+                        {result.value.toFixed(1)}{result.unit === '%' ? '%' : ` ${result.unit}`}
+                      </span>
+                    </div>
+                    {result.timeSeries && result.timeSeries.length > 0 && (
+                      <div className="text-xs text-slate-500 mt-2">
+                        <div className="flex justify-between">
+                          <span>Data points:</span>
+                          <span className="font-mono">{result.timeSeries.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Latest:</span>
+                          <span className="font-mono">{result.timeSeries[result.timeSeries.length - 1].value.toFixed(1)}{result.unit === '%' ? '%' : ''}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )))}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -2274,27 +2365,25 @@ const METRIC_TYPES = [
 function PluginsPanel() {
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', category: 'custom', unit: 'value', formula: '' });
-  const totalWizardSteps = 4;
 
-  // Wizard state (Feature 4)
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardStep, setWizardStep] = useState(0);
-  const [wizardData, setWizardData] = useState({
+  // Plugin selection state
+  const [activePlugins, setActivePlugins] = useState<Set<string>>(new Set());
+
+  // Unified Builder state
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderLanguage, setBuilderLanguage] = useState<'dsl' | 'javascript'>('dsl');
+  const [builderData, setBuilderData] = useState({
+    name: '',
+    description: '',
+    category: 'custom',
+    unit: 'value',
+    formula: '',
     metricType: 'count',
-    // Step 2 - Filters
     statuses: [] as string[],
     priorities: [] as string[],
     issueTypes: [] as string[],
     assignees: [] as string[],
-    dateField: 'created',
     customJql: '',
-    // Step 3 - Output
-    kpiName: '',
-    unit: 'count',
-    category: 'custom',
-    groupBy: 'none',
-    // Step 4 - Preview
   });
 
   const loadPlugins = useCallback(async () => {
@@ -2302,7 +2391,7 @@ function PluginsPanel() {
     try {
       // 1. Load custom plugins from localStorage
       const customPlugins = localConfig.getKpiPlugins();
-      
+
       // 2. Load built-in plugins from API
       let allPlugins = [...customPlugins];
       try {
@@ -2325,8 +2414,22 @@ function PluginsPanel() {
         acc[cat].push(p as KpiPlugin);
         return acc;
       }, {} as Record<string, KpiPlugin[]>);
-      
+
       setPlugins(grouped);
+
+      // 3. Load active plugins from localStorage
+      const savedActivePlugins = localStorage.getItem('cfg_active_plugins');
+      if (savedActivePlugins) {
+        try {
+          const activeIds = JSON.parse(savedActivePlugins) as string[];
+          setActivePlugins(new Set(activeIds));
+        } catch (err) {
+          console.error('Failed to parse active plugins:', err);
+          setActivePlugins(new Set(allPlugins.map(p => p.id)));
+        }
+      } else {
+        setActivePlugins(new Set(allPlugins.map(p => p.id)));
+      }
     } catch {
       toast.error('Failed to load plugins');
     }
@@ -2334,27 +2437,36 @@ function PluginsPanel() {
   }, []);
   React.useEffect(() => { loadPlugins(); }, [loadPlugins]);
 
-  const handleCreate = () => {
-    if (!form.name || !form.formula) { toast.error('Name and formula are required'); return; }
-    try {
-      const newPlugin: KpiPlugin = {
-        id: `plugin-${Date.now()}`,
-        ...form,
-        pluginType: 'custom',
-        isActive: true
-      };
-      const current = localConfig.getKpiPlugins();
-      localConfig.saveKpiPlugins([...current, newPlugin]);
-      toast.success(`Plugin "${form.name}" created`);
-      setForm({ name: '', description: '', category: 'custom', unit: 'value', formula: '' });
-      loadPlugins();
-    } catch {
-      toast.error('Failed to create plugin');
-    }
-  };
+  const saveActivePlugins = useCallback((pluginIds: Set<string>) => {
+    localStorage.setItem('cfg_active_plugins', JSON.stringify(Array.from(pluginIds)));
+  }, []);
+
+  const togglePlugin = useCallback((pluginId: string) => {
+    setActivePlugins(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(pluginId)) {
+        newSet.delete(pluginId);
+      } else {
+        newSet.add(pluginId);
+      }
+      saveActivePlugins(newSet);
+      return newSet;
+    });
+  }, [saveActivePlugins]);
+
+  const selectAllPlugins = useCallback(() => {
+    const allPluginIds = Object.values(plugins).flat().map(p => p.id);
+    setActivePlugins(new Set(allPluginIds));
+    saveActivePlugins(new Set(allPluginIds));
+  }, [plugins, saveActivePlugins]);
+
+  const deselectAllPlugins = useCallback(() => {
+    setActivePlugins(new Set());
+    saveActivePlugins(new Set());
+  }, [saveActivePlugins]);
 
   const generateFormula = (): string => {
-    const w = wizardData;
+    const w = builderData;
     const filters: string[] = [];
     if (w.statuses.length > 0) filters.push(`status = "${w.statuses[0]}"`);
     if (w.priorities.length > 0) filters.push(`priority = "${w.priorities[0]}"`);
@@ -2373,29 +2485,39 @@ function PluginsPanel() {
     }
   };
 
-  const handleWizardSave = () => {
-    if (!wizardData.kpiName) { toast.error('KPI Name is required'); return; }
-    const formula = generateFormula();
+  const handleCreate = () => {
+    if (!builderData.name) { toast.error('Plugin Name is required'); return; }
+    
+    // Auto-generate formula if using DSL and not manually edited
+    let finalFormula = builderData.formula;
+    if (builderLanguage === 'dsl' && !finalFormula) {
+      finalFormula = generateFormula();
+    }
+    if (!finalFormula) { toast.error('Formula/Code is required'); return; }
+
     try {
       const newPlugin: KpiPlugin = {
-        id: `plugin-wizard-${Date.now()}`,
-        name: wizardData.kpiName,
-        description: `Custom KPI built with wizard (${wizardData.metricType})`,
-        category: wizardData.category,
-        unit: wizardData.unit,
-        formula,
+        id: `plugin-${Date.now()}`,
+        name: builderData.name,
+        description: builderData.description || `Custom ${builderLanguage} plugin`,
+        category: builderData.category,
+        unit: builderData.unit,
+        formula: finalFormula,
         pluginType: 'custom',
+        language: builderLanguage,
         isActive: true
       };
       const current = localConfig.getKpiPlugins();
       localConfig.saveKpiPlugins([...current, newPlugin]);
-      toast.success(`KPI Plugin "${wizardData.kpiName}" created`);
-      setWizardOpen(false);
-      setWizardStep(0);
-      setWizardData({ metricType: 'count', statuses: [], priorities: [], issueTypes: [], assignees: [], dateField: 'created', customJql: '', kpiName: '', unit: 'count', category: 'custom', groupBy: 'none' });
+      toast.success(`Plugin "${builderData.name}" created`);
+      setBuilderOpen(false);
+      setBuilderData({
+        name: '', description: '', category: 'custom', unit: 'value', formula: '',
+        metricType: 'count', statuses: [], priorities: [], issueTypes: [], assignees: [], customJql: ''
+      });
       loadPlugins();
     } catch {
-      toast.error('Failed to create KPI plugin');
+      toast.error('Failed to create plugin');
     }
   };
 
@@ -2410,193 +2532,150 @@ function PluginsPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Wizard modal */}
-      {wizardOpen && (
+      {/* Unified Builder Modal */}
+      {builderOpen && (
         <Card className="border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2"><Wand2 className="h-5 w-5 text-emerald-400" /> KPI Builder Wizard</CardTitle>
-              <Button variant="outline" size="sm" className="border-slate-200 dark:border-slate-700" onClick={() => setWizardOpen(false)}>Cancel</Button>
+              <CardTitle className="flex items-center gap-2"><Wand2 className="h-5 w-5 text-emerald-400" /> Plugin Builder</CardTitle>
+              <Button variant="outline" size="sm" className="border-slate-200 dark:border-slate-700" onClick={() => setBuilderOpen(false)}>Cancel</Button>
             </div>
-            <CardDescription className="text-slate-600 dark:text-slate-400">Build a custom KPI without writing code</CardDescription>
-            {/* Step indicator */}
-            <div className="flex items-center gap-2 mt-3">
-              {Array.from({ length: totalWizardSteps }).map((_, i) => (
-                <React.Fragment key={i}>
-                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${i <= wizardStep ? 'bg-emerald-600 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'}`}>
-                    {i + 1}. {['Metric', 'Filters', 'Output', 'Preview'][i]}
-                  </div>
-                  {i < totalWizardSteps - 1 && <ChevronRight className="h-3 w-3 text-slate-500 dark:text-slate-600" />}
-                </React.Fragment>
-              ))}
+            <CardDescription className="text-slate-600 dark:text-slate-400">Build a custom KPI plugin using the visual builder or raw JavaScript code</CardDescription>
+            <div className="flex items-center gap-2 mt-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-md w-max">
+              <button onClick={() => setBuilderLanguage('dsl')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${builderLanguage === 'dsl' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Visual Builder (DSL)</button>
+              <button onClick={() => setBuilderLanguage('javascript')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${builderLanguage === 'javascript' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Code (JavaScript)</button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Step 1: Choose Metric Type */}
-            {wizardStep === 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {METRIC_TYPES.map((mt) => (
-                  <div key={mt.id} onClick={() => setWizardData({ ...wizardData, metricType: mt.id })} className={`rounded-lg border p-4 cursor-pointer transition-all hover:border-emerald-500/50 ${wizardData.metricType === mt.id ? 'border-emerald-500 bg-emerald-100 dark:bg-emerald-500/10' : 'border-slate-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50'}`}>
-                    <div className="text-2xl mb-2">{mt.icon}</div>
-                    <p className="font-semibold text-sm">{mt.label}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{mt.description}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Plugin Name</Label><Input placeholder="e.g. Critical Bug Resolution" value={builderData.name} onChange={(e) => setBuilderData({ ...builderData, name: e.target.value })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" /></div>
+              <div className="space-y-2"><Label>Description</Label><Input placeholder="What does this KPI measure?" value={builderData.description} onChange={(e) => setBuilderData({ ...builderData, description: e.target.value })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Category</Label><Select value={builderData.category} onValueChange={(v) => setBuilderData({ ...builderData, category: v })}><SelectTrigger className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="processing_time">Processing Time</SelectItem><SelectItem value="turnaround">Turnaround</SelectItem><SelectItem value="throughput">Throughput</SelectItem><SelectItem value="sla">SLA</SelectItem><SelectItem value="quality">Quality</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Unit</Label><Input placeholder="hours, %, tickets" value={builderData.unit} onChange={(e) => setBuilderData({ ...builderData, unit: e.target.value })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" /></div>
+            </div>
 
-            {/* Step 2: Configure Filters */}
-            {wizardStep === 1 && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-slate-700 dark:text-slate-300">Status filter (comma-separated)</Label>
-                    <Input placeholder="Done, Closed" value={wizardData.statuses.join(', ')} onChange={(e) => setWizardData({ ...wizardData, statuses: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-700 dark:text-slate-300">Priority filter (comma-separated)</Label>
-                    <Input placeholder="High, Highest" value={wizardData.priorities.join(', ')} onChange={(e) => setWizardData({ ...wizardData, priorities: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-700 dark:text-slate-300">Issue type filter (comma-separated)</Label>
-                    <Input placeholder="Bug, Task" value={wizardData.issueTypes.join(', ')} onChange={(e) => setWizardData({ ...wizardData, issueTypes: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-700 dark:text-slate-300">Assignee filter (comma-separated)</Label>
-                    <Input placeholder="john, jane" value={wizardData.assignees.join(', ')} onChange={(e) => setWizardData({ ...wizardData, assignees: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">Custom JQL condition (optional)</Label>
-                  <Input placeholder='labels = "urgent"' value={wizardData.customJql} onChange={(e) => setWizardData({ ...wizardData, customJql: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                </div>
-              </div>
-            )}
+            <Separator className="bg-slate-200 dark:bg-slate-700" />
 
-            {/* Step 3: Configure Output */}
-            {wizardStep === 2 && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">KPI Name</Label>
-                  <Input placeholder="e.g. Critical Bug Resolution Rate" value={wizardData.kpiName} onChange={(e) => setWizardData({ ...wizardData, kpiName: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-slate-700 dark:text-slate-300">Unit</Label>
-                    <Select value={wizardData.unit} onValueChange={(v) => setWizardData({ ...wizardData, unit: v })}>
-                      <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="hours">Hours</SelectItem><SelectItem value="days">Days</SelectItem>
-                        <SelectItem value="tickets">Tickets</SelectItem><SelectItem value="%">%</SelectItem>
-                        <SelectItem value="count">Count</SelectItem><SelectItem value="value">Value</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-700 dark:text-slate-300">Category</Label>
-                    <Select value={wizardData.category} onValueChange={(v) => setWizardData({ ...wizardData, category: v })}>
-                      <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="processing_time">Processing Time</SelectItem><SelectItem value="turnaround">Turnaround</SelectItem>
-                        <SelectItem value="throughput">Throughput</SelectItem><SelectItem value="sla">SLA</SelectItem>
-                        <SelectItem value="quality">Quality</SelectItem><SelectItem value="custom">Custom</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-700 dark:text-slate-300">Group By</Label>
-                    <Select value={wizardData.groupBy} onValueChange={(v) => setWizardData({ ...wizardData, groupBy: v })}>
-                      <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem><SelectItem value="status">Status</SelectItem>
-                        <SelectItem value="priority">Priority</SelectItem><SelectItem value="assignee">Assignee</SelectItem>
-                        <SelectItem value="issueType">Issue Type</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Preview & Save */}
-            {wizardStep === 3 && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">Generated Formula DSL</Label>
-                  <div className="rounded-lg bg-gray-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4">
-                    <pre className="text-sm text-emerald-400 font-mono whitespace-pre-wrap">{generateFormula()}</pre>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">KPI Preview</Label>
-                  <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800"><Zap className="h-5 w-5 text-blue-400" /></div>
-                      <div>
-                        <p className="text-xl font-bold font-mono text-blue-400">--</p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{wizardData.kpiName || 'Untitled KPI'}</p>
+            {builderLanguage === 'dsl' ? (
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">1. Metric Type</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    {METRIC_TYPES.map((mt) => (
+                      <div key={mt.id} onClick={() => setBuilderData({ ...builderData, metricType: mt.id })} className={`rounded-lg border p-3 cursor-pointer transition-all hover:border-emerald-500/50 ${builderData.metricType === mt.id ? 'border-emerald-500 bg-emerald-100 dark:bg-emerald-500/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
+                        <div className="text-xl mb-1">{mt.icon}</div>
+                        <p className="font-semibold text-xs">{mt.label}</p>
                       </div>
-                      <div className="ml-auto">
-                        <Badge variant="outline" className="text-xs">{wizardData.unit}</Badge>
-                        <Badge variant="outline" className="text-xs ml-1">{wizardData.category}</Badge>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
-                <div className="rounded-lg bg-amber-100 dark:bg-amber-500/10 border border-amber-500/20 p-3">
-                  <p className="text-xs text-amber-400"><Info className="inline h-3 w-3 mr-1" />The actual value will be calculated when you run KPI calculations on extracted data.</p>
+
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">2. Filters</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2"><Label className="text-xs">Status (comma-separated)</Label><Input placeholder="Done, Closed" value={builderData.statuses.join(', ')} onChange={(e) => setBuilderData({ ...builderData, statuses: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-sm h-8" /></div>
+                    <div className="space-y-2"><Label className="text-xs">Priority (comma-separated)</Label><Input placeholder="High, Highest" value={builderData.priorities.join(', ')} onChange={(e) => setBuilderData({ ...builderData, priorities: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-sm h-8" /></div>
+                  </div>
                 </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">3. Formula DSL Preview</Label>
+                    <Button variant="ghost" size="sm" className="h-6 text-xs text-slate-500" onClick={() => setBuilderData({ ...builderData, formula: generateFormula() })}><RefreshCw className="h-3 w-3 mr-1" /> Regnerate</Button>
+                  </div>
+                  <textarea className="w-full min-h-[60px] rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" placeholder={generateFormula()} value={builderData.formula || generateFormula()} onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })} />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">JavaScript Implementation</Label>
+                <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 mb-2 text-sm text-blue-800 dark:text-blue-300">
+                  <p className="font-semibold mb-1">Context signature:</p>
+                  <code className="bg-white/50 dark:bg-black/20 px-1 py-0.5 rounded text-xs">function calculate(context: {'{'} issues: JiraIssue[], period: {'{'}start, end{'}'}, holidays: ... {'}'}): number | KpiResult[]</code>
+                  <p className="mt-2 text-xs opacity-80">Return a number, or an array of result objects: <code>[{'{'} name: 'My KPI', value: 42, unit: 'hours' {'}'}]</code></p>
+                </div>
+                <textarea 
+                  className="w-full min-h-[250px] rounded-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-4 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" 
+                  placeholder={`// Example: Count resolved bugs\n\nconst bugs = context.issues.filter(i => i.issueType === 'Bug' && i.resolved);\nreturn bugs.length;`} 
+                  value={builderData.formula} 
+                  onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })} 
+                />
               </div>
             )}
 
-            {/* Wizard navigation */}
-            <div className="flex items-center justify-between pt-2">
-              <Button variant="outline" className="border-slate-200 dark:border-slate-700" onClick={() => setWizardStep(Math.max(0, wizardStep - 1))} disabled={wizardStep === 0}>
-                <ChevronLeft className="mr-2 h-4 w-4" />Back
+            <div className="flex justify-end pt-2">
+              <Button className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto" onClick={handleCreate} disabled={!builderData.name}>
+                <Save className="mr-2 h-4 w-4" />Save Plugin
               </Button>
-              {wizardStep < totalWizardSteps - 1 ? (
-                <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setWizardStep(wizardStep + 1)}>
-                  Next<ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
-              ) : (
-                <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleWizardSave} disabled={!wizardData.kpiName}>
-                  <Save className="mr-2 h-4 w-4" />Save KPI Plugin
-                </Button>
-              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+      <div className="grid grid-cols-1 gap-6">
+        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-emerald-400" /> KPI Plugin Registry</CardTitle>
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setWizardOpen(true); setWizardStep(0); }}>
-                <Wand2 className="mr-2 h-4 w-4" />Wizard
+              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setBuilderOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />Create Plugin
               </Button>
             </div>
           </CardHeader>
           <CardContent>
+            {/* Plugin Selection Controls */}
+            {!loading && Object.keys(plugins).length > 0 && (
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {activePlugins.size} of {Object.values(plugins).flat().length} active
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" className="text-xs" onClick={selectAllPlugins}>
+                    <CheckCircle2 className="mr-1 h-3 w-3" />Select All
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs" onClick={deselectAllPlugins}>
+                    <XCircle className="mr-1 h-3 w-3" />Deselect All
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
               <div className="space-y-3">
                 {Object.entries(plugins).map(([category, pluginList]) => (
                   <div key={category}>
-                    <div className="flex items-center gap-2 mb-2"><Badge className={categoryLabels[category]?.color}>{categoryLabels[category]?.label || category}</Badge><span className="text-xs text-slate-400 dark:text-slate-500">{pluginList.length}</span></div>
+                    <div className="flex items-center gap-2 mb-2"><Badge className={categoryLabels[category]?.color || categoryLabels['custom']?.color}>{categoryLabels[category]?.label || category}</Badge><span className="text-xs text-slate-400 dark:text-slate-500">{pluginList.length}</span></div>
                     <div className="space-y-2">{pluginList.map((plugin) => (
-                      <div key={plugin.id} className="rounded-lg border border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30 p-3">
+                      <div key={plugin.id} className={`rounded-lg border transition-colors ${activePlugins.has(plugin.id) ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30'} p-3`}>
                         <div className="flex items-center justify-between">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-semibold text-sm">{plugin.name}</h4>
-                              <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">
-                                {plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}
-                              </Badge>
+                          <div className="flex items-center gap-3 flex-1">
+                            <Checkbox
+                              id={`plugin-${plugin.id}`}
+                              checked={activePlugins.has(plugin.id)}
+                              onCheckedChange={() => togglePlugin(plugin.id)}
+                              className="flex-shrink-0"
+                            />
+                            <div
+                              onClick={() => togglePlugin(plugin.id)}
+                              className="flex-1 cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold text-sm">{plugin.name}</h4>
+                                <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">
+                                  {plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}
+                                </Badge>
+                                {plugin.language === 'javascript' && (
+                                  <Badge variant="outline" className="text-[10px] text-yellow-500 border-yellow-500/30 py-0 h-4 px-1.5">JS</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p>
                             </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p>
                           </div>
-                          <Badge variant="outline" className="text-xs">{plugin.unit}</Badge>
+                          <Badge variant="outline" className="text-xs flex-shrink-0">{plugin.unit}</Badge>
                         </div>
                       </div>
                     ))}</div>
@@ -2604,22 +2683,6 @@ function PluginsPanel() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Plus className="h-5 w-5 text-emerald-400" /> Create Custom Plugin</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2"><Label className="text-slate-700 dark:text-slate-300">Name</Label><Input placeholder="e.g. Critical Bug Resolution" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="space-y-2"><Label className="text-slate-700 dark:text-slate-300">Description</Label><Input placeholder="What does this KPI measure?" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label className="text-slate-700 dark:text-slate-300">Category</Label><Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}><SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="processing_time">Processing Time</SelectItem><SelectItem value="turnaround">Turnaround</SelectItem><SelectItem value="throughput">Throughput</SelectItem><SelectItem value="sla">SLA</SelectItem><SelectItem value="quality">Quality</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label className="text-slate-700 dark:text-slate-300">Unit</Label><Input placeholder="hours, %, tickets" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            </div>
-            <div className="space-y-2"><Label className="text-slate-700 dark:text-slate-300">Formula DSL</Label>
-              <textarea className="w-full min-h-[120px] rounded-md bg-gray-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" placeholder={'COUNT(resolved = true)\nAVG(storyPoints) WHERE status = "Done"\nPERCENTAGE(resolved = true) OF true'} value={form.formula} onChange={(e) => setForm({ ...form, formula: e.target.value })} />
-            </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 space-y-1"><p className="text-xs font-semibold text-slate-700 dark:text-slate-300">DSL Reference:</p><p className="text-xs text-slate-500 dark:text-slate-400 font-mono">COUNT / AVG / SUM / PERCENTAGE</p><p className="text-xs text-slate-400 dark:text-slate-500">Fields: storyPoints, priority, status, resolved, issueType</p></div>
-            <Button onClick={handleCreate} className="w-full bg-emerald-600 hover:bg-emerald-700"><Plus className="mr-2 h-4 w-4" />Create Plugin</Button>
           </CardContent>
         </Card>
       </div>

@@ -761,11 +761,27 @@ export class KpiEngine {
     description: string;
     category: KpiPlugin['category'];
     unit: string;
-    formula: string; // DSL formula
+    formula: string; // DSL formula or JS code
+    language?: 'dsl' | 'javascript';
   }) {
     const customPlugin: KpiPlugin = {
       ...definition,
+      pluginType: 'custom',
+      isActive: true,
       calculate(context) {
+        if (definition.language === 'javascript') {
+          try {
+            const fn = new Function('context', definition.formula);
+            const result = fn(context);
+            if (Array.isArray(result) && result.length > 0 && typeof result[0].value !== 'undefined') {
+              return result;
+            }
+            return [{ name: definition.name, value: Number(result) || 0, unit: definition.unit }];
+          } catch (err: any) {
+            console.error('Plugin JS error:', err);
+            return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'JS Error', value: 0 }] }];
+          }
+        }
         // Parse and execute the custom formula
         return executeCustomFormula(definition.formula, context, definition);
       },
