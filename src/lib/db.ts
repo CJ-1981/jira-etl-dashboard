@@ -31,6 +31,24 @@ export function getDb(dynamicUrl?: string): PrismaClient {
   return client;
 }
 
-// Default export for backward compatibility with existing code
-// Use a lazy getter or try/catch for environments where DATABASE_URL is missing
-export const db = (typeof process !== 'undefined' && process.env.DATABASE_URL) ? getDb() : null as any;
+/**
+ * Build a standard PostgreSQL connection string from parts
+ */
+export function buildPgUrl(conn: {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password?: string;
+  sslMode?: string;
+}): string {
+  const { host, port, database, username, password, sslMode = 'prefer' } = conn;
+  const auth = password ? `${username}:${password}` : encodeURIComponent(password || '') ? `${username}:${encodeURIComponent(password || '')}` : username;
+  
+  // Re-evaluating the auth string construction for safety
+  const authPart = password ? `${username}:${password}` : username;
+  return `postgresql://${authPart}@${host}:${port}/${database}?sslmode=${sslMode}`;
+}
+
+// Default export for backward compatibility
+export const db = (typeof process !== 'undefined' && process.env.DATABASE_URL) ? getDb() : ({} as PrismaClient);

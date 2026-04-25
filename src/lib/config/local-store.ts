@@ -23,15 +23,6 @@ export interface PgConnection {
   isActive: boolean;
 }
 
-export interface MetabaseConnection {
-  id: string;
-  name: string;
-  baseUrl: string;
-  username: string;
-  password: string;
-  apiKey: string | null;
-  isActive: boolean;
-}
 
 export interface KpiPlugin {
   id: string;
@@ -78,7 +69,6 @@ export interface StorageConfig {
 const KEYS = {
   jira: 'cfg_jira_connections',
   pg: 'cfg_pg_connections',
-  metabase: 'cfg_metabase_connections',
   plugins: 'cfg_kpi_plugins',
   settings: 'cfg_app_settings',
   activeConnection: 'cfg_active_connection_id',
@@ -129,8 +119,6 @@ export const localConfig = {
   getPgConnections: () => get<PgConnection[]>(KEYS.pg, []),
   savePgConnections: (conns: PgConnection[]) => set(KEYS.pg, conns),
 
-  getMetabaseConnections: () => get<MetabaseConnection[]>(KEYS.metabase, []),
-  saveMetabaseConnections: (conns: MetabaseConnection[]) => set(KEYS.metabase, conns),
 
   getKpiPlugins: () => get<KpiPlugin[]>(KEYS.plugins, []),
   saveKpiPlugins: (plugins: KpiPlugin[]) => set(KEYS.plugins, plugins),
@@ -153,7 +141,6 @@ export const localConfig = {
       exportedAt: new Date().toISOString(),
       jiraConnections: localConfig.getJiraConnections(),
       pgConnections: localConfig.getPgConnections(),
-      metabaseConnections: localConfig.getMetabaseConnections(),
       customPlugins: localConfig.getKpiPlugins(),
       settings: localConfig.getSettings(),
     };
@@ -164,7 +151,6 @@ export const localConfig = {
     try {
       if (data.jiraConnections) localConfig.saveJiraConnections(data.jiraConnections);
       if (data.pgConnections) localConfig.savePgConnections(data.pgConnections);
-      if (data.metabaseConnections) localConfig.saveMetabaseConnections(data.metabaseConnections);
       if (data.customPlugins) localConfig.saveKpiPlugins(data.customPlugins);
       if (data.settings) localConfig.saveSettings(data.settings);
       return { success: true };

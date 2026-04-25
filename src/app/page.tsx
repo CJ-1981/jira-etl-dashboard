@@ -84,21 +84,6 @@ interface PgConnection {
   isActive: boolean;
 }
 
-interface MetabaseConnection {
-  id: string;
-  name: string;
-  baseUrl: string;
-  username: string;
-  password: string;
-  apiKey: string | null;
-  isActive: boolean;
-}
-
-interface MetabaseDatabase {
-  id: number;
-  name: string;
-  engine: string;
-}
 
 interface ExtractedIssue {
   key: string;
@@ -399,6 +384,10 @@ export default function Home() {
                 <Server className="h-4 w-4" />
                 <span className="hidden sm:inline">Connections</span>
               </TabsTrigger>
+              <TabsTrigger value="storage" className="flex-1 gap-2 data-[state=active]:bg-violet-600/20 data-[state=active]:text-violet-400">
+                <HardDrive className="h-4 w-4" />
+                <span className="hidden sm:inline">Storage</span>
+              </TabsTrigger>
               <TabsTrigger value="extract" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">Extract</span>
@@ -422,10 +411,6 @@ export default function Home() {
               <TabsTrigger value="settings" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Settings className="h-4 w-4" />
                 <span className="hidden sm:inline">Settings</span>
-              </TabsTrigger>
-              <TabsTrigger value="storage" className="flex-1 gap-2 data-[state=active]:bg-violet-600/20 data-[state=active]:text-violet-400">
-                <HardDrive className="h-4 w-4" />
-                <span className="hidden sm:inline">Storage</span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -678,14 +663,14 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
         const version = (serverInfo?.version as string) || 'Unknown';
         const responseTime = data.diagnostics?.responseTime || 'N/A';
 
-        toast.success(`✅ Connected to ${serverTitle}`, {
+        toast.success(`Connected to ${serverTitle}`, {
           description: `Jira ${deploymentType} (v${version}) - ${responseTime}`,
           duration: 5000,
           position: 'top-right'
         });
       } else {
         setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-        toast.error(`❌ Connection Failed`, {
+        toast.error(`Connection Failed`, {
           description: data.error || 'Connection failed',
           duration: 5000,
           position: 'top-right'
@@ -693,7 +678,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       }
     } catch (error) {
       setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-      toast.error('❌ Network Error', {
+      toast.error('Network Error', {
         description: 'Could not reach the test server',
         duration: 5000,
         position: 'top-right'
@@ -875,7 +860,6 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
 
 function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any, setStorageConfig: any }) {
   const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
-  const [metabaseConnections, setMetabaseConnections] = useState<MetabaseConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});
@@ -886,15 +870,10 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
   });
   const [editingPgId, setEditingPgId] = useState<string | null>(null);
 
-  const [mbForm, setMbForm] = useState({
-    name: '', baseUrl: '', username: '', password: '', apiKey: '',
-  });
-  const [editingMbId, setEditingMbId] = useState<string | null>(null);
 
   const loadAll = useCallback(() => {
     setLoading(true);
     setPgConnections(localConfig.getPgConnections());
-    setMetabaseConnections(localConfig.getMetabaseConnections());
     setLoading(false);
   }, []);
 
@@ -935,7 +914,7 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`✅ Connected to ${conn.name}`);
+        toast.success(`Connected to ${conn.name}`);
         setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
       } else {
         toast.error(data.error || 'Connection failed');
@@ -964,46 +943,6 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
     toast.success(`${conn.name} set as Primary Storage`);
   };
 
-  const handleSaveMb = () => {
-    if (!mbForm.name || !mbForm.baseUrl || !mbForm.username) {
-      toast.error('Required fields missing'); return;
-    }
-    const all = localConfig.getMetabaseConnections();
-    const newConn: MetabaseConnection = {
-      id: editingMbId || crypto.randomUUID(),
-      name: mbForm.name,
-      baseUrl: mbForm.baseUrl,
-      username: mbForm.username,
-      password: mbForm.password,
-      apiKey: mbForm.apiKey || null,
-      isActive: true,
-    };
-    const updated = editingMbId ? all.map(c => c.id === editingMbId ? newConn : c) : [...all, newConn];
-    localConfig.saveMetabaseConnections(updated);
-    toast.success('Metabase connection saved');
-    setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' });
-    setEditingMbId(null);
-    loadAll();
-  };
-
-  const handleTestMb = async (conn: MetabaseConnection) => {
-    setTestingId(conn.id);
-    try {
-      const res = await fetch('/api/metabase/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl: conn.baseUrl, username: conn.username, password: conn.password, apiKey: conn.apiKey }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('✅ Connected to Metabase');
-        setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
-      } else {
-        toast.error(data.error || 'Connection failed');
-        setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
-      }
-    } catch { toast.error('Network error testing Metabase'); }
-    setTestingId(null);
-  };
 
   return (
     <div className="space-y-6">
@@ -1119,14 +1058,14 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
       </Card>
 
       {/* Section 2: Saved Database Backends */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Saved DB Connections</h3>
-            <Badge variant="outline">{pgConnections.length + metabaseConnections.length} Backends</Badge>
+            <Badge variant="outline">{pgConnections.length} Backends</Badge>
           </div>
 
-          <ScrollArea className="h-[400px] pr-4">
+          <ScrollArea className="max-h-[600px]">
             <div className="space-y-3">
               {pgConnections.map(conn => {
                 const isPrimary = storageConfig.connectionId === conn.id;
@@ -1204,57 +1143,6 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
                 );
               })}
 
-              {metabaseConnections.map(conn => (
-                <Card key={conn.id} className="border-slate-200 dark:border-slate-800">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex gap-3">
-                        <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400">
-                          <Globe className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-sm">{conn.name}</h4>
-                            <Badge variant="outline" className="text-[10px] uppercase font-bold text-cyan-400 border-cyan-500/30">METABASE</Badge>
-                          </div>
-                          <p className="text-[10px] text-slate-500 truncate max-w-[200px] mt-1">{conn.baseUrl}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-4">
-                      <Button variant="ghost" size="sm" onClick={() => handleTestMb(conn)} disabled={testingId === conn.id} className="text-[10px] h-7 px-2 flex-1">
-                        {testingId === conn.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                        Test
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => {
-                          setMbForm({ ...conn, password: '', apiKey: conn.apiKey || '' });
-                          setEditingMbId(conn.id);
-                        }}
-                        className="text-[10px] h-7 px-2 flex-1"
-                      >
-                        <Edit2 className="h-3 w-3 mr-1" /> Edit
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => {
-                          if (confirm('Delete Metabase connection?')) {
-                            const updated = metabaseConnections.filter(c => c.id !== conn.id);
-                            localConfig.saveMetabaseConnections(updated);
-                            loadAll();
-                          }
-                        }}
-                        className="text-[10px] h-7 px-2 flex-1 text-red-500 hover:text-red-600"
-                      >
-                        <Trash2 className="h-3 w-3 mr-1" /> Delete
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
             </div>
           </ScrollArea>
         </div>
@@ -1293,33 +1181,6 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 dark:border-slate-800">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                {editingMbId ? <Edit2 className="h-4 w-4 text-cyan-400" /> : <Plus className="h-4 w-4 text-cyan-400" />}
-                {editingMbId ? 'Edit Metabase' : 'Add Metabase'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Input placeholder="Instance Name" value={mbForm.name} onChange={(e) => setMbForm({ ...mbForm, name: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-              <Input placeholder="Metabase URL" value={mbForm.baseUrl} onChange={(e) => setMbForm({ ...mbForm, baseUrl: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Username" value={mbForm.username} onChange={(e) => setMbForm({ ...mbForm, username: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                <Input placeholder="Password" type="password" value={mbForm.password} onChange={(e) => setMbForm({ ...mbForm, password: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-              </div>
-              
-              <div className="flex gap-2 pt-1">
-                <Button onClick={handleSaveMb} className="flex-1 h-8 text-xs bg-cyan-600 hover:bg-cyan-700">
-                  {editingMbId ? 'Update Instance' : 'Save Instance'}
-                </Button>
-                {editingMbId && (
-                  <Button variant="outline" size="sm" onClick={() => { setEditingMbId(null); setMbForm({ name: '', baseUrl: '', username: '', password: '', apiKey: '' }); }} className="h-8 text-xs">
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>
@@ -1696,7 +1557,7 @@ function ExtractPanel({
               </div>
               <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 text-center">
                 <p className="text-2xl font-bold text-blue-400">
-                  {extractionResult.issues.filter((i: any) => {
+                  {(extractionResult.issues || []).filter((i: any) => {
                     if (i.fields?.resolutiondate || i.resolved) return true;
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
                     return ['done', 'closed', 'close', 'resolved'].includes(status);
@@ -1706,7 +1567,7 @@ function ExtractPanel({
               </div>
               <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 text-center">
                 <p className="text-2xl font-bold text-amber-400">
-                  {extractionResult.issues.filter((i: any) => {
+                  {(extractionResult.issues || []).filter((i: any) => {
                     if (i.fields?.resolutiondate || i.resolved) return false;
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
                     return !['done', 'closed', 'close', 'resolved'].includes(status);
@@ -1718,7 +1579,8 @@ function ExtractPanel({
                 <p className="text-sm font-mono text-slate-700 dark:text-slate-300">Oldest</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {(() => {
-                    const dates = extractionResult.issues
+                    const issues = extractionResult.issues || [];
+                    const dates = issues
                       .map((i: any) => i.fields?.created || i.created)
                       .filter((d: any) => d)
                       .map((d: any) => new Date(d).getTime());
@@ -1729,7 +1591,7 @@ function ExtractPanel({
               </div>
             </div>
             <div className="space-y-1">
-              {extractionResult.issues.map((issue: any) => {
+              {(extractionResult.issues || []).map((issue: any) => {
                 const activeConnection = connections.find(c => c.id === activeConnectionId);
 
                 // Ensure baseUrl has protocol
@@ -1744,7 +1606,7 @@ function ExtractPanel({
                 })();
 
                 return (
-                  <div key={issue.key} className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-gray-50 dark:bg-slate-800/50 text-sm group">
+                  <div key={issue.key} className="flex items-center gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
                     <a
                       href={jiraUrl}
                       target="_blank"
@@ -2729,24 +2591,17 @@ function HolidaysPanel({ region, setRegion }: { region: string, setRegion: any }
 function ExportPanel({
   extractionResult, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, storageConfig
 }: any) {
-  const [exportMode, setExportMode] = useState<'file' | 'metabase' | 'config'>('file');
-  const [metabaseConnections, setMetabaseConnections] = useState<MetabaseConnection[]>([]);
-  const [selectedMbConn, setSelectedMbConn] = useState('');
-  const [selectedMbDb, setSelectedMbDb] = useState('');
-  const [mbDatabases, setMbDatabases] = useState<any[]>([]);
-  const [loadingMbDbs, setLoadingMbDbs] = useState(false);
+  const [exportMode, setExportMode] = useState<'file' | 'database' | 'config'>('file');
+  const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
+  const [selectedPgConn, setSelectedPgConn] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [mbTableName, setMbTableName] = useState('jira_kpi_data');
-  const [mbFullSync, setMbFullSync] = useState(false);
-  const [mbCreateCard, setMbCreateCard] = useState(true);
-  const [mbResult, setMbResult] = useState<{
-    tableName: string; rowCount: number; uploaded: boolean; synced: boolean;
-    cardCreated: boolean; cardUrl?: string; error?: string;
+  const [exportDataType, setExportDataType] = useState<'kpi' | 'tickets' | 'both'>('kpi');
+  const [dbResult, setDbResult] = useState<{
+    rowCount: number; success: boolean; error?: string;
   } | null>(null);
-  const [exportDataType, setExportDataType] = useState<'kpi' | 'tickets'>('kpi');
 
   React.useEffect(() => {
-    setMetabaseConnections(localConfig.getMetabaseConnections());
+    setPgConnections(localConfig.getPgConnections());
   }, []);
 
   const handleFileExport = async (format: string) => {
@@ -2786,7 +2641,7 @@ function ExportPanel({
         }
       } else {
         // KPI Export
-        const exportRes = await fetch('/api/metabase/export', {
+        const exportRes = await fetch('/api/export/file', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             issues: extractionResult.issues,
@@ -2807,7 +2662,7 @@ function ExportPanel({
           const data = await exportRes.json();
           const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'jira-kpi-metabase.json'; a.click();
+          const a = document.createElement('a'); a.href = url; a.download = 'jira-kpi-results.json'; a.click();
           URL.revokeObjectURL(url);
           toast.success('KPI JSON downloaded');
         } else {
@@ -2845,72 +2700,35 @@ function ExportPanel({
     reader.readAsText(file);
   };
 
-  // Load Metabase databases when connection is selected
-  const loadMbDatabases = async (connId: string) => {
-    setSelectedMbDb('');
-    setMbDatabases([]);
-    if (!connId) return;
-    setLoadingMbDbs(true);
-    try {
-      const res = await fetch('/api/metabase/connections', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'databases', id: connId }),
-      });
-      const data = await res.json();
-      if (data.success) setMbDatabases(data.databases || []);
-      else toast.error(data.error || 'Failed to load databases');
-    } catch { toast.error('Failed to reach Metabase'); }
-    setLoadingMbDbs(false);
-  };
-
-  const handleMbPush = async () => {
-    if (!extractionResult) { toast.error('No extracted data found. Please run ETL Extraction in the Extract tab first.'); return; }
-    if (!selectedMbConn) { toast.error('Select a Metabase connection'); return; }
+  const handleDbPush = async () => {
+    if (!extractionResult) { toast.error('No extracted data found'); return; }
+    if (!selectedPgConn) { toast.error('Select a target database'); return; }
     
-    const mbConn = metabaseConnections.find(c => c.id === selectedMbConn);
-    if (!mbConn) { toast.error('Selected Metabase connection not found'); return; }
+    const conn = pgConnections.find(c => c.id === selectedPgConn);
+    if (!conn) { toast.error('Selected database not found'); return; }
 
-    setExporting(true); setMbResult(null);
+    setExporting(true); setDbResult(null);
     try {
-      const pushRes = await fetch('/api/metabase/push', {
+      const res = await fetch('/api/pg/export', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: 'upload',
-          metabaseCredentials: {
-            baseUrl: mbConn.baseUrl,
-            username: mbConn.username,
-            password: mbConn.password,
-            apiKey: mbConn.apiKey
-          },
+          connection: conn,
           issues: extractionResult.issues,
           exportDataType,
           holidays: { regions: region === 'all' ? [] : [region] },
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
-          tableName: mbTableName || `jira_data_${Date.now()}`,
-          syncDatabaseId: selectedMbDb || undefined,
-          fullSync: mbFullSync,
-          createCard: mbCreateCard,
-          cardName: `Jira ${exportDataType === 'tickets' ? 'Raw Tickets' : 'KPIs'} - ${new Date().toISOString().split('T')[0]}`,
         }),
       });
-      const pushData = await pushRes.json();
-      if (pushData.success) {
-        setMbResult({
-          tableName: pushData.tableName || mbTableName,
-          rowCount: pushData.rowCount || 0,
-          uploaded: pushData.upload?.success || false,
-          synced: pushData.sync?.success || false,
-          cardCreated: pushData.card?.success || false,
-          cardUrl: pushData.card?.url,
-          error: pushData.error,
-        });
-        toast.success('Data pushed to Metabase successfully!');
+      const data = await res.json();
+      if (data.success) {
+        setDbResult({ rowCount: data.rowCount || 0, success: true });
+        toast.success(`Successfully pushed ${data.rowCount} rows to ${conn.name}`);
       } else {
-        setMbResult({ tableName: mbTableName, rowCount: 0, uploaded: false, synced: false, cardCreated: false, error: pushData.error });
-        toast.error(pushData.error || 'Metabase push failed');
+        setDbResult({ rowCount: 0, success: false, error: data.error });
+        toast.error(data.error || 'Database push failed');
       }
-    } catch { toast.error('Metabase push failed'); }
+    } catch { toast.error('Database push failed'); }
     setExporting(false);
   };
 
@@ -2951,18 +2769,18 @@ function ExportPanel({
           </CardHeader>
         </Card>
 
-        {/* Metabase Direct Push */}
-        <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'metabase' ? 'border-cyan-500/50 bg-cyan-50 dark:bg-cyan-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('metabase')}>
+        {/* Database Sync Mode */}
+        <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'database' ? 'border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('database')}>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
-              <div className={`rounded-lg p-2.5 ${exportMode === 'metabase' ? 'bg-cyan-600' : 'bg-gray-100 dark:bg-slate-800'}`}>
-                <Globe className={`h-5 w-5 ${exportMode === 'metabase' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+              <div className={`rounded-lg p-2.5 ${exportMode === 'database' ? 'bg-indigo-600' : 'bg-gray-100 dark:bg-slate-800'}`}>
+                <Database className={`h-5 w-5 ${exportMode === 'database' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
               </div>
               <div className="flex-1">
-                <CardTitle className="text-base">Direct Metabase Push</CardTitle>
-                <CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">Push + sync + auto-create dashboard card. One-click.</CardDescription>
+                <CardTitle className="text-base">Database Sync</CardTitle>
+                <CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">Manual push of results to external PostgreSQL / Supabase.</CardDescription>
               </div>
-              {exportMode === 'metabase' && <CheckCircle2 className="h-5 w-5 text-cyan-400" />}
+              {exportMode === 'database' && <CheckCircle2 className="h-5 w-5 text-indigo-400" />}
             </div>
           </CardHeader>
         </Card>
@@ -2989,12 +2807,12 @@ function ExportPanel({
                 <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Reset / Restore state</span></li>
               </ul>
             </div>
-            <div className="rounded-lg bg-cyan-50 dark:bg-cyan-500/5 border border-cyan-500/20 p-3 space-y-2">
-              <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Metabase Direct</p>
+            <div className="rounded-lg bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-500/20 p-3 space-y-2">
+              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Database Sync (Manual)</p>
               <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>One-click push + sync</span></li>
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>Auto-create dashboard card</span></li>
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-cyan-400 mt-0.5 shrink-0" /><span>No separate DB setup</span></li>
+                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-indigo-400 mt-0.5 shrink-0" /><span>Manual DB-to-DB bridge</span></li>
+                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-indigo-400 mt-0.5 shrink-0" /><span>Perfect for Metabase usage</span></li>
+                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-indigo-400 mt-0.5 shrink-0" /><span>Export KPI & Raw Tickets</span></li>
               </ul>
             </div>
           </div>
@@ -3075,8 +2893,9 @@ function ExportPanel({
           <div className="space-y-2">
             <Label className="text-slate-700 dark:text-slate-300">Data to Export</Label>
             <div className="flex p-1 bg-gray-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-              <Button variant="ghost" size="sm" onClick={() => setExportDataType('kpi')} className={`flex-1 rounded-md text-xs h-8 ${exportDataType === 'kpi' ? 'bg-white dark:bg-slate-900 shadow-sm text-emerald-500 font-bold' : 'text-slate-500'}`}><Zap className="mr-2 h-3.5 w-3.5" />KPI Results</Button>
-              <Button variant="ghost" size="sm" onClick={() => setExportDataType('tickets')} className={`flex-1 rounded-md text-xs h-8 ${exportDataType === 'tickets' ? 'bg-white dark:bg-slate-900 shadow-sm text-blue-400 font-bold' : 'text-slate-500'}`}><Ticket className="mr-2 h-3.5 w-3.5" />Raw Tickets</Button>
+              <Button variant="ghost" size="sm" onClick={() => setExportDataType('kpi')} className={`flex-1 rounded-md text-[10px] h-8 ${exportDataType === 'kpi' ? 'bg-white dark:bg-slate-900 shadow-sm text-emerald-500 font-bold' : 'text-slate-500'}`}><Zap className="mr-1 h-3 w-3" />KPIs</Button>
+              <Button variant="ghost" size="sm" onClick={() => setExportDataType('tickets')} className={`flex-1 rounded-md text-[10px] h-8 ${exportDataType === 'tickets' ? 'bg-white dark:bg-slate-900 shadow-sm text-blue-400 font-bold' : 'text-slate-500'}`}><Ticket className="mr-1 h-3 w-3" />Raw</Button>
+              <Button variant="ghost" size="sm" onClick={() => setExportDataType('both')} className={`flex-1 rounded-md text-[10px] h-8 ${exportDataType === 'both' ? 'bg-white dark:bg-slate-900 shadow-sm text-indigo-500 font-bold' : 'text-slate-500'}`}><LayoutGrid className="mr-1 h-3 w-3" />Both</Button>
             </div>
           </div>
 
@@ -3109,84 +2928,6 @@ function ExportPanel({
             </div>
           )}
 
-          {/* Metabase-specific config */}
-          {exportMode === 'metabase' && (
-            <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Metabase Target</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">Metabase Connection</Label>
-                  <Select value={selectedMbConn} onValueChange={(v) => { setSelectedMbConn(v); loadMbDatabases(v); }}>
-                    <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue placeholder="Select a Metabase connection..." /></SelectTrigger>
-                    <SelectContent>
-                      {metabaseConnections.length === 0 && <SelectItem value="__none" disabled>No Metabase connections configured</SelectItem>}
-                      {metabaseConnections.map((c) => (<SelectItem key={c.id} value={c.id}>{c.name} ({c.baseUrl})</SelectItem>))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">Table Name</Label>
-                  <Input placeholder="jira_kpi_data" value={mbTableName} onChange={(e) => setMbTableName(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                </div>
-              </div>
-
-              {/* Database sync selector */}
-              {selectedMbConn && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-slate-700 dark:text-slate-300">Sync Database <span className="text-slate-400 dark:text-slate-500 text-xs">(optional)</span></Label>
-                      <Select value={selectedMbDb} onValueChange={setSelectedMbDb}>
-                        <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                          <SelectValue placeholder={loadingMbDbs ? 'Loading...' : 'Skip sync'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">Skip sync</SelectItem>
-                          {loadingMbDbs && <SelectItem value="__loading" disabled>Loading databases...</SelectItem>}
-                          {mbDatabases.map((db) => (
-                            <SelectItem key={db.id} value={String(db.id)}>
-                              {db.name} ({db.engine})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-6">
-                    <div className="flex items-center gap-2">
-                      <Checkbox id="mbFullSync" checked={mbFullSync} onCheckedChange={(v) => setMbFullSync(v === true)} className="border-slate-300 dark:border-slate-600 data-[state=checked]:bg-cyan-600 data-[state=checked]:border-cyan-600" />
-                      <label htmlFor="mbFullSync" className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer">Full sync (slower but thorough)</label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox id="mbCreateCard" checked={mbCreateCard} onCheckedChange={(v) => setMbCreateCard(v === true)} className="border-slate-300 dark:border-slate-600 data-[state=checked]:bg-cyan-600 data-[state=checked]:border-cyan-600" />
-                      <label htmlFor="mbCreateCard" className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer">Auto-create dashboard card</label>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3">
-                    <div className="flex items-center gap-2 mb-2"><Send className="h-3.5 w-3.5 text-cyan-400" /><span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Push Pipeline</span></div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
-                      <span className="rounded bg-cyan-100 dark:bg-cyan-500/10 px-2 py-0.5 text-cyan-400 font-medium">1. Extract from Jira</span>
-                      <ArrowRight className="h-3 w-3 shrink-0" />
-                      <span className="rounded bg-cyan-100 dark:bg-cyan-500/10 px-2 py-0.5 text-cyan-400 font-medium">2. Calculate KPIs</span>
-                      <ArrowRight className="h-3 w-3 shrink-0" />
-                      <span className="rounded bg-cyan-100 dark:bg-cyan-500/10 px-2 py-0.5 text-cyan-400 font-medium">3. Upload CSV to Metabase</span>
-                      <ArrowRight className="h-3 w-3 shrink-0" />
-                      {selectedMbDb ? (<><span className="rounded bg-cyan-100 dark:bg-cyan-500/10 px-2 py-0.5 text-cyan-400 font-medium">4. Sync DB</span><ArrowRight className="h-3 w-3 shrink-0" /></>) : null}
-                      {mbCreateCard ? <span className="rounded bg-emerald-100 dark:bg-emerald-500/10 px-2 py-0.5 text-emerald-400 font-medium">5. Create Card</span> : null}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {!selectedMbConn && metabaseConnections.length === 0 && (
-                <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-500/20 p-3 text-xs text-amber-400">
-                  No Metabase connections configured. Go to the <span className="font-semibold">Connections</span> tab to add one first.
-                </div>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -3197,16 +2938,37 @@ function ExportPanel({
             <div className="flex gap-3">
               <Button onClick={() => handleFileExport('json')} disabled={exporting || !extractionResult} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
                 {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileJson className="mr-2 h-4 w-4" />}
-                Export JSON for Metabase
+                Export JSON Results
               </Button>
               <Button onClick={() => handleFileExport('csv')} disabled={exporting || !extractionResult} variant="outline" className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700">
                 <FileSpreadsheet className="mr-2 h-4 w-4" />Export CSV
               </Button>
             </div>
-          ) : exportMode === 'metabase' ? (
-            <Button onClick={handleMbPush} disabled={exporting || !extractionResult || !selectedMbConn} className="w-full bg-cyan-600 hover:bg-cyan-700">
-              {exporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Pushing to Metabase...</> : <><Globe className="mr-2 h-4 w-4" />Push KPI Data to Metabase</>}
-            </Button>
+          ) : exportMode === 'database' ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium text-slate-500">Target Database Backend</Label>
+                <Select value={selectedPgConn} onValueChange={setSelectedPgConn}>
+                  <SelectTrigger className="bg-white dark:bg-slate-950 border-indigo-500/20">
+                    <SelectValue placeholder="Select target database..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pgConnections.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {pgConnections.length === 0 && (
+                  <p className="text-[10px] text-amber-500">No PostgreSQL backends found. Add one in the Storage tab.</p>
+                )}
+              </div>
+              <Button onClick={handleDbPush} disabled={exporting || !extractionResult || !selectedPgConn} className="w-full bg-indigo-600 hover:bg-indigo-700">
+                {exporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Pushing to Database...</> : <><Database className="mr-2 h-4 w-4" />Push to Database</>}
+              </Button>
+              <p className="text-[10px] text-slate-500 text-center italic mt-2">
+                * This is a manual one-way push. Updates in local storage are not automatically synced to the external DB.
+              </p>
+            </div>
           ) : (
             <div className="flex items-center justify-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
               <div className="text-center space-y-2">
@@ -3222,47 +2984,25 @@ function ExportPanel({
 
 
 
-      {exportMode === 'metabase' && mbResult && (
-        <Card className={mbResult.uploaded ? 'border-cyan-500/30 bg-cyan-50 dark:bg-cyan-500/5' : 'border-red-500/30 bg-red-50 dark:bg-red-500/5'}>
-          <CardHeader>
-            <CardTitle className={`flex items-center gap-2 ${mbResult.uploaded ? 'text-cyan-400' : 'text-red-400'}`}>
-              {mbResult.uploaded ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
-              {mbResult.uploaded ? 'Metabase Push Complete' : 'Metabase Push Failed'}
+      {exportMode === 'database' && dbResult && (
+        <Card className={dbResult?.success ? 'border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/5' : 'border-red-500/30 bg-red-50 dark:bg-red-500/5'}>
+          <CardHeader className="pb-2">
+            <CardTitle className={`flex items-center gap-2 text-sm ${dbResult?.success ? 'text-indigo-600 dark:text-indigo-400' : 'text-red-400'}`}>
+              {dbResult?.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+              {dbResult?.success ? 'Sync Successful' : 'Sync Failed'}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {mbResult.uploaded && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 text-center">
-                  <p className="text-3xl font-bold text-cyan-400">{mbResult.rowCount}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">KPI Rows</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 text-center">
-                  <p className={`text-lg font-bold ${mbResult.uploaded ? 'text-emerald-400' : 'text-red-400'}`}>{mbResult.uploaded ? 'OK' : 'FAIL'}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Upload</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 text-center">
-                  <p className={`text-lg font-bold ${mbResult.synced ? 'text-emerald-400' : 'text-slate-400'}`}>{mbResult.synced ? 'OK' : 'SKIP'}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">DB Sync</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 text-center">
-                  <p className={`text-lg font-bold ${mbResult.cardCreated ? 'text-emerald-400' : 'text-slate-400'}`}>{mbResult.cardCreated ? 'OK' : 'SKIP'}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Card</p>
-                </div>
-              </div>
-            )}
-            <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 space-y-2">
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Push Details</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Table name: <span className="text-cyan-400 font-mono">{mbResult.tableName}</span></p>
-              {mbResult.cardUrl && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Dashboard card: <a href={mbResult.cardUrl} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline font-mono flex items-center gap-1">{mbResult.cardUrl} <ExternalLink className="h-3 w-3" /></a>
-                </p>
-              )}
-              {mbResult.error && (
-                <p className="text-xs text-red-400 mt-2">Error: {mbResult.error}</p>
-              )}
+          <CardContent>
+            <div className="flex items-center justify-between text-xs p-3 rounded-lg bg-white/50 dark:bg-slate-900/50 border border-indigo-500/10">
+               <div className="flex items-center gap-2">
+                 <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
+                 <span className="text-slate-600 dark:text-slate-400">Rows Synchronized:</span>
+               </div>
+               <span className="font-bold text-indigo-600 dark:text-indigo-400">{dbResult?.rowCount}</span>
             </div>
+            {dbResult?.error && (
+              <p className="text-[10px] text-red-500 mt-2 p-2 bg-red-500/5 rounded border border-red-500/10">{dbResult.error}</p>
+            )}
           </CardContent>
         </Card>
       )}
