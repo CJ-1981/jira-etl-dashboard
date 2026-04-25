@@ -85,6 +85,9 @@ function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     }
   }
 
+  // Sort transitions chronologically (Jira returns changelog in reverse order)
+  transitions.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+
   // Calculate time in each status
   const timeInStatus: Record<string, number> = {};
   for (let i = 0; i < transitions.length; i++) {
@@ -193,6 +196,26 @@ const timeInStatusPlugin: KpiPlugin = {
 
     for (const issue of context.issues) {
       const seen = new Set<string>();
+
+      // Account for the initial status before any changelog entry.
+      // Jira doesn't record the creation-to-first-transition as a changelog item,
+      // so the ticket's initial status (e.g. "Distribution") is missed unless we
+      // measure from issue.created to the first transition's occurredAt.
+      if (issue.transitions.length > 0) {
+        const firstTransition = issue.transitions[0];
+        const initialStatus = firstTransition.fromStatus;
+        if (initialStatus) {
+          const hours = calculateBusinessHours(issue.created, firstTransition.occurredAt, context.holidays);
+          if (!statusHours[initialStatus]) statusHours[initialStatus] = { total: 0, count: 0, issueCount: 0 };
+          if (!issuesPerStatus[initialStatus]) issuesPerStatus[initialStatus] = new Set();
+          statusHours[initialStatus].total += hours;
+          statusHours[initialStatus].count++;
+          statusHours[initialStatus].issueCount++;
+          issuesPerStatus[initialStatus].add(issue.key);
+          seen.add(initialStatus);
+        }
+      }
+
       for (const transition of issue.transitions) {
         const status = transition.toStatus;
         if (!seen.has(status) || true) { // include all transitions
@@ -215,18 +238,23 @@ const timeInStatusPlugin: KpiPlugin = {
       }
     }
 
-    return Object.entries(statusHours).map(([status, data]) => ({
-      name: `Time in ${status}`,
-      value: Math.round((data.total / Math.max(data.count, 1)) * 100) / 100,
-      unit: 'hours',
-      dimensions: { status },
-      details: [
-        { label: 'Total Occurrences', value: data.count },
-        { label: 'Unique Issues', value: data.issueCount },
-        { label: 'Total Hours', value: Math.round(data.total * 100) / 100 },
-        { label: 'Avg Hours per Occurrence', value: Math.round((data.total / Math.max(data.count, 1)) * 100) / 100 },
-      ],
-    }));
+    // Filter out transient statuses (average under 1 minute)
+    const MIN_STATUS_HOURS = 1 / 60; // 1 minute in hours
+
+    return Object.entries(statusHours)
+      .filter(([, data]) => (data.total / Math.max(data.count, 1)) >= MIN_STATUS_HOURS)
+      .map(([status, data]) => ({
+        name: `Time in ${status}`,
+        value: Math.round((data.total / Math.max(data.count, 1)) * 100) / 100,
+        unit: 'hours',
+        dimensions: { status },
+        details: [
+          { label: 'Total Occurrences', value: data.count },
+          { label: 'Unique Issues', value: data.issueCount },
+          { label: 'Total Hours', value: Math.round(data.total * 100) / 100 },
+          { label: 'Avg Hours per Occurrence', value: Math.round((data.total / Math.max(data.count, 1)) * 100) / 100 },
+        ],
+      }));
   },
 };
 
