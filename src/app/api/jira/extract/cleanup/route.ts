@@ -1,83 +1,11 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
-    const { retentionDays, beforeDate, cleanupOrphaned } = await request.json();
+    const { retentionDays, beforeDate, storageConfig } = await request.json();
+    const db = getDb(storageConfig?.url);
 
-    // Handle orphaned data cleanup
-    if (cleanupOrphaned) {
-      // Get active connection IDs
-      const activeConnections = await db.jiraConnection.findMany({
-        where: { isActive: true },
-        select: { id: true }
-      });
-
-      const activeConnectionIds = activeConnections.map(c => c.id);
-
-      // Find orphaned runs (from deleted connections)
-      const orphanedRuns = await (db as any).etlRun.findMany({
-        where: {
-          connectionId: { notIn: activeConnectionIds }
-        },
-        select: {
-          id: true,
-          sizeBytes: true
-        }
-      });
-
-      const orphanedRunIds = orphanedRuns.map((r: any) => r.id);
-      const freedSpaceBytes = orphanedRuns.reduce((sum: number, r: any) => sum + (r.sizeBytes || 0), 0);
-
-      if (orphanedRunIds.length > 0) {
-        // Delete KPI results
-        await (db as any).kpiResult.deleteMany({
-          where: {
-            etlRunId: { in: orphanedRunIds }
-          }
-        });
-
-        // Delete transitions
-        const snapshotIds = await (db as any).ticketSnapshot.findMany({
-          where: {
-            etlRunId: { in: orphanedRunIds }
-          },
-          select: { id: true }
-        });
-
-        if (snapshotIds.length > 0) {
-          await (db as any).ticketTransition.deleteMany({
-            where: {
-              ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) }
-            }
-          });
-        }
-
-        // Delete snapshots
-        await (db as any).ticketSnapshot.deleteMany({
-          where: {
-            etlRunId: { in: orphanedRunIds }
-          }
-        });
-
-        // Delete runs
-        await (db as any).etlRun.deleteMany({
-          where: {
-            id: { in: orphanedRunIds }
-          }
-        });
-      }
-
-      return NextResponse.json({
-        success: true,
-        deleted: {
-          etlRuns: orphanedRunIds.length,
-          freedSpaceMB: freedSpaceBytes / (1024 * 1024)
-        }
-      });
-    }
-
-    // Handle retention-based cleanup
     let cutoffDate: Date;
 
     if (beforeDate) {
@@ -90,7 +18,7 @@ export async function POST(request: Request) {
     }
 
     // Find runs to delete
-    const runsToDelete = await db.etlRun.findMany({
+    const runsToDelete = await (db as any).etlRun.findMany({
       where: {
         completedAt: {
           lt: cutoffDate
@@ -102,42 +30,32 @@ export async function POST(request: Request) {
       }
     });
 
-    const etlRunIds = runsToDelete.map(r => r.id);
-    const freedSpaceBytes = runsToDelete.reduce((sum, r) => sum + (r.sizeBytes || 0), 0);
+    const etlRunIds = runsToDelete.map((r: any) => r.id);
+    const freedSpaceBytes = runsToDelete.reduce((sum: number, r: any) => sum + (r.sizeBytes || 0), 0);
 
     if (etlRunIds.length > 0) {
-      // Cascade delete is handled by schema in many DBs,
-      // but for SQLite/Prisma we might need to be explicit if not defined.
-      // In our schema, we don't have onDelete: Cascade explicitly in all places,
-      // but TicketSnapshot references EtlRun.
-
-      // First delete transitions
-      await db.ticketTransition.deleteMany({
-        where: {
-          ticket: {
-            etlRunId: {
-              in: etlRunIds
-            }
-          }
-        }
+      // Delete associated data
+      await (db as any).kpiResult.deleteMany({
+        where: { etlRunId: { in: etlRunIds } }
       });
 
-      // Then snapshots
-      await db.ticketSnapshot.deleteMany({
-        where: {
-          etlRunId: {
-            in: etlRunIds
-          }
-        }
+      const snapshotIds = await (db as any).ticketSnapshot.findMany({
+        where: { etlRunId: { in: etlRunIds } },
+        select: { id: true }
       });
 
-      // Finally the runs
-      await db.etlRun.deleteMany({
-        where: {
-          id: {
-            in: etlRunIds
-          }
-        }
+      if (snapshotIds.length > 0) {
+        await (db as any).ticketTransition.deleteMany({
+          where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
+        });
+      }
+
+      await (db as any).ticketSnapshot.deleteMany({
+        where: { etlRunId: { in: etlRunIds } }
+      });
+
+      await (db as any).etlRun.deleteMany({
+        where: { id: { in: etlRunIds } }
       });
     }
 

@@ -16,6 +16,7 @@ Built with **Next.js 16.1**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 - **Polling / auto-refresh** with configurable intervals (5min–4hr)
 - **Rate limiting** with delay, batch size, and backoff strategies (none/linear/exponential)
 - Custom field mapping (Story Points, Sprint, Epic Link)
+- **Primary Operational Storage** — Toggle between local SQLite and external PostgreSQL/Supabase directly from the UI
 
 ### KPI Calculation Engine
 **9 built-in plugins:**
@@ -50,12 +51,12 @@ Three export modes in the Export tab:
 |------|-------------|
 | **File Export** | Download as CSV or Metabase-compatible JSON |
 | **PostgreSQL Push** | Direct write with auto-create table + upsert |
-| **Metabase Direct Push** | Upload CSV + trigger DB sync + auto-create dashboard card |
+| **Metabase Direct Push** | Upload **KPI Results** or **Raw Tickets** CSV + trigger DB sync + auto-create dashboard card |
 
 ### Connection Management
 Manage connections for:
 - **Jira** (Cloud/Server) — with test connectivity
-- **PostgreSQL** — with SSL mode, schema, and table config
+- **Unified Storage** — Manage external PostgreSQL instances and set them as the primary operational database (optimized for **Supabase**)
 - **Metabase** — with session auth or API key, database discovery
 
 ### Configuration

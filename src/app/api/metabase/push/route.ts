@@ -1,65 +1,29 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 import type { JiraIssue } from '@/lib/jira/client';
 import {
   pushKpiToMetabase,
   triggerMetabaseSync,
-  createMetabaseCard,
   type MetabaseConnectionConfig,
 } from '@/lib/metabase/client';
 
-/**
- * POST /api/metabase/push
- *
- * Pushes KPI data directly to Metabase.
- * Supports two modes:
- * 1. "upload" — Upload CSV directly to Metabase (table/upload endpoint)
- * 2. "sync"   — Trigger a sync on a Metabase database (e.g., after PG export)
- *
- * Body:
- * {
- *   mode: "upload" | "sync",
- *   connectionId: string,         // Metabase connection ID
- *   issues: JiraIssue[],          // (upload mode) Issues to calculate KPIs from
- *   holidays?: { regions: string[] },
- *   dateFrom?: string,
- *   dateTo?: string,
- *   tableName?: string,           // (upload mode) Target table name
- *   syncDatabaseId?: number,      // (optional) Database to sync after upload
- *   fullSync?: boolean,           // (optional) Full sync
- *   createCard?: boolean,         // (optional) Auto-create a Metabase question
- *   cardName?: string,            // (optional) Name for auto-created card
- *   // Or for sync-only mode:
- *   databaseId: number,           // Database ID to sync
- * }
- */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { mode = 'upload', connectionId } = body;
+    const { mode = 'upload', metabaseCredentials } = body;
 
-    if (!connectionId) {
+    if (!metabaseCredentials || !metabaseCredentials.baseUrl || !metabaseCredentials.username || !metabaseCredentials.password) {
       return NextResponse.json(
-        { success: false, error: 'connectionId is required' },
+        { success: false, error: 'Metabase credentials are required' },
         { status: 400 }
       );
     }
 
-    // Load Metabase connection from DB
-    const conn = await db.metabaseConnection.findUnique({ where: { id: connectionId } });
-    if (!conn) {
-      return NextResponse.json(
-        { success: false, error: 'Metabase connection not found' },
-        { status: 404 }
-      );
-    }
-
     const config: MetabaseConnectionConfig = {
-      baseUrl: conn.baseUrl,
-      username: conn.username,
-      password: conn.password,
-      apiKey: conn.apiKey,
+      baseUrl: metabaseCredentials.baseUrl,
+      username: metabaseCredentials.username,
+      password: metabaseCredentials.password,
+      apiKey: metabaseCredentials.apiKey,
     };
 
     // ── Sync-only mode ──
@@ -81,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     // ── Upload mode (default) ──
-    const { issues, holidays, dateFrom, dateTo } = body;
+    const { issues, holidays, dateFrom, dateTo, exportDataType = 'kpi' } = body;
 
     if (!issues || !Array.isArray(issues) || issues.length === 0) {
       return NextResponse.json(
@@ -90,60 +54,83 @@ export async function POST(request: Request) {
       );
     }
 
-    // Calculate KPIs
-    const engine = getKpiEngine();
+    let csvData = '';
     const start = dateFrom ? new Date(dateFrom) : new Date('2024-01-01');
     const end = dateTo ? new Date(dateTo) : new Date();
-    const regions = holidays?.regions || [];
 
-    const allResults = engine.calculateAll(issues as JiraIssue[], { regions }, { start, end });
+    if (exportDataType === 'tickets') {
+      // Build Raw Tickets CSV
+      const headers = ['key', 'summary', 'status', 'priority', 'issuetype', 'created', 'resolved', 'assignee', 'project'];
+      const rows: string[] = [headers.join(',')];
+      
+      for (const i of issues as JiraIssue[]) {
+        const fields = i.fields || {};
+        rows.push([
+          i.key,
+          `"${(fields.summary || '').replace(/"/g, '""')}"`,
+          fields.status?.name || '',
+          fields.priority?.name || '',
+          fields.issuetype?.name || '',
+          fields.created || '',
+          fields.resolutiondate || '',
+          fields.assignee?.displayName || '',
+          i.key.split('-')[0]
+        ].join(','));
+      }
+      csvData = rows.join('\n');
+    } else {
+      // Calculate KPIs
+      const engine = getKpiEngine();
+      const regions = holidays?.regions || [];
 
-    // Build CSV
-    const rows: string[] = [
-      'kpi_id,kpi_name,value,unit,calculated_at,period_start,period_end,region,priority,status,is_detail',
-    ];
-    for (const [pluginId, results] of Object.entries(allResults)) {
-      for (const result of results) {
-        const dims = result.dimensions || {};
-        rows.push(
-          [
-            pluginId,
-            `"${result.name}"`,
-            result.value,
-            result.unit,
-            new Date().toISOString(),
-            start.toISOString(),
-            end.toISOString(),
-            regions.join(','),
-            dims.priority || '',
-            dims.status || '',
-            'false',
-          ].join(',')
-        );
+      const allResults = engine.calculateAll(issues as JiraIssue[], { regions }, { start, end });
 
-        if (result.details) {
-          for (const detail of result.details) {
-            rows.push(
-              [
-                pluginId,
-                `"${result.name} - ${detail.label}"`,
-                detail.value,
-                detail.unit || result.unit,
-                new Date().toISOString(),
-                start.toISOString(),
-                end.toISOString(),
-                regions.join(','),
-                '',
-                '',
-                'true',
-              ].join(',')
-            );
+      // Build KPI CSV
+      const rows: string[] = [
+        'kpi_id,kpi_name,value,unit,calculated_at,period_start,period_end,region,priority,status,is_detail',
+      ];
+      for (const [pluginId, results] of Object.entries(allResults)) {
+        for (const result of results) {
+          const dims = result.dimensions || {};
+          rows.push(
+            [
+              pluginId,
+              `"${result.name}"`,
+              result.value,
+              result.unit,
+              new Date().toISOString(),
+              start.toISOString(),
+              end.toISOString(),
+              regions.join(','),
+              dims.priority || '',
+              dims.status || '',
+              'false',
+            ].join(',')
+          );
+
+          if (result.details) {
+            for (const detail of result.details) {
+              rows.push(
+                [
+                  pluginId,
+                  `"${result.name} - ${detail.label}"`,
+                  detail.value,
+                  detail.unit || result.unit,
+                  new Date().toISOString(),
+                  start.toISOString(),
+                  end.toISOString(),
+                  regions.join(','),
+                  '',
+                  '',
+                  'true',
+                ].join(',')
+              );
+            }
           }
         }
       }
+      csvData = rows.join('\n');
     }
-
-    const csvData = rows.join('\n');
     const tableName = body.tableName || `jira_kpi_${Date.now()}`;
 
     // Push to Metabase

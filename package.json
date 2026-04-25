@@ -6,6 +6,9 @@
     "dev": "next dev -p 3000",
     "dev:turbo": "next dev --turbo -p 3000",
     "dev:low-memory": "cross-env NODE_OPTIONS=--max-old-space-size=2048 next dev -p 3000",
+    "prisma:setup": "node scripts/prisma-setup.mjs",
+    "predev": "node scripts/prisma-setup.mjs",
+    "prebuild": "node scripts/prisma-setup.mjs",
     "build": "next build && npm run copy:files",
     "build:analyze": "cross-env ANALYZE=true next build",
     "copy:files": "shx cp -r .next/static .next/standalone/.next/ && shx cp -r public .next/standalone/",
@@ -22,8 +25,7 @@
     "clean": "shx rm -rf .next node_modules/.cache",
     "clean:full": "shx rm -rf .next node_modules/.cache && shx rm -rf node_modules/.prisma",
     "dev:clean": "npm run clean && npm run dev",
-    "predev": "node -e \"console.log('Starting development server...')\"",
-    "postinstall": "prisma generate"
+    "postinstall": "node scripts/prisma-setup.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

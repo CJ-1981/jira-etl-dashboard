@@ -1,35 +1,33 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    // Get only active connections to filter out orphaned data
-    const activeConnections = await db.jiraConnection.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        name: true,
-      },
-    });
+    const { activeConnections, storageConfig } = await request.json();
+    const db = getDb(storageConfig?.url);
+    
+    if (!activeConnections || !Array.isArray(activeConnections)) {
+      return NextResponse.json({ success: false, error: 'activeConnections array is required' }, { status: 400 });
+    }
 
-    const activeConnectionIds = activeConnections.map(c => c.id);
+    const activeConnectionRefs = activeConnections.map((c: any) => c.id);
 
-    // Get master dataset total tickets (across all connections)
+    // Get overall stats
     const totalMasterTickets = await (db as any).masterTicket.count({
-      where: { connectionId: { in: activeConnectionIds } }
+      where: { connectionRef: { in: activeConnectionRefs } }
     });
 
     const totalExtractions = await (db as any).etlRun.count({
       where: {
         autoSave: true,
-        connectionId: { in: activeConnectionIds }
+        connectionRef: { in: activeConnectionRefs }
       }
     });
 
     const sizeResult = await (db as any).etlRun.aggregate({
       where: {
         autoSave: true,
-        connectionId: { in: activeConnectionIds }
+        connectionRef: { in: activeConnectionRefs }
       },
       _sum: {
         sizeBytes: true
@@ -44,12 +42,13 @@ export async function GET() {
 
     // Get breakdown by connection
     const connectionStats = await Promise.all(
-      activeConnections.map(async (connection) => {
+      activeConnections.map(async (connection: any) => {
         const runs = await (db as any).etlRun.findMany({
           where: {
-            connectionId: connection.id,
+            connectionRef: connection.id,
             autoSave: true,
           },
+          orderBy: { completedAt: 'desc' },
           select: {
             sizeBytes: true,
             completedAt: true,
@@ -57,11 +56,9 @@ export async function GET() {
           },
         });
 
-        const totalSize = runs.reduce((sum, run) => sum + (run.sizeBytes || 0), 0);
-
-        // Get master dataset ticket count (accumulated data)
+        const totalSize = runs.reduce((sum: number, run: any) => sum + (run.sizeBytes || 0), 0);
         const masterTicketCount = await (db as any).masterTicket.count({
-          where: { connectionId: connection.id }
+          where: { connectionRef: connection.id }
         });
 
         return {
@@ -69,21 +66,20 @@ export async function GET() {
           connectionName: connection.name,
           extractions: runs.length,
           totalSizeMB: totalSize / (1024 * 1024),
-          totalTickets: masterTicketCount, // Use master dataset instead of ETL runs
+          totalTickets: masterTicketCount,
           oldestExtraction: runs.length > 0 ? runs[runs.length - 1].completedAt : null,
           newestExtraction: runs.length > 0 ? runs[0].completedAt : null,
         };
       })
     );
 
-    // Sort by size (largest first)
     connectionStats.sort((a, b) => b.totalSizeMB - a.totalSizeMB);
 
-    // Count orphaned records (from deleted connections)
+    // Orphaned records (not in currently active frontend list)
     const orphanedCount = await (db as any).etlRun.count({
       where: {
         autoSave: true,
-        connectionId: { notIn: activeConnectionIds }
+        connectionRef: { notIn: activeConnectionRefs }
       }
     });
 
@@ -91,7 +87,7 @@ export async function GET() {
       success: true,
       storage: {
         totalExtractions,
-        totalTickets: totalMasterTickets, // Total unique tickets in master dataset
+        totalTickets: totalMasterTickets,
         totalSizeMB: (sizeResult._sum.sizeBytes || 0) / (1024 * 1024),
         oldestExtraction: sizeResult._min.completedAt,
         newestExtraction: sizeResult._max.completedAt,
@@ -103,4 +99,9 @@ export async function GET() {
     console.error('Storage info error:', error);
     return NextResponse.json({ success: false, error: 'Failed to retrieve storage info' }, { status: 500 });
   }
+}
+
+// Keep GET for basic health check, but requires POST for full stats now
+export async function GET() {
+  return NextResponse.json({ success: false, error: 'Use POST with activeConnections to get full stats' }, { status: 405 });
 }
