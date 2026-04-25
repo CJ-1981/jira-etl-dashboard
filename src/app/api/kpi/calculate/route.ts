@@ -41,14 +41,14 @@ export async function POST(request: Request) {
 
     // Determine which plugins to calculate
     let pluginsToCalculate: string[] = [];
-    if (activePluginIds && Array.isArray(activePluginIds) && activePluginIds.length > 0) {
-      // Use only selected active plugins
+    if (activePluginIds && Array.isArray(activePluginIds)) {
+      // Use selected active plugins (even if empty array = no plugins)
       pluginsToCalculate = activePluginIds;
     } else if (pluginIds && pluginIds.length > 0) {
       // Legacy support for pluginIds parameter
       pluginsToCalculate = pluginIds;
     } else {
-      // Calculate all plugins (default behavior)
+      // Calculate all plugins (default behavior when nothing specified)
       pluginsToCalculate = engine.getAllPlugins().map(p => p.id);
     }
 

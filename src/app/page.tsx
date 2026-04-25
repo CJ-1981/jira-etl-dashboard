@@ -26,6 +26,9 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -462,7 +465,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="plugins" className="space-y-6">
-            <PluginsPanel />
+            <PluginsPanel settings={settings} onSettingsUpdate={handleSettingsUpdate} />
           </TabsContent>
 
           <TabsContent value="holidays" className="space-y-6">
@@ -1917,52 +1920,7 @@ function KpiDashboard({
             </CardContent>
           </Card>
         )}
-        {trendKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-purple-400" />
-                Time-Series Trends
-              </CardTitle>
-              <CardDescription className="text-slate-600 dark:text-slate-400">
-                KPIs tracked over time with weekly grouping. Use charts below to visualize trends.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {trendKpis.map((kpi) => kpi.results.map((result, idx) => (
-                  <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {result.dimensions?.status || 'Overall'}
-                        </Badge>
-                        <Badge className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
-                          Trend
-                        </Badge>
-                      </div>
-                      <span className="text-lg font-bold text-purple-400">
-                        {result.value.toFixed(1)}{result.unit === '%' ? '%' : ` ${result.unit}`}
-                      </span>
-                    </div>
-                    {result.timeSeries && result.timeSeries.length > 0 && (
-                      <div className="text-xs text-slate-500 mt-2">
-                        <div className="flex justify-between">
-                          <span>Data points:</span>
-                          <span className="font-mono">{result.timeSeries.length}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Latest:</span>
-                          <span className="font-mono">{result.timeSeries[result.timeSeries.length - 1].value.toFixed(1)}{result.unit === '%' ? '%' : ''}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+
 
         {/* Chart Section */}
         {kpiResults.length > 0 && (
@@ -2144,6 +2102,7 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
               <Bar dataKey="value" radius={[8, 8, 0, 0]} />
@@ -2186,6 +2145,7 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                     borderRadius: '8px',
                   }}
                   labelStyle={{ color: '#e2e8f0' }}
+                  itemStyle={{ color: '#e2e8f0' }}
                   formatter={(value: number) => formatChartValue(value, unit)}
                 />
                 <Legend />
@@ -2219,6 +2179,7 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
               <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
@@ -2251,6 +2212,7 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
             </PieChart>
@@ -2299,11 +2261,33 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                 <SelectValue placeholder="Select KPI..." />
               </SelectTrigger>
               <SelectContent>
-                {kpiOptions.map((option) => (
-                  <SelectItem key={option.id} value={option.id}>
-                    {option.label}
-                  </SelectItem>
-                ))}
+                {kpiOptions.timeSeries.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      📈 Time-Series Trends
+                    </SelectLabel>
+                    {kpiOptions.timeSeries.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {kpiOptions.regular.length > 0 && (
+                  <>
+                    {kpiOptions.timeSeries.length > 0 && <SelectSeparator />}
+                    <SelectGroup>
+                      <SelectLabel className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        📊 Standard KPIs
+                      </SelectLabel>
+                      {kpiOptions.regular.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -2362,8 +2346,26 @@ const METRIC_TYPES = [
   { id: 'time', label: 'Time calculation', icon: '\u23F1', description: 'Time-based calc with holiday awareness' },
 ];
 
-function PluginsPanel() {
+function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: { settings?: any, onSettingsUpdate?: (settings: any) => void }) {
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
+  const [settings, setSettings] = useState<any>(globalSettings || localConfig.getSettings());
+  const [initialSettings, setInitialSettings] = useState<any>(globalSettings || localConfig.getSettings());
+  const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
+
+  React.useEffect(() => {
+    if (globalSettings) {
+      setSettings(globalSettings);
+      setInitialSettings(globalSettings);
+      setHasUnsavedSettings(false);
+    }
+  }, [globalSettings]);
+
+  React.useEffect(() => {
+    if (initialSettings && settings) {
+      const changed = JSON.stringify(settings) !== JSON.stringify(initialSettings);
+      setHasUnsavedSettings(changed);
+    }
+  }, [settings, initialSettings]);
   const [loading, setLoading] = useState(false);
 
   // Plugin selection state
@@ -2686,6 +2688,181 @@ function PluginsPanel() {
           </CardContent>
         </Card>
       </div>
+      {/* SLA Targets by Status */}
+      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Assignee comments reset the SLA clock.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
+            <p className="text-xs text-amber-800 dark:text-amber-400">
+              <Info className="inline h-3 w-3 mr-1" />
+              When the assignee comments on a ticket during a status, the SLA clock resets to that comment. Only the time from the last assignee comment (or status entry if no comment) to the status exit counts against the target.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                // Detect statuses from master dataset
+                try {
+                  const activeConn = localConfig.getActiveConnectionId();
+                  if (!activeConn) { toast.error('Select a connection first'); return; }
+                  const storageCfg = localConfig.getStorageConfig();
+                  const res = await fetch(`/api/jira/master/${activeConn}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'get', storageConfig: storageCfg })
+                  });
+                  const data = await res.json();
+                  if (!data.success || !data.data?.issues) { toast.error('No extraction data found. Extract data first.'); return; }
+
+                  const statusSet = new Set<string>();
+                  for (const issue of data.data.issues) {
+                    const changelog = issue.changelog?.histories || [];
+                    for (const h of changelog) {
+                      for (const item of h.items) {
+                        if (item.field === 'status' && item.toString) statusSet.add(item.toString);
+                      }
+                    }
+                    if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
+                  }
+
+                  const currentTargets = { ...(settings.sla?.statusTargets || {}) };
+                  for (const s of statusSet) {
+                    if (!(s in currentTargets)) currentTargets[s] = 0;
+                  }
+                  setSettings({ ...settings, sla: { ...settings.sla, statusTargets: currentTargets } });
+                  toast.success(`Detected ${statusSet.size} unique statuses`);
+                } catch { toast.error('Failed to detect statuses'); }
+              }}
+              className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+            >
+              <Activity className="mr-2 h-4 w-4" /> Detect Statuses from Data
+            </Button>
+            <span className="text-xs text-slate-400">{Object.keys(settings.sla?.statusTargets || {}).length} statuses configured</span>
+          </div>
+          {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+              {Object.entries(settings.sla?.statusTargets || {})
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([status, hours]) => (
+                  <div key={status} className="flex items-center gap-3">
+                    <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0 = disabled"
+                      value={(hours as number) || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setSettings({
+                          ...settings,
+                          sla: {
+                            ...settings.sla,
+                            statusTargets: { ...settings.sla.statusTargets, [status]: val }
+                          }
+                        });
+                      }}
+                      className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                    />
+                    <span className="text-xs text-slate-400">hours</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-slate-400 hover:text-red-500"
+                      onClick={() => {
+                        const updated = { ...settings.sla.statusTargets };
+                        delete updated[status];
+                        setSettings({ ...settings, sla: { ...settings.sla, statusTargets: updated } });
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          )}
+          {Object.keys(settings.sla?.statusTargets || {}).length === 0 && (
+            <div className="text-center py-8 text-slate-400 dark:text-slate-500">
+              <Target className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No SLA targets configured yet</p>
+              <p className="text-xs mt-1">Click "Detect Statuses" to auto-populate from your extraction data</p>
+            </div>
+          )}
+          <Button onClick={() => {
+            localConfig.saveSettings(settings);
+            setInitialSettings(settings);
+            setHasUnsavedSettings(false);
+            if (onSettingsUpdate) onSettingsUpdate(settings);
+            toast.success('SLA targets saved');
+          }} className="bg-amber-600 hover:bg-amber-700" disabled={!hasUnsavedSettings}>
+            <Save className="mr-2 h-4 w-4" /> Save SLA Targets
+          </Button>
+        </CardContent>
+      </Card>
+
+
+
+      {/* KPI Calculation Defaults */}
+      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5 text-blue-400" /> KPI Calculation Defaults</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Configure default values for KPI calculations</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+      {/* General Settings Section */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
+              <Calculator className="h-4 w-4 text-blue-400" />
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">KPI Calculation Defaults</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label className="text-slate-700 dark:text-slate-300">Default German State</Label>
+                <Select value={settings.general.defaultHolidayState} onValueChange={(v) => setSettings({ ...settings, general: { ...settings.general, defaultHolidayState: v } })}>
+                  <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-400 dark:text-slate-500">For holiday calculations</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-700 dark:text-slate-300">Work hours start</Label>
+                <Input type="number" value={settings.general.workStartHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workStartHour: parseInt(e.target.value) || 9 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                <p className="text-xs text-slate-400 dark:text-slate-500">Business hours begin</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-700 dark:text-slate-300">Work hours end</Label>
+                <Input type="number" value={settings.general.workEndHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workEndHour: parseInt(e.target.value) || 17 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                <p className="text-xs text-slate-400 dark:text-slate-500">Business hours end</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-700 dark:text-slate-300">Default SLA target (hours)</Label>
+                <Input type="number" value={settings.general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                <p className="text-xs text-slate-400 dark:text-slate-500">For SLA compliance</p>
+              </div>
+            </div>
+          </div>
+
+
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+            <Button onClick={() => {
+              localConfig.saveSettings(settings);
+              setInitialSettings(settings);
+              setHasUnsavedSettings(false);
+              if (onSettingsUpdate) onSettingsUpdate(settings);
+              toast.success('KPI Defaults saved');
+            }} className="bg-blue-600 hover:bg-blue-700" disabled={!hasUnsavedSettings}>
+              <Save className="mr-2 h-4 w-4" /> Save KPI Defaults
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
     </div>
   );
 }
@@ -3373,122 +3550,6 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
         </CardContent>
       </Card>
 
-      {/* SLA Targets by Status */}
-      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Assignee comments reset the SLA clock.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
-            <p className="text-xs text-amber-800 dark:text-amber-400">
-              <Info className="inline h-3 w-3 mr-1" />
-              When the assignee comments on a ticket during a status, the SLA clock resets to that comment. Only the time from the last assignee comment (or status entry if no comment) to the status exit counts against the target.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                // Detect statuses from master dataset
-                try {
-                  const activeConn = localConfig.getActiveConnectionId();
-                  if (!activeConn) { toast.error('Select a connection first'); return; }
-                  const storageCfg = localConfig.getStorageConfig();
-                  const res = await fetch(`/api/jira/master/${activeConn}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'get', storageConfig: storageCfg })
-                  });
-                  const data = await res.json();
-                  if (!data.success || !data.data?.issues) { toast.error('No extraction data found. Extract data first.'); return; }
-
-                  const statusSet = new Set<string>();
-                  for (const issue of data.data.issues) {
-                    const changelog = issue.changelog?.histories || [];
-                    for (const h of changelog) {
-                      for (const item of h.items) {
-                        if (item.field === 'status' && item.toString) statusSet.add(item.toString);
-                      }
-                    }
-                    if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
-                  }
-
-                  const currentTargets = { ...(settings.sla?.statusTargets || {}) };
-                  for (const s of statusSet) {
-                    if (!(s in currentTargets)) currentTargets[s] = 0;
-                  }
-                  setSettings({ ...settings, sla: { ...settings.sla, statusTargets: currentTargets } });
-                  toast.success(`Detected ${statusSet.size} unique statuses`);
-                } catch { toast.error('Failed to detect statuses'); }
-              }}
-              className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"
-            >
-              <Activity className="mr-2 h-4 w-4" /> Detect Statuses from Data
-            </Button>
-            <span className="text-xs text-slate-400">{Object.keys(settings.sla?.statusTargets || {}).length} statuses configured</span>
-          </div>
-          {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-              {Object.entries(settings.sla?.statusTargets || {})
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([status, hours]) => (
-                  <div key={status} className="flex items-center gap-3">
-                    <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="0 = disabled"
-                      value={hours || ''}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setSettings({
-                          ...settings,
-                          sla: {
-                            ...settings.sla,
-                            statusTargets: { ...settings.sla.statusTargets, [status]: val }
-                          }
-                        });
-                      }}
-                      className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                    />
-                    <span className="text-xs text-slate-400">hours</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-slate-400 hover:text-red-500"
-                      onClick={() => {
-                        const updated = { ...settings.sla.statusTargets };
-                        delete updated[status];
-                        setSettings({ ...settings, sla: { ...settings.sla, statusTargets: updated } });
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-            </div>
-          )}
-          {Object.keys(settings.sla?.statusTargets || {}).length === 0 && (
-            <div className="text-center py-8 text-slate-400 dark:text-slate-500">
-              <Target className="h-10 w-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No SLA targets configured yet</p>
-              <p className="text-xs mt-1">Click "Detect Statuses" to auto-populate from your extraction data</p>
-            </div>
-          )}
-          <Button onClick={() => {
-            localConfig.saveSettings(settings);
-            setInitialSettings(settings);
-            setHasUnsavedChanges(false);
-            if (onSettingsUpdate) onSettingsUpdate(settings);
-            toast.success('SLA targets saved');
-          }} className="bg-amber-600 hover:bg-amber-700" disabled={!hasUnsavedChanges}>
-            <Save className="mr-2 h-4 w-4" /> Save SLA Targets
-          </Button>
-        </CardContent>
-      </Card>
-
       {/* General Settings & Rate Limiting - Combined */}
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
@@ -3535,41 +3596,6 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-400 dark:text-slate-500">Strategy when rate-limited</p>
-              </div>
-            </div>
-          </div>
-
-          {/* General Settings Section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
-              <Calculator className="h-4 w-4 text-blue-400" />
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">KPI Calculation Defaults</h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Default German State</Label>
-                <Select value={settings.general.defaultHolidayState} onValueChange={(v) => setSettings({ ...settings, general: { ...settings.general, defaultHolidayState: v } })}>
-                  <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-400 dark:text-slate-500">For holiday calculations</p>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Work hours start</Label>
-                <Input type="number" value={settings.general.workStartHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workStartHour: parseInt(e.target.value) || 9 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                <p className="text-xs text-slate-400 dark:text-slate-500">Business hours begin</p>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Work hours end</Label>
-                <Input type="number" value={settings.general.workEndHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workEndHour: parseInt(e.target.value) || 17 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                <p className="text-xs text-slate-400 dark:text-slate-500">Business hours end</p>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Default SLA target (hours)</Label>
-                <Input type="number" value={settings.general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                <p className="text-xs text-slate-400 dark:text-slate-500">For SLA compliance</p>
               </div>
             </div>
           </div>

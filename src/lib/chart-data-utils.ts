@@ -204,19 +204,44 @@ export function isTimeSeriesPlugin(pluginId: string): boolean {
 }
 
 /**
- * Get available KPI options for dropdown with time-series indicators
+ * Get available KPI options for dropdown with improved naming and grouping
+ * Returns grouped structure with time-series and regular KPIs separated
  */
-export function getKpiOptions(kpiResults: KpiResult[]): Array<{ id: string; label: string; isTrend?: boolean }> {
-  return kpiResults.map((kpi) => {
-    const isTrend = isTimeSeriesPlugin(kpi.pluginId);
-    const label = kpi.results[0]?.name || kpi.pluginId;
+export function getKpiOptions(kpiResults: KpiResult[]): {
+  timeSeries: Array<{ id: string; label: string }>;
+  regular: Array<{ id: string; label: string }>;
+} {
+  const timeSeries: Array<{ id: string; label: string }> = [];
+  const regular: Array<{ id: string; label: string }> = [];
 
-    return {
-      id: kpi.pluginId,
-      label: isTrend ? `📈 ${label}` : label,
-      isTrend,
-    };
-  });
+  for (const kpi of kpiResults) {
+    const isTrend = isTimeSeriesPlugin(kpi.pluginId);
+    const rawLabel = kpi.results[0]?.name || kpi.pluginId;
+
+    // Clean up label - remove duplicates and improve formatting
+    let label = rawLabel
+      .replace('SLA Compliance by Status', 'SLA by Status')
+      .replace('SLA Compliance by Priority', 'SLA by Priority')
+      .replace('Turnaround Time by Status', 'Time in Status')
+      .replace('Processing Time Trend', 'Processing Time')
+      .replace('Throughput Trend', 'Throughput')
+      .replace('SLA Trend', 'SLA Compliance')
+      .replace('Compliance by Status Trend', 'by Status');
+
+    // Add emoji indicator for time-series
+    if (isTrend) {
+      label = `📈 ${label}`;
+      timeSeries.push({ id: kpi.pluginId, label });
+    } else {
+      regular.push({ id: kpi.pluginId, label });
+    }
+  }
+
+  // Sort both groups alphabetically
+  timeSeries.sort((a, b) => a.label.localeCompare(b.label));
+  regular.sort((a, b) => a.label.localeCompare(b.label));
+
+  return { timeSeries, regular };
 }
 
 /**
