@@ -1715,8 +1715,22 @@ function KpiDashboard({
   };
 
   const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
-  const statusKpis = kpiResults.filter((r) => r.results[0]?.dimensions?.status && !isTimeSeriesPlugin(r.pluginId));
-  const priorityKpis = kpiResults.filter((r) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
+  const statusKpis = kpiResults
+    .filter((r) => r.results[0]?.dimensions?.status && !isTimeSeriesPlugin(r.pluginId))
+    .map(kpi => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) => 
+        (a.dimensions?.status || '').localeCompare(b.dimensions?.status || '', undefined, { numeric: true, sensitivity: 'base' })
+      )
+    }));
+  const priorityKpis = kpiResults
+    .filter((r) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId))
+    .map(kpi => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) => 
+        (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true, sensitivity: 'base' })
+      )
+    }));
 
   return (
     <div className="space-y-6">

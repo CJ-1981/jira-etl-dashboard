@@ -85,7 +85,13 @@ export function transformForBarChart(
 
   // If results have dimensions (status/priority breakdown), use them
   if (kpi.results[0]?.dimensions?.status || kpi.results[0]?.dimensions?.priority) {
-    return kpi.results.map((result, index) => {
+    const sortedResults = [...kpi.results].sort((a, b) => {
+      const aDim = a.dimensions?.priority || a.dimensions?.status || '';
+      const bDim = b.dimensions?.priority || b.dimensions?.status || '';
+      return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    return sortedResults.map((result, index) => {
       const dimensionName =
         result.dimensions?.status ||
         result.dimensions?.priority ||
@@ -120,7 +126,13 @@ export function transformForPieChart(
   const kpi = kpiResults.find((k) => k.pluginId === selectedKpiId);
   if (!kpi || kpi.results.length === 0) return [];
 
-  return kpi.results.map((result, index) => {
+  const sortedResults = [...kpi.results].sort((a, b) => {
+    const aDim = a.dimensions?.priority || a.dimensions?.status || '';
+    const bDim = b.dimensions?.priority || b.dimensions?.status || '';
+    return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
+  return sortedResults.map((result, index) => {
     const dimensionName =
       result.dimensions?.status ||
       result.dimensions?.priority ||
@@ -156,7 +168,13 @@ export function transformForLineChart(
 
   // Fallback: treat dimensions as x-axis categories
   if (kpi.results[0]?.dimensions?.status || kpi.results[0]?.dimensions?.priority) {
-    return kpi.results.map((result) => {
+    const sortedResults = [...kpi.results].sort((a, b) => {
+      const aDim = a.dimensions?.priority || a.dimensions?.status || '';
+      const bDim = b.dimensions?.priority || b.dimensions?.status || '';
+      return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    return sortedResults.map((result) => {
       const dimensionName =
         result.dimensions?.status ||
         result.dimensions?.priority ||
