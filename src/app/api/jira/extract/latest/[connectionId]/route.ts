@@ -48,7 +48,7 @@ export async function POST(
           updated: snapshot.updated.toISOString(),
           resolutiondate: snapshot.resolved 
             ? new Date(snapshot.resolved).toISOString() 
-            : (['Done', 'Closed', 'Resolved'].includes(snapshot.status) ? new Date().toISOString() : null),
+            : (['Done', 'Closed', 'Resolved', 'Close', 'Completed'].includes(snapshot.status) ? new Date().toISOString() : null),
           duedate: snapshot.dueDate ? new Date(snapshot.dueDate).toISOString() : null,
           customfield_10002: snapshot.storyPoints,
           labels: JSON.parse(snapshot.labels || '[]'),

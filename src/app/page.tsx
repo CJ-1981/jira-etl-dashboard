@@ -32,6 +32,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -398,6 +404,10 @@ export default function Home() {
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">Extract</span>
               </TabsTrigger>
+              <TabsTrigger value="export" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                <FileJson className="h-4 w-4" />
+                <span className="hidden sm:inline">Export</span>
+              </TabsTrigger>
               <TabsTrigger value="kpi" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <BarChart3 className="h-4 w-4" />
                 <span className="hidden sm:inline">KPI Dashboard</span>
@@ -409,10 +419,6 @@ export default function Home() {
               <TabsTrigger value="holidays" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Calendar className="h-4 w-4" />
                 <span className="hidden sm:inline">Holidays</span>
-              </TabsTrigger>
-              <TabsTrigger value="export" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-                <FileJson className="h-4 w-4" />
-                <span className="hidden sm:inline">Export</span>
               </TabsTrigger>
               <TabsTrigger value="settings" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Settings className="h-4 w-4" />
@@ -451,6 +457,19 @@ export default function Home() {
             />
           </TabsContent>
 
+          <TabsContent value="export" className="space-y-6">
+            <ExportPanel
+              extractionResult={extractionResult}
+              dateFrom={dateFrom}
+              setDateFrom={setDateFrom}
+              dateTo={dateTo}
+              setDateTo={setDateTo}
+              region={region}
+              setRegion={setRegion}
+              storageConfig={storageConfig}
+            />
+          </TabsContent>
+
           <TabsContent value="kpi" className="space-y-6">
             <KpiDashboard
               connections={connections}
@@ -479,25 +498,17 @@ export default function Home() {
             <HolidaysPanel region={region} setRegion={setRegion} />
           </TabsContent>
 
-          <TabsContent value="export" className="space-y-6">
-            <ExportPanel
-              extractionResult={extractionResult}
-              dateFrom={dateFrom}
-              setDateFrom={setDateFrom}
-              dateTo={dateTo}
-              setDateTo={setDateTo}
-              region={region}
-              setRegion={setRegion}
-              storageConfig={storageConfig}
-            />
-          </TabsContent>
-
           <TabsContent value="settings" className="space-y-6">
             <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
           </TabsContent>
 
           <TabsContent value="storage" className="space-y-6">
-            <StoragePanel storageConfig={storageConfig} setStorageConfig={setStorageConfig} />
+            <StoragePanel 
+              storageConfig={storageConfig} 
+              setStorageConfig={setStorageConfig}
+              settings={settings}
+              setSettings={setSettings}
+            />
           </TabsContent>
         </Tabs>
       </main>
@@ -866,7 +877,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
 
 // ─── Storage Panel ────────────────────────────────────────────────────────────
 
-function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any, setStorageConfig: any }) {
+function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }: { storageConfig: any, setStorageConfig: any, settings: any, setSettings: any }) {
   const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -878,6 +889,26 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
   });
   const [editingPgId, setEditingPgId] = useState<string | null>(null);
 
+  // Storage info state
+  const [storageInfo, setStorageInfo] = useState<{
+    totalExtractions: number;
+    totalSizeMB: number;
+    totalTickets: number;
+    oldestExtraction: string;
+    newestExtraction: string;
+    orphanedExtractions: number;
+    byConnection: Array<{
+      connectionId: string;
+      connectionName: string;
+      extractions: number;
+      totalSizeMB: number;
+      totalTickets: number;
+      oldestExtraction: string | null;
+      newestExtraction: string | null;
+    }>;
+  } | null>(null);
+  const [loadingStorage, setLoadingStorage] = useState(false);
+
   // Load PG connections from localStorage - useLayoutEffect for synchronous read
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
   React.useLayoutEffect(() => {
@@ -887,6 +918,105 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
     setLoading(false);
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Load storage info on mount - useLayoutEffect for synchronous operation
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: calling handleRefreshStorage which syncs with API external system */
+  React.useLayoutEffect(() => {
+    handleRefreshStorage();
+  }, [storageConfig]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const handleRefreshStorage = async () => {
+    setLoadingStorage(true);
+    try {
+      const activeConnections = localConfig.getJiraConnections();
+      const res = await fetch('/api/jira/extract/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activeConnections, storageConfig })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStorageInfo(data.storage);
+      } else {
+        toast.error(data.error);
+      }
+    } catch {
+      toast.error('Failed to load storage info');
+    }
+    setLoadingStorage(false);
+  };
+
+  const handleCleanup = async () => {
+    const retentionDays = settings.persistence?.retentionDays;
+    if (retentionDays === 'never') {
+      toast.error('Cannot cleanup: retention policy is set to "Never"');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/jira/extract/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retentionDays, storageConfig }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Cleaned up ${data.deleted.etlRuns} extractions, freed ~${data.deleted.freedSpaceMB} MB`);
+        handleRefreshStorage();
+      } else {
+        toast.error(data.error);
+      }
+    } catch {
+      toast.error('Failed to cleanup old data');
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm('Are you sure you want to delete ALL extractions? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/jira/extract/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Deleted ${data.deleted.etlRuns} extractions`);
+        handleRefreshStorage();
+      } else {
+        toast.error(data.error);
+      }
+    } catch {
+      toast.error('Failed to clear all data');
+    }
+  };
+
+  const handleCleanupOrphaned = async () => {
+    if (!confirm('Delete extraction data from deleted connections? This will free up space.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/jira/extract/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cleanupOrphaned: true, storageConfig }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Cleaned up ${data.deleted.etlRuns} orphaned extractions (${data.deleted.freedSpaceMB.toFixed(2)} MB freed)`);
+        handleRefreshStorage();
+      } else {
+        toast.error(data.error);
+      }
+    } catch {
+      toast.error('Failed to cleanup orphaned data');
+    }
+  };
 
   const handleSavePg = () => {
     if (!pgForm.name || !pgForm.host || !pgForm.database || !pgForm.username) {
@@ -1067,8 +1197,8 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
       </Card>
 
       {/* Section 2: Saved Database Backends */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        <div className="lg:col-span-2 space-y-4">
+      <div className="space-y-8">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Saved DB Connections</h3>
             <Badge variant="outline">{pgConnections.length} Backends</Badge>
@@ -1112,28 +1242,28 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
                       </div>
                       <div className="flex gap-2 mt-4">
                         <Button 
-                          variant="ghost" 
+                          variant="outline" 
                           size="sm" 
                           onClick={() => handleTestPg(conn)} 
                           disabled={testingId === conn.id}
-                          className="text-[10px] h-7 px-2 flex-1"
+                          className="text-[10px] h-7 px-2 flex-1 border-slate-200 dark:border-slate-700"
                         >
                           {testingId === conn.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                           Test
                         </Button>
                         <Button 
-                          variant="ghost" 
+                          variant="outline" 
                           size="sm" 
                           onClick={() => {
                             setPgForm({ ...conn, port: conn.port.toString(), password: '' });
                             setEditingPgId(conn.id);
                           }}
-                          className="text-[10px] h-7 px-2 flex-1"
+                          className="text-[10px] h-7 px-2 flex-1 border-slate-200 dark:border-slate-700"
                         >
                           <Edit2 className="h-3 w-3 mr-1" /> Edit
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={() => {
                             if (confirm('Delete this connection?')) {
@@ -1142,7 +1272,7 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
                               setPgConnections(updated); // Update in-memory state
                             }
                           }}
-                          className="text-[10px] h-7 px-2 flex-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                          className="text-[10px] h-7 px-2 flex-1 border-red-200 dark:border-red-900/30 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
                         >
                           <Trash2 className="h-3 w-3 mr-1" /> Delete
                         </Button>
@@ -1189,9 +1319,187 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
               </div>
             </CardContent>
           </Card>
-
         </div>
       </div>
+
+      {/* Session Persistence */}
+      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5 text-blue-400" /> Session Persistence</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Control how extraction data is saved and restored across sessions</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Storage Info Display */}
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-500/5 border border-blue-200 dark:border-blue-500/20 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-400">
+                  Stored Extractions
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-500">
+                  {storageInfo?.totalExtractions || 0} extractions, {storageInfo?.totalTickets || 0} total tickets, ~{storageInfo?.totalSizeMB?.toFixed(1) || '0.0'} MB
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshStorage}
+                disabled={loadingStorage}
+                className="border-blue-300 dark:border-blue-500/30"
+              >
+                {loadingStorage ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              </Button>
+            </div>
+
+            {/* Per-connection breakdown */}
+            {storageInfo?.byConnection && storageInfo.byConnection.length > 0 && (
+              <div className="space-y-2 mt-4 pt-4 border-t border-blue-200 dark:border-blue-500/20">
+                <p className="text-xs font-medium text-blue-800 dark:text-blue-400">By Connection</p>
+                {storageInfo.byConnection.map((conn) => (
+                  <div key={conn.connectionId} className="flex items-center justify-between text-xs">
+                    <div className="flex-1">
+                      <p className="font-medium text-blue-900 dark:text-blue-300">{conn.connectionName}</p>
+                      <p className="text-blue-700 dark:text-blue-500">
+                        {conn.extractions} extractions, <span className="font-semibold text-blue-600 dark:text-blue-400">{conn.totalTickets} master tickets</span>
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-blue-900 dark:text-blue-300">
+                        ~{conn.totalSizeMB.toFixed(1)} MB
+                      </p>
+                      {conn.newestExtraction && (
+                        <p className="text-blue-700 dark:text-blue-500">
+                          {new Date(conn.newestExtraction).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Orphaned Data Warning */}
+            {storageInfo && storageInfo.orphanedExtractions > 0 && (
+              <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-500/20">
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-amber-800 dark:text-amber-400">
+                        ⚠️ Orphaned Data Detected
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
+                        {storageInfo.orphanedExtractions} extractions from deleted connections
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCleanupOrphaned}
+                      className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/10 text-xs"
+                    >
+                      <Trash2 className="mr-1 h-3 w-3" />
+                      Cleanup
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Auto-save Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-slate-700 dark:text-slate-300">
+                Auto-save after extraction
+              </Label>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Automatically save extraction results to database
+              </p>
+            </div>
+            <Switch
+              checked={settings.persistence?.autoSave ?? true}
+              onCheckedChange={(checked) =>
+                setSettings({
+                  ...settings,
+                  persistence: { ...settings.persistence, autoSave: checked }
+                })
+              }
+            />
+          </div>
+
+          {/* Auto-restore Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-slate-700 dark:text-slate-300">
+                Auto-restore on page load
+              </Label>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Reload latest extraction when opening dashboard
+              </p>
+            </div>
+            <Switch
+              checked={settings.persistence?.autoRestore ?? true}
+              onCheckedChange={(checked) =>
+                setSettings({
+                  ...settings,
+                  persistence: { ...settings.persistence, autoRestore: checked }
+                })
+              }
+            />
+          </div>
+
+          {/* Retention Policy */}
+          <div className="space-y-2">
+            <Label className="text-slate-700 dark:text-slate-300">
+              Auto-cleanup after
+            </Label>
+            <Select
+              value={String(settings.persistence?.retentionDays ?? 30)}
+              onValueChange={(value) =>
+                setSettings({
+                  ...settings,
+                  persistence: {
+                    ...settings.persistence,
+                    retentionDays: value === 'never' ? 'never' : parseInt(value)
+                  }
+                })
+              }
+            >
+              <SelectTrigger className="bg-gray-100 dark:bg-slate-800">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 days</SelectItem>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="90">90 days</SelectItem>
+                <SelectItem value="never">Never</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Automatically delete old extractions older than this period
+            </p>
+          </div>
+
+          {/* Manual Cleanup */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCleanup}
+              className="flex-1 border-red-300 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear Old Data
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleClearAll}
+              className="border-red-300 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
+            >
+              Clear All
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -1547,7 +1855,11 @@ function ExtractPanel({
               onClick={async () => {
                 if (confirm('Are you sure you want to clear the entire master dataset for this connection? This cannot be undone.')) {
                   try {
-                    const res = await fetch(`/api/jira/master/${activeConnectionId}`, { method: 'DELETE' });
+                    const res = await fetch(`/api/jira/master/${activeConnectionId}`, { 
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'delete', storageConfig })
+                    });
                     const data = await res.json();
                     if (data.success) {
                       toast.success(data.message);
@@ -1582,7 +1894,8 @@ function ExtractPanel({
                 <p className="text-2xl font-bold text-blue-400">
                   {(extractionResult.issues || []).filter((i: any) => {
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
-                    return ['done', 'closed', 'close'].includes(status);
+                    const category = (i.statusCategory || '').toLowerCase();
+                    return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
                   }).length}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Resolved</p>
@@ -1591,7 +1904,8 @@ function ExtractPanel({
                 <p className="text-2xl font-bold text-amber-400">
                   {(extractionResult.issues || []).filter((i: any) => {
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
-                    return !['done', 'closed'].includes(status);
+                    const category = (i.statusCategory || '').toLowerCase();
+                    return category !== 'done' && !['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
                   }).length}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Open</p>
@@ -1622,7 +1936,8 @@ function ExtractPanel({
 
                 const isResolved = (() => {
                   const status = (issue.fields?.status?.name || issue.status || '').toLowerCase();
-                  return ['done', 'closed', 'close'].includes(status);
+                  const category = (issue.statusCategory || '').toLowerCase();
+                  return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
                 })();
 
                 return (
@@ -2851,17 +3166,53 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
                 <p className="text-xs text-slate-400 dark:text-slate-500">For holiday calculations</p>
               </div>
               <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Work hours start</Label>
+                <div className="flex items-center gap-1">
+                  <Label className="text-slate-700 dark:text-slate-300">Work hours start</Label>
+                  <TooltipProvider>
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-slate-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>Business hours beginning time. Only time after this hour is counted toward turnaround time and SLA metrics.</p>
+                      </TooltipContent>
+                    </UITooltip>
+                  </TooltipProvider>
+                </div>
                 <Input type="number" value={settings.general.workStartHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workStartHour: parseInt(e.target.value) || 9 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
                 <p className="text-xs text-slate-400 dark:text-slate-500">Business hours begin</p>
               </div>
               <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Work hours end</Label>
+                <div className="flex items-center gap-1">
+                  <Label className="text-slate-700 dark:text-slate-300">Work hours end</Label>
+                  <TooltipProvider>
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-slate-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>Business hours ending time. Time after this hour (evening/night) is excluded from processing time calculations.</p>
+                      </TooltipContent>
+                    </UITooltip>
+                  </TooltipProvider>
+                </div>
                 <Input type="number" value={settings.general.workEndHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workEndHour: parseInt(e.target.value) || 17 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
                 <p className="text-xs text-slate-400 dark:text-slate-500">Business hours end</p>
               </div>
               <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Default SLA target (hours)</Label>
+                <div className="flex items-center gap-1">
+                  <Label className="text-slate-700 dark:text-slate-300">Default SLA target (hours)</Label>
+                  <TooltipProvider>
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-slate-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>The fallback target for SLA compliance if no per-status target is configured. Measured in business hours.</p>
+                      </TooltipContent>
+                    </UITooltip>
+                  </TooltipProvider>
+                </div>
                 <Input type="number" value={settings.general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
                 <p className="text-xs text-slate-400 dark:text-slate-500">For SLA compliance</p>
               </div>
@@ -3382,26 +3733,6 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [initialSettings, setInitialSettings] = useState<typeof settings | null>(null);
 
-  // Storage info state
-  const [storageInfo, setStorageInfo] = useState<{
-    totalExtractions: number;
-    totalSizeMB: number;
-    totalTickets: number;
-    oldestExtraction: string;
-    newestExtraction: string;
-    orphanedExtractions: number;
-    byConnection: Array<{
-      connectionId: string;
-      connectionName: string;
-      extractions: number;
-      totalSizeMB: number;
-      totalTickets: number;
-      oldestExtraction: string | null;
-      newestExtraction: string | null;
-    }>;
-  } | null>(null);
-  const [loadingStorage, setLoadingStorage] = useState(false);
-
   // Initialize settings from localStorage on mount - useLayoutEffect for synchronous read
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
   React.useLayoutEffect(() => {
@@ -3456,105 +3787,6 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
     setConfigImporting(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
-  const handleRefreshStorage = async () => {
-    setLoadingStorage(true);
-    try {
-      const activeConnections = localConfig.getJiraConnections();
-      const res = await fetch('/api/jira/extract/storage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activeConnections, storageConfig })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStorageInfo(data.storage);
-      } else {
-        toast.error(data.error);
-      }
-    } catch {
-      toast.error('Failed to load storage info');
-    }
-    setLoadingStorage(false);
-  };
-
-  const handleCleanup = async () => {
-    const retentionDays = settings.persistence?.retentionDays;
-    if (retentionDays === 'never') {
-      toast.error('Cannot cleanup: retention policy is set to "Never"');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/jira/extract/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ retentionDays, storageConfig }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`Cleaned up ${data.deleted.etlRuns} extractions, freed ~${data.deleted.freedSpaceMB} MB`);
-        handleRefreshStorage();
-      } else {
-        toast.error(data.error);
-      }
-    } catch {
-      toast.error('Failed to cleanup old data');
-    }
-  };
-
-  const handleClearAll = async () => {
-    if (!confirm('Are you sure you want to delete ALL extractions? This cannot be undone.')) {
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/jira/extract/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`Deleted ${data.deleted.etlRuns} extractions`);
-        handleRefreshStorage();
-      } else {
-        toast.error(data.error);
-      }
-    } catch {
-      toast.error('Failed to clear all data');
-    }
-  };
-
-  const handleCleanupOrphaned = async () => {
-    if (!confirm('Delete extraction data from deleted connections? This will free up space.')) {
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/jira/extract/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cleanupOrphaned: true, storageConfig }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`Cleaned up ${data.deleted.etlRuns} orphaned extractions (${data.deleted.freedSpaceMB.toFixed(2)} MB freed)`);
-        handleRefreshStorage();
-      } else {
-        toast.error(data.error);
-      }
-    } catch {
-      toast.error('Failed to cleanup orphaned data');
-    }
-  };
-
-  // Load storage info on mount - useLayoutEffect for synchronous operation
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: calling handleRefreshStorage which syncs with API external system */
-  React.useLayoutEffect(() => {
-    handleRefreshStorage();
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div className="space-y-6">
@@ -3646,185 +3878,6 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
               )}
             </div>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">All rate limiting and general settings will be saved and applied to future extractions</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Session Persistence */}
-      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5 text-blue-400" /> Session Persistence</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Control how extraction data is saved and restored across sessions</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Storage Info Display */}
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-500/5 border border-blue-200 dark:border-blue-500/20 p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-medium text-blue-900 dark:text-blue-400">
-                  Stored Extractions
-                </p>
-                <p className="text-xs text-blue-700 dark:text-blue-500">
-                  {storageInfo?.totalExtractions || 0} extractions, {storageInfo?.totalTickets || 0} total tickets, ~{storageInfo?.totalSizeMB?.toFixed(1) || '0.0'} MB
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefreshStorage}
-                disabled={loadingStorage}
-                className="border-blue-300 dark:border-blue-500/30"
-              >
-                {loadingStorage ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              </Button>
-            </div>
-
-            {/* Per-connection breakdown */}
-            {storageInfo?.byConnection && storageInfo.byConnection.length > 0 && (
-              <div className="space-y-2 mt-4 pt-4 border-t border-blue-200 dark:border-blue-500/20">
-                <p className="text-xs font-medium text-blue-800 dark:text-blue-400">By Connection</p>
-                {storageInfo.byConnection.map((conn) => (
-                  <div key={conn.connectionId} className="flex items-center justify-between text-xs">
-                    <div className="flex-1">
-                      <p className="font-medium text-blue-900 dark:text-blue-300">{conn.connectionName}</p>
-                      <p className="text-blue-700 dark:text-blue-500">
-                        {conn.extractions} extractions, <span className="font-semibold text-blue-600 dark:text-blue-400">{conn.totalTickets} master tickets</span>
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium text-blue-900 dark:text-blue-300">
-                        ~{conn.totalSizeMB.toFixed(1)} MB
-                      </p>
-                      {conn.newestExtraction && (
-                        <p className="text-blue-700 dark:text-blue-500">
-                          {new Date(conn.newestExtraction).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Orphaned Data Warning */}
-            {storageInfo && storageInfo.orphanedExtractions > 0 && (
-              <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-500/20">
-                <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-amber-800 dark:text-amber-400">
-                        ⚠️ Orphaned Data Detected
-                      </p>
-                      <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
-                        {storageInfo.orphanedExtractions} extractions from deleted connections
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCleanupOrphaned}
-                      className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/10 text-xs"
-                    >
-                      <Trash2 className="mr-1 h-3 w-3" />
-                      Cleanup
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Auto-save Toggle */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-slate-700 dark:text-slate-300">
-                Auto-save after extraction
-              </Label>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Automatically save extraction results to database
-              </p>
-            </div>
-            <Switch
-              checked={settings.persistence?.autoSave ?? true}
-              onCheckedChange={(checked) =>
-                setSettings({
-                  ...settings,
-                  persistence: { ...settings.persistence, autoSave: checked }
-                })
-              }
-            />
-          </div>
-
-          {/* Auto-restore Toggle */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-slate-700 dark:text-slate-300">
-                Auto-restore on page load
-              </Label>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Reload latest extraction when opening dashboard
-              </p>
-            </div>
-            <Switch
-              checked={settings.persistence?.autoRestore ?? true}
-              onCheckedChange={(checked) =>
-                setSettings({
-                  ...settings,
-                  persistence: { ...settings.persistence, autoRestore: checked }
-                })
-              }
-            />
-          </div>
-
-          {/* Retention Policy */}
-          <div className="space-y-2">
-            <Label className="text-slate-700 dark:text-slate-300">
-              Auto-cleanup after
-            </Label>
-            <Select
-              value={String(settings.persistence?.retentionDays ?? 30)}
-              onValueChange={(value) =>
-                setSettings({
-                  ...settings,
-                  persistence: {
-                    ...settings.persistence,
-                    retentionDays: value === 'never' ? 'never' : parseInt(value)
-                  }
-                })
-              }
-            >
-              <SelectTrigger className="bg-gray-100 dark:bg-slate-800">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7 days</SelectItem>
-                <SelectItem value="30">30 days</SelectItem>
-                <SelectItem value="90">90 days</SelectItem>
-                <SelectItem value="never">Never</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Automatically delete old extractions older than this period
-            </p>
-          </div>
-
-          {/* Manual Cleanup */}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleCleanup}
-              className="flex-1 border-red-300 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Clear Old Data
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleClearAll}
-              className="border-red-300 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
-            >
-              Clear All
-            </Button>
           </div>
         </CardContent>
       </Card>

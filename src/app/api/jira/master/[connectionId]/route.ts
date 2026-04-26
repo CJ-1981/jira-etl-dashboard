@@ -73,10 +73,17 @@ export async function POST(
         deletedCount += kpiResults.count;
 
         // Delete ticket transitions
-        const transitions = await (db as any).ticketTransition.deleteMany({
-          where: { etlRunId: { in: etlRunIds } }
+        const snapshotIds = await (db as any).ticketSnapshot.findMany({
+          where: { etlRunId: { in: etlRunIds } },
+          select: { id: true }
         });
-        deletedCount += transitions.count;
+        
+        if (snapshotIds.length > 0) {
+          const transitions = await (db as any).ticketTransition.deleteMany({
+            where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
+          });
+          deletedCount += transitions.count;
+        }
 
         // Delete ticket snapshots
         const snapshots = await (db as any).ticketSnapshot.deleteMany({
@@ -140,10 +147,17 @@ export async function DELETE(
       deletedCount += kpiResults.count;
 
       // Delete ticket transitions
-      const transitions = await (db as any).ticketTransition.deleteMany({
-        where: { etlRunId: { in: etlRunIds } }
+      const snapshotIds = await (db as any).ticketSnapshot.findMany({
+        where: { etlRunId: { in: etlRunIds } },
+        select: { id: true }
       });
-      deletedCount += transitions.count;
+      
+      if (snapshotIds.length > 0) {
+        const transitions = await (db as any).ticketTransition.deleteMany({
+          where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
+        });
+        deletedCount += transitions.count;
+      }
 
       // Delete ticket snapshots
       const snapshots = await (db as any).ticketSnapshot.deleteMany({
