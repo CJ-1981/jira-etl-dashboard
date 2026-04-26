@@ -340,7 +340,7 @@ export default function Home() {
     <div className="flex flex-col min-h-screen">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl">
-        <div className="mx-auto max-w-6xl flex items-center justify-between px-4 sm:px-6 py-3">
+        <div className="mx-auto max-w-5xl flex items-center justify-between px-4 sm:px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
               <Database className="h-5 w-5 text-white" />
@@ -387,7 +387,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
+      <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           {/* Sticky Tab Navigation */}
           <div className="sticky top-0 z-50 bg-white dark:bg-slate-900 py-2">
@@ -422,37 +422,39 @@ export default function Home() {
                 </TabsList>
               </div>
 
-              <TabsContent value="jira-etl" className="mt-0">
-                <ExtractPanel
-                  connections={connections}
-                  extractionResult={extractionResult}
-                  setExtractionResult={setExtractionResult}
-                  masterDatasetInfo={masterDatasetInfo}
-                  setMasterDatasetInfo={setMasterDatasetInfo}
-                  dateFrom={dateFrom}
-                  setDateFrom={setDateFrom}
-                  dateTo={dateTo}
-                  setDateTo={setDateTo}
-                  activeConnectionId={activeConnectionId}
-                  settings={settings}
-                  setSettings={setSettings}
-                  setKpiResults={setKpiResults}
-                  storageConfig={storageConfig}
-                />
-              </TabsContent>
+              <div className="max-w-4xl mx-auto w-full">
+                <TabsContent value="jira-etl" className="mt-0">
+                  <ExtractPanel
+                    connections={connections}
+                    extractionResult={extractionResult}
+                    setExtractionResult={setExtractionResult}
+                    masterDatasetInfo={masterDatasetInfo}
+                    setMasterDatasetInfo={setMasterDatasetInfo}
+                    dateFrom={dateFrom}
+                    setDateFrom={setDateFrom}
+                    dateTo={dateTo}
+                    setDateTo={setDateTo}
+                    activeConnectionId={activeConnectionId}
+                    settings={settings}
+                    setSettings={setSettings}
+                    setKpiResults={setKpiResults}
+                    storageConfig={storageConfig}
+                  />
+                </TabsContent>
 
-              <TabsContent value="db-export" className="mt-0">
-                <ExportPanel
-                  extractionResult={extractionResult}
-                  dateFrom={dateFrom}
-                  setDateFrom={setDateFrom}
-                  dateTo={dateTo}
-                  setDateTo={setDateTo}
-                  region={region}
-                  setRegion={setRegion}
-                  storageConfig={storageConfig}
-                />
-              </TabsContent>
+                <TabsContent value="db-export" className="mt-0">
+                  <ExportPanel
+                    extractionResult={extractionResult}
+                    dateFrom={dateFrom}
+                    setDateFrom={setDateFrom}
+                    dateTo={dateTo}
+                    setDateTo={setDateTo}
+                    region={region}
+                    setRegion={setRegion}
+                    storageConfig={storageConfig}
+                  />
+                </TabsContent>
+              </div>
             </Tabs>
           </TabsContent>
 
@@ -495,13 +497,15 @@ export default function Home() {
                 />
               </TabsContent>
 
-              <TabsContent value="plugins" className="mt-0">
-                <PluginsPanel settings={settings} onSettingsUpdate={handleSettingsUpdate} />
-              </TabsContent>
+              <div className="max-w-4xl mx-auto w-full">
+                <TabsContent value="plugins" className="mt-0">
+                  <PluginsPanel settings={settings} onSettingsUpdate={handleSettingsUpdate} />
+                </TabsContent>
 
-              <TabsContent value="holidays" className="mt-0">
-                <HolidaysPanel region={region} setRegion={setRegion} />
-              </TabsContent>
+                <TabsContent value="holidays" className="mt-0">
+                  <HolidaysPanel region={region} setRegion={setRegion} />
+                </TabsContent>
+              </div>
             </Tabs>
           </TabsContent>
 
@@ -524,29 +528,31 @@ export default function Home() {
                 </TabsList>
               </div>
 
-              <TabsContent value="connections" className="mt-0">
-                <ConnectionsPanel
-                  connections={connections}
-                  setConnections={setConnections}
-                  activeConnectionId={activeConnectionId}
-                  setActiveConnectionId={setActiveConnectionId}
-                  storageConfig={storageConfig}
-                  setStorageConfig={setStorageConfig}
-                />
-              </TabsContent>
+              <div className="max-w-4xl mx-auto w-full">
+                <TabsContent value="connections" className="mt-0">
+                  <ConnectionsPanel
+                    connections={connections}
+                    setConnections={setConnections}
+                    activeConnectionId={activeConnectionId}
+                    setActiveConnectionId={setActiveConnectionId}
+                    storageConfig={storageConfig}
+                    setStorageConfig={setStorageConfig}
+                  />
+                </TabsContent>
 
-              <TabsContent value="storage" className="mt-0">
-                <StoragePanel
-                  storageConfig={storageConfig}
-                  setStorageConfig={setStorageConfig}
-                  settings={settings}
-                  setSettings={setSettings}
-                />
-              </TabsContent>
+                <TabsContent value="storage" className="mt-0">
+                  <StoragePanel 
+                    storageConfig={storageConfig} 
+                    setStorageConfig={setStorageConfig}
+                    settings={settings}
+                    setSettings={setSettings}
+                  />
+                </TabsContent>
 
-              <TabsContent value="config" className="mt-0">
-                <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
-              </TabsContent>
+                <TabsContent value="config" className="mt-0">
+                  <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
+                </TabsContent>
+              </div>
             </Tabs>
           </TabsContent>
         </Tabs>
