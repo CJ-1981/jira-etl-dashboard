@@ -48,7 +48,7 @@ import {
   Clock, AlertTriangle, TrendingUp, Zap, Plug, Calendar,
   CheckCircle2, XCircle, Loader2, Plus, Trash2, FileJson,
   FileSpreadsheet, Activity, Target, Timer,
-  Server, Key, Info, ExternalLink,
+  Server, Key, Info, ExternalLink, Search,
   HardDrive, Upload, Shield,
   RotateCw, Wand2, Sliders,
   Save, SaveAll, Sun, Moon,
@@ -1581,6 +1581,10 @@ function ExtractPanel({
   const [pollInterval, setPollInterval] = useState('15');
   const [pollSaving, setPollSaving] = useState(false);
 
+  // List filtering state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
   // Load polling status
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing state with polling API external system */
   React.useEffect(() => {
@@ -1977,38 +1981,82 @@ function ExtractPanel({
                 </p>
               </div>
             </div>
-            <div className="space-y-1">
-              {(extractionResult.issues || []).map((issue: any) => {
-                const activeConnection = connections.find(c => c.id === activeConnectionId);
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Search by key or summary..."
+                    className="pl-9 bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-[180px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {Array.from(new Set((extractionResult.issues || []).map((i: any) => i.fields?.status?.name || i.status))).sort().map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                // Ensure baseUrl has protocol
-                const baseUrl = activeConnection?.baseUrl || '';
-                const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-                const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+              <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
+                {(extractionResult.issues || []).filter((issue: any) => {
+                  const key = (issue.key || '').toLowerCase();
+                  const summary = (issue.fields?.summary || issue.summary || '').toLowerCase();
+                  const status = issue.fields?.status?.name || issue.status;
+                  const matchesSearch = key.includes(searchQuery.toLowerCase()) || summary.includes(searchQuery.toLowerCase());
+                  const matchesStatus = statusFilter === 'all' || status === statusFilter;
+                  return matchesSearch && matchesStatus;
+                }).map((issue: any) => {
+                  const activeConnection = connections.find(c => c.id === activeConnectionId);
 
-                const isResolved = (() => {
-                  const status = (issue.fields?.status?.name || issue.status || '').toLowerCase();
-                  const category = (issue.statusCategory || '').toLowerCase();
-                  return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
-                })();
+                  // Ensure baseUrl has protocol
+                  const baseUrl = activeConnection?.baseUrl || '';
+                  const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+                  const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
 
-                return (
-                  <div key={issue.key} className="flex items-center gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
-                    <a
-                      href={jiraUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 flex items-center gap-1 transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {issue.key}
-                      <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
-                    <span className="truncate text-slate-700 dark:text-slate-300 flex-1">{issue.fields?.summary || issue.summary}</span>
-                    <Badge variant={isResolved ? 'default' : 'secondary'} className={`text-xs shrink-0 ${isResolved ? 'bg-blue-600' : 'bg-600'}`}>{issue.fields?.status?.name || issue.status}</Badge>
+                  const isResolved = (() => {
+                    const status = (issue.fields?.status?.name || issue.status || '').toLowerCase();
+                    const category = (issue.statusCategory || '').toLowerCase();
+                    return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
+                  })();
+
+                  return (
+                    <div key={issue.key} className="flex items-center gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
+                      <a
+                        href={jiraUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 flex items-center gap-1 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {issue.key}
+                        <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </a>
+                      <span className="truncate text-slate-700 dark:text-slate-300 flex-1">{issue.fields?.summary || issue.summary}</span>
+                      <Badge variant={isResolved ? 'default' : 'secondary'} className={`text-xs shrink-0 ${isResolved ? 'bg-blue-600' : 'bg-600'}`}>{issue.fields?.status?.name || issue.status}</Badge>
+                    </div>
+                  );
+                })}
+                {(extractionResult.issues || []).length > 0 && (extractionResult.issues || []).filter((issue: any) => {
+                  const key = (issue.key || '').toLowerCase();
+                  const summary = (issue.fields?.summary || issue.summary || '').toLowerCase();
+                  const status = issue.fields?.status?.name || issue.status;
+                  const matchesSearch = key.includes(searchQuery.toLowerCase()) || summary.includes(searchQuery.toLowerCase());
+                  const matchesStatus = statusFilter === 'all' || status === statusFilter;
+                  return matchesSearch && matchesStatus;
+                }).length === 0 && (
+                  <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-xs italic">
+                    No tickets match your filters
                   </div>
-                );
-              })}
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
