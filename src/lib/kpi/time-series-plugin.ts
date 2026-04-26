@@ -94,13 +94,32 @@ export const timeInStatusTrendPlugin: KpiPlugin = {
  * SLA Compliance by Status Trend - SLA compliance rate for each workflow status per time period
  */
 export const slaByStatusTrendPlugin: KpiPlugin = {
-  id: 'sla_by_status_trend',
   name: 'SLA Compliance by Status Trend',
+  id: 'sla_by_status_trend',
   description: 'SLA compliance rate for each workflow status, grouped by week',
   category: 'sla',
   unit: '%',
   calculate(context) {
     return calculateSlaByStatusTrend(context, 'weekly');
+  },
+};
+
+/**
+ * SLA Compliance by Status (Excl. Clones) Trend - SLA compliance rate for each workflow status per time period, excluding clones.
+ */
+export const slaByStatusExclCloneTrendPlugin: KpiPlugin = {
+  id: 'sla_by_status_excl_clone_trend',
+  name: 'SLA Compliance by Status Trend (Excl. Clones)',
+  description: 'SLA compliance rate for each workflow status, excluding tickets with "CLONE" in the title, grouped by week',
+  category: 'sla',
+  unit: '%',
+  calculate(context) {
+    // Filter out tickets with "CLONE" in summary (case-sensitive as requested)
+    const filteredContext = {
+      ...context,
+      issues: context.issues.filter(issue => !issue.summary.includes('CLONE'))
+    };
+    return calculateSlaByStatusTrend(filteredContext, 'weekly');
   },
 };
 
@@ -685,4 +704,5 @@ export function registerTimeSeriesPlugins(engine: { register: (plugin: KpiPlugin
   engine.register(slaTrendPlugin);
   engine.register(timeInStatusTrendPlugin);
   engine.register(slaByStatusTrendPlugin);
+  engine.register(slaByStatusExclCloneTrendPlugin);
 }

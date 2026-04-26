@@ -495,62 +495,108 @@ const slaByStatusPlugin: KpiPlugin = {
   category: 'sla',
   unit: '%',
   calculate(context) {
-    const targets = context.slaTargets || {};
-    const targetEntries = Object.entries(targets).filter(([, h]) => h > 0);
-    if (targetEntries.length === 0) return [];
+    return calculateSlaByStatus(context);
+  },
+};
 
-    // Debug: Log available statuses from transitions
-    const availableStatuses = new Set<string>();
-    for (const issue of context.issues) {
-      for (const t of issue.transitions) {
-        if (t.toStatus) availableStatuses.add(t.toStatus);
-        if (t.fromStatus) availableStatuses.add(t.fromStatus);
-      }
+/**
+ * SLA by Status (Excl. Clones) - Same as above but excludes tickets with "CLONE" in summary.
+ */
+const slaByStatusExclClonePlugin: KpiPlugin = {
+  id: 'sla_by_status_excl_clone',
+  name: 'SLA Compliance by Status (Excl. Clones)',
+  description: 'SLA compliance by status, excluding tickets with "CLONE" in the title/summary. Assignee comments reset the SLA clock.',
+  category: 'sla',
+  unit: '%',
+  calculate(context) {
+    // Filter out tickets with "CLONE" in summary (case-sensitive as requested)
+    const filteredContext = {
+      ...context,
+      issues: context.issues.filter(issue => !issue.summary.includes('CLONE'))
+    };
+    return calculateSlaByStatus(filteredContext);
+  },
+};
+
+/**
+ * Core calculation logic for SLA by Status
+ */
+function calculateSlaByStatus(context: KpiContext): KpiResult[] {
+  const targets = context.slaTargets || {};
+  const targetEntries = Object.entries(targets).filter(([, h]) => h > 0);
+  if (targetEntries.length === 0) return [];
+
+  // Debug: Log available statuses from transitions
+  const availableStatuses = new Set<string>();
+  for (const issue of context.issues) {
+    for (const t of issue.transitions) {
+      if (t.toStatus) availableStatuses.add(t.toStatus);
+      if (t.fromStatus) availableStatuses.add(t.fromStatus);
     }
-    console.log('[SLA by Status] Configured targets:', Object.keys(targets));
-    console.log('[SLA by Status] Available statuses in data:', Array.from(availableStatuses).sort());
+  }
 
-    const results: KpiResult[] = [];
+  const results: KpiResult[] = [];
 
-    for (const [configuredStatus, targetHours] of targetEntries) {
-      let totalOccurrences = 0;
-      let withinSla = 0;
+  for (const [configuredStatus, targetHours] of targetEntries) {
+    let totalOccurrences = 0;
+    let withinSla = 0;
 
-      // Try exact match first, then case-insensitive match
-      const matchingStatuses = Array.from(availableStatuses).filter(s =>
-        s === configuredStatus || s.toLowerCase() === configuredStatus.toLowerCase()
-      );
+    // Try exact match first, then case-insensitive match
+    const matchingStatuses = Array.from(availableStatuses).filter(s =>
+      s === configuredStatus || s.toLowerCase() === configuredStatus.toLowerCase()
+    );
 
-      if (matchingStatuses.length === 0) {
-        console.warn(`[SLA by Status] No match found for configured status "${configuredStatus}"`);
-        continue;
+    if (matchingStatuses.length === 0) {
+      continue;
+    }
+
+    // Use the first matching status (prefer exact match)
+    const status = matchingStatuses.find(s => s === configuredStatus) || matchingStatuses[0];
+
+    for (const issue of context.issues) {
+      // Find periods where the ticket was in this status
+      for (let i = 0; i < issue.transitions.length; i++) {
+        const t = issue.transitions[i];
+        if (t.toStatus !== status) continue;
+
+        const statusEntry = t.occurredAt;
+        const statusExit = issue.transitions[i + 1]
+          ? issue.transitions[i + 1].occurredAt
+          : issue.resolved || new Date();
+
+        totalOccurrences++;
+
+        // Find assignee comments during this status period
+        const assigneeComments = issue.comments.filter(
+          (c) => c.author === issue.assignee
+            && c.created >= statusEntry
+            && c.created <= statusExit
+        );
+
+        // SLA clock resets to the last assignee comment
+        const slaStart = assigneeComments.length > 0
+          ? assigneeComments[assigneeComments.length - 1].created
+          : statusEntry;
+
+        const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
+        if (hours <= targetHours) withinSla++;
       }
 
-      // Use the first matching status (prefer exact match)
-      const status = matchingStatuses.find(s => s === configuredStatus) || matchingStatuses[0];
-      console.log(`[SLA by Status] Using "${status}" for configured "${configuredStatus}"`);
-
-      for (const issue of context.issues) {
-        // Find periods where the ticket was in this status
-        for (let i = 0; i < issue.transitions.length; i++) {
-          const t = issue.transitions[i];
-          if (t.toStatus !== status) continue;
-
-          const statusEntry = t.occurredAt;
-          const statusExit = issue.transitions[i + 1]
-            ? issue.transitions[i + 1].occurredAt
-            : issue.resolved || new Date();
+      // Also check initial status (before first transition)
+      if (issue.transitions.length > 0) {
+        const firstTransition = issue.transitions[0];
+        if (firstTransition.fromStatus === status) {
+          const statusEntry = issue.created;
+          const statusExit = firstTransition.occurredAt;
 
           totalOccurrences++;
 
-          // Find assignee comments during this status period
           const assigneeComments = issue.comments.filter(
             (c) => c.author === issue.assignee
               && c.created >= statusEntry
               && c.created <= statusExit
           );
 
-          // SLA clock resets to the last assignee comment
           const slaStart = assigneeComments.length > 0
             ? assigneeComments[assigneeComments.length - 1].created
             : statusEntry;
@@ -558,52 +604,27 @@ const slaByStatusPlugin: KpiPlugin = {
           const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
           if (hours <= targetHours) withinSla++;
         }
-
-        // Also check initial status (before first transition)
-        if (issue.transitions.length > 0) {
-          const firstTransition = issue.transitions[0];
-          if (firstTransition.fromStatus === status) {
-            const statusEntry = issue.created;
-            const statusExit = firstTransition.occurredAt;
-
-            totalOccurrences++;
-
-            const assigneeComments = issue.comments.filter(
-              (c) => c.author === issue.assignee
-                && c.created >= statusEntry
-                && c.created <= statusExit
-            );
-
-            const slaStart = assigneeComments.length > 0
-              ? assigneeComments[assigneeComments.length - 1].created
-              : statusEntry;
-
-            const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
-            if (hours <= targetHours) withinSla++;
-          }
-        }
-      }
-
-      if (totalOccurrences > 0) {
-        const rate = (withinSla / totalOccurrences) * 100;
-        console.log(`[SLA by Status] ${status}: ${withinSla}/${totalOccurrences} within SLA (${rate.toFixed(1)}%)`);
-        results.push({
-          name: `SLA: ${status}`,
-          value: Math.round(rate * 100) / 100,
-          unit: '%',
-          dimensions: { status },
-          details: [
-            { label: 'Target', value: targetHours, unit: 'hours' },
-            { label: 'Within SLA', value: withinSla },
-            { label: 'Total', value: totalOccurrences },
-          ],
-        });
       }
     }
 
-    return results;
-  },
-};
+    if (totalOccurrences > 0) {
+      const rate = (withinSla / totalOccurrences) * 100;
+      results.push({
+        name: `SLA: ${status}`,
+        value: Math.round(rate * 100) / 100,
+        unit: '%',
+        dimensions: { status },
+        details: [
+          { label: 'Target', value: targetHours, unit: 'hours' },
+          { label: 'Within SLA', value: withinSla },
+          { label: 'Total', value: totalOccurrences },
+        ],
+      });
+    }
+  }
+
+  return results;
+}
 
 // ─── KPI Engine ──────────────────────────────────────────────────────────────
 
@@ -621,6 +642,7 @@ export class KpiEngine {
     this.register(avgWorkingDaysPlugin);
     this.register(slaByPriorityPlugin);
     this.register(slaByStatusPlugin);
+    this.register(slaByStatusExclClonePlugin);
     this.register(reassignmentPlugin);
 
     // Register time-series plugins
@@ -881,6 +903,18 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
   const trimmed = condition.trim();
 
   if (trimmed === 'true' || trimmed === '*') return issues;
+
+  // Support CONTAINS and NOT CONTAINS
+  const containsMatch = trimmed.match(/^(\w+)\s+(NOT\s+)?CONTAINS\s+"?([^"]+)"?$/i);
+  if (containsMatch) {
+    const [, field, not, val] = containsMatch;
+    const isNot = !!not;
+    return issues.filter((issue) => {
+      const fieldValue = String(getFieldValue(issue, field));
+      const contains = fieldValue.includes(val);
+      return isNot ? !contains : contains;
+    });
+  }
 
   // Parse simple conditions like: status = "Done", resolved = true
   const eqMatch = trimmed.match(/^(\w+)\s*=\s*"?([^"]+)"?$/);

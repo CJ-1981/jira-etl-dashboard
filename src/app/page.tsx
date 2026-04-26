@@ -1777,7 +1777,7 @@ function KpiDashboard({
       )
     }));
   const slaStatusKpis = kpiResults
-    .filter((r) => r.pluginId === 'sla_by_status')
+    .filter((r) => r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone')
     .map(kpi => ({
       ...kpi,
       results: [...kpi.results].sort((a, b) =>
