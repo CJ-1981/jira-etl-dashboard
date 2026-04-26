@@ -1581,9 +1581,8 @@ function ExtractPanel({
               <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 text-center">
                 <p className="text-2xl font-bold text-blue-400">
                   {(extractionResult.issues || []).filter((i: any) => {
-                    if (i.fields?.resolutiondate || i.resolved) return true;
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
-                    return ['done', 'closed', 'close', 'resolved'].includes(status);
+                    return ['done', 'closed'].includes(status);
                   }).length}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Resolved</p>
@@ -1591,9 +1590,8 @@ function ExtractPanel({
               <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 text-center">
                 <p className="text-2xl font-bold text-amber-400">
                   {(extractionResult.issues || []).filter((i: any) => {
-                    if (i.fields?.resolutiondate || i.resolved) return false;
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
-                    return !['done', 'closed', 'close', 'resolved'].includes(status);
+                    return !['done', 'closed'].includes(status);
                   }).length}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Open</p>
@@ -1623,9 +1621,8 @@ function ExtractPanel({
                 const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
 
                 const isResolved = (() => {
-                  if (issue.fields?.resolutiondate || issue.resolved) return true;
                   const status = (issue.fields?.status?.name || issue.status || '').toLowerCase();
-                  return ['done', 'closed', 'close', 'resolved'].includes(status);
+                  return ['done', 'closed'].includes(status);
                 })();
 
                 return (
