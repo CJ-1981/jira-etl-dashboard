@@ -2005,7 +2005,10 @@ function ExtractPanel({
                 </Select>
               </div>
 
-              <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
+              <div 
+                className="space-y-1 overflow-y-auto pr-1 custom-scrollbar"
+                style={{ maxHeight: `${settings.general.listMaxHeight || 400}px` }}
+              >
                 {(extractionResult.issues || []).filter((issue: any) => {
                   const key = (issue.key || '').toLowerCase();
                   const summary = (issue.fields?.summary || issue.summary || '').toLowerCase();
@@ -3315,6 +3318,11 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
                 </div>
                 <Input type="number" value={settings.general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
                 <p className="text-xs text-slate-400 dark:text-slate-500">For SLA compliance</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-700 dark:text-slate-300">Extraction List Max Height (px)</Label>
+                <Input type="number" value={settings.general.listMaxHeight || 400} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, listMaxHeight: parseInt(e.target.value) || 400 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                <p className="text-xs text-slate-400 dark:text-slate-500">Control scroll area height</p>
               </div>
             </div>
           </div>

@@ -48,6 +48,7 @@ export interface AppSettings {
     workStartHour: number;
     workEndHour: number;
     defaultSlaTargetHours: number;
+    listMaxHeight: number;
   };
   persistence: {
     autoSave: boolean;
@@ -91,6 +92,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     workStartHour: 9,
     workEndHour: 17,
     defaultSlaTargetHours: 40,
+    listMaxHeight: 400,
   },
   persistence: {
     autoSave: true,
