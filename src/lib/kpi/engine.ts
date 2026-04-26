@@ -53,6 +53,8 @@ export interface KpiPlugin {
   description: string;
   category: 'processing_time' | 'turnaround' | 'throughput' | 'sla' | 'quality' | 'custom';
   unit: string;
+  pluginType?: 'built-in' | 'custom';
+  isActive?: boolean;
   calculate(context: KpiContext): KpiResult[];
 }
 
@@ -830,7 +832,8 @@ function executeCustomFormula(
         const filtered = whereClause ? applyFilter(issues, whereClause) : issues;
         if (filtered.length === 0) { value = 0; break; }
         const sum = filtered.reduce((acc, issue) => {
-          return acc + (getFieldValue(issue, field.trim()) || 0);
+          const fieldValue = getFieldValue(issue, field.trim());
+          return acc + (typeof fieldValue === 'number' ? fieldValue : 0);
         }, 0);
         value = Math.round((sum / filtered.length) * 100) / 100;
         break;
@@ -839,7 +842,8 @@ function executeCustomFormula(
         const [field, whereClause] = args.split(' WHERE ');
         const filtered = whereClause ? applyFilter(issues, whereClause) : issues;
         value = filtered.reduce((acc, issue) => {
-          return acc + (getFieldValue(issue, field.trim()) || 0);
+          const fieldValue = getFieldValue(issue, field.trim());
+          return acc + (typeof fieldValue === 'number' ? fieldValue : 0);
         }, 0);
         value = Math.round(value * 100) / 100;
         break;

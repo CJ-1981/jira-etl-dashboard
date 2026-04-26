@@ -14,28 +14,14 @@ export async function POST(request: Request) {
     let host: string, port: string | number, database: string, username: string, password: string, sslMode: string, resolvedPort: number;
     // capturedHost is used in the catch block for Supabase-specific suggestions
 
-    // testById: look up the real password server-side so we never rely on the masked client value
-    if (body.id) {
-      const conn = await db.postgresConnection.findUnique({ where: { id: body.id } });
-      if (!conn) {
-        return NextResponse.json({ success: false, error: 'Connection not found' }, { status: 404 });
-      }
-      ({ host, port, database, username, password, sslMode } = {
-        host: conn.host,
-        port: conn.port,
-        database: conn.database,
-        username: conn.username,
-        password: conn.password,
-        sslMode: conn.sslMode,
-      });
-    } else {
-      host = body.host;
-      port = body.port;
-      database = body.database;
-      username = body.username;
-      password = body.password;
-      sslMode = body.sslMode;
-    }
+    // Connections are managed client-side in localStorage, not stored in database
+    // All connection parameters must be provided in the request body
+    host = body.host;
+    port = body.port;
+    database = body.database;
+    username = body.username;
+    password = body.password;
+    sslMode = body.sslMode;
 
     capturedHost = host;
     resolvedPort = typeof port === 'number' ? port : (parseInt(port as string, 10) || 5432);

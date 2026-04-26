@@ -9,7 +9,7 @@ export interface GermanHoliday {
   name: string;
   nameEn: string;
   isNational: boolean;
-  regions: string[]; // empty = national
+  regions: GermanState[]; // empty = national
 }
 
 // Federal state codes
@@ -69,7 +69,7 @@ export function getGermanHolidays(year: number): GermanHoliday[] {
   };
 
   // Fixed date helper
-  const fixed = (month: number, day: number, name: string, nameEn: string, isNational: boolean, regions: string[] = []): GermanHoliday => ({
+  const fixed = (month: number, day: number, name: string, nameEn: string, isNational: boolean, regions: GermanState[] = [] as GermanState[]): GermanHoliday => ({
     date: new Date(year, month - 1, day),
     name,
     nameEn,
@@ -77,7 +77,7 @@ export function getGermanHolidays(year: number): GermanHoliday[] {
     regions,
   });
 
-  const fromEaster = (offset: number, name: string, nameEn: string, isNational: boolean, regions: string[] = []): GermanHoliday => ({
+  const fromEaster = (offset: number, name: string, nameEn: string, isNational: boolean, regions: GermanState[] = [] as GermanState[]): GermanHoliday => ({
     date: addDays(easter, offset),
     name,
     nameEn,

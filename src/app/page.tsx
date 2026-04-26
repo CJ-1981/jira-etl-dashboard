@@ -41,22 +41,20 @@ import {
   Database, RefreshCw, Download, Settings, BarChart3,
   Clock, AlertTriangle, TrendingUp, Zap, Plug, Calendar,
   CheckCircle2, XCircle, Loader2, Plus, Trash2, FileJson,
-  FileSpreadsheet, Activity, Target, Timer, ArrowRight,
-  Server, Key, FolderOpen, ChevronRight, Info, ExternalLink,
-  HardDrive, Table, Upload, Workflow, Shield, Cable,
-  Play, Pause, RotateCw, ChevronLeft, Wand2, Sliders,
-  Save, SaveAll, Gauge, Sun, Moon, Globe, Send,
-  LayoutDashboard, Radio, LayoutGrid, Edit2, Ticket, GripVertical,
+  FileSpreadsheet, Activity, Target, Timer,
+  Server, Key, Info, ExternalLink,
+  HardDrive, Upload, Shield,
+  RotateCw, Wand2, Sliders,
+  Save, SaveAll, Sun, Moon,
+  LayoutGrid, Edit2, Ticket, GripVertical,
   Calculator,
 } from 'lucide-react';
 import {
   DndContext,
-  closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin } from '@/lib/config/local-store';
@@ -160,17 +158,17 @@ const GERMAN_STATES = [
 
 export default function Home() {
   // Start with dark to match SSR, then sync with client preference on mount
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    const saved = localStorage.getItem('jira-etl-theme');
-    const preferred = saved
-      ? (saved as 'light' | 'dark')
-      : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    setTheme(preferred);
-  }, []);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    // Lazy initialization from localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('jira-etl-theme');
+      return saved
+        ? (saved as 'light' | 'dark')
+        : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'dark';
+  });
+  const [mounted, setMounted] = useState(true);
 
   useEffect(() => {
     if (!mounted) return;
@@ -179,7 +177,7 @@ export default function Home() {
   }, [theme, mounted]);
 
   const [activeTab, setActiveTab] = useState('connections');
-  const [connections, setConnections] = useState<JiraConnection[]>([]);
+  const [connections, setConnections] = useState<JiraConnection[]>(() => localConfig.getJiraConnections());
   const [extractionResult, setExtractionResult] = useState<{
     total: number; etlRunId: string; issues: ExtractedIssue[];
   } | null>(null);
@@ -189,35 +187,39 @@ export default function Home() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [region, setRegion] = useState('national');
-  const [activeConnectionId, setActiveConnectionId] = useState<string>('');
-  const [settings, setSettings] = useState<any>(null);
+  const [activeConnectionId, setActiveConnectionId] = useState<string>(() => {
+    const savedConnections = localConfig.getJiraConnections();
+    const savedActiveId = localConfig.getActiveConnectionId();
+    if (savedActiveId && savedConnections.some(c => c.id === savedActiveId)) {
+      return savedActiveId;
+    } else if (savedConnections.length > 0) {
+      return savedConnections[0].id;
+    }
+    return '';
+  });
+  const [settings, setSettings] = useState<any>(() => localConfig.getSettings());
   const [kpiResults, setKpiResults] = useState<any>([]);
   const [storageConfig, setStorageConfig] = useState<{ provider: 'sqlite' | 'postgresql', url: string, directUrl?: string, isCustom: boolean }>({ provider: 'sqlite', url: '', isCustom: false });
 
-  useEffect(() => {
-    // Load connections from localStorage
-    const savedConnections = localConfig.getJiraConnections();
-    setConnections(savedConnections);
-    
-    // Restore active connection
+  // Restore active connection from localStorage - useLayoutEffect for synchronous read
+  // Note: ESLint disable is acceptable here for external system sync pattern
+  React.useLayoutEffect(() => {
     const savedActiveId = localConfig.getActiveConnectionId();
-    if (savedActiveId && savedConnections.some(c => c.id === savedActiveId)) {
+    if (savedActiveId && connections.some(c => c.id === savedActiveId)) {
       setActiveConnectionId(savedActiveId);
-    } else if (savedConnections.length > 0) {
-      setActiveConnectionId(savedConnections[0].id);
+    } else if (connections.length > 0) {
+      setActiveConnectionId(connections[0].id);
     }
-
     // Load settings from localStorage
     const savedSettings = localConfig.getSettings();
     setSettings(savedSettings);
     if (savedSettings.general?.defaultHolidayState) {
       setRegion(savedSettings.general.defaultHolidayState);
     }
-
     // Load storage config
     const savedStorage = localConfig.getStorageConfig();
     setStorageConfig(savedStorage);
-  }, []);
+  }, [connections]);
 
   // Handle connection switching and auto-restore
   useEffect(() => {
@@ -598,13 +600,13 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
   });
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const loadConnections = useCallback(async () => {
+  // Load Jira connections from localStorage - useLayoutEffect for synchronous read
+  React.useLayoutEffect(() => {
     setLoading(true);
-    setConnections(localConfig.getJiraConnections());
+    const updatedConnections = localConfig.getJiraConnections();
+    setConnections(updatedConnections);
     setLoading(false);
-  }, [setConnections]);
-
-  useEffect(() => { loadConnections(); }, [loadConnections]);
+  }, []);
 
   const handleSaveJira = () => {
     if (!form.name || !form.baseUrl || !form.apiToken || !form.email) {
@@ -630,7 +632,6 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
     toast.success(editingId ? 'Jira connection updated' : 'Jira connection saved');
     setForm({ name: '', baseUrl: '', apiToken: '', email: '', projectKeys: '' });
     setEditingId(null);
-    loadConnections();
   };
 
   const handleEdit = (conn: JiraConnection) => {
@@ -708,9 +709,8 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       
       const updatedConns = connections.filter(c => c.id !== id);
       localConfig.saveJiraConnections(updatedConns);
-      
+
       toast.success(`Connection "${connection.name}" and its database data deleted`);
-      loadConnections();
       if (activeConnectionId === id) {
         setActiveConnectionId(updatedConns.length > 0 ? updatedConns[0].id : '');
       }
@@ -869,14 +869,13 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
   });
   const [editingPgId, setEditingPgId] = useState<string | null>(null);
 
-
-  const loadAll = useCallback(() => {
+  // Load PG connections from localStorage - useLayoutEffect for synchronous read
+  React.useLayoutEffect(() => {
     setLoading(true);
-    setPgConnections(localConfig.getPgConnections());
+    const updatedPgConnections = localConfig.getPgConnections();
+    setPgConnections(updatedPgConnections);
     setLoading(false);
   }, []);
-
-  useEffect(() => { loadAll(); }, [loadAll]);
 
   const handleSavePg = () => {
     if (!pgForm.name || !pgForm.host || !pgForm.database || !pgForm.username) {
@@ -901,7 +900,6 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
     toast.success('PostgreSQL connection saved');
     setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
     setEditingPgId(null);
-    loadAll();
   };
 
   const handleTestPg = async (conn: PgConnection) => {
@@ -1129,7 +1127,6 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
                             if (confirm('Delete this connection?')) {
                               const updated = pgConnections.filter(c => c.id !== conn.id);
                               localConfig.savePgConnections(updated);
-                              loadAll();
                             }
                           }}
                           className="text-[10px] h-7 px-2 flex-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
@@ -1234,8 +1231,8 @@ function ExtractPanel({
     return () => clearInterval(timer);
   }, []);
 
-  // Load settings for persistence
-  React.useEffect(() => {
+  // Load settings for persistence - useLayoutEffect for synchronous localStorage read
+  React.useLayoutEffect(() => {
     const savedSettings = localConfig.getSettings();
     setSettings(savedSettings);
     setSaveThisExtraction(savedSettings.persistence?.autoSave ?? true);
@@ -2346,25 +2343,31 @@ const METRIC_TYPES = [
   { id: 'time', label: 'Time calculation', icon: '\u23F1', description: 'Time-based calc with holiday awareness' },
 ];
 
-function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: { settings?: any, onSettingsUpdate?: (settings: any) => void }) {
+// @MX:NOTE[AUTO] PluginsPanel component manages KPI plugin configuration and settings UI
+// Props interface for type safety (using any for compatibility with AppSettings type)
+interface PluginsPanelProps {
+  settings?: any;
+  onSettingsUpdate?: (settings: any) => void;
+}
+
+function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPanelProps) {
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [settings, setSettings] = useState<any>(globalSettings || localConfig.getSettings());
   const [initialSettings, setInitialSettings] = useState<any>(globalSettings || localConfig.getSettings());
-  const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
 
   React.useEffect(() => {
     if (globalSettings) {
       setSettings(globalSettings);
       setInitialSettings(globalSettings);
-      setHasUnsavedSettings(false);
     }
   }, [globalSettings]);
 
-  React.useEffect(() => {
+  // Derived state - use useMemo instead of useEffect + setState
+  const hasUnsavedSettings = React.useMemo(() => {
     if (initialSettings && settings) {
-      const changed = JSON.stringify(settings) !== JSON.stringify(initialSettings);
-      setHasUnsavedSettings(changed);
+      return JSON.stringify(settings) !== JSON.stringify(initialSettings);
     }
+    return false;
   }, [settings, initialSettings]);
   const [loading, setLoading] = useState(false);
 
@@ -2795,7 +2798,6 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: { settings
           <Button onClick={() => {
             localConfig.saveSettings(settings);
             setInitialSettings(settings);
-            setHasUnsavedSettings(false);
             if (onSettingsUpdate) onSettingsUpdate(settings);
             toast.success('SLA targets saved');
           }} className="bg-amber-600 hover:bg-amber-700" disabled={!hasUnsavedSettings}>
@@ -2853,7 +2855,6 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: { settings
             <Button onClick={() => {
               localConfig.saveSettings(settings);
               setInitialSettings(settings);
-              setHasUnsavedSettings(false);
               if (onSettingsUpdate) onSettingsUpdate(settings);
               toast.success('KPI Defaults saved');
             }} className="bg-blue-600 hover:bg-blue-700" disabled={!hasUnsavedSettings}>
@@ -2875,7 +2876,15 @@ function HolidaysPanel({ region, setRegion }: { region: string, setRegion: any }
   const [loading, setLoading] = useState(false);
   const loadHolidays = useCallback(async () => {
     setLoading(true);
-    try { const res = await fetch(`/api/holidays?year=${year}&region=${region}`); const data = await res.json(); if (data.success) setHolidays(data.holidays); } catch { toast.error('Failed'); }
+    try {
+      const res = await fetch(`/api/holidays?year=${year}&region=${region}`);
+      const data = await res.json();
+      if (data.success) {
+        setHolidays(data.holidays);
+      }
+    } catch {
+      toast.error('Failed to load holidays');
+    }
     setLoading(false);
   }, [year, region]);
   React.useEffect(() => { loadHolidays(); }, [loadHolidays]);
@@ -3350,7 +3359,6 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
   const [configImporting, setConfigImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [initialSettings, setInitialSettings] = useState<typeof settings | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Storage info state
   const [storageInfo, setStorageInfo] = useState<{
@@ -3372,21 +3380,20 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
   } | null>(null);
   const [loadingStorage, setLoadingStorage] = useState(false);
 
-  React.useEffect(() => {
-    setLoading(true);
+  // Initialize settings from localStorage on mount - useLayoutEffect for synchronous read
+  React.useLayoutEffect(() => {
     const savedSettings = localConfig.getSettings() as any;
     setSettings(savedSettings);
     setInitialSettings(savedSettings);
-    setHasUnsavedChanges(false);
     setLoading(false);
   }, []);
 
-  // Detect unsaved changes
-  React.useEffect(() => {
+  // Detect unsaved changes - derived state with useMemo
+  const hasUnsavedChanges = React.useMemo(() => {
     if (initialSettings) {
-      const changed = JSON.stringify(settings) !== JSON.stringify(initialSettings);
-      setHasUnsavedChanges(changed);
+      return JSON.stringify(settings) !== JSON.stringify(initialSettings);
     }
+    return false;
   }, [settings, initialSettings]);
 
   const handleSave = () => {
@@ -3394,7 +3401,6 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
     localConfig.saveSettings(settings);
     toast.success('Settings saved to browser storage');
     setInitialSettings(settings);
-    setHasUnsavedChanges(false);
     if (onSettingsUpdate) onSettingsUpdate(settings);
     setSaving(false);
   };
@@ -3519,8 +3525,8 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
     }
   };
 
-  // Load storage info on mount
-  React.useEffect(() => {
+  // Load storage info on mount - useLayoutEffect for synchronous operation
+  React.useLayoutEffect(() => {
     handleRefreshStorage();
   }, []);
 

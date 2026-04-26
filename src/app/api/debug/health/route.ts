@@ -6,6 +6,33 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
+// @MX:ANCHOR: [AUTO] Health check response interface
+// @MX:REASON: Defines the contract for health check responses used by monitoring and debugging
+interface HealthResponse {
+  status: 'healthy' | 'unhealthy';
+  timestamp: string;
+  uptime: number;
+  memory: {
+    used: number;
+    total: number;
+    rss: number;
+  };
+  environment: string;
+  responseTime: number;
+  database?: {
+    status: 'connected' | 'disconnected';
+    error?: string;
+  };
+  logs?: Array<{
+    timestamp: string;
+    level: string;
+    message: string;
+    context?: string;
+  }>;
+  errorCount?: number;
+  error?: string;
+}
+
 export async function GET(request: Request) {
   const startTime = Date.now();
   const url = new URL(request.url);
@@ -13,7 +40,7 @@ export async function GET(request: Request) {
 
   try {
     // Basic health checks
-    const health = {
+    const health: HealthResponse = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
