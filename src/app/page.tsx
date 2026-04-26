@@ -3319,11 +3319,6 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
                 <Input type="number" value={settings.general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
                 <p className="text-xs text-slate-400 dark:text-slate-500">For SLA compliance</p>
               </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Extraction List Max Height (px)</Label>
-                <Input type="number" value={settings.general.listMaxHeight || 400} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, listMaxHeight: parseInt(e.target.value) || 400 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                <p className="text-xs text-slate-400 dark:text-slate-500">Control scroll area height</p>
-              </div>
             </div>
           </div>
 
@@ -3880,6 +3875,21 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-400 dark:text-slate-500">Strategy when rate-limited</p>
+              </div>
+            </div>
+          </div>
+
+          {/* UI Settings Section */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
+              <Sliders className="h-4 w-4 text-blue-400" />
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">UI Settings</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label className="text-slate-700 dark:text-slate-300">Extraction List Max Height (px)</Label>
+                <Input type="number" value={settings.general.listMaxHeight || 400} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, listMaxHeight: parseInt(e.target.value) || 400 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                <p className="text-xs text-slate-400 dark:text-slate-500">Control scroll area height</p>
               </div>
             </div>
           </div>
