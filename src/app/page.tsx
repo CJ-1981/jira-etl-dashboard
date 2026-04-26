@@ -1582,7 +1582,7 @@ function ExtractPanel({
                 <p className="text-2xl font-bold text-blue-400">
                   {(extractionResult.issues || []).filter((i: any) => {
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
-                    return ['done', 'closed'].includes(status);
+                    return ['done', 'closed', 'close'].includes(status);
                   }).length}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Resolved</p>
@@ -1622,7 +1622,7 @@ function ExtractPanel({
 
                 const isResolved = (() => {
                   const status = (issue.fields?.status?.name || issue.status || '').toLowerCase();
-                  return ['done', 'closed'].includes(status);
+                  return ['done', 'closed', 'close'].includes(status);
                 })();
 
                 return (
