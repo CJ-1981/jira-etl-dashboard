@@ -484,6 +484,38 @@ const reassignmentPlugin: KpiPlugin = {
 };
 
 /**
+ * Open Tickets by Assignee - Count non-resolved tickets per unique assignee
+ */
+const openTicketsByAssigneePlugin: KpiPlugin = {
+  id: 'open_tickets_by_assignee',
+  name: 'Open Tickets by Assignee',
+  description: 'Number of non-resolved tickets currently assigned to each user.',
+  category: 'throughput',
+  unit: 'tickets',
+  calculate(context) {
+    const counts: Record<string, number> = {};
+    const openIssues = context.issues.filter(i => !i.resolved);
+
+    for (const issue of openIssues) {
+      const assignee = issue.assignee || 'Unassigned';
+      counts[assignee] = (counts[assignee] || 0) + 1;
+    }
+
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1]) // Sort by count descending
+      .map(([assignee, count]) => ({
+        name: `Open: ${assignee}`,
+        value: count,
+        unit: 'tickets',
+        dimensions: { assignee },
+        details: [
+          { label: 'Assignee', value: 0, unit: assignee }, // Value 0 but label shows name
+        ],
+      }));
+  },
+};
+
+/**
  * SLA by Status - Compliance per workflow status with comment-based clock reset.
  * When the assignee comments while a ticket is in a status, the SLA clock resets
  * to that comment timestamp (the last assignee comment becomes the new SLA start).
@@ -644,6 +676,7 @@ export class KpiEngine {
     this.register(slaByStatusPlugin);
     this.register(slaByStatusExclClonePlugin);
     this.register(reassignmentPlugin);
+    this.register(openTicketsByAssigneePlugin);
 
     // Register time-series plugins
     registerTimeSeriesPlugins(this);
