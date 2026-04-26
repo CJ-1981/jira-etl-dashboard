@@ -157,18 +157,9 @@ const GERMAN_STATES = [
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  // Start with dark to match SSR, then sync with client preference on mount
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    // Lazy initialization from localStorage
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('jira-etl-theme');
-      return saved
-        ? (saved as 'light' | 'dark')
-        : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'dark';
-  });
-  const [mounted, setMounted] = useState(true);
+  // Static server-safe defaults to prevent hydration mismatch
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     if (!mounted) return;
@@ -177,7 +168,7 @@ export default function Home() {
   }, [theme, mounted]);
 
   const [activeTab, setActiveTab] = useState('connections');
-  const [connections, setConnections] = useState<JiraConnection[]>(() => localConfig.getJiraConnections());
+  const [connections, setConnections] = useState<JiraConnection[]>([]);
   const [extractionResult, setExtractionResult] = useState<{
     total: number; etlRunId: string; issues: ExtractedIssue[];
   } | null>(null);
@@ -187,40 +178,52 @@ export default function Home() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [region, setRegion] = useState('national');
-  const [activeConnectionId, setActiveConnectionId] = useState<string>(() => {
-    const savedConnections = localConfig.getJiraConnections();
-    const savedActiveId = localConfig.getActiveConnectionId();
-    if (savedActiveId && savedConnections.some(c => c.id === savedActiveId)) {
-      return savedActiveId;
-    } else if (savedConnections.length > 0) {
-      return savedConnections[0].id;
-    }
-    return '';
-  });
-  const [settings, setSettings] = useState<any>(() => localConfig.getSettings());
+  const [activeConnectionId, setActiveConnectionId] = useState<string>('');
+  const [settings, setSettings] = useState<any>({});
   const [kpiResults, setKpiResults] = useState<any>([]);
   const [storageConfig, setStorageConfig] = useState<{ provider: 'sqlite' | 'postgresql', url: string, directUrl?: string, isCustom: boolean }>({ provider: 'sqlite', url: '', isCustom: false });
 
-  // Restore active connection from localStorage - useLayoutEffect for synchronous read
-  // Note: ESLint disable is acceptable here for external system sync pattern
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
-  React.useLayoutEffect(() => {
-    const savedActiveId = localConfig.getActiveConnectionId();
-    if (savedActiveId && connections.some(c => c.id === savedActiveId)) {
-      setActiveConnectionId(savedActiveId);
-    } else if (connections.length > 0) {
-      setActiveConnectionId(connections[0].id);
+  // Client-only: restore persisted state from localStorage on mount
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system on client mount only */
+  useEffect(() => {
+    // Restore theme from localStorage
+    const savedTheme = localStorage.getItem('jira-etl-theme');
+    if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
+      setTheme(savedTheme);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setTheme('dark');
+    } else {
+      setTheme('light');
     }
-    // Load settings from localStorage
+    setMounted(true);
+
+    // Restore connections from localStorage
+    const savedConnections = localConfig.getJiraConnections();
+    setConnections(savedConnections);
+
+    // Restore active connection ID
+    const savedActiveId = localConfig.getActiveConnectionId();
+    if (savedActiveId && savedConnections.some(c => c.id === savedActiveId)) {
+      setActiveConnectionId(savedActiveId);
+    } else if (savedConnections.length > 0) {
+      setActiveConnectionId(savedConnections[0].id);
+    }
+
+    // Restore settings from localStorage
     const savedSettings = localConfig.getSettings();
     setSettings(savedSettings);
-    if (savedSettings.general?.defaultHolidayState) {
+
+    // Restore storage config from localStorage
+    const savedStorage = localConfig.getStorageConfig();
+    if (savedStorage) {
+      setStorageConfig(savedStorage);
+    }
+
+    // Restore region from settings
+    if (savedSettings?.general?.defaultHolidayState) {
       setRegion(savedSettings.general.defaultHolidayState);
     }
-    // Load storage config
-    const savedStorage = localConfig.getStorageConfig();
-    setStorageConfig(savedStorage);
-  }, [connections]);
+  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Handle connection switching and auto-restore
@@ -633,6 +636,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       : [...allConns, newConn];
 
     localConfig.saveJiraConnections(updatedConns);
+    setConnections(updatedConns); // Update in-memory state
     toast.success(editingId ? 'Jira connection updated' : 'Jira connection saved');
     setForm({ name: '', baseUrl: '', apiToken: '', email: '', projectKeys: '' });
     setEditingId(null);
@@ -713,6 +717,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       
       const updatedConns = connections.filter(c => c.id !== id);
       localConfig.saveJiraConnections(updatedConns);
+      setConnections(updatedConns); // Update in-memory state
 
       toast.success(`Connection "${connection.name}" and its database data deleted`);
       if (activeConnectionId === id) {
@@ -903,6 +908,7 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
     };
     const updated = editingPgId ? all.map(c => c.id === editingPgId ? newConn : c) : [...all, newConn];
     localConfig.savePgConnections(updated);
+    setPgConnections(updated); // Update in-memory state
     toast.success('PostgreSQL connection saved');
     setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
     setEditingPgId(null);
@@ -1126,13 +1132,14 @@ function StoragePanel({ storageConfig, setStorageConfig }: { storageConfig: any,
                         >
                           <Edit2 className="h-3 w-3 mr-1" /> Edit
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             if (confirm('Delete this connection?')) {
                               const updated = pgConnections.filter(c => c.id !== conn.id);
                               localConfig.savePgConnections(updated);
+                              setPgConnections(updated); // Update in-memory state
                             }
                           }}
                           className="text-[10px] h-7 px-2 flex-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"

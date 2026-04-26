@@ -4,6 +4,74 @@ import { ValidationError } from '@/lib/api-error';
 import { log } from '@/lib/logger';
 import { db } from '@/lib/db';
 
+/**
+ * Validate hostname/IP to prevent SSRF attacks
+ * Rejects private/reserved IP ranges (RFC1918, loopback, link-local)
+ */
+function validateHostAddress(host: string): { valid: boolean; error?: string } {
+  // Allow Supabase domains (already validated below)
+  if (host.includes('.supabase.co')) {
+    return { valid: true };
+  }
+
+  // Extract hostname if URL format provided
+  let hostname = host;
+  try {
+    // Remove protocol if present
+    hostname = hostname.replace(/^https?:\/\//, '');
+    // Remove port and path
+    hostname = hostname.split('/')[0].split(':')[0];
+  } catch {
+    return { valid: false, error: 'Invalid hostname format' };
+  }
+
+  // Check if it's an IP address
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = hostname.match(ipv4Regex);
+
+  if (match) {
+    const octets = match.slice(1, 5).map(Number);
+
+    // Validate each octet is 0-255
+    if (octets.some(o => o > 255)) {
+      return { valid: false, error: 'Invalid IPv4 address' };
+    }
+
+    const [first, second] = octets;
+
+    // Reject private ranges (RFC1918)
+    if (
+      first === 10 || // 10.0.0.0/8
+      (first === 172 && second >= 16 && second <= 31) || // 172.16.0.0/12
+      (first === 192 && second === 168) // 192.168.0.0/16
+    ) {
+      return { valid: false, error: 'Private IP addresses are not allowed (RFC1918)' };
+    }
+
+    // Reject loopback
+    if (first === 127) {
+      return { valid: false, error: 'Loopback addresses are not allowed' };
+    }
+
+    // Reject link-local
+    if (first === 169 && second === 254) {
+      return { valid: false, error: 'Link-local addresses are not allowed' };
+    }
+
+    // Reject multicast
+    if (first >= 224 && first <= 239) {
+      return { valid: false, error: 'Multicast addresses are not allowed' };
+    }
+
+    // Reject reserved
+    if (first >= 240) {
+      return { valid: false, error: 'Reserved addresses are not allowed' };
+    }
+  }
+
+  return { valid: true };
+}
+
 export async function POST(request: Request) {
   const startTime = Date.now();
   let capturedHost = '';
@@ -28,6 +96,16 @@ export async function POST(request: Request) {
 
     if (!host || !database || !username || !password) {
       throw new ValidationError('host, database, username, and password are required');
+    }
+
+    // SSRF protection: validate host address
+    const hostValidation = validateHostAddress(host);
+    if (!hostValidation.valid) {
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid or prohibited host address',
+        error: hostValidation.error
+      }, { status: 400 });
     }
 
     // Detect Supabase connection issues
