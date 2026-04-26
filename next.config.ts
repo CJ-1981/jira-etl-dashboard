@@ -3,6 +3,11 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
 
+  // Enable typed routes for better TypeScript support
+  experimental: {
+    typedRoutes: true,
+  },
+
   // Set Turbopack root directory to avoid warnings
   turbopack: {
     root: process.cwd(),
