@@ -173,7 +173,7 @@ export default function Home() {
     localStorage.setItem('jira-etl-theme', theme);
   }, [theme, mounted]);
 
-  const [activeTab, setActiveTab] = useState('connections');
+  const [activeTab, setActiveTab] = useState('extract');
   const [connections, setConnections] = useState<JiraConnection[]>([]);
   const [extractionResult, setExtractionResult] = useState<{
     total: number; etlRunId: string; issues: ExtractedIssue[];
@@ -372,7 +372,7 @@ export default function Home() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setActiveTab('connections')}
+                onClick={() => setActiveTab('settings')}
                 className="h-8 border-slate-200 dark:border-slate-700"
               >
                 <Server className="h-4 w-4" />
@@ -392,33 +392,13 @@ export default function Home() {
           {/* Sticky Tab Navigation */}
           <div className="sticky top-0 z-50 bg-white dark:bg-slate-900 py-2">
             <TabsList className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1 h-auto flex flex-wrap sm:flex-nowrap gap-1 justify-start overflow-x-auto no-scrollbar shadow-sm">
-              <TabsTrigger value="connections" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-                <Server className="h-4 w-4" />
-                <span className="hidden sm:inline">Connections</span>
-              </TabsTrigger>
-              <TabsTrigger value="storage" className="flex-1 gap-2 data-[state=active]:bg-violet-600/20 data-[state=active]:text-violet-400">
-                <HardDrive className="h-4 w-4" />
-                <span className="hidden sm:inline">Storage</span>
-              </TabsTrigger>
               <TabsTrigger value="extract" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Extract</span>
-              </TabsTrigger>
-              <TabsTrigger value="export" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-                <FileJson className="h-4 w-4" />
-                <span className="hidden sm:inline">Export</span>
+                <span className="hidden sm:inline">ETL & Export</span>
               </TabsTrigger>
               <TabsTrigger value="kpi" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">KPI Dashboard</span>
-              </TabsTrigger>
-              <TabsTrigger value="plugins" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-                <Plug className="h-4 w-4" />
-                <span className="hidden sm:inline">Plugins</span>
-              </TabsTrigger>
-              <TabsTrigger value="holidays" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
-                <Calendar className="h-4 w-4" />
-                <span className="hidden sm:inline">Holidays</span>
+                <span className="hidden sm:inline">KPI</span>
               </TabsTrigger>
               <TabsTrigger value="settings" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Settings className="h-4 w-4" />
@@ -427,88 +407,147 @@ export default function Home() {
             </TabsList>
           </div>
 
-          <TabsContent value="connections" className="space-y-6">
-            <ConnectionsPanel
-              connections={connections}
-              setConnections={setConnections}
-              activeConnectionId={activeConnectionId}
-              setActiveConnectionId={setActiveConnectionId}
-              storageConfig={storageConfig}
-              setStorageConfig={setStorageConfig}
-            />
+          <TabsContent value="extract" className="space-y-6 overflow-hidden">
+            <Tabs defaultValue="jira-etl" className="space-y-6">
+              <div className="flex justify-center">
+                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <TabsTrigger value="jira-etl" className="gap-2 px-6">
+                    <Download className="h-4 w-4" />
+                    Jira ETL
+                  </TabsTrigger>
+                  <TabsTrigger value="db-export" className="gap-2 px-6">
+                    <FileJson className="h-4 w-4" />
+                    DB Export
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="jira-etl" className="mt-0">
+                <ExtractPanel
+                  connections={connections}
+                  extractionResult={extractionResult}
+                  setExtractionResult={setExtractionResult}
+                  masterDatasetInfo={masterDatasetInfo}
+                  setMasterDatasetInfo={setMasterDatasetInfo}
+                  dateFrom={dateFrom}
+                  setDateFrom={setDateFrom}
+                  dateTo={dateTo}
+                  setDateTo={setDateTo}
+                  activeConnectionId={activeConnectionId}
+                  settings={settings}
+                  setSettings={setSettings}
+                  setKpiResults={setKpiResults}
+                  storageConfig={storageConfig}
+                />
+              </TabsContent>
+
+              <TabsContent value="db-export" className="mt-0">
+                <ExportPanel
+                  extractionResult={extractionResult}
+                  dateFrom={dateFrom}
+                  setDateFrom={setDateFrom}
+                  dateTo={dateTo}
+                  setDateTo={setDateTo}
+                  region={region}
+                  setRegion={setRegion}
+                  storageConfig={storageConfig}
+                />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
-          <TabsContent value="extract" className="space-y-6">
-            <ExtractPanel
-              connections={connections}
-              extractionResult={extractionResult}
-              setExtractionResult={setExtractionResult}
-              masterDatasetInfo={masterDatasetInfo}
-              setMasterDatasetInfo={setMasterDatasetInfo}
-              dateFrom={dateFrom}
-              setDateFrom={setDateFrom}
-              dateTo={dateTo}
-              setDateTo={setDateTo}
-              activeConnectionId={activeConnectionId}
-              settings={settings}
-              setSettings={setSettings}
-              setKpiResults={setKpiResults}
-              storageConfig={storageConfig}
-            />
+          <TabsContent value="kpi" className="space-y-6 overflow-hidden">
+            <Tabs defaultValue="dashboard" className="space-y-6">
+              <div className="flex justify-center">
+                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <TabsTrigger value="dashboard" className="gap-2 px-6">
+                    <BarChart3 className="h-4 w-4" />
+                    Dashboard
+                  </TabsTrigger>
+                  <TabsTrigger value="plugins" className="gap-2 px-6">
+                    <Plug className="h-4 w-4" />
+                    Plugins Configuration
+                  </TabsTrigger>
+                  <TabsTrigger value="holidays" className="gap-2 px-6">
+                    <Calendar className="h-4 w-4" />
+                    Holidays Calendar
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="dashboard" className="mt-0">
+                <KpiDashboard
+                  connections={connections}
+                  extractionResult={extractionResult}
+                  masterDatasetInfo={masterDatasetInfo}
+                  setMasterDatasetInfo={setMasterDatasetInfo}
+                  dateFrom={dateFrom}
+                  setDateFrom={setDateFrom}
+                  dateTo={dateTo}
+                  setDateTo={setDateTo}
+                  region={region}
+                  setRegion={setRegion}
+                  activeConnectionId={activeConnectionId}
+                  settings={settings}
+                  kpiResults={kpiResults}
+                  setKpiResults={setKpiResults}
+                  storageConfig={storageConfig}
+                />
+              </TabsContent>
+
+              <TabsContent value="plugins" className="mt-0">
+                <PluginsPanel settings={settings} onSettingsUpdate={handleSettingsUpdate} />
+              </TabsContent>
+
+              <TabsContent value="holidays" className="mt-0">
+                <HolidaysPanel region={region} setRegion={setRegion} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
-          <TabsContent value="export" className="space-y-6">
-            <ExportPanel
-              extractionResult={extractionResult}
-              dateFrom={dateFrom}
-              setDateFrom={setDateFrom}
-              dateTo={dateTo}
-              setDateTo={setDateTo}
-              region={region}
-              setRegion={setRegion}
-              storageConfig={storageConfig}
-            />
-          </TabsContent>
+          <TabsContent value="settings" className="space-y-6 overflow-hidden">
+            <Tabs defaultValue="connections" className="space-y-6">
+              <div className="flex justify-center">
+                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <TabsTrigger value="connections" className="gap-2 px-6">
+                    <Server className="h-4 w-4" />
+                    Connections
+                  </TabsTrigger>
+                  <TabsTrigger value="storage" className="gap-2 px-6">
+                    <HardDrive className="h-4 w-4" />
+                    Storage
+                  </TabsTrigger>
+                  <TabsTrigger value="config" className="gap-2 px-6">
+                    <Settings className="h-4 w-4" />
+                    Configuration
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-          <TabsContent value="kpi" className="space-y-6">
-            <KpiDashboard
-              connections={connections}
-              extractionResult={extractionResult}
-              masterDatasetInfo={masterDatasetInfo}
-              setMasterDatasetInfo={setMasterDatasetInfo}
-              dateFrom={dateFrom}
-              setDateFrom={setDateFrom}
-              dateTo={dateTo}
-              setDateTo={setDateTo}
-              region={region}
-              setRegion={setRegion}
-              activeConnectionId={activeConnectionId}
-              settings={settings}
-              kpiResults={kpiResults}
-              setKpiResults={setKpiResults}
-              storageConfig={storageConfig}
-            />
-          </TabsContent>
+              <TabsContent value="connections" className="mt-0">
+                <ConnectionsPanel
+                  connections={connections}
+                  setConnections={setConnections}
+                  activeConnectionId={activeConnectionId}
+                  setActiveConnectionId={setActiveConnectionId}
+                  storageConfig={storageConfig}
+                  setStorageConfig={setStorageConfig}
+                />
+              </TabsContent>
 
-          <TabsContent value="plugins" className="space-y-6">
-            <PluginsPanel settings={settings} onSettingsUpdate={handleSettingsUpdate} />
-          </TabsContent>
+              <TabsContent value="storage" className="mt-0">
+                <StoragePanel
+                  storageConfig={storageConfig}
+                  setStorageConfig={setStorageConfig}
+                  settings={settings}
+                  setSettings={setSettings}
+                />
+              </TabsContent>
 
-          <TabsContent value="holidays" className="space-y-6">
-            <HolidaysPanel region={region} setRegion={setRegion} />
-          </TabsContent>
-
-          <TabsContent value="settings" className="space-y-6">
-            <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
-          </TabsContent>
-
-          <TabsContent value="storage" className="space-y-6">
-            <StoragePanel 
-              storageConfig={storageConfig} 
-              setStorageConfig={setStorageConfig}
-              settings={settings}
-              setSettings={setSettings}
-            />
+              <TabsContent value="config" className="mt-0">
+                <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       </main>
@@ -547,9 +586,9 @@ function SortableConnectionItem({
 
   const style = transform
     ? {
-        transform: `translateY(${transform.y}px)`,
-        transition,
-      }
+      transform: `translateY(${transform.y}px)`,
+      transition,
+    }
     : undefined;
 
   return (
@@ -630,7 +669,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
     if (!form.name || !form.baseUrl || !form.apiToken || !form.email) {
       toast.error('All fields except Project Keys are required'); return;
     }
-    
+
     const allConns = localConfig.getJiraConnections();
     const newConn: JiraConnection = {
       id: editingId || crypto.randomUUID(),
@@ -642,7 +681,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
       isActive: true,
     };
 
-    const updatedConns = editingId 
+    const updatedConns = editingId
       ? allConns.map(c => c.id === editingId ? newConn : c)
       : [...allConns, newConn];
 
@@ -715,17 +754,17 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
     }
 
     try {
-      await fetch(`/api/jira/master/${id}`, { 
+      await fetch(`/api/jira/master/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', storageConfig })
       });
-      await fetch(`/api/jira/extract/cleanup`, { 
-        method: 'POST', 
+      await fetch(`/api/jira/extract/cleanup`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig }) 
+        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig })
       });
-      
+
       const updatedConns = connections.filter(c => c.id !== id);
       localConfig.saveJiraConnections(updatedConns);
       setConnections(updatedConns); // Update in-memory state
@@ -1098,7 +1137,7 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
         </div>
         <CardContent className="p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div 
+            <div
               onClick={() => {
                 const cfg = { ...storageConfig, provider: 'sqlite', url: '', isCustom: false, connectionId: undefined };
                 setStorageConfig(cfg);
@@ -1118,12 +1157,12 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
               </div>
             </div>
 
-            <div 
+            <div
               onClick={() => {
                 if (pgConnections.length > 0 && !storageConfig.connectionId) {
                   handleSetPrimary(pgConnections[0]);
                 } else if (storageConfig.provider !== 'postgresql') {
-                   setStorageConfig({ ...storageConfig, provider: 'postgresql', isCustom: true });
+                  setStorageConfig({ ...storageConfig, provider: 'postgresql', isCustom: true });
                 }
               }}
               className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${storageConfig.provider === 'postgresql' ? 'border-violet-500 bg-violet-500/10' : 'border-slate-200 dark:border-slate-800 hover:border-violet-500/50'}`}
@@ -1144,8 +1183,8 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
             <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="space-y-2">
                 <Label className="text-xs font-medium text-slate-500">Active Connection</Label>
-                <Select 
-                  value={storageConfig.connectionId || 'custom'} 
+                <Select
+                  value={storageConfig.connectionId || 'custom'}
                   onValueChange={(val) => {
                     if (val === 'custom') {
                       setStorageConfig({ ...storageConfig, connectionId: undefined });
@@ -1171,15 +1210,15 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-slate-500">Custom Connection String</Label>
                   <div className="flex gap-2">
-                    <Input 
-                      type="password" 
-                      placeholder="postgres://user:pass@host:port/db" 
-                      value={storageConfig.url} 
+                    <Input
+                      type="password"
+                      placeholder="postgres://user:pass@host:port/db"
+                      value={storageConfig.url}
                       onChange={(e) => setStorageConfig({ ...storageConfig, url: e.target.value })}
                       className="bg-white dark:bg-slate-950 border-violet-500/20"
                     />
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={() => {
                         localConfig.saveStorageConfig(storageConfig);
                         toast.success('Raw URL storage configuration saved');
@@ -1230,9 +1269,9 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
                         {isPrimary ? (
                           <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px]">PRIMARY</Badge>
                         ) : (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => handleSetPrimary(conn)}
                             className="text-[10px] h-7 px-2 border-violet-500/30 text-violet-500 hover:bg-violet-500/10"
                           >
@@ -1241,19 +1280,19 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
                         )}
                       </div>
                       <div className="flex gap-2 mt-4">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleTestPg(conn)} 
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleTestPg(conn)}
                           disabled={testingId === conn.id}
                           className="text-[10px] h-7 px-2 flex-1 border-slate-200 dark:border-slate-700"
                         >
                           {testingId === conn.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                           Test
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => {
                             setPgForm({ ...conn, port: conn.port.toString(), password: '' });
                             setEditingPgId(conn.id);
@@ -1306,7 +1345,7 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
                 <Input placeholder="Username" value={pgForm.username} onChange={(e) => setPgForm({ ...pgForm, username: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
               </div>
               <Input placeholder="Password" type="password" value={pgForm.password} onChange={(e) => setPgForm({ ...pgForm, password: e.target.value })} className="h-8 text-xs bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-              
+
               <div className="flex gap-2 pt-1">
                 <Button onClick={handleSavePg} className="flex-1 h-8 text-xs bg-violet-600 hover:bg-violet-700">
                   {editingPgId ? 'Update Backend' : 'Save Backend'}
@@ -1610,8 +1649,15 @@ function ExtractPanel({
         if (extractedCount === 0) {
           toast.warning('Extraction returned 0 issues. This could be due to: invalid/expired API token, incorrect project key, or no issues in the date range. Try testing your connection and checking credentials.', { duration: 8000 });
         } else {
-          const saveMsg = saveThisExtraction ? ' and saved to database' : '';
-          toast.success(`Extracted ${extractedCount} issues${saveMsg}`);
+          const { added, updated, deleted } = data.summary;
+          const stats = [
+            added > 0 ? `${added} added` : null,
+            updated > 0 ? `${updated} updated` : null,
+            deleted > 0 ? `${deleted} deleted` : null
+          ].filter(Boolean).join(', ');
+
+          const saveMsg = saveThisExtraction ? ' and synced to master dataset' : '';
+          toast.success(`Extracted ${extractedCount} issues${saveMsg}${stats ? ` (${stats})` : ''}`);
         }
 
         setExtractionResult({ total: extractedCount, etlRunId: data.etlRunId, issues: data.issues });
@@ -1733,7 +1779,7 @@ function ExtractPanel({
       {/* Feature 1: Quick Pull */}
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Download className="h-5 w-5 text-emerald-400" /> ETL Extract</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Download className="h-5 w-5 text-emerald-400" /> Jira Extract</CardTitle>
           <CardDescription className="text-slate-600 dark:text-slate-400">Extract issues from Jira with full changelog for KPI analysis</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1798,7 +1844,7 @@ function ExtractPanel({
           )}
 
           <Button onClick={() => handleExtract()} disabled={extracting || !activeConnectionId} className="w-full bg-emerald-600 hover:bg-emerald-700">
-            {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting Issues...</> : <><RefreshCw className="mr-2 h-4 w-4" />Run ETL Extraction</>}
+            {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting Issues...</> : <><RefreshCw className="mr-2 h-4 w-4" />Run Jira Extraction</>}
           </Button>
         </CardContent>
       </Card>
@@ -1848,14 +1894,14 @@ function ExtractPanel({
               <span className="text-slate-500">Last Updated:</span>
               <span className="text-slate-700 dark:text-slate-300">{new Date(masterDatasetInfo.lastUpdated).toLocaleString()}</span>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="w-full mt-2 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
               onClick={async () => {
                 if (confirm('Are you sure you want to clear the entire master dataset for this connection? This cannot be undone.')) {
                   try {
-                    const res = await fetch(`/api/jira/master/${activeConnectionId}`, { 
+                    const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'delete', storageConfig })
@@ -2825,7 +2871,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
 
   const handleCreate = () => {
     if (!builderData.name) { toast.error('Plugin Name is required'); return; }
-    
+
     // Auto-generate formula if using DSL and not manually edited
     let finalFormula = builderData.formula;
     if (builderLanguage === 'dsl' && !finalFormula) {
@@ -2917,7 +2963,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
                     <div className="space-y-2"><Label className="text-xs">Priority (comma-separated)</Label><Input placeholder="High, Highest" value={builderData.priorities.join(', ')} onChange={(e) => setBuilderData({ ...builderData, priorities: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-sm h-8" /></div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">3. Formula DSL Preview</Label>
@@ -2934,11 +2980,11 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
                   <code className="bg-white/50 dark:bg-black/20 px-1 py-0.5 rounded text-xs">function calculate(context: {'{'} issues: JiraIssue[], period: {'{'}start, end{'}'}, holidays: ... {'}'}): number | KpiResult[]</code>
                   <p className="mt-2 text-xs opacity-80">Return a number, or an array of result objects: <code>[{'{'} name: 'My KPI', value: 42, unit: 'hours' {'}'}]</code></p>
                 </div>
-                <textarea 
-                  className="w-full min-h-[250px] rounded-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-4 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" 
-                  placeholder={`// Example: Count resolved bugs\n\nconst bugs = context.issues.filter(i => i.issueType === 'Bug' && i.resolved);\nreturn bugs.length;`} 
-                  value={builderData.formula} 
-                  onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })} 
+                <textarea
+                  className="w-full min-h-[250px] rounded-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-4 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  placeholder={`// Example: Count resolved bugs\n\nconst bugs = context.issues.filter(i => i.issueType === 'Bug' && i.resolved);\nreturn bugs.length;`}
+                  value={builderData.formula}
+                  onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })}
                 />
               </div>
             )}
@@ -3148,7 +3194,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
           <CardDescription className="text-slate-600 dark:text-slate-400">Configure default values for KPI calculations</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-      {/* General Settings Section */}
+          {/* General Settings Section */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
               <Calculator className="h-4 w-4 text-blue-400" />
@@ -3291,7 +3337,7 @@ function HolidaysPanel({ region, setRegion }: { region: string, setRegion: any }
 function ExportPanel({
   extractionResult, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, storageConfig
 }: any) {
-  const [exportMode, setExportMode] = useState<'file' | 'database' | 'config'>('file');
+  const [exportMode, setExportMode] = useState<'file' | 'database'>('file');
   const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
   const [selectedPgConn, setSelectedPgConn] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -3307,7 +3353,7 @@ function ExportPanel({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleFileExport = async (format: string) => {
-    if (!extractionResult) { toast.error('No extracted data found. Please run ETL Extraction in the Extract tab first.'); return; }
+    if (!extractionResult) { toast.error('No extracted data found. Please run Jira Extraction in the Extract tab first.'); return; }
     setExporting(true);
     try {
       if (exportDataType === 'tickets') {
@@ -3376,36 +3422,10 @@ function ExportPanel({
     setExporting(false);
   };
 
-  const handleExportConfig = () => {
-    const config = localConfig.exportConfig();
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `jira-etl-config-${new Date().toISOString().split('T')[0]}.json`; a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Configuration exported successfully');
-  };
-
-  const handleImportConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const config = JSON.parse(event.target?.result as string);
-        localConfig.importConfig(config);
-        toast.success('Configuration imported successfully. Please refresh the page.');
-        setTimeout(() => window.location.reload(), 1500);
-      } catch (error) {
-        toast.error('Invalid configuration file');
-      }
-    };
-    reader.readAsText(file);
-  };
-
   const handleDbPush = async () => {
     if (!extractionResult) { toast.error('No extracted data found'); return; }
     if (!selectedPgConn) { toast.error('Select a target database'); return; }
-    
+
     const conn = pgConnections.find(c => c.id === selectedPgConn);
     if (!conn) { toast.error('Selected database not found'); return; }
 
@@ -3438,7 +3458,7 @@ function ExportPanel({
   return (
     <div className="space-y-6">
       {/* Export Mode Selector */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* File Export Mode */}
         <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'file' ? 'border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('file')}>
           <CardHeader className="pb-3">
@@ -3451,22 +3471,6 @@ function ExportPanel({
                 <CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">CSV / JSON download. Ad-hoc analysis, small datasets.</CardDescription>
               </div>
               {exportMode === 'file' && <CheckCircle2 className="h-5 w-5 text-emerald-400" />}
-            </div>
-          </CardHeader>
-        </Card>
-
-        {/* Configuration Backup Mode */}
-        <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'config' ? 'border-violet-500/50 bg-violet-50 dark:bg-violet-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('config')}>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-3">
-              <div className={`rounded-lg p-2.5 ${exportMode === 'config' ? 'bg-violet-600' : 'bg-gray-100 dark:bg-slate-800'}`}>
-                <Settings className={`h-5 w-5 ${exportMode === 'config' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
-              </div>
-              <div className="flex-1">
-                <CardTitle className="text-base">Config Backup</CardTitle>
-                <CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">Export/Import connections & settings as JSON.</CardDescription>
-              </div>
-              {exportMode === 'config' && <CheckCircle2 className="h-5 w-5 text-violet-400" />}
             </div>
           </CardHeader>
         </Card>
@@ -3492,21 +3496,13 @@ function ExportPanel({
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3"><Info className="h-4 w-4 text-slate-500 dark:text-slate-400" /><span className="text-sm font-medium text-slate-700 dark:text-slate-300">When to use which?</span></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-500/20 p-3 space-y-2">
               <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">CSV / JSON Export</p>
               <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
                 <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 shrink-0" /><span>Quick ad-hoc analysis</span></li>
                 <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 shrink-0" /><span>One-time Metabase imports</span></li>
                 <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 shrink-0" /><span>No database setup needed</span></li>
-              </ul>
-            </div>
-            <div className="rounded-lg bg-violet-50 dark:bg-violet-500/5 border border-violet-500/20 p-3 space-y-2">
-              <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Config Backup</p>
-              <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Move to another browser</span></li>
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Backup your connections</span></li>
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-violet-400 mt-0.5 shrink-0" /><span>Reset / Restore state</span></li>
               </ul>
             </div>
             <div className="rounded-lg bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-500/20 p-3 space-y-2">
@@ -3600,36 +3596,6 @@ function ExportPanel({
               <Button variant="ghost" size="sm" onClick={() => setExportDataType('both')} className={`flex-1 rounded-md text-[10px] h-8 ${exportDataType === 'both' ? 'bg-white dark:bg-slate-900 shadow-sm text-indigo-500 font-bold' : 'text-slate-500'}`}><LayoutGrid className="mr-1 h-3 w-3" />Both</Button>
             </div>
           </div>
-
-          {/* Config Backup specific config */}
-          {exportMode === 'config' && (
-            <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Configuration Backup and Restore</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <Label className="text-slate-700 dark:text-slate-300">Export Backup</Label>
-                  <p className="text-xs text-slate-500">Download all your connections, KPI plugins, and settings as a JSON file.</p>
-                  <Button onClick={handleExportConfig} className="w-full bg-violet-600 hover:bg-violet-700">
-                    <Download className="mr-2 h-4 w-4" /> Export Config JSON
-                  </Button>
-                </div>
-                <div className="space-y-3">
-                  <Label className="text-slate-700 dark:text-slate-300">Import Backup</Label>
-                  <p className="text-xs text-slate-500">Restore your configuration from a previously exported JSON file.</p>
-                  <div className="flex gap-2">
-                    <Input 
-                      type="file" 
-                      accept=".json" 
-                      onChange={handleImportConfig} 
-                      className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs" 
-                    />
-                  </div>
-                  <p className="text-[10px] text-amber-500">Warning: This will overwrite your current browser configuration.</p>
-                </div>
-              </div>
-            </div>
-          )}
-
         </CardContent>
       </Card>
 
@@ -3646,7 +3612,7 @@ function ExportPanel({
                 <FileSpreadsheet className="mr-2 h-4 w-4" />Export CSV
               </Button>
             </div>
-          ) : exportMode === 'database' ? (
+          ) : (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-xs font-medium text-slate-500">Target Database Backend</Label>
@@ -3671,14 +3637,6 @@ function ExportPanel({
                 * This is a manual one-way push. Updates in local storage are not automatically synced to the external DB.
               </p>
             </div>
-          ) : (
-            <div className="flex items-center justify-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
-              <div className="text-center space-y-2">
-                <Shield className="h-10 w-10 text-violet-400 mx-auto mb-2 opacity-50" />
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Backup & Restore Area</p>
-                <p className="text-xs text-slate-500">Use the configuration options above to manage your browser state.</p>
-              </div>
-            </div>
           )}
         </CardContent>
       </Card>
@@ -3696,11 +3654,11 @@ function ExportPanel({
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between text-xs p-3 rounded-lg bg-white/50 dark:bg-slate-900/50 border border-indigo-500/10">
-               <div className="flex items-center gap-2">
-                 <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
-                 <span className="text-slate-600 dark:text-slate-400">Rows Synchronized:</span>
-               </div>
-               <span className="font-bold text-indigo-600 dark:text-indigo-400">{dbResult?.rowCount}</span>
+              <div className="flex items-center gap-2">
+                <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
+                <span className="text-slate-600 dark:text-slate-400">Rows Synchronized:</span>
+              </div>
+              <span className="font-bold text-indigo-600 dark:text-indigo-400">{dbResult?.rowCount}</span>
             </div>
             {dbResult?.error && (
               <p className="text-[10px] text-red-500 mt-2 p-2 bg-red-500/5 rounded border border-red-500/10">{dbResult.error}</p>

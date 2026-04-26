@@ -206,6 +206,16 @@ export async function POST(request: Request) {
       }
     }
 
+    // Get existing keys to track additions/updates
+    const existingMasterTickets = await (db as any).masterTicket.findMany({
+      where: { connectionRef: connectionRef },
+      select: { jiraKey: true }
+    });
+    const existingKeys = new Set(existingMasterTickets.map((t: any) => t.jiraKey));
+    let addedCount = 0;
+    let updatedCount = 0;
+    const currentKeys = new Set(issues.map(i => i.key));
+
     // Create ETL run record
     const etlRun = await (db as any).etlRun.create({
       data: {
@@ -283,6 +293,12 @@ export async function POST(request: Request) {
     // Update master dataset
     console.log('Updating master dataset...');
     for (const issue of issues) {
+      if (existingKeys.has(issue.key)) {
+        updatedCount++;
+      } else {
+        addedCount++;
+      }
+
       const rawSp = (issue.fields as any)['customfield_10002'];
       const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
 
@@ -323,6 +339,27 @@ export async function POST(request: Request) {
           lastUpdatedAt: new Date()
         }
       });
+    }
+
+    // Check for deleted tickets (only if JQL is project-wide without time filters)
+    let deletedCount = 0;
+    const isBroadSync = !finalJql.toLowerCase().includes('updated') && 
+                       !finalJql.toLowerCase().includes('created') && 
+                       !finalJql.toLowerCase().includes('resolved');
+    
+    if (isBroadSync) {
+      const keysToRemove = [...existingKeys].filter(k => !currentKeys.has(k));
+      deletedCount = keysToRemove.length;
+      
+      if (deletedCount > 0) {
+        console.log(`Detected ${deletedCount} deleted/removed tickets. Removing from master dataset.`);
+        await (db as any).masterTicket.deleteMany({
+          where: { 
+            connectionRef: connectionRef,
+            jiraKey: { in: keysToRemove }
+          }
+        });
+      }
     }
 
     // --- AUTO-KPI CALCULATION ---
@@ -392,6 +429,9 @@ export async function POST(request: Request) {
       etlRunId: etlRun.id,
       summary: {
         totalExtracted: issues.length,
+        added: addedCount,
+        updated: updatedCount,
+        deleted: deletedCount,
         jql: finalJql,
         timestamp: new Date().toISOString(),
         effectiveDateFrom,
