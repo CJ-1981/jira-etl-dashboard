@@ -63,7 +63,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin, type AppSettings } from '@/lib/config/local-store';
+import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin, type AppSettings, type SavedJql } from '@/lib/config/local-store';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1572,6 +1572,40 @@ const ExtractPanel = React.memo(function ExtractPanel({
   const [jql, setJql] = useState('');
   const [extracting, setExtracting] = useState(false);
 
+  // Saved JQL state
+  const [savedJqls, setSavedJqls] = useState<SavedJql[]>([]);
+  const [newJqlName, setNewJqlName] = useState('');
+  const [isSavingJql, setIsSavingJql] = useState(false);
+
+  useEffect(() => {
+    setSavedJqls(localConfig.getSavedJqls());
+  }, []);
+
+  const handleSaveJql = () => {
+    if (!jql.trim()) { toast.error('Enter a JQL query first'); return; }
+    if (!newJqlName.trim()) { toast.error('Enter a name for this query'); return; }
+
+    const newSavedJql: SavedJql = {
+      id: `jql-${Date.now()}`,
+      name: newJqlName.trim(),
+      query: jql.trim()
+    };
+
+    const updated = [...savedJqls, newSavedJql];
+    setSavedJqls(updated);
+    localConfig.saveJqls(updated);
+    setNewJqlName('');
+    setIsSavingJql(false);
+    toast.success('JQL query saved');
+  };
+
+  const handleDeleteJql = (id: string) => {
+    const updated = savedJqls.filter(j => j.id !== id);
+    setSavedJqls(updated);
+    localConfig.saveJqls(updated);
+    toast.success('Saved JQL deleted');
+  };
+
   // Persistence state
   const [saveThisExtraction, setSaveThisExtraction] = useState(true);
 
@@ -1870,8 +1904,54 @@ const ExtractPanel = React.memo(function ExtractPanel({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-slate-700 dark:text-slate-300">Custom JQL Query <span className="text-slate-400 dark:text-slate-500 text-xs ml-2">(optional)</span></Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-slate-700 dark:text-slate-300">Custom JQL Query <span className="text-slate-400 dark:text-slate-500 text-xs ml-2">(optional)</span></Label>
+              <div className="flex gap-2">
+                {savedJqls.length > 0 && (
+                  <Select onValueChange={(val) => setJql(savedJqls.find(j => j.id === val)?.query || '')}>
+                    <SelectTrigger className="h-7 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-[150px]">
+                      <SelectValue placeholder="Load saved..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {savedJqls.map(j => (
+                        <div key={j.id} className="flex items-center justify-between group px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer">
+                          <SelectItem value={j.id} className="flex-1 cursor-pointer">{j.name}</SelectItem>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteJql(j.id); }}
+                            className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                  onClick={() => setIsSavingJql(!isSavingJql)}
+                >
+                  <Save className="h-3 w-3 mr-1" /> Save Query
+                </Button>
+              </div>
+            </div>
+            
             <textarea className="w-full min-h-[80px] rounded-md bg-gray-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-800 dark:text-slate-200 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" placeholder='project = "PROJ" AND created >= "2024-01-01" ORDER BY created DESC' value={jql} onChange={(e) => setJql(e.target.value)} />
+            
+            {isSavingJql && (
+              <div className="flex items-center gap-2 mt-2 animate-in slide-in-from-top-1 duration-200">
+                <Input 
+                  placeholder="Query name (e.g. Bug Filter)" 
+                  value={newJqlName} 
+                  onChange={(e) => setNewJqlName(e.target.value)}
+                  className="h-8 text-xs bg-white dark:bg-slate-900"
+                />
+                <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600" onClick={handleSaveJql}>Confirm Save</Button>
+                <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={() => setIsSavingJql(false)}>Cancel</Button>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -2623,6 +2703,58 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
 
     switch (config.type) {
       case 'bar':
+        // Check if this is a multi-series chart (multiple results with timeSeries)
+        const hasMultipleSeriesBar = kpi?.results && kpi.results.length > 1 &&
+          kpi.results.every(r => r.timeSeries && r.timeSeries.length > 0);
+
+        if (hasMultipleSeriesBar) {
+          // Merge all timeSeries data by period
+          const allPeriods = new Set<string>();
+          kpi.results.forEach(result => {
+            result.timeSeries?.forEach(point => allPeriods.add(point.period));
+          });
+
+          const sortedPeriods = Array.from(allPeriods).sort();
+          const mergedData = sortedPeriods.map(period => {
+            const dataPoint: any = { name: period };
+            kpi.results.forEach((result, idx) => {
+              const point = result.timeSeries?.find(p => p.period === period);
+              dataPoint[`series${idx}`] = point?.value || 0;
+            });
+            return dataPoint;
+          });
+
+          return (
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <BarChart data={mergedData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                <XAxis dataKey="name" className="text-xs" />
+                <YAxis className="text-xs" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px',
+                  }}
+                  labelStyle={{ color: '#e2e8f0' }}
+                  itemStyle={{ color: '#e2e8f0' }}
+                  formatter={(value: number) => formatChartValue(value, unit)}
+                />
+                <Legend />
+                {kpi.results.map((result, idx) => (
+                  <Bar
+                    key={result.name || idx}
+                    dataKey={`series${idx}`}
+                    name={result.name}
+                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                    radius={[4, 4, 0, 0]}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          );
+        }
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
             <BarChart data={selectedKpiData}>

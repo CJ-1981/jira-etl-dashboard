@@ -123,7 +123,120 @@ export const slaByStatusExclCloneTrendPlugin: KpiPlugin = {
   },
 };
 
+/**
+ * Open Tickets by Assignee Trend - Number of open tickets per assignee over time
+ */
+export const openTicketsByAssigneeTrendPlugin: KpiPlugin = {
+  id: 'open_tickets_by_assignee_trend',
+  name: 'Open Tickets by Assignee Trend',
+  description: 'Number of open (non-resolved) tickets per assignee over time, grouped by week',
+  category: 'assignee',
+  unit: 'tickets',
+  calculate(context) {
+    return calculateOpenTicketsByAssigneeTrend(context, 'weekly');
+  },
+};
+
 // ─── Calculation Functions ─────────────────────────────────────────────────────
+
+function calculateOpenTicketsByAssigneeTrend(
+  context: KpiContext,
+  interval: TimeInterval
+): TimeSeriesResult[] {
+  // We need to look at all issues that were open at ANY point during the period
+  // but specifically we want to know how many were open at the END of each period.
+  
+  const allIssues = context.issues;
+  if (allIssues.length === 0) {
+    return [{
+      name: 'Open Tickets by Assignee',
+      value: 0,
+      unit: 'tickets',
+      timeSeries: [],
+    }];
+  }
+
+  // Define the time range to analyze
+  const { start, end } = context.period;
+  
+  // Generate periods
+  const periods: { key: string; end: Date }[] = [];
+  let current = new Date(start);
+  while (current <= end) {
+    const key = getPeriodKey(current, interval);
+    const periodEnd = getPeriodEnd(key, interval);
+    periods.push({ key, end: periodEnd });
+    
+    // Move to next period
+    if (interval === 'daily') current.setDate(current.getDate() + 1);
+    else if (interval === 'weekly') current.setDate(current.getDate() + 7);
+    else if (interval === 'monthly') current.setMonth(current.getMonth() + 1);
+    
+    // Avoid infinite loop if somehow date doesn't progress
+    if (periods.length > 1000) break;
+  }
+
+  // Get all unique assignees
+  const allAssignees = new Set<string>();
+  allIssues.forEach(i => allAssignees.add(i.assignee || 'Unassigned'));
+
+  const assigneeResults: TimeSeriesResult[] = [];
+  let hasIncompletePeriod = false;
+
+  for (const assignee of allAssignees) {
+    const timeSeries: TimeSeriesDataPoint[] = [];
+    const assigneeIssues = allIssues.filter(i => (i.assignee || 'Unassigned') === assignee);
+
+    for (const period of periods) {
+      const isComplete = isPeriodComplete(period.end);
+      if (!isComplete) {
+        hasIncompletePeriod = true;
+        continue;
+      }
+
+      // Count issues that were created before/at period end AND (not resolved OR resolved after period end)
+      const openAtEnd = assigneeIssues.filter(i => {
+        const createdDate = i.created;
+        const resolvedDate = i.resolved;
+        
+        const wasCreated = createdDate <= period.end;
+        const wasNotYetResolved = !resolvedDate || resolvedDate > period.end;
+        
+        return wasCreated && wasNotYetResolved;
+      }).length;
+
+      timeSeries.push({
+        period: period.key,
+        date: period.end,
+        value: openAtEnd,
+        count: openAtEnd,
+      });
+    }
+
+    // Sort by date
+    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    // Current value (at last complete period end)
+    const currentValue = timeSeries.length > 0 ? timeSeries[timeSeries.length - 1].value : 0;
+
+    assigneeResults.push({
+      name: `Open Tickets: ${assignee}`,
+      value: currentValue,
+      unit: 'tickets',
+      dimensions: { assignee },
+      timeSeries,
+    });
+  }
+
+  // Add warning to details of first result if incomplete period was skipped
+  if (hasIncompletePeriod && assigneeResults.length > 0) {
+    assigneeResults[0].details = [
+      { label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' }
+    ];
+  }
+
+  return assigneeResults;
+}
 
 function calculateProcessingTimeTrend(
   context: KpiContext,
@@ -705,4 +818,5 @@ export function registerTimeSeriesPlugins(engine: { register: (plugin: KpiPlugin
   engine.register(timeInStatusTrendPlugin);
   engine.register(slaByStatusTrendPlugin);
   engine.register(slaByStatusExclCloneTrendPlugin);
+  engine.register(openTicketsByAssigneeTrendPlugin);
 }

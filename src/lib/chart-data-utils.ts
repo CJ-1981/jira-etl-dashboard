@@ -83,20 +83,33 @@ export function transformForBarChart(
   const kpi = kpiResults.find((k) => k.pluginId === selectedKpiId);
   if (!kpi || kpi.results.length === 0) return [];
 
-  // If results have dimensions (status/priority breakdown), use them
-  if (kpi.results[0]?.dimensions?.status || kpi.results[0]?.dimensions?.priority) {
+  // Determine if we should use a color palette or health-based colors
+  // SLA and Processing Time usually benefit from health-based colors (red/amber/emerald)
+  const isPerformanceMetric = kpi.pluginId.includes('sla') || kpi.pluginId.includes('processing_time');
+
+  // If we have multiple results, it's likely a breakdown (by status, priority, assignee, etc.)
+  if (kpi.results.length > 1 || kpi.results[0]?.dimensions) {
     const sortedResults = [...kpi.results].sort((a, b) => {
-      const aDim = a.dimensions?.priority || a.dimensions?.status || '';
-      const bDim = b.dimensions?.priority || b.dimensions?.status || '';
+      const aDim = Object.values(a.dimensions || {}).join('') || a.name;
+      const bDim = Object.values(b.dimensions || {}).join('') || b.name;
       return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
     });
 
     return sortedResults.map((result, index) => {
-      const dimensionName =
-        result.dimensions?.status ||
-        result.dimensions?.priority ||
+      // Get the first available dimension value, or the result name
+      const dimensionName = 
+        result.dimensions?.status || 
+        result.dimensions?.priority || 
+        result.dimensions?.assignee ||
+        Object.values(result.dimensions || {})[0] || 
         result.name;
-      const color = getColorForValue(result.value, result.unit);
+        
+      // Use color palette for distribution metrics (assignees, status counts), 
+      // but stick to health colors for performance metrics (SLA, speed)
+      const color = isPerformanceMetric 
+        ? getColorForValue(result.value, result.unit)
+        : CHART_COLORS[index % CHART_COLORS.length];
+
       return {
         name: dimensionName,
         value: Number(result.value.toFixed(2)),
@@ -127,8 +140,8 @@ export function transformForPieChart(
   if (!kpi || kpi.results.length === 0) return [];
 
   const sortedResults = [...kpi.results].sort((a, b) => {
-    const aDim = a.dimensions?.priority || a.dimensions?.status || '';
-    const bDim = b.dimensions?.priority || b.dimensions?.status || '';
+    const aDim = Object.values(a.dimensions || {}).join('') || a.name;
+    const bDim = Object.values(b.dimensions || {}).join('') || b.name;
     return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
   });
 
@@ -136,7 +149,10 @@ export function transformForPieChart(
     const dimensionName =
       result.dimensions?.status ||
       result.dimensions?.priority ||
+      result.dimensions?.assignee ||
+      Object.values(result.dimensions || {})[0] ||
       result.name;
+      
     return {
       name: dimensionName,
       value: Number(result.value.toFixed(2)),
@@ -157,9 +173,14 @@ export function transformForLineChart(
   const kpi = kpiResults.find((k) => k.pluginId === selectedKpiId);
   if (!kpi || kpi.results.length === 0) return [];
 
-  // Check if time-series data is available
+  // Check if time-series data is available (prefer the first series if we're asked for a single-line data format)
   if (kpi.results[0]?.timeSeries && kpi.results[0].timeSeries.length > 0) {
-    return kpi.results[0].timeSeries.map((point) => ({
+    const sortedTimeSeries = [...kpi.results[0].timeSeries].sort((a, b) => {
+      if (a.date && b.date) return a.date.getTime() - b.date.getTime();
+      return a.period.localeCompare(b.period);
+    });
+
+    return sortedTimeSeries.map((point) => ({
       name: point.period,
       value: Number(point.value.toFixed(2)),
       date: point.date,
@@ -167,10 +188,10 @@ export function transformForLineChart(
   }
 
   // Fallback: treat dimensions as x-axis categories
-  if (kpi.results[0]?.dimensions?.status || kpi.results[0]?.dimensions?.priority) {
+  if (kpi.results.length > 1 || kpi.results[0]?.dimensions) {
     const sortedResults = [...kpi.results].sort((a, b) => {
-      const aDim = a.dimensions?.priority || a.dimensions?.status || '';
-      const bDim = b.dimensions?.priority || b.dimensions?.status || '';
+      const aDim = Object.values(a.dimensions || {}).join('') || a.name;
+      const bDim = Object.values(b.dimensions || {}).join('') || b.name;
       return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
     });
 
@@ -178,10 +199,13 @@ export function transformForLineChart(
       const dimensionName =
         result.dimensions?.status ||
         result.dimensions?.priority ||
+        result.dimensions?.assignee ||
+        Object.values(result.dimensions || {})[0] ||
         result.name;
+        
       return {
         name: dimensionName,
-        value: Number(result.value.toFixed(2)),
+        value: Number((result.value || 0).toFixed(2)),
       };
     });
   }
@@ -191,7 +215,7 @@ export function transformForLineChart(
   return [
     {
       name: result.name,
-      value: Number(result.value.toFixed(2)),
+      value: Number((result.value || 0).toFixed(2)),
     },
   ];
 }
@@ -200,7 +224,7 @@ export function transformForLineChart(
  * Check if a KPI is a time-series plugin
  */
 export function isTimeSeriesPlugin(pluginId: string): boolean {
-  return pluginId.includes('_trend') || pluginId.includes('_trend');
+  return pluginId.includes('_trend');
 }
 
 /**

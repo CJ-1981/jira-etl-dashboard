@@ -71,6 +71,12 @@ export interface StorageConfig {
 
 // --- Implementation ---
 
+export interface SavedJql {
+  id: string;
+  name: string;
+  query: string;
+}
+
 const KEYS = {
   jira: 'cfg_jira_connections',
   pg: 'cfg_pg_connections',
@@ -78,6 +84,7 @@ const KEYS = {
   settings: 'cfg_app_settings',
   activeConnection: 'cfg_active_connection_id',
   storage: 'cfg_storage_config',
+  jql: 'cfg_saved_jqls',
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -154,6 +161,9 @@ export const localConfig = {
   getStorageConfig: () => get<StorageConfig>(KEYS.storage, { provider: 'sqlite', url: '', isCustom: false }),
   saveStorageConfig: (c: StorageConfig) => set(KEYS.storage, c),
 
+  getSavedJqls: () => get<SavedJql[]>(KEYS.jql, []),
+  saveJqls: (jqls: SavedJql[]) => set(KEYS.jql, jqls),
+
   exportConfig: () => {
     const data = {
       version: '1.0',
@@ -162,6 +172,7 @@ export const localConfig = {
       pgConnections: localConfig.getPgConnections(),
       customPlugins: localConfig.getKpiPlugins(),
       settings: localConfig.getSettings(),
+      savedJqls: localConfig.getSavedJqls(),
     };
     return data;
   },
@@ -172,6 +183,7 @@ export const localConfig = {
       if (data.pgConnections) localConfig.savePgConnections(data.pgConnections);
       if (data.customPlugins) localConfig.saveKpiPlugins(data.customPlugins);
       if (data.settings) localConfig.saveSettings(data.settings);
+      if (data.savedJqls) localConfig.saveJqls(data.savedJqls);
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.message };
