@@ -1,141 +1,107 @@
 # Jira ETL Dashboard for Metabase
 
-A full-stack ETL dashboard that extracts ticket data from Jira Cloud or Server, calculates custom KPIs with **German holiday-aware business hour calculations**, and exports results to **Metabase** via CSV/JSON or PostgreSQL synchronization.
+A professional ETL dashboard that extracts ticket data from Jira Cloud or Server, calculates custom KPIs with **German holiday-aware business hour calculations**, and exports results to **Metabase** via CSV/JSON, PostgreSQL synchronization, or **PowerPoint reporting**.
 
-Built with **Next.js 16.1**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Tailwind CSS 4**.
+Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Tailwind CSS 4**.
 
 ---
 
-## Features
+## 🚀 Advanced Features
 
-### Data Extraction (Jira ETL)
-- **Jira Cloud & Server** support via REST API v3 with Basic Auth.
+### 🔍 Interactive KPI Drill-down
+- **Actionable Metrics** — Click any KPI card or chart bar to instantly view the specific Jira issues comprising that metric.
+- **Side-out Issue Drawer** — High-speed preview of ticket summaries, assignees, and status with direct links back to Jira.
+
+### 📉 Smart Comparisons (Delta Analysis)
+- **Automatic Benchmarking** — Every KPI automatically calculates the delta against the previous period of equal length.
+- **Trend Indicators** — Visual green/red arrows and delta values provide immediate context on performance shifts (e.g., "+15 Resolved vs. last week").
+
+### 🌓 Dynamic Global Filters
+- **Live UI Slicing** — Filter the entire dashboard in real-time by **Assignee, Priority, Status, Issue Type, Component,** or **Label**.
+- **Data-Driven Options** — Filter choices are dynamically extracted from your active Master Dataset.
+- **Zero-Latency Updates** — KPIs and charts update instantly without requiring a new Jira sync.
+
+### 📤 Professional Reporting
+- **PPT Export** — One-click generation of professional multi-slide PowerPoint decks for stakeholder reporting.
+- **Context-Aware** — Reports include executive overviews, status analysis tables, and team workload summaries, respecting all active filters.
+
+---
+
+## 🛠️ Core Capabilities
+
+### Jira ETL & Data Extraction
 - **Master Dataset Management** — Automatically tracks additions, updates, and deletions to maintain a faithful local mirror of Jira data.
-- Full **JQL** query support for flexible issue filtering.
-- **Changelog expansion** for complete workflow transition history.
-- **Quick Pull** presets: 7, 30, 90, 365 days baseline data.
-- **Polling / auto-refresh** with configurable intervals (5min–4hr).
-- **Rate limiting** with delay, batch size, and backoff strategies.
-- Custom field mapping (Story Points, Sprint, Epic Link).
+- **Scheduled Pulling** — Robust server-side background sync (1min–4hr intervals) that survives restarts and hot-reloads.
+- **JQL Management** — Save and load custom JQL queries for rapid switching between different analysis scopes.
+- **Quick Pull** presets for 1, 7, 30, 90, and 365-day baseline data.
+- **Rate limiting** with configurable delay, batch size, and backoff strategies.
 
 ### KPI Calculation Engine
-**10 built-in plugins:**
+**12+ built-in plugins:**
 
 | Plugin | Category | What It Measures |
 |--------|----------|-----------------|
 | Avg. Processing Hours | Processing Time | Avg business hours from creation to resolution |
-| Median Processing Hours | Processing Time | Median business hours to resolution |
 | Time in Status | Turnaround | Avg business hours per workflow status |
 | SLA Compliance Rate | SLA | % tickets resolved within SLA target |
-| SLA by Priority | SLA | Per-priority SLA compliance (8h/24h/40h/80h/120h) |
-| SLA by Status | SLA | Per-status SLA compliance with comment-based clock reset |
-| Throughput | Throughput | Tickets created and resolved per period |
+| Throughput | Throughput | Tickets created, resolved, and currently open |
+| Open Tickets by Assignee | Assignee | Current workload distribution per user |
+| Open Tickets Trend | Assignee | Weekly workload trends per assignee |
 | Resolution Rate | Quality | % of created tickets that are resolved |
-| Avg. Working Days | Processing Time | Avg working days to resolution |
-| Avg. Reassignments | Quality | Avg assignee changes per ticket |
 
-All time-based KPIs **exclude weekends and German holidays**, with configurable work hours (default 09:00–17:00).
+All time-based KPIs **exclude weekends and German holidays** (all 16 states supported), with configurable work hours.
 
-**Custom KPI Plugin System** — Create plugins via the Unified Builder:
-- **Visual Builder (DSL)**: Metric Type → Filters → Output (e.g., `COUNT(*) WHERE status = "Done"`).
-- **Code Editor (JavaScript)**: Write raw JavaScript functions for advanced logic.
+**Custom KPI Plugin System**:
+- **Visual Builder (DSL)**: Metric Type → Filters → Output.
+- **Code Editor (JavaScript)**: Raw JS functions for complex data transformations.
 
-### German Holiday Calendar
-- All **16 federal states** supported.
-- **18 holidays** per year including Easter-based variable dates.
-- Integrated viewer and region-specific awareness for all KPI calculations.
-
-### Export & Integration (DB Export)
-Two primary export modes:
-
-| Mode | Description |
-|------|-------------|
-| **File Export** | Download results as CSV or Metabase-compatible JSON. |
-| **Database Sync** | Direct write to external PostgreSQL / Supabase with full schema support. |
+### Export & Integration
+- **Database Sync**: Direct write to PostgreSQL / Supabase with full schema support.
+- **File Export**: Download results as CSV or Metabase-compatible JSON.
+- **PowerPoint**: Multi-slide executive reports.
 
 ---
 
-## Technical Architecture
+## 🏗️ Technical Architecture
 
 ### Unified Tab Structure
-The dashboard is organized into four main areas with nested sub-navigation:
-
-1.  **ETL & Export**:
-    *   **Jira ETL**: Run extractions and manage the master dataset.
-    *   **DB Export**: Synchronize data to external databases or files.
-2.  **KPI**:
-    *   **Dashboard**: Visualize metrics and trends.
-    *   **Plugins Configuration**: Manage built-in and custom plugins.
-    *   **Holidays Calendar**: View and configure regional holiday settings.
-3.  **Settings**:
-    *   **Connections**: Manage Jira API profiles.
-    *   **Storage**: Configure SQLite or PostgreSQL backends.
-    *   **Configuration**: System-wide preferences (rate limits, work hours, SLA targets).
-4.  **Connections Selector**: Quick-switch between Jira instances in the header.
+1.  **ETL & Export**: Manage Jira sync, scheduled pulls, and database exports.
+2.  **KPI**: Interactive dashboard with global filters, drill-downs, and trend analysis.
+3.  **Settings**: Configure Jira/PG connections, storage backends (SQLite/Postgres), and system preferences.
 
 ### Tech Stack
-
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 16.1, React 19, TypeScript 5 |
-| UI | shadcn/ui, Tailwind CSS 4, Radix UI, Lucide icons |
-| Database | Prisma 6 ORM (SQLite for local, PostgreSQL for external) |
+| Framework | Next.js 16.2 (Webpack), React 19, TypeScript 5 |
+| UI | shadcn/ui, Tailwind CSS 4, Radix UI, Sheet (Vaul) |
+| Database | Prisma 6 ORM (SQLite local, PostgreSQL external) |
 | Charts | Recharts 2.15 |
-| Persistence | localStorage (Configuration) + Database (Extraction Data) |
+| Exports | PptxGenJS (PowerPoint), CSV/JSON |
 
 ---
 
-## Project Structure
+## 🛠️ Getting Started
 
-```
-src/
-├── app/
-│   ├── page.tsx                    # Main SPA — Unified dashboard (~4000 lines)
-│   └── api/                        # Server-side API routes
-├── lib/
-│   ├── jira/client.ts              # Jira REST API client
-│   └── kpi/engine.ts               # KPI calculation engine
-└── components/ui/                  # shadcn/ui components
+### Prerequisites
+- Node.js 18+
+- Jira API Token (for Cloud) or Password (for Server)
 
-prisma/
-├── schema.sqlite.prisma            # Local SQLite schema
-├── schema.postgresql.prisma        # External PostgreSQL schema
-└── migrations/                     # Migration history
-```
-
----
-
-## API Overview
-
-The application utilizes the following core API endpoints:
-
-```
-POST             /api/jira/extract          # Run ETL extraction
-POST             /api/jira/poll             # Polling control
-POST             /api/pg/test               # Test PostgreSQL connectivity
-POST             /api/pg/export             # Push to external PostgreSQL
-POST             /api/kpi/calculate         # Calculate KPIs
-GET              /api/holidays              # German holiday calendar
-GET/POST/DELETE  /api/jira/master/[id]      # Manage master dataset
-```
-
----
-
-## Database Management
-
-### Development Workflow
-This project uses **Prisma ORM** with SQLite for local development.
-
+### Installation
 ```bash
-# Push current schema to create fresh database
+npm install
+npm run dev
+```
+
+### Database Management
+```bash
+# Update local SQLite schema
 npx prisma db push --schema=prisma/schema.sqlite.prisma
 
-# Open Prisma Studio (visual database editor)
+# Visual database editor
 npx prisma studio --schema=prisma/schema.sqlite.prisma
 ```
 
 ---
 
 ## License
-
 Private project. All rights reserved.

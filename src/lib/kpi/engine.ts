@@ -12,11 +12,12 @@ import { registerTimeSeriesPlugins } from './time-series-plugin';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface KpiContext {
-  issues: Array<ReturnType<typeof transformIssueForKpi>>;
+  issues: TransformedIssue[];
   holidays: { regions: GermanState[]; workStartHour: number; workEndHour: number; slaTargetHours?: number };
   period: { start: Date; end: Date };
   slaTargets?: Record<string, number>;
   dimensions?: Record<string, string>;
+  globalFilters?: Record<string, string[]>; // New: Active filters from UI
 }
 
 export interface TransformedIssue {
@@ -69,6 +70,12 @@ export interface KpiResult {
     value: number;
     unit?: string;
   }>;
+  ticketKeys?: string[]; // New: List of tickets that make up this metric
+  comparison?: {         // New: Comparison data for deltas
+    value: number;
+    change: number;
+    label: string;
+  };
 }
 
 // ─── Transform ───────────────────────────────────────────────────────────────
@@ -156,6 +163,7 @@ const avgProcessingHoursPlugin: KpiPlugin = {
       name: 'Avg. Processing Hours',
       value: Math.round(avg * 100) / 100,
       unit: 'hours',
+      ticketKeys: resolvedIssues.map(i => i.key),
       details: [
         { label: 'Resolved Tickets', value: resolvedIssues.length, unit: 'tickets' },
         { label: 'Total Business Hours', value: Math.round(totalHours * 100) / 100, unit: 'hours' },
@@ -259,6 +267,7 @@ const timeInStatusPlugin: KpiPlugin = {
         value: Math.round((data.total / Math.max(data.count, 1)) * 100) / 100,
         unit: 'hours',
         dimensions: { status },
+        ticketKeys: Array.from(issuesPerStatus[status] || []),
         details: [
           { label: 'Total Occurrences', value: data.count },
           { label: 'Unique Issues', value: data.issueCount },
@@ -283,20 +292,21 @@ const slaCompliancePlugin: KpiPlugin = {
     const resolvedIssues = context.issues.filter((i) => i.resolved);
     if (resolvedIssues.length === 0) return [{ name: 'SLA Compliance Rate', value: 0, unit: '%' }];
 
-    const withinSla = resolvedIssues.filter((issue) => {
+    const withinSlaIssues = resolvedIssues.filter((issue) => {
       const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
       return hours <= slaTargetHours;
-    }).length;
+    });
 
-    const rate = (withinSla / resolvedIssues.length) * 100;
+    const rate = (withinSlaIssues.length / resolvedIssues.length) * 100;
 
     return [{
       name: 'SLA Compliance Rate',
       value: Math.round(rate * 100) / 100,
       unit: '%',
+      ticketKeys: withinSlaIssues.map(i => i.key),
       details: [
-        { label: 'Within SLA', value: withinSla, unit: 'tickets' },
-        { label: 'Breached SLA', value: resolvedIssues.length - withinSla, unit: 'tickets' },
+        { label: 'Within SLA', value: withinSlaIssues.length, unit: 'tickets' },
+        { label: 'Breached SLA', value: resolvedIssues.length - withinSlaIssues.length, unit: 'tickets' },
         { label: 'SLA Target', value: slaTargetHours, unit: 'hours' },
       ],
     }];
@@ -309,34 +319,52 @@ const slaCompliancePlugin: KpiPlugin = {
 const throughputPlugin: KpiPlugin = {
   id: 'throughput',
   name: 'Throughput',
-  description: 'Number of tickets created and resolved in the analysis period.',
+  description: 'Overview of ticket activity: Created, Resolved, and currently Open.',
   category: 'throughput',
   unit: 'tickets',
   calculate(context) {
-    const created = context.issues.filter((i) =>
+    const createdIssues = context.issues.filter((i) =>
       i.created >= context.period.start && i.created <= context.period.end
-    ).length;
+    );
 
-    const resolved = context.issues.filter((i) =>
+    const resolvedIssues = context.issues.filter((i) =>
       i.resolved && i.resolved >= context.period.start && i.resolved <= context.period.end
-    ).length;
+    );
+
+    const openIssues = context.issues.filter((i) => {
+      const createdBeforeEnd = i.created <= context.period.end;
+      const notYetResolved = !i.resolved || i.resolved > context.period.end;
+      return createdBeforeEnd && notYetResolved;
+    });
 
     const periodDays = Math.max(
       Math.ceil((context.period.end.getTime() - context.period.start.getTime()) / (1000 * 60 * 60 * 24)),
       1
     );
 
-    return [{
-      name: 'Throughput',
-      value: resolved,
-      unit: 'tickets',
-      details: [
-        { label: 'Created', value: created, unit: 'tickets' },
-        { label: 'Resolved', value: resolved, unit: 'tickets' },
-        { label: 'Period', value: periodDays, unit: 'days' },
-        { label: 'Avg. Resolved/Day', value: Math.round((resolved / periodDays) * 100) / 100, unit: 'tickets/day' },
-      ],
-    }];
+    return [
+      {
+        name: 'Resolved Tickets',
+        value: resolvedIssues.length,
+        unit: 'tickets',
+        ticketKeys: resolvedIssues.map(i => i.key),
+        details: [
+          { label: 'Avg. Resolved/Day', value: Math.round((resolvedIssues.length / periodDays) * 100) / 100, unit: 'tickets/day' },
+        ],
+      },
+      {
+        name: 'Created Tickets',
+        value: createdIssues.length,
+        unit: 'tickets',
+        ticketKeys: createdIssues.map(i => i.key),
+      },
+      {
+        name: 'Open Tickets',
+        value: openIssues.length,
+        unit: 'tickets',
+        ticketKeys: openIssues.map(i => i.key),
+      }
+    ];
   },
 };
 
@@ -756,13 +784,40 @@ export class KpiEngine {
     issues: JiraIssue[],
     holidays: { regions: GermanState[]; workStartHour?: number; workEndHour?: number; slaTargetHours?: number },
     period: { start: Date; end: Date },
-    slaTargets?: Record<string, number>
+    slaTargets?: Record<string, number>,
+    globalFilters?: Record<string, string[]>
   ): KpiResult[] {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) throw new Error(`KPI plugin not found: ${pluginId}`);
 
-    // Filter issues to those relevant for the period
-    const filteredIssues = this.filterIssuesByPeriod(issues, period);
+    // 1. Apply global filters to all issues first
+    let processedIssues = issues;
+    if (globalFilters && Object.keys(globalFilters).length > 0) {
+      processedIssues = issues.filter(issue => {
+        const transformed = transformIssueForKpi(issue);
+        for (const [key, values] of Object.entries(globalFilters)) {
+          if (!values || values.length === 0) continue;
+          
+          let issueValue: string | string[] = '';
+          if (key === 'assignee') issueValue = transformed.assignee;
+          else if (key === 'priority') issueValue = transformed.priority || 'None';
+          else if (key === 'issueType') issueValue = transformed.issueType;
+          else if (key === 'status') issueValue = transformed.status;
+          else if (key === 'component') issueValue = transformed.components;
+          else if (key === 'label') issueValue = transformed.labels;
+
+          const match = Array.isArray(issueValue) 
+            ? issueValue.some(v => values.includes(v))
+            : values.includes(issueValue);
+            
+          if (!match) return false;
+        }
+        return true;
+      });
+    }
+
+    // 2. Filter issues to those relevant for the period
+    const filteredIssues = this.filterIssuesByPeriod(processedIssues, period);
 
     const context: KpiContext = {
       issues: filteredIssues.map(transformIssueForKpi),
@@ -774,9 +829,44 @@ export class KpiEngine {
       },
       period,
       slaTargets,
+      globalFilters,
     };
 
-    return plugin.calculate(context);
+    const currentResults = plugin.calculate(context);
+
+    // 3. Comparison logic
+    const currentDuration = period.end.getTime() - period.start.getTime();
+    const prevPeriod = {
+      start: new Date(period.start.getTime() - currentDuration),
+      end: new Date(period.end.getTime() - currentDuration)
+    };
+    const prevFilteredIssues = this.filterIssuesByPeriod(processedIssues, prevPeriod);
+    const prevContext: KpiContext = {
+      ...context,
+      issues: prevFilteredIssues.map(transformIssueForKpi),
+      period: prevPeriod,
+    };
+
+    try {
+      const previousResults = plugin.calculate(prevContext);
+      return currentResults.map(res => {
+        const prevRes = previousResults.find(p => p.name === res.name);
+        if (prevRes && typeof prevRes.value === 'number') {
+          const change = res.value - prevRes.value;
+          return {
+            ...res,
+            comparison: {
+              value: prevRes.value,
+              change: Number(change.toFixed(2)),
+              label: 'vs. prev period'
+            }
+          };
+        }
+        return res;
+      });
+    } catch (e) {
+      return currentResults;
+    }
   }
 
   /**
@@ -786,26 +876,12 @@ export class KpiEngine {
     issues: JiraIssue[],
     holidays: { regions: GermanState[]; workStartHour?: number; workEndHour?: number; slaTargetHours?: number },
     period: { start: Date; end: Date },
-    slaTargets?: Record<string, number>
+    slaTargets?: Record<string, number>,
+    globalFilters?: Record<string, string[]>
   ): Record<string, KpiResult[]> {
-    // Filter issues once for all plugins to ensure consistent data
-    const filteredIssues = this.filterIssuesByPeriod(issues, period);
-
     const results: Record<string, KpiResult[]> = {};
     for (const [id, plugin] of this.plugins) {
-      const context: KpiContext = {
-        issues: filteredIssues.map(transformIssueForKpi),
-        holidays: {
-          regions: holidays.regions,
-          workStartHour: holidays.workStartHour || 9,
-          workEndHour: holidays.workEndHour || 17,
-          slaTargetHours: holidays.slaTargetHours || 40,
-        },
-        period,
-        slaTargets,
-      };
-
-      results[id] = plugin.calculate(context);
+      results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters);
     }
     return results;
   }

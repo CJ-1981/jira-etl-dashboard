@@ -22,6 +22,41 @@ const nextConfig: NextConfig = {
   // Webpack configuration for production builds
   webpack: (config, { dev, isServer }) => {
     // Optimize bundle size
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        crypto: false,
+        http: false,
+        https: false,
+        zlib: false,
+        'node:fs': false,
+        'node:path': false,
+        'node:crypto': false,
+        'node:stream': false,
+        'node:buffer': false,
+        'node:util': false,
+        'node:url': false,
+        'node:https': false,
+        'node:http': false,
+        'node:zlib': false,
+      };
+      
+      // Explicitly tell webpack to ignore node: schemes
+      config.externals = [
+        ...(config.externals || []),
+        { 
+          'node:fs': 'empty', 
+          'node:path': 'empty', 
+          'node:crypto': 'empty',
+          'node:https': 'empty',
+          'node:http': 'empty',
+          'node:zlib': 'empty'
+        }
+      ];
+    }
+
     if (!dev && !isServer) {
       config.optimization = {
         ...config.optimization,

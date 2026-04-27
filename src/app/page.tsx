@@ -38,6 +38,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -2286,6 +2294,102 @@ function KpiDashboard({
 }: any) {
   const [calculating, setCalculating] = useState(false);
   const [hiddenDimensions, setHiddenDimensions] = useState<Set<string>>(new Set());
+  const [globalFilters, setGlobalFilters] = useState<Record<string, string[]>>({});
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+
+  // Drill-down state
+  const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
+  const [drillDownTitle, setDrillDownTitle] = useState('');
+  const [exportingPpt, setExportingPpt] = useState(false);
+
+  const handleExportPPT = async () => {
+    if (kpiResults.length === 0) { toast.error('No results to export'); return; }
+    setExportingPpt(true);
+    const loadingToast = toast.loading('Generating PowerPoint report...', { duration: 0 });
+
+    try {
+      const pptxgen = (await import('pptxgenjs')).default;
+      const pres = new pptxgen();
+      pres.title = 'Jira KPI Report';
+      pres.subject = 'Performance Metrics';
+      
+      // 1. Title Slide
+      const slide1 = pres.addSlide();
+      slide1.addText('Jira Performance Analysis', { x: 1, y: 1.5, w: 8, h: 1, fontSize: 36, bold: true, color: '3b82f6', align: 'center' });
+      slide1.addText(`Report Period: ${dateFrom || 'Start'} to ${dateTo || 'Today'}`, { x: 1, y: 2.5, w: 8, h: 0.5, fontSize: 18, color: '64748b', align: 'center' });
+      slide1.addText(`Generated on: ${new Date().toLocaleString()}`, { x: 1, y: 3, w: 8, h: 0.5, fontSize: 14, color: '94a3b8', align: 'center' });
+      
+      if (Object.keys(globalFilters).length > 0) {
+        let filterStr = 'Active Filters: ' + Object.entries(globalFilters).map(([k, v]) => `${k}: ${v.join(', ')}`).join(' | ');
+        slide1.addText(filterStr, { x: 1, y: 4.5, w: 8, h: 1, fontSize: 12, italic: true, color: '64748b', align: 'center' });
+      }
+
+      // 2. Overview Metrics Slide
+      const slide2 = pres.addSlide();
+      slide2.addText('Executive Overview', { x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 24, bold: true, color: '3b82f6' });
+      
+      let xPos = 0.5;
+      let yPos = 1.0;
+      
+      const visibleMainKpis = mainKpis.flatMap(k => k.results).filter((r, i) => !hiddenDimensions.has(`${mainKpis[0].pluginId}|`)); // Simple check for now
+      
+      visibleMainKpis.slice(0, 8).forEach((kpi, idx) => {
+        if (idx > 0 && idx % 4 === 0) { xPos = 0.5; yPos += 1.8; }
+        
+        slide2.addText(kpi.name, { x: xPos, y: yPos, w: 2.2, h: 0.4, fontSize: 12, bold: true, color: '64748b', align: 'center' });
+        slide2.addText(`${kpi.value}${kpi.unit === '%' ? '%' : ' ' + kpi.unit}`, { x: xPos, y: yPos + 0.4, w: 2.2, h: 0.6, fontSize: 28, bold: true, color: '1e293b', align: 'center' });
+        
+        if (kpi.comparison) {
+          const color = kpi.comparison.change >= 0 ? '10b981' : 'ef4444';
+          const sign = kpi.comparison.change >= 0 ? '+' : '';
+          slide2.addText(`${sign}${kpi.comparison.change} vs prev`, { x: xPos, y: yPos + 1.0, w: 2.2, h: 0.3, fontSize: 10, color, align: 'center' });
+        }
+        
+        xPos += 2.3;
+      });
+
+      // 3. Status Breakdown Slide
+      if (statusKpis.length > 0) {
+        const slide3 = pres.addSlide();
+        slide3.addText('Turnaround Time by Status', { x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 24, bold: true, color: '3b82f6' });
+        
+        const kpi = statusKpis[0];
+        const rows: any[] = [['Status', 'Avg. Hours', 'Tickets']];
+        kpi.results.forEach(r => {
+          if (!hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status}`)) {
+            rows.push([r.name, r.value.toString(), r.details?.find(d => d.label === 'Unique Issues')?.value.toString() || '']);
+          }
+        });
+        
+        slide3.addTable(rows, { x: 0.5, y: 1.0, w: 9, border: { type: 'solid', color: 'cbd5e1' }, fontSize: 11 });
+      }
+
+      // 4. Assignee Activity Slide
+      if (assigneeKpis.length > 0) {
+        const slide4 = pres.addSlide();
+        slide4.addText('Team Workload (Open Tickets)', { x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 24, bold: true, color: '3b82f6' });
+        
+        const kpi = assigneeKpis[0];
+        const rows: any[] = [['Assignee', 'Tickets']];
+        kpi.results.forEach(r => {
+          if (!hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee}`)) {
+            rows.push([r.dimensions?.assignee || 'Unassigned', r.value.toString()]);
+          }
+        });
+        
+        slide4.addTable(rows, { x: 0.5, y: 1.0, w: 6, border: { type: 'solid', color: 'cbd5e1' }, fontSize: 11 });
+      }
+
+      await pres.writeFile({ fileName: `Jira_KPI_Report_${new Date().toISOString().split('T')[0]}.pptx` });
+      toast.success('PowerPoint report downloaded');
+    } catch (err: any) {
+      console.error('PPT Export failed:', err);
+      toast.error('Failed to generate PowerPoint');
+    } finally {
+      toast.dismiss(loadingToast);
+      setExportingPpt(false);
+    }
+  };
 
   const toggleDimension = (pluginId: string, dimensionValue: string) => {
     const key = `${pluginId}|${dimensionValue}`;
@@ -2330,6 +2434,51 @@ function KpiDashboard({
     setCharts(charts.map((c) => (c.id === chartId ? newConfig : c)));
   };
 
+  // Extract unique values for filters from master dataset
+  const filterOptions = useMemo(() => {
+    if (!masterDatasetInfo?.issues) return { assignees: [], priorities: [], issueTypes: [], statuses: [], components: [], labels: [] };
+    
+    const issues = masterDatasetInfo.issues as any[];
+    const getValues = (fn: (i: any) => string | string[] | undefined) => {
+      const vals = new Set<string>();
+      issues.forEach(i => {
+        const v = fn(i);
+        if (Array.isArray(v)) v.forEach(x => { if(x) vals.add(x); });
+        else if (v) vals.add(v);
+      });
+      return Array.from(vals).sort();
+    };
+
+    return {
+      assignees: getValues(i => i.fields?.assignee?.displayName || i.assignee),
+      priorities: getValues(i => i.fields?.priority?.name || i.priority),
+      issueTypes: getValues(i => i.fields?.issuetype?.name || i.issueType),
+      statuses: getValues(i => i.fields?.status?.name || i.status),
+      components: getValues(i => (i.fields?.components || i.components || [])?.map((c: any) => c.name || c)),
+      labels: getValues(i => i.fields?.labels || i.labels),
+    };
+  }, [masterDatasetInfo]);
+
+  const handleUpdateFilter = (key: string, value: string) => {
+    setGlobalFilters(prev => {
+      const current = prev[key] || [];
+      const next = current.includes(value) 
+        ? current.filter(v => v !== value)
+        : [...current, value];
+      
+      const newFilters = { ...prev };
+      if (next.length > 0) newFilters[key] = next;
+      else delete newFilters[key];
+      
+      return newFilters;
+    });
+  };
+
+  // Auto-calculate when filters change
+  useEffect(() => {
+    if (kpiResults.length > 0) handleCalculate();
+  }, [globalFilters]);
+
   const handleCalculate = async () => {
     if (!activeConnectionId) { toast.error('No active connection. Please select a connection first.'); return; }
     setCalculating(true); setKpiResults([]);
@@ -2369,7 +2518,8 @@ function KpiDashboard({
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
           activePluginIds,
-          customPlugins
+          customPlugins,
+          globalFilters
         }),
       });
 
@@ -2523,9 +2673,90 @@ function KpiDashboard({
               </Select>
             </div>
           </div>
-          <Button onClick={handleCalculate} disabled={calculating || !extractionResult} className="w-full bg-emerald-600 hover:bg-emerald-700">
-            {calculating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating...</> : <><Zap className="mr-2 h-4 w-4" />Calculate All KPIs</>}
-          </Button>
+          <div className="flex gap-3">
+            <Button onClick={handleCalculate} disabled={calculating || !extractionResult} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+              {calculating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating...</> : <><Zap className="mr-2 h-4 w-4" />Calculate All KPIs</>}
+            </Button>
+            {kpiResults.length > 0 && (
+              <Button onClick={handleExportPPT} disabled={exportingPpt} variant="outline" className="border-blue-500/30 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10">
+                {exportingPpt ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson className="h-4 w-4 mr-2" />}
+                Export PPT
+              </Button>
+            )}
+          </div>
+
+          {kpiResults.length > 0 && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Sliders className="h-4 w-4 text-emerald-500" />
+                  Global Filters
+                  {Object.keys(globalFilters).length > 0 && (
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600">
+                      {Object.values(globalFilters).flat().length} active
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {Object.keys(globalFilters).length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={() => setGlobalFilters({})} className="h-7 text-[10px] text-slate-500 hover:text-red-500">
+                      Clear All
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => setFilterPanelOpen(!filterPanelOpen)} className="h-7 text-[10px] text-emerald-500">
+                    {filterPanelOpen ? 'Hide Filters' : 'Show Filters'}
+                  </Button>
+                </div>
+              </div>
+
+              {filterPanelOpen && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in slide-in-from-top-2 duration-200">
+                  {[
+                    { label: 'Assignee', key: 'assignee', options: filterOptions.assignees },
+                    { label: 'Priority', key: 'priority', options: filterOptions.priorities },
+                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueTypes },
+                    { label: 'Status', key: 'status', options: filterOptions.statuses },
+                    { label: 'Component', key: 'component', options: filterOptions.components },
+                    { label: 'Label', key: 'label', options: filterOptions.labels },
+                  ].map(filter => (
+                    <div key={filter.key} className="space-y-1.5">
+                      <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{filter.label}</Label>
+                      <Select 
+                        value={globalFilters[filter.key]?.[0] || 'all'} 
+                        onValueChange={(v) => handleUpdateFilter(filter.key, v)}
+                      >
+                        <SelectTrigger className="h-8 text-[11px] bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800">
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All {filter.label}s</SelectItem>
+                          {filter.options.map(opt => (
+                            <div key={opt} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm" onClick={(e) => { e.stopPropagation(); handleUpdateFilter(filter.key, opt); }}>
+                              <Checkbox checked={globalFilters[filter.key]?.includes(opt)} />
+                              <span className="text-xs">{opt}</span>
+                            </div>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {Object.keys(globalFilters).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {Object.entries(globalFilters).map(([key, values]) => (
+                    values.map(val => (
+                      <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
+                        <span className="text-slate-400">{key}:</span> {val}
+                        <X className="h-2.5 w-2.5 cursor-pointer hover:text-red-500" onClick={() => handleUpdateFilter(key, val)} />
+                      </Badge>
+                    ))
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -2557,6 +2788,10 @@ function KpiDashboard({
                   result={result} 
                   pluginId={kpi.pluginId} 
                   onHide={() => toggleDimension(kpi.pluginId, '')}
+                  onClick={result.ticketKeys ? () => {
+                    setDrillDownKeys(result.ticketKeys || []);
+                    setDrillDownTitle(result.name);
+                  } : undefined}
                 />
               );
             }))}
@@ -2590,7 +2825,15 @@ function KpiDashboard({
                   <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-700 dark:text-slate-300">{result.name}</span>
+                        <span 
+                          className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-blue-500 hover:underline"
+                          onClick={() => {
+                            setDrillDownKeys(result.ticketKeys || []);
+                            setDrillDownTitle(result.name);
+                          }}
+                        >
+                          {result.name}
+                        </span>
                         <button 
                           onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
                           className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
@@ -2601,7 +2844,13 @@ function KpiDashboard({
                       </div>
                       <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
                     </div>
-                    <div className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
+                    <div 
+                      className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-blue-400 transition-all"
+                      onClick={() => {
+                        setDrillDownKeys(result.ticketKeys || []);
+                        setDrillDownTitle(result.name);
+                      }}
+                    >
                       <div 
                         className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500" 
                         style={{ width: `${(result.value / maxVal) * 100}%` }} 
@@ -2634,10 +2883,18 @@ function KpiDashboard({
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{priorityKpis.map((kpi) => kpi.results.map((result, idx) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
+                const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
                 return (
-                  <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group">
+                  <div 
+                    key={`${kpi.pluginId}-${idx}`} 
+                    className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
+                    onClick={isClickable ? () => {
+                      setDrillDownKeys(result.ticketKeys || []);
+                      setDrillDownTitle(`${result.name} - ${result.dimensions?.priority}`);
+                    } : undefined}
+                  >
                     <button 
-                      onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || '')}
+                      onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.priority || ''); }}
                       className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
                       title="Hide widget"
                     >
@@ -2672,10 +2929,18 @@ function KpiDashboard({
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{slaStatusKpis.map((kpi) => kpi.results.map((result, idx) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
+                const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
                 return (
-                  <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group">
+                  <div 
+                    key={`${kpi.pluginId}-${idx}`} 
+                    className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
+                    onClick={isClickable ? () => {
+                      setDrillDownKeys(result.ticketKeys || []);
+                      setDrillDownTitle(`${result.name} - ${result.dimensions?.status}`);
+                    } : undefined}
+                  >
                     <button 
-                      onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || '')}
+                      onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.status || ''); }}
                       className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
                       title="Hide widget"
                     >
@@ -2725,7 +2990,15 @@ function KpiDashboard({
                       <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
                         <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">{result.dimensions?.assignee || result.name}</span>
+                            <span 
+                              className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
+                              onClick={() => {
+                                setDrillDownKeys(result.ticketKeys || []);
+                                setDrillDownTitle(`${result.name} - ${result.dimensions?.assignee}`);
+                              }}
+                            >
+                              {result.dimensions?.assignee || result.name}
+                            </span>
                             <button 
                               onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
                               className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
@@ -2736,7 +3009,13 @@ function KpiDashboard({
                           </div>
                           <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
                         </div>
-                        <div className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
+                        <div 
+                          className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-indigo-400 transition-all"
+                          onClick={() => {
+                            setDrillDownKeys(result.ticketKeys || []);
+                            setDrillDownTitle(`${result.name} - ${result.dimensions?.assignee}`);
+                          }}
+                        >
                           <div 
                             className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700" 
                             style={{ width: `${(result.value / maxVal) * 100}%` }} 
@@ -2799,13 +3078,70 @@ function KpiDashboard({
       {kpiResults.length === 0 && !calculating && (
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50"><CardContent className="py-16 text-center text-slate-400 dark:text-slate-500"><BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" /><p className="text-lg font-medium">No KPI results yet</p></CardContent></Card>
       )}
+
+      {/* Drill-down Sheet */}
+      <Sheet open={!!drillDownKeys} onOpenChange={(open) => !open && setDrillDownKeys(null)}>
+        <SheetContent side="right" className="w-[90%] sm:w-[540px] border-l-slate-200 dark:border-l-slate-800 p-0 overflow-hidden flex flex-col">
+          <SheetHeader className="p-6 border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <SheetTitle className="flex items-center gap-2 text-xl">
+              <Ticket className="h-5 w-5 text-blue-500" />
+              {drillDownTitle}
+            </SheetTitle>
+            <SheetDescription>
+              Displaying {drillDownKeys?.length || 0} issues comprising this metric
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="space-y-3">
+              {drillDownKeys && drillDownKeys.map(key => {
+                const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
+                if (!issue) return null;
+                
+                const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
+                const baseUrl = activeConnection?.baseUrl || '';
+                const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+                const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+
+                return (
+                  <div key={key} className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 group hover:border-blue-500/30 transition-all">
+                    <div className="flex items-start justify-between gap-3 mb-1">
+                      <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-mono font-bold text-blue-500 hover:underline flex items-center gap-1">
+                        {key} <ExternalLink className="h-3 w-3" />
+                      </a>
+                      <Badge variant="outline" className="text-[10px] h-4 py-0">{issue.fields?.status?.name || issue.status}</Badge>
+                    </div>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 mb-2">{issue.fields?.summary || issue.summary}</p>
+                    <div className="flex items-center gap-4 text-[10px] text-slate-500">
+                      <div className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</div>
+                      <div className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-function KpiCard({ result, pluginId, onHide }: { result: { name: string; value: number; unit: string; dimensions?: any, details?: Array<{ label: string; value: number; unit?: string }> }; pluginId: string, onHide?: () => void }) {
+function KpiCard({ result, pluginId, onHide, onClick }: { 
+  result: { 
+    name: string; 
+    value: number; 
+    unit: string; 
+    dimensions?: any; 
+    details?: Array<{ label: string; value: number; unit?: string }>;
+    ticketKeys?: string[];
+    comparison?: { value: number; change: number; label: string };
+  }; 
+  pluginId: string; 
+  onHide?: () => void;
+  onClick?: () => void;
+}) {
   const getIcon = () => {
     if (result.name.includes('Processing')) return <Clock className="h-5 w-5" />;
     if (result.name.includes('Working Days')) return <Calendar className="h-5 w-5" />;
@@ -2820,8 +3156,14 @@ function KpiCard({ result, pluginId, onHide }: { result: { name: string; value: 
     if (result.unit === 'hours') { if (result.value <= 40) return 'text-emerald-400'; if (result.value <= 80) return 'text-amber-400'; return 'text-red-400'; }
     return 'text-blue-400';
   };
+
+  const isClickable = !!onClick || (result.ticketKeys && result.ticketKeys.length > 0);
+
   return (
-    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700 transition-colors group relative">
+    <Card 
+      className={`border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700 transition-colors group relative ${isClickable ? 'cursor-pointer hover:shadow-md' : ''}`}
+      onClick={isClickable ? onClick : undefined}
+    >
       <CardContent className="p-5">
         <div className="flex items-start justify-between mb-3">
           <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800"><div className={getColor()}>{getIcon()}</div></div>
@@ -2829,7 +3171,7 @@ function KpiCard({ result, pluginId, onHide }: { result: { name: string; value: 
             <Badge variant="outline" className="text-xs text-slate-400 dark:text-slate-500">{pluginId.split('_').slice(0, 2).join(' ')}</Badge>
             {onHide && (
               <button 
-                onClick={onHide}
+                onClick={(e) => { e.stopPropagation(); onHide(); }}
                 className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity p-1"
                 title="Hide widget"
               >
@@ -2838,9 +3180,27 @@ function KpiCard({ result, pluginId, onHide }: { result: { name: string; value: 
             )}
           </div>
         </div>
-        <p className={`text-3xl font-bold font-mono ${getColor()}`}>{result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}</p>
+        
+        <div className="flex items-baseline gap-2">
+          <p className={`text-3xl font-bold font-mono ${getColor()}`}>{result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}</p>
+          {result.comparison && (
+            <div className={`flex items-center text-xs font-bold ${result.comparison.change > 0 ? 'text-emerald-500' : result.comparison.change < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+              {result.comparison.change > 0 ? <TrendingUp className="h-3 w-3 mr-0.5" /> : result.comparison.change < 0 ? <TrendingUp className="h-3 w-3 mr-0.5 rotate-180" /> : null}
+              {Math.abs(result.comparison.change)}
+            </div>
+          )}
+        </div>
+
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{result.name}</p>
-        {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{result.unit}</p>}
+        <div className="flex items-center justify-between mt-0.5">
+          {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500">{result.unit}</p>}
+          {result.ticketKeys && result.ticketKeys.length > 0 && (
+            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-400 border-none">
+              {result.ticketKeys.length} tickets
+            </Badge>
+          )}
+        </div>
+
         {result.details && <><Separator className="my-3 bg-gray-100 dark:bg-slate-800" /><div className="space-y-1.5">{result.details.map((d, i) => (<div key={i} className="flex items-center justify-between text-xs"><span className="text-slate-400 dark:text-slate-500">{d.label}</span><span className="font-mono text-slate-700 dark:text-slate-300">{d.value}{d.unit ? ` ${d.unit}` : ''}</span></div>))}</div></>}
       </CardContent>
     </Card>
