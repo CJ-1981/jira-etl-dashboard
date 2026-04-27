@@ -391,7 +391,7 @@ export default function Home() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           {/* Sticky Tab Navigation - Adjusted offset to account for sticky header */}
           <div className="sticky top-[61px] z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm py-2 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-slate-200 dark:border-slate-800">
-            <TabsList className="w-full bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-1 h-auto flex flex-wrap sm:flex-nowrap gap-1 justify-start overflow-x-auto no-scrollbar shadow-sm">
+            <TabsList className="w-full bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-1 h-auto flex flex-nowrap gap-1 justify-start overflow-x-auto no-scrollbar shadow-sm">
               <TabsTrigger value="extract" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">ETL & Export</span>
@@ -1551,7 +1551,7 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
 
 // ─── Extract Panel ────────────────────────────────────────────────────────────
 
-function ExtractPanel({
+const ExtractPanel = React.memo(function ExtractPanel({
   connections, extractionResult, setExtractionResult, masterDatasetInfo, setMasterDatasetInfo,
   dateFrom, setDateFrom, dateTo, setDateTo,
   activeConnectionId, settings, setSettings, setKpiResults, storageConfig
@@ -1589,9 +1589,13 @@ function ExtractPanel({
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing state with polling API external system */
   React.useEffect(() => {
     const loadPolling = () => {
+      // Skip polling updates during active extraction to prevent flickering
+      if (extracting) return;
+      
       fetch('/api/jira/poll').then((r) => r.json()).then((d) => {
         if (d.success) {
-          setPolling(d.polling);
+          // Only update if data actually changed to minimize re-renders
+          setPolling(prev => JSON.stringify(prev) === JSON.stringify(d.polling) ? prev : d.polling);
           setPollEnabled(d.polling.enabled);
           setPollInterval(String(d.polling.intervalMinutes));
         }
@@ -1600,7 +1604,7 @@ function ExtractPanel({
     loadPolling();
     const timer = setInterval(loadPolling, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [extracting]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load settings for persistence - useLayoutEffect for synchronous localStorage read
@@ -1944,7 +1948,7 @@ function ExtractPanel({
       )}
 
       {extractionResult && (
-        <Card className={`border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5 transition-all duration-300 min-h-[300px] ${extracting ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+        <Card className={`border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5 ${extracting ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-emerald-400"><CheckCircle2 className="h-5 w-5" /> Extraction Complete</CardTitle>
           </CardHeader>
@@ -2015,7 +2019,7 @@ function ExtractPanel({
 
               <div 
                 className="space-y-1 overflow-y-auto pr-1 custom-scrollbar"
-                style={{ maxHeight: `${settings.general.listMaxHeight || 400}px` }}
+                style={{ maxHeight: `${settings.general.listMaxHeight || 400}px`, scrollbarGutter: 'stable' }}
               >
                 {(extractionResult.issues || []).filter((issue: any) => {
                   const key = (issue.key || '').toLowerCase();
@@ -2074,7 +2078,7 @@ function ExtractPanel({
       )}
     </div>
   );
-}
+});
 
 // ─── KPI Dashboard (unchanged from previous version) ─────────────────────────
 

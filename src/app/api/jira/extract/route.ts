@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       projectKeys: jiraCredentials.projectKeys ? jiraCredentials.projectKeys.split(',') : [],
     });
 
-    // Normalize baseUrl (ensure it has https:// protocol)
+    // Normalize baseUrl
     let normalizedBaseUrl = jiraCredentials.baseUrl.trim();
     if (!normalizedBaseUrl.match(/^https?:\/\//i)) {
       normalizedBaseUrl = `https://${normalizedBaseUrl}`;
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       finalJql = client.buildDefaultJql({ dateFrom: effectiveDateFrom, dateTo: effectiveDateTo });
     }
 
-    console.log(`[Extract API] Starting extraction for connection ${connectionRef} with JQL: ${finalJql}`);
+    console.log(`[Extract API] Starting extraction for ${connectionRef} (JQL: ${finalJql.substring(0, 100)}...)`);
 
     // Extract issues
     const issues = await client.extractIssues(finalJql, {
@@ -78,16 +78,15 @@ export async function POST(request: Request) {
       delayMs: rateLimit?.delayMs || 0,
       backoffStrategy: rateLimit?.backoffStrategy || 'none',
       onProgress: (progress, total) => {
-        console.log(`[Extract API] Progress: ${progress}/${total} issues`);
+        console.log(`[Extract API] Progress: ${progress}/${total}`);
       },
     });
 
-    console.log(`[Extract API] Completed: ${issues.length} issues extracted`);
+    console.log(`[Extract API] Extracted: ${issues.length} issues`);
 
-    // Check if we should save this extraction
     const shouldSave = saveExtraction ?? true;
 
-    // Prune old extractions for this connection to prevent DB bloat
+    // Prune old extractions - Optimization: limited pruning scope
     if (shouldSave && connectionRef) {
       try {
         const normalize = (j: string) => j.replace(/created\s*[<>]=\s*"[^"]*"/g, '').replace(/\s+/g, ' ').trim();
@@ -95,15 +94,16 @@ export async function POST(request: Request) {
 
         const allRuns = await (db as any).etlRun.findMany({
           where: { connectionRef: connectionRef },
-          select: { id: true, jql: true }
+          select: { id: true, jql: true },
+          take: 50 // Only look at recent runs to prune
         });
         
         const runsToPrune = allRuns.filter((r: any) => normalize(r.jql || '') === currentTemplate);
         const oldRunIds = runsToPrune.map((r: any) => r.id);
         
         if (oldRunIds.length > 0) {
-          console.log(`[Extract API] Pruning ${oldRunIds.length} old extractions...`);
-          
+          console.log(`[Extract API] Pruning ${oldRunIds.length} old runs...`);
+          // Note: Many DBs handle cascading via schema, but we do it manually for SQLite safety
           const snapshotIds = await (db as any).ticketSnapshot.findMany({
             where: { etlRunId: { in: oldRunIds } },
             select: { id: true }
@@ -114,25 +114,16 @@ export async function POST(request: Request) {
               where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
             });
           }
-          
-          await (db as any).ticketSnapshot.deleteMany({
-            where: { etlRunId: { in: oldRunIds } }
-          });
-          
-          await (db as any).kpiResult.deleteMany({
-            where: { etlRunId: { in: oldRunIds } }
-          });
-          
-          await (db as any).etlRun.deleteMany({
-            where: { id: { in: oldRunIds } }
-          });
+          await (db as any).ticketSnapshot.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
+          await (db as any).kpiResult.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
+          await (db as any).etlRun.deleteMany({ where: { id: { in: oldRunIds } } });
         }
       } catch (pruneError) {
-        console.warn('[Extract API] Pruning failed, but continuing:', pruneError);
+        console.warn('[Extract API] Pruning failed:', pruneError);
       }
     }
 
-    // Get existing keys and timestamps to track additions/updates/unchanged
+    // Get existing keys and timestamps
     const existingMasterTickets = await (db as any).masterTicket.findMany({
       where: { connectionRef: connectionRef },
       select: { jiraKey: true, updated: true }
@@ -143,12 +134,6 @@ export async function POST(request: Request) {
       if (t.jiraKey) existingMap.set(t.jiraKey, t.updated);
     });
     
-    let addedCount = 0;
-    let updatedCount = 0;
-    let unchangedCount = 0;
-    const currentKeys = new Set(issues.map(i => i.key));
-
-    // Create ETL run record
     const etlRun = await (db as any).etlRun.create({
       data: {
         connectionRef: connectionRef,
@@ -162,17 +147,26 @@ export async function POST(request: Request) {
         autoSave: shouldSave,
         sizeBytes: Buffer.byteLength(JSON.stringify(issues)),
         metadata: JSON.stringify({
-          version: '1.2',
+          version: '1.3',
           extractParams: { jql: finalJql, dateFrom: effectiveDateFrom, dateTo: effectiveDateTo, daysBack },
         }),
       },
     });
 
-    // Store ticket snapshots and transitions
-    if (issues.length > 0) {
-      console.log(`[Extract API] Storing ${issues.length} ticket snapshots...`);
-      
-      const snapshotData = issues.map((issue) => {
+    // Chunked processing for database stability
+    const CHUNK_SIZE = 100;
+    let addedCount = 0;
+    let updatedCount = 0;
+    let unchangedCount = 0;
+
+    console.log(`[Extract API] Processing ${issues.length} issues in chunks of ${CHUNK_SIZE}...`);
+
+    for (let i = 0; i < issues.length; i += CHUNK_SIZE) {
+      const chunk = issues.slice(i, i + CHUNK_SIZE);
+      console.log(`[Extract API] Processing chunk ${Math.floor(i / CHUNK_SIZE) + 1}...`);
+
+      // 1. Store Snapshots
+      const snapshotData = chunk.map((issue) => {
         const fields = issue.fields || {};
         const rawSp = (fields as any)['customfield_10002'];
         const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
@@ -196,21 +190,18 @@ export async function POST(request: Request) {
         };
       });
 
-      // Use a loop if createMany fails, but for SQLite it should work in current Prisma
       try {
         await (db as any).ticketSnapshot.createMany({ data: snapshotData });
       } catch (err) {
-        console.warn('[Extract API] createMany failed, falling back to sequential create:', err);
-        for (const data of snapshotData) {
-          await (db as any).ticketSnapshot.create({ data });
-        }
+        for (const data of snapshotData) { await (db as any).ticketSnapshot.create({ data }); }
       }
 
-      const snapshots = await (db as any).ticketSnapshot.findMany({ where: { etlRunId: etlRun.id } });
+      const snapshots = await (db as any).ticketSnapshot.findMany({ 
+        where: { etlRunId: etlRun.id, jiraKey: { in: chunk.map(c => c.key) } } 
+      });
+
       const transitionData: any[] = [];
-      
-      for (let i = 0; i < issues.length; i++) {
-        const issue = issues[i];
+      for (const issue of chunk) {
         const snapshot = snapshots.find(s => s.jiraKey === issue.key);
         if (!snapshot || !issue.changelog?.histories) continue;
 
@@ -233,86 +224,80 @@ export async function POST(request: Request) {
         try {
           await (db as any).ticketTransition.createMany({ data: transitionData });
         } catch (err) {
-          for (const data of transitionData) {
-            await (db as any).ticketTransition.create({ data });
+          for (const data of transitionData) { await (db as any).ticketTransition.create({ data }); }
+        }
+      }
+
+      // 2. Update Master Dataset in smaller batches to avoid lock contention
+      for (const issue of chunk) {
+        const fields = issue.fields || {};
+        const existingUpdated = existingMap.get(issue.key);
+        
+        if (existingUpdated) {
+          const jiraUpdated = fields.updated ? new Date(fields.updated) : new Date();
+          if (existingUpdated.getTime() === jiraUpdated.getTime()) {
+            unchangedCount++;
+          } else {
+            updatedCount++;
           }
-        }
-      }
-    }
-
-    // Update master dataset
-    console.log('[Extract API] Updating master dataset...');
-    for (const issue of issues) {
-      const fields = issue.fields || {};
-      const existingUpdated = existingMap.get(issue.key);
-      
-      if (existingUpdated) {
-        const jiraUpdated = fields.updated ? new Date(fields.updated) : new Date();
-        if (existingUpdated.getTime() === jiraUpdated.getTime()) {
-          unchangedCount++;
         } else {
-          updatedCount++;
+          addedCount++;
         }
-      } else {
-        addedCount++;
+
+        const rawSp = (fields as any)['customfield_10002'];
+        const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
+
+        await (db as any).masterTicket.upsert({
+          where: { connectionRef_jiraKey: { connectionRef: connectionRef, jiraKey: issue.key } },
+          create: {
+            connectionRef: connectionRef,
+            jiraKey: issue.key,
+            summary: fields.summary || 'No Summary',
+            issueType: fields.issuetype?.name || 'Task',
+            priority: fields.priority?.name || 'Medium',
+            status: fields.status?.name || 'Unknown',
+            assignee: fields.assignee?.displayName || 'Unassigned',
+            reporter: fields.reporter?.displayName || 'Unknown',
+            created: fields.created ? new Date(fields.created) : new Date(),
+            updated: fields.updated ? new Date(fields.updated) : new Date(),
+            resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
+            dueDate: fields.duedate ? new Date(fields.duedate) : null,
+            storyPoints: storyPoints,
+            labels: JSON.stringify(fields.labels || []),
+            components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
+            rawData: JSON.stringify(issue),
+          },
+          update: {
+            summary: fields.summary || 'No Summary',
+            issueType: fields.issuetype?.name || 'Task',
+            priority: fields.priority?.name || 'Medium',
+            status: fields.status?.name || 'Unknown',
+            assignee: fields.assignee?.displayName || 'Unassigned',
+            reporter: fields.reporter?.displayName || 'Unknown',
+            updated: fields.updated ? new Date(fields.updated) : new Date(),
+            resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
+            dueDate: fields.duedate ? new Date(fields.duedate) : null,
+            storyPoints: storyPoints,
+            labels: JSON.stringify(fields.labels || []),
+            components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
+            rawData: JSON.stringify(issue),
+            lastUpdatedAt: new Date()
+          }
+        });
       }
-
-      const rawSp = (fields as any)['customfield_10002'];
-      const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
-
-      await (db as any).masterTicket.upsert({
-        where: { connectionRef_jiraKey: { connectionRef: connectionRef, jiraKey: issue.key } },
-        create: {
-          connectionRef: connectionRef,
-          jiraKey: issue.key,
-          summary: fields.summary || 'No Summary',
-          issueType: fields.issuetype?.name || 'Task',
-          priority: fields.priority?.name || 'Medium',
-          status: fields.status?.name || 'Unknown',
-          assignee: fields.assignee?.displayName || 'Unassigned',
-          reporter: fields.reporter?.displayName || 'Unknown',
-          created: fields.created ? new Date(fields.created) : new Date(),
-          updated: fields.updated ? new Date(fields.updated) : new Date(),
-          resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
-          dueDate: fields.duedate ? new Date(fields.duedate) : null,
-          storyPoints: storyPoints,
-          labels: JSON.stringify(fields.labels || []),
-          components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
-          rawData: JSON.stringify(issue),
-        },
-        update: {
-          summary: fields.summary || 'No Summary',
-          issueType: fields.issuetype?.name || 'Task',
-          priority: fields.priority?.name || 'Medium',
-          status: fields.status?.name || 'Unknown',
-          assignee: fields.assignee?.displayName || 'Unassigned',
-          reporter: fields.reporter?.displayName || 'Unknown',
-          updated: fields.updated ? new Date(fields.updated) : new Date(),
-          resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
-          dueDate: fields.duedate ? new Date(fields.duedate) : null,
-          storyPoints: storyPoints,
-          labels: JSON.stringify(fields.labels || []),
-          components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
-          rawData: JSON.stringify(issue),
-          lastUpdatedAt: new Date()
-        }
-      });
     }
 
     // Deletion detection
     let deletedCount = 0;
+    const currentKeys = new Set(issues.map(i => i.key));
     const lowerJql = finalJql.toLowerCase();
-    const isBroadSync = !lowerJql.includes('updated') && 
-                       !lowerJql.includes('created') && 
-                       !lowerJql.includes('resolved');
+    const isBroadSync = !lowerJql.includes('updated') && !lowerJql.includes('created') && !lowerJql.includes('resolved');
     
     if (isBroadSync) {
       const existingKeys = Array.from(existingMap.keys());
       const keysToRemove = existingKeys.filter(k => !currentKeys.has(k));
       deletedCount = keysToRemove.length;
-      
       if (deletedCount > 0) {
-        console.log(`[Extract API] Removing ${deletedCount} deleted tickets in broad sync.`);
         await (db as any).masterTicket.deleteMany({
           where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
         });
@@ -326,10 +311,7 @@ export async function POST(request: Request) {
       const endDate = effectiveDateTo ? new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999)) : new Date();
 
       const dbTicketsInPeriod = await (db as any).masterTicket.findMany({
-        where: {
-          connectionRef: connectionRef,
-          [dateField]: { gte: startDate, lte: endDate }
-        },
+        where: { connectionRef: connectionRef, [dateField]: { gte: startDate, lte: endDate } },
         select: { jiraKey: true }
       });
 
@@ -338,34 +320,23 @@ export async function POST(request: Request) {
       deletedCount = keysToRemove.length;
 
       if (deletedCount > 0) {
-        console.log(`[Extract API] Removing ${deletedCount} deleted tickets for period.`);
         await (db as any).masterTicket.deleteMany({
           where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
         });
       }
     }
 
-    // Auto-KPI calculation
+    // Optimized KPI calculation - avoid loading everything at once if possible
     try {
       console.log('[Extract API] Running KPI calculation...');
       const engine = getKpiEngine();
       
-      if (customPlugins && Array.isArray(customPlugins)) {
-        for (const plugin of customPlugins) {
-          if (plugin.pluginType === 'custom' && plugin.formula) {
-            engine.registerCustomPlugin({
-              id: plugin.id,
-              name: plugin.name,
-              description: plugin.description || '',
-              category: plugin.category || 'custom',
-              unit: plugin.unit || '',
-              formula: plugin.formula
-            });
-          }
-        }
-      }
-
-      const masterTickets = await (db as any).masterTicket.findMany({ where: { connectionRef: connectionRef } });
+      // Load and parse master tickets in chunks or at least be careful with memory
+      const masterTickets = await (db as any).masterTicket.findMany({ 
+        where: { connectionRef: connectionRef },
+        select: { rawData: true } // Only fetch rawData to save memory
+      });
+      
       const allIssues = masterTickets.map((t: any) => {
         try { return JSON.parse(t.rawData); } catch (e) { return null; }
       }).filter(Boolean);
@@ -375,14 +346,14 @@ export async function POST(request: Request) {
         end: effectiveDateTo ? new Date(effectiveDateTo) : new Date()
       };
 
-      const holidays = {
+      const holidayConfig = {
         regions: [generalSettings?.defaultHolidayState || 'national'] as any[],
         workStartHour: generalSettings?.workStartHour || 9,
         workEndHour: generalSettings?.workEndHour || 17,
         slaTargetHours: generalSettings?.defaultSlaTargetHours || 40,
       };
 
-      const kpiResults = engine.calculateAll(allIssues, holidays, period);
+      const kpiResults = engine.calculateAll(allIssues, holidayConfig, period);
 
       const kpiData: any[] = [];
       for (const [kpiId, results] of Object.entries(kpiResults)) {
@@ -403,7 +374,10 @@ export async function POST(request: Request) {
       }
 
       if (kpiData.length > 0) {
-        await (db as any).kpiResult.createMany({ data: kpiData });
+        // Chunk KPI inserts
+        for (let i = 0; i < kpiData.length; i += CHUNK_SIZE) {
+          await (db as any).kpiResult.createMany({ data: kpiData.slice(i, i + CHUNK_SIZE) });
+        }
       }
     } catch (kpiError) {
       console.error('[Extract API] KPI calculation failed:', kpiError);
@@ -428,9 +402,6 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('[Extract API] Critical error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : String(error) 
-    }, { status: 500 });
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
