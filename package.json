@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev --webpack -p 3000",
     "dev:turbo": "next dev --turbo -p 3000",
     "dev:low-memory": "cross-env NODE_OPTIONS=--max-old-space-size=2048 next dev -p 3000",
     "prisma:setup": "node scripts/prisma-setup.mjs",

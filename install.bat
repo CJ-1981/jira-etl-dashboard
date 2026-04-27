@@ -65,20 +65,11 @@ echo.
 :: ── Setup Prisma ─────────────────────────────────────────────
 echo [5/6] Setting up database with Prisma...
 
-call npx prisma generate
+:: This script handles template selection (SQLite/PG), generation, and initialization
+call node scripts/prisma-setup.mjs
 if %errorlevel% neq 0 (
-    echo [ERROR] Prisma generate failed.
+    echo [ERROR] Prisma setup failed.
     goto :fail
-)
-
-call npx prisma migrate deploy
-if %errorlevel% neq 0 (
-    echo         No existing migrations found, pushing schema directly...
-    call npx prisma db push
-    if %errorlevel% neq 0 (
-        echo [ERROR] Database setup failed.
-        goto :fail
-    )
 )
 echo         Database ready.
 echo.

@@ -43,14 +43,8 @@ echo
 
 # Setup Prisma
 echo "[5/6] Setting up database with Prisma..."
-npx prisma generate
-
-if npx prisma migrate deploy 2>/dev/null; then
-    echo "        Migrations applied."
-else
-    echo "        No existing migrations, pushing schema..."
-    npx prisma db push
-fi
+# This script handles template selection (SQLite/PG), generation, and initialization
+node scripts/prisma-setup.mjs
 echo "        Database ready."
 echo
 

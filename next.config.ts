@@ -4,15 +4,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   // Enable typed routes for better TypeScript support
-  experimental: {
-    typedRoutes: true,
-  },
+  typedRoutes: true,
 
-  // Set Turbopack root directory to avoid warnings
+  // Turbopack configuration to silence Next.js 16 errors
   turbopack: {
     root: process.cwd(),
   },
-
   // TypeScript configuration
   typescript: {
     ignoreBuildErrors: true,
@@ -54,6 +51,13 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
+
+  // External packages that should not be bundled
+  serverExternalPackages: ['@prisma/client'],
+
+  // Transpile packages for better compatibility
+  transpilePackages: [],
+
 
   // Headers for security and performance
   async headers() {

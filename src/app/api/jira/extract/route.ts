@@ -211,7 +211,7 @@ export async function POST(request: Request) {
       where: { connectionRef: connectionRef },
       select: { jiraKey: true }
     });
-    const existingKeys = new Set(existingMasterTickets.map((t: any) => t.jiraKey));
+    const existingKeys = new Set<string>(existingMasterTickets.map((t: any) => t.jiraKey as string));
     let addedCount = 0;
     let updatedCount = 0;
     const currentKeys = new Set(issues.map(i => i.key));
@@ -348,7 +348,7 @@ export async function POST(request: Request) {
                        !finalJql.toLowerCase().includes('resolved');
     
     if (isBroadSync) {
-      const keysToRemove = [...existingKeys].filter(k => !currentKeys.has(k));
+      const keysToRemove = Array.from(existingKeys).filter(k => !currentKeys.has(k));
       deletedCount = keysToRemove.length;
       
       if (deletedCount > 0) {

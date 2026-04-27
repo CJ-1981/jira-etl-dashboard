@@ -218,5 +218,6 @@ docu/*
 db/
 prisma/db/
 *.db-journal
-scripts/*
+scripts/*.log
+scripts/temp/
 .moai/plans/optimized-orbiting-kurzweil.md

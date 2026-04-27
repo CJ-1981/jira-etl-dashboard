@@ -63,7 +63,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin } from '@/lib/config/local-store';
+import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin, type AppSettings } from '@/lib/config/local-store';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -185,7 +185,7 @@ export default function Home() {
   const [dateTo, setDateTo] = useState('');
   const [region, setRegion] = useState('national');
   const [activeConnectionId, setActiveConnectionId] = useState<string>('');
-  const [settings, setSettings] = useState<any>({});
+  const [settings, setSettings] = useState<AppSettings | any>(localConfig.getSettings());
   const [kpiResults, setKpiResults] = useState<any>([]);
   const [storageConfig, setStorageConfig] = useState<{ provider: 'sqlite' | 'postgresql', url: string, directUrl?: string, isCustom: boolean }>({ provider: 'sqlite', url: '', isCustom: false });
 
@@ -1998,7 +1998,7 @@ function ExtractPanel({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Statuses</SelectItem>
-                    {Array.from(new Set((extractionResult.issues || []).map((i: any) => i.fields?.status?.name || i.status))).sort().map(status => (
+                    {Array.from(new Set<string>((extractionResult.issues || []).map((i: any) => (i.fields?.status?.name || i.status) as string))).sort().map((status: string) => (
                       <SelectItem key={status} value={status}>{status}</SelectItem>
                     ))}
                   </SelectContent>
@@ -3730,14 +3730,9 @@ function ExportPanel({
 // ─── Settings Panel (Feature 3: Rate Limit + Feature 5: Config Import/Export) ─
 
 function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?: (settings: any) => void, storageConfig: any }) {
-  const [settings, setSettings] = useState<{
-    rateLimit: { delayMs: number; maxRequestsPerMinute: number; batchSize: number; backoffStrategy: string };
-    general: { defaultHolidayState: string; workStartHour: number; workEndHour: number; defaultSlaTargetHours: number };
-    persistence: { autoSave: boolean; autoRestore: boolean; retentionDays: number | 'never' };
-    sla: { statusTargets: Record<string, number> };
-  }>({
+  const [settings, setSettings] = useState<AppSettings>({
     rateLimit: { delayMs: 0, maxRequestsPerMinute: 60, batchSize: 50, backoffStrategy: 'none' },
-    general: { defaultHolidayState: 'national', workStartHour: 9, workEndHour: 17, defaultSlaTargetHours: 40 },
+    general: { defaultHolidayState: 'national', workStartHour: 9, workEndHour: 17, defaultSlaTargetHours: 40, listMaxHeight: 400 },
     persistence: { autoSave: true, autoRestore: true, retentionDays: 30 },
     sla: { statusTargets: {} },
   });

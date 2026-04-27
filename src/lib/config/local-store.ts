@@ -132,7 +132,17 @@ export const localConfig = {
   getKpiPlugins: () => get<KpiPlugin[]>(KEYS.plugins, []),
   saveKpiPlugins: (plugins: KpiPlugin[]) => set(KEYS.plugins, plugins),
 
-  getSettings: () => get<AppSettings>(KEYS.settings, DEFAULT_SETTINGS),
+  getSettings: () => {
+    const s = get<AppSettings>(KEYS.settings, DEFAULT_SETTINGS);
+    return {
+      ...DEFAULT_SETTINGS,
+      ...s,
+      rateLimit: { ...DEFAULT_SETTINGS.rateLimit, ...(s.rateLimit || {}) },
+      general: { ...DEFAULT_SETTINGS.general, ...(s.general || {}) },
+      persistence: { ...DEFAULT_SETTINGS.persistence, ...(s.persistence || {}) },
+      sla: { ...DEFAULT_SETTINGS.sla, ...(s.sla || {}) },
+    };
+  },
   saveSettings: (s: Partial<AppSettings>) => {
     const current = localConfig.getSettings();
     set(KEYS.settings, { ...current, ...s });
