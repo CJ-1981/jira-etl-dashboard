@@ -206,14 +206,18 @@ export async function POST(request: Request) {
       }
     }
 
-    // Get existing keys to track additions/updates
+    // Get existing keys and timestamps to track additions/updates/unchanged
     const existingMasterTickets = await (db as any).masterTicket.findMany({
       where: { connectionRef: connectionRef },
-      select: { jiraKey: true }
+      select: { jiraKey: true, updated: true }
     });
-    const existingKeys = new Set<string>(existingMasterTickets.map((t: any) => t.jiraKey as string));
+    
+    const existingMap = new Map<string, Date>();
+    existingMasterTickets.forEach((t: any) => existingMap.set(t.jiraKey, t.updated));
+    
     let addedCount = 0;
     let updatedCount = 0;
+    let unchangedCount = 0;
     const currentKeys = new Set(issues.map(i => i.key));
 
     // Create ETL run record
@@ -238,7 +242,7 @@ export async function POST(request: Request) {
 
     // Store ticket snapshots and transitions
     if (issues.length > 0) {
-      await db.ticketSnapshot.createMany({
+      await (db as any).ticketSnapshot.createMany({
         data: issues.map((issue) => {
           const rawSp = (issue.fields as any)['customfield_10002'];
           const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
@@ -258,12 +262,12 @@ export async function POST(request: Request) {
             dueDate: issue.fields.duedate ? new Date(issue.fields.duedate) : null,
             storyPoints,
             labels: JSON.stringify(issue.fields.labels || []),
-            components: JSON.stringify(issue.fields.components?.map((c) => c.name) || []),
+            components: JSON.stringify(issue.fields.components?.map((c: any) => c.name) || []),
           };
         }),
       });
 
-      const snapshots = await db.ticketSnapshot.findMany({ where: { etlRunId: etlRun.id } });
+      const snapshots = await (db as any).ticketSnapshot.findMany({ where: { etlRunId: etlRun.id } });
       const transitionData: any[] = [];
       for (let i = 0; i < issues.length; i++) {
         const issue = issues[i];
@@ -286,15 +290,23 @@ export async function POST(request: Request) {
       }
 
       if (transitionData.length > 0) {
-        await db.ticketTransition.createMany({ data: transitionData });
+        await (db as any).ticketTransition.createMany({ data: transitionData });
       }
     }
 
     // Update master dataset
     console.log('Updating master dataset...');
     for (const issue of issues) {
-      if (existingKeys.has(issue.key)) {
-        updatedCount++;
+      const existingUpdated = existingMap.get(issue.key);
+      
+      if (existingUpdated) {
+        // Compare timestamps to distinguish unchanged vs updated
+        const jiraUpdated = new Date(issue.fields.updated);
+        if (existingUpdated.getTime() === jiraUpdated.getTime()) {
+          unchangedCount++;
+        } else {
+          updatedCount++;
+        }
       } else {
         addedCount++;
       }
@@ -319,7 +331,7 @@ export async function POST(request: Request) {
           dueDate: issue.fields.duedate ? new Date(issue.fields.duedate) : null,
           storyPoints: storyPoints,
           labels: JSON.stringify(issue.fields.labels || []),
-          components: JSON.stringify(issue.fields.components?.map((c) => c.name) || []),
+          components: JSON.stringify(issue.fields.components?.map((c: any) => c.name) || []),
           rawData: JSON.stringify(issue),
         },
         update: {
@@ -334,27 +346,62 @@ export async function POST(request: Request) {
           dueDate: issue.fields.duedate ? new Date(issue.fields.duedate) : null,
           storyPoints: storyPoints,
           labels: JSON.stringify(issue.fields.labels || []),
-          components: JSON.stringify(issue.fields.components?.map((c) => c.name) || []),
+          components: JSON.stringify(issue.fields.components?.map((c: any) => c.name) || []),
           rawData: JSON.stringify(issue),
           lastUpdatedAt: new Date()
         }
       });
     }
 
-    // Check for deleted tickets (only if JQL is project-wide without time filters)
+    // Check for deleted tickets
     let deletedCount = 0;
-    const isBroadSync = !finalJql.toLowerCase().includes('updated') && 
-                       !finalJql.toLowerCase().includes('created') && 
-                       !finalJql.toLowerCase().includes('resolved');
+    const lowerJql = finalJql.toLowerCase();
+    const isBroadSync = !lowerJql.includes('updated') && 
+                       !lowerJql.includes('created') && 
+                       !lowerJql.includes('resolved');
     
     if (isBroadSync) {
-      const keysToRemove = Array.from(existingKeys).filter(k => !currentKeys.has(k));
+      const existingKeys = Array.from(existingMap.keys());
+      const keysToRemove = existingKeys.filter(k => !currentKeys.has(k));
       deletedCount = keysToRemove.length;
       
       if (deletedCount > 0) {
-        console.log(`Detected ${deletedCount} deleted/removed tickets. Removing from master dataset.`);
+        console.log(`Detected ${deletedCount} deleted/removed tickets in broad sync. Removing from master dataset.`);
         await (db as any).masterTicket.deleteMany({
           where: { 
+            connectionRef: connectionRef,
+            jiraKey: { in: keysToRemove }
+          }
+        });
+      }
+    } else if (effectiveDateFrom) {
+      // Period-based sync deletion detection
+      let dateField = 'created';
+      if (lowerJql.includes('updated')) dateField = 'updated';
+      else if (lowerJql.includes('resolved')) dateField = 'resolved';
+
+      const startDate = new Date(effectiveDateFrom);
+      const endDate = effectiveDateTo ? new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999)) : new Date();
+
+      const dbTicketsInPeriod = await (db as any).masterTicket.findMany({
+        where: {
+          connectionRef: connectionRef,
+          [dateField]: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        select: { jiraKey: true }
+      });
+
+      const periodKeys = dbTicketsInPeriod.map((t: any) => t.jiraKey);
+      const keysToRemove = periodKeys.filter((k: string) => !currentKeys.has(k));
+      deletedCount = keysToRemove.length;
+
+      if (deletedCount > 0) {
+        console.log(`Detected ${deletedCount} deleted/removed tickets for period. Removing from master dataset.`);
+        await (db as any).masterTicket.deleteMany({
+          where: {
             connectionRef: connectionRef,
             jiraKey: { in: keysToRemove }
           }
@@ -431,6 +478,7 @@ export async function POST(request: Request) {
         totalExtracted: issues.length,
         added: addedCount,
         updated: updatedCount,
+        unchanged: unchangedCount,
         deleted: deletedCount,
         jql: finalJql,
         timestamp: new Date().toISOString(),

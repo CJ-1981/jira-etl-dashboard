@@ -1614,7 +1614,7 @@ function ExtractPanel({
 
   const handleExtract = async (daysBack?: number) => {
     if (!activeConnectionId) { toast.error('Please select a connection in the Connections tab'); return; }
-    setExtracting(true); setExtractionResult(null); setKpiResults([]);
+    setExtracting(true); setKpiResults([]);
 
     // Show loading toast
     const loadingToast = toast.loading('Extracting issues from Jira...', { duration: 0 });
@@ -1659,10 +1659,11 @@ function ExtractPanel({
         if (extractedCount === 0) {
           toast.warning('Extraction returned 0 issues. This could be due to: invalid/expired API token, incorrect project key, or no issues in the date range. Try testing your connection and checking credentials.', { duration: 8000 });
         } else {
-          const { added, updated, deleted } = data.summary;
+          const { added, updated, unchanged, deleted } = data.summary;
           const stats = [
             added > 0 ? `${added} added` : null,
             updated > 0 ? `${updated} updated` : null,
+            unchanged > 0 ? `${unchanged} unchanged` : null,
             deleted > 0 ? `${deleted} deleted` : null
           ].filter(Boolean).join(', ');
 
