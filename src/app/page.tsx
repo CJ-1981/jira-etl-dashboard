@@ -1740,6 +1740,15 @@ const ExtractPanel = React.memo(function ExtractPanel({
               dateRange: masterData.data.dateRange,
               lastUpdated: masterData.data.lastUpdated
             });
+
+            // Ping the polling system to let it know we just did a manual pull
+            if (pollEnabled) {
+              await fetch('/api/jira/poll', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'ping' })
+              }).catch(e => console.warn('Failed to ping polling system:', e));
+            }
           }
         } catch (error) {
           console.log('Failed to reload master dataset info:', error);
@@ -1784,8 +1793,9 @@ const ExtractPanel = React.memo(function ExtractPanel({
     }
   };
 
-  const handleTogglePolling = async (targetState?: boolean) => {
+  const handleTogglePolling = async (targetState?: boolean, overrideInterval?: string) => {
     const nextEnabled = typeof targetState === 'boolean' ? targetState : !pollEnabled;
+    const intervalToUse = overrideInterval || pollInterval;
 
     if (nextEnabled && !activeConnectionId) {
       toast.error('Select a connection first');
@@ -1799,7 +1809,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           connectionId: nextEnabled ? activeConnectionId : null,
-          intervalMinutes: parseInt(pollInterval) || 15,
+          intervalMinutes: parseInt(intervalToUse) || 15,
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
           jql: jql || undefined,
@@ -1864,6 +1874,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
   ];
 
   const intervalOptions = [
+    { label: '1 min', value: '1' },
     { label: '5 min', value: '5' },
     { label: '15 min', value: '15' },
     { label: '30 min', value: '30' },
@@ -2012,6 +2023,56 @@ const ExtractPanel = React.memo(function ExtractPanel({
               Pull Baseline
             </Button>
           </div>
+
+          <Separator className="bg-emerald-500/10" />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2 text-sm font-medium text-emerald-900 dark:text-emerald-400">
+                <Clock className="h-4 w-4" /> Scheduled Pulling
+              </Label>
+              <div className="flex items-center gap-2">
+                {polling?.enabled && (
+                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] animate-pulse bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                    LIVE
+                  </Badge>
+                )}
+                <Switch checked={pollEnabled} onCheckedChange={handleTogglePolling} disabled={pollSaving || !activeConnectionId} />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-[150px]">
+                <Select value={pollInterval} onValueChange={(v) => { setPollInterval(v); if(pollEnabled) handleTogglePolling(true, v); }} disabled={pollSaving}>
+                  <SelectTrigger className="h-9 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                    <SelectValue placeholder="Select interval" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {intervalOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex-1 min-w-[200px] rounded-md bg-white dark:bg-slate-900 border border-emerald-500/10 p-2">
+                <div className="flex flex-col gap-1 text-[10px]">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Last Run:</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-mono">{polling?.lastRunAt ? new Date(polling.lastRunAt).toLocaleTimeString() : 'Never'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Next Run:</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-mono">{polling?.nextRunAt ? new Date(polling.nextRunAt).toLocaleTimeString() : '-'}</span>
+                  </div>
+                  {polling?.lastError && (
+                    <div className="text-red-400 truncate mt-1 border-t border-red-500/10 pt-1">
+                      Error: {polling.lastError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
         </CardContent>
       </Card>
 

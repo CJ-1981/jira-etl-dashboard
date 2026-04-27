@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-// ─── In-memory polling state (MVP - resets on server restart) ──────────────────
+// ─── Persistent Polling State (using global to survive hot reloads in dev) ────
 
 interface PollingState {
   enabled: boolean;
@@ -16,7 +16,7 @@ interface PollingState {
   lastError: string | null;
 }
 
-let pollingState: PollingState = {
+const DEFAULT_STATE: PollingState = {
   enabled: false,
   connectionId: '',
   intervalMinutes: 15,
@@ -30,21 +30,33 @@ let pollingState: PollingState = {
   lastError: null,
 };
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+// Use global to persist state in development
+const globalForPolling = global as unknown as { 
+  pollingState: PollingState;
+  pollTimer: ReturnType<typeof setInterval> | null;
+};
+
+if (!globalForPolling.pollingState) {
+  globalForPolling.pollingState = { ...DEFAULT_STATE };
+}
+
+const pollingState = globalForPolling.pollingState;
 
 async function runPollingExtraction() {
   if (!pollingState.enabled || pollingState.status === 'running') return;
 
   pollingState.status = 'running';
   try {
-    const res = await fetch('http://localhost:3000/api/jira/extract', {
+    const port = process.env.PORT || 3000;
+    const res = await fetch(`http://localhost:${port}/api/jira/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        connectionId: pollingState.connectionId,
+        connectionRef: pollingState.connectionId,
         jql: pollingState.jql || undefined,
         dateFrom: pollingState.dateFrom || undefined,
         dateTo: pollingState.dateTo || undefined,
+        saveExtraction: true
       }),
     });
 
@@ -54,23 +66,25 @@ async function runPollingExtraction() {
       pollingState.lastError = null;
     } else {
       pollingState.lastError = data.error || 'Unknown extraction error';
+      console.error('[Polling] Background extraction error:', pollingState.lastError);
     }
   } catch (error) {
     pollingState.lastError = error instanceof Error ? error.message : 'Network error';
+    console.error('[Polling] Background extraction failed:', pollingState.lastError);
   } finally {
     pollingState.lastRunAt = new Date().toISOString();
-    pollingState.status = pollingState.enabled ? 'idle' : 'idle';
+    pollingState.status = 'idle';
   }
 }
 
 function startPolling() {
-  if (pollTimer) clearInterval(pollTimer);
+  if (globalForPolling.pollTimer) clearInterval(globalForPolling.pollTimer);
   if (!pollingState.enabled) return;
 
   const intervalMs = pollingState.intervalMinutes * 60 * 1000;
   pollingState.nextRunAt = new Date(Date.now() + intervalMs).toISOString();
 
-  pollTimer = setInterval(async () => {
+  globalForPolling.pollTimer = setInterval(async () => {
     await runPollingExtraction();
     if (pollingState.enabled) {
       const nextIntervalMs = pollingState.intervalMinutes * 60 * 1000;
@@ -80,9 +94,9 @@ function startPolling() {
 }
 
 function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
+  if (globalForPolling.pollTimer) {
+    clearInterval(globalForPolling.pollTimer);
+    globalForPolling.pollTimer = null;
   }
   pollingState.nextRunAt = null;
   pollingState.enabled = false;
@@ -92,59 +106,46 @@ function stopPolling() {
 export async function GET() {
   return NextResponse.json({
     success: true,
-    polling: {
-      enabled: pollingState.enabled,
-      connectionId: pollingState.connectionId,
-      intervalMinutes: pollingState.intervalMinutes,
-      lastRunAt: pollingState.lastRunAt,
-      nextRunAt: pollingState.nextRunAt,
-      runCount: pollingState.runCount,
-      status: pollingState.status,
-      lastError: pollingState.lastError,
-    },
+    polling: pollingState,
   });
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { connectionId, intervalMinutes, dateFrom, dateTo, jql, enabled } = body;
+    const { connectionId, intervalMinutes, dateFrom, dateTo, jql, enabled, action } = body;
 
-    if (enabled) {
-      if (!connectionId) {
-        return NextResponse.json(
-          { success: false, error: 'connectionId is required when enabling polling' },
-          { status: 400 }
-        );
+    // Handle Ping Action (Manual override notification)
+    if (action === 'ping') {
+      if (pollingState.enabled) {
+        pollingState.lastRunAt = new Date().toISOString();
+        // Reset timer to start fresh from now
+        startPolling();
+      }
+      return NextResponse.json({ success: true, polling: pollingState });
+    }
+
+    // Handle Polling State Update
+    if (enabled === true) {
+      if (!connectionId && !pollingState.connectionId) {
+        return NextResponse.json({ success: false, error: 'connectionId is required' }, { status: 400 });
       }
 
-      pollingState = {
-        ...pollingState,
-        enabled: true,
-        connectionId: connectionId || pollingState.connectionId,
-        intervalMinutes: intervalMinutes || 15,
-        dateFrom: dateFrom || pollingState.dateFrom,
-        dateTo: dateTo || pollingState.dateTo,
-        jql: jql || pollingState.jql,
-      };
+      pollingState.enabled = true;
+      pollingState.connectionId = connectionId || pollingState.connectionId;
+      pollingState.intervalMinutes = intervalMinutes || pollingState.intervalMinutes;
+      pollingState.dateFrom = dateFrom || pollingState.dateFrom;
+      pollingState.dateTo = dateTo || pollingState.dateTo;
+      pollingState.jql = jql || pollingState.jql;
 
       startPolling();
-    } else {
+    } else if (enabled === false) {
       stopPolling();
     }
 
     return NextResponse.json({
       success: true,
-      polling: {
-        enabled: pollingState.enabled,
-        connectionId: pollingState.connectionId,
-        intervalMinutes: pollingState.intervalMinutes,
-        lastRunAt: pollingState.lastRunAt,
-        nextRunAt: pollingState.nextRunAt,
-        runCount: pollingState.runCount,
-        status: pollingState.status,
-        lastError: pollingState.lastError,
-      },
+      polling: pollingState,
     });
   } catch (error) {
     return NextResponse.json(
