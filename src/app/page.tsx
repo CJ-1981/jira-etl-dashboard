@@ -49,7 +49,7 @@ import {
   CheckCircle2, XCircle, Loader2, Plus, Trash2, FileJson,
   FileSpreadsheet, Activity, Target, Timer, UserCheck,
   Server, Key, Info, ExternalLink, Search,
-  HardDrive, Upload, Shield,
+  HardDrive, Upload, Shield, EyeOff, X,
   RotateCw, Wand2, Sliders,
   Save, SaveAll, Sun, Moon,
   LayoutGrid, Edit2, Ticket, GripVertical,
@@ -2224,6 +2224,19 @@ function KpiDashboard({
   connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults, storageConfig
 }: any) {
   const [calculating, setCalculating] = useState(false);
+  const [hiddenDimensions, setHiddenDimensions] = useState<Set<string>>(new Set());
+
+  const toggleDimension = (pluginId: string, dimensionValue: string) => {
+    const key = `${pluginId}|${dimensionValue}`;
+    setHiddenDimensions(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const resetHidden = () => setHiddenDimensions(new Set());
 
   // Chart section state
   const [charts, setCharts] = useState<ChartConfig[]>([
@@ -2456,52 +2469,167 @@ function KpiDashboard({
       </Card>
 
       {kpiResults.length > 0 && (<>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mainKpis.map((kpi) => kpi.results.map((result, idx) => (<KpiCard key={`${kpi.pluginId}-${idx}`} result={result} pluginId={kpi.pluginId} />)))}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+              <Activity className="h-5 w-5 text-emerald-500" />
+              Overview
+            </h3>
+            {Array.from(hiddenDimensions).some(k => mainKpis.some(mk => k === `${mk.pluginId}|`)) && (
+              <Button variant="ghost" size="sm" onClick={() => {
+                setHiddenDimensions(prev => {
+                  const next = new Set(prev);
+                  mainKpis.forEach(mk => next.delete(`${mk.pluginId}|`));
+                  return next;
+                });
+              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                <RotateCw className="h-3 w-3 mr-1" /> Restore All Widgets
+              </Button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mainKpis.map((kpi) => kpi.results.map((result, idx) => {
+              if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
+              return (
+                <KpiCard 
+                  key={`${kpi.pluginId}-${idx}`} 
+                  result={result} 
+                  pluginId={kpi.pluginId} 
+                  onHide={() => toggleDimension(kpi.pluginId, '')}
+                />
+              );
+            }))}
+          </div>
         </div>
+
         {statusKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
+                {Array.from(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setHiddenDimensions(prev => {
+                      const next = new Set(prev);
+                      Array.from(next).forEach(k => { if(k.startsWith('time_in_status|')) next.delete(k); });
+                      return next;
+                    });
+                  }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
+                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
             <CardContent>
-              <div className="space-y-3">{statusKpis.map((kpi) => kpi.results.map((result, idx) => {
-                const maxVal = Math.max(...statusKpis.flatMap((k) => k.results.map((r) => r.value)), 1);
-                return (<div key={`${kpi.pluginId}-${idx}`} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm"><span className="text-slate-700 dark:text-slate-300">{result.name}</span><span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span></div>
-                  <div className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500" style={{ width: `${(result.value / maxVal) * 100}%` }} /></div>
-                </div>);
-              }))}</div>
+              <div className="space-y-3">{statusKpis.map((kpi) => {
+                const visibleResults = kpi.results.filter(r => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`));
+                const maxVal = Math.max(...visibleResults.map((r) => r.value), 1);
+                
+                return visibleResults.map((result, idx) => (
+                  <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-700 dark:text-slate-300">{result.name}</span>
+                        <button 
+                          onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
+                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                          title="Hide bar"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
+                      <div 
+                        className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500" 
+                        style={{ width: `${(result.value / maxVal) * 100}%` }} 
+                      />
+                    </div>
+                  </div>
+                ));
+              })}</div>
             </CardContent>
           </Card>
         )}
         {priorityKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
+                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_priority|')) && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setHiddenDimensions(prev => {
+                      const next = new Set(prev);
+                      Array.from(next).forEach(k => { if(k.startsWith('sla_by_priority|')) next.delete(k); });
+                      return next;
+                    });
+                  }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
+                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{priorityKpis.map((kpi) => kpi.results.map((result, idx) => (
-                <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4">
-                  <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.priority}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
-                </div>
-              )))}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{priorityKpis.map((kpi) => kpi.results.map((result, idx) => {
+                if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
+                return (
+                  <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group">
+                    <button 
+                      onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || '')}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                      title="Hide widget"
+                    >
+                      <EyeOff className="h-3 w-3" />
+                    </button>
+                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.priority}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
+                  </div>
+                );
+              }))}</div>
             </CardContent>
           </Card>
         )}
         {slaStatusKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
+                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setHiddenDimensions(prev => {
+                      const next = new Set(prev);
+                      Array.from(next).forEach(k => { if(k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) next.delete(k); });
+                      return next;
+                    });
+                  }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                  </Button>
+                )}
+              </div>
               <CardDescription className="text-slate-600 dark:text-slate-400">Compliance with per-status SLA targets. Assignee comments reset the clock.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{slaStatusKpis.map((kpi) => kpi.results.map((result, idx) => (
-                <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4">
-                  <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
-                  {result.details && (
-                    <div className="space-y-1 mt-2">
-                      <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find(d => d.label === 'Target')?.value || '-'}h</span></div>
-                      <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find(d => d.label === 'Within SLA')?.value || 0}/{result.details.find(d => d.label === 'Total')?.value || 0}</span></div>
-                    </div>
-                  )}
-                </div>
-              )))}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{slaStatusKpis.map((kpi) => kpi.results.map((result, idx) => {
+                if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
+                return (
+                  <div key={`${kpi.pluginId}-${idx}`} className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group">
+                    <button 
+                      onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || '')}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                      title="Hide widget"
+                    >
+                      <EyeOff className="h-3 w-3" />
+                    </button>
+                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
+                    {result.details && (
+                      <div className="space-y-1 mt-2">
+                        <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find(d => d.label === 'Target')?.value || '-'}h</span></div>
+                        <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find(d => d.label === 'Within SLA')?.value || 0}/{result.details.find(d => d.label === 'Total')?.value || 0}</span></div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }))}</div>
             </CardContent>
           </Card>
         )}
@@ -2509,16 +2637,42 @@ function KpiDashboard({
 
         {assigneeKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader><CardTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-indigo-400" />Tickets by Assignee</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-indigo-400" />Tickets by Assignee</CardTitle>
+                {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_assignee|')) && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setHiddenDimensions(prev => {
+                      const next = new Set(prev);
+                      Array.from(next).forEach(k => { if(k.startsWith('open_tickets_by_assignee|')) next.delete(k); });
+                      return next;
+                    });
+                  }} className="h-7 text-[10px] text-indigo-400 hover:text-indigo-500 hover:bg-indigo-500/10">
+                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
             <CardContent>
-              <div className="space-y-4">{assigneeKpis.map((kpi) => (
-                <div key={kpi.pluginId} className="space-y-3">
-                  {kpi.results.map((result, idx) => {
-                    const maxVal = Math.max(...kpi.results.map((r: any) => r.value), 1);
-                    return (
-                      <div key={`${kpi.pluginId}-${idx}`} className="space-y-1">
+              <div className="space-y-4">{assigneeKpis.map((kpi) => {
+                const visibleResults = kpi.results.filter(r => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`));
+                const maxVal = Math.max(...visibleResults.map((r: any) => r.value), 1);
+                
+                return (
+                  <div key={kpi.pluginId} className="space-y-3">
+                    {visibleResults.map((result, idx) => (
+                      <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-700 dark:text-slate-300 font-medium">{result.dimensions?.assignee || result.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-700 dark:text-slate-300 font-medium">{result.dimensions?.assignee || result.name}</span>
+                            <button 
+                              onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
+                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                              title="Hide bar"
+                            >
+                              <EyeOff className="h-3 w-3" />
+                            </button>
+                          </div>
                           <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
                         </div>
                         <div className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
@@ -2528,10 +2682,10 @@ function KpiDashboard({
                           />
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ))}</div>
+                    ))}
+                  </div>
+                );
+              })}</div>
             </CardContent>
           </Card>
         )}
@@ -2590,7 +2744,7 @@ function KpiDashboard({
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-function KpiCard({ result, pluginId }: { result: { name: string; value: number; unit: string; details?: Array<{ label: string; value: number; unit?: string }> }; pluginId: string }) {
+function KpiCard({ result, pluginId, onHide }: { result: { name: string; value: number; unit: string; dimensions?: any, details?: Array<{ label: string; value: number; unit?: string }> }; pluginId: string, onHide?: () => void }) {
   const getIcon = () => {
     if (result.name.includes('Processing')) return <Clock className="h-5 w-5" />;
     if (result.name.includes('Working Days')) return <Calendar className="h-5 w-5" />;
@@ -2606,11 +2760,22 @@ function KpiCard({ result, pluginId }: { result: { name: string; value: number; 
     return 'text-blue-400';
   };
   return (
-    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700 transition-colors">
+    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700 transition-colors group relative">
       <CardContent className="p-5">
         <div className="flex items-start justify-between mb-3">
           <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800"><div className={getColor()}>{getIcon()}</div></div>
-          <Badge variant="outline" className="text-xs text-slate-400 dark:text-slate-500">{pluginId.split('_').slice(0, 2).join(' ')}</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs text-slate-400 dark:text-slate-500">{pluginId.split('_').slice(0, 2).join(' ')}</Badge>
+            {onHide && (
+              <button 
+                onClick={onHide}
+                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity p-1"
+                title="Hide widget"
+              >
+                <EyeOff className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
         <p className={`text-3xl font-bold font-mono ${getColor()}`}>{result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{result.name}</p>
