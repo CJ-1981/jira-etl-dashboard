@@ -5,20 +5,27 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ connectionId: string }> }
 ) {
-  const { connectionId } = await params;
-  const body = await request.json();
-  const { action, storageConfig } = body;
-
-  const db = getDb(storageConfig?.url);
-
   try {
+    const { connectionId } = await params;
+    
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+    }
+    
+    const { action, storageConfig } = body;
+    const db = getDb(storageConfig?.url);
+
     if (action === 'get') {
+      console.log(`[Master API] Fetching tickets for connection: ${connectionId}`);
       const masterTickets = await (db as any).masterTicket.findMany({
         where: { connectionRef: connectionId },
         orderBy: { lastUpdatedAt: 'desc' }
       });
 
-      if (masterTickets.length === 0) {
+      if (!masterTickets || masterTickets.length === 0) {
         return NextResponse.json({
           success: true,
           data: {
@@ -30,14 +37,23 @@ export async function POST(
       }
 
       const reconstructedIssues = masterTickets.map((ticket: any) => {
-        const issue = JSON.parse(ticket.rawData);
-        return issue;
-      });
+        try {
+          const issue = JSON.parse(ticket.rawData);
+          return issue;
+        } catch (e) {
+          console.error(`[Master API] Failed to parse rawData for ticket ${ticket.jiraKey}`);
+          return null;
+        }
+      }).filter(Boolean);
 
       const dates = reconstructedIssues
         .map((i: any) => i.fields?.created || i.created)
         .filter((d: any) => d)
-        .map((d: any) => new Date(d).getTime());
+        .map((d: any) => {
+          const date = new Date(d);
+          return isNaN(date.getTime()) ? null : date.getTime();
+        })
+        .filter((t: number | null): t is number => t !== null);
       
       const oldestDate = dates.length > 0 ? new Date(Math.min(...dates)) : null;
       const newestDate = dates.length > 0 ? new Date(Math.max(...dates)) : null;
@@ -55,6 +71,7 @@ export async function POST(
         }
       });
     } else if (action === 'delete') {
+      console.log(`[Master API] Deleting data for connection: ${connectionId}`);
       // Find all ETL runs for this connection
       const etlRuns = await (db as any).etlRun.findMany({
         where: { connectionRef: connectionId },
@@ -113,7 +130,7 @@ export async function POST(
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
 
   } catch (error) {
-    console.error('Master dataset error:', error);
+    console.error('[Master API] Error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to process master dataset request'
@@ -121,14 +138,15 @@ export async function POST(
   }
 }
 
-// Keep DELETE for backward compatibility but it won't support dynamic URLs without a body (which is non-standard for DELETE)
+// Keep DELETE for backward compatibility
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ connectionId: string }> }
 ) {
-  const { connectionId } = await params;
-  const db = getDb(); // Fallback to default
   try {
+    const { connectionId } = await params;
+    const db = getDb(); // Fallback to default
+    
     // Find all ETL runs for this connection
     const etlRuns = await (db as any).etlRun.findMany({
       where: { connectionRef: connectionId },

@@ -387,11 +387,11 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
+      <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 min-h-[calc(100vh-120px)]">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          {/* Sticky Tab Navigation */}
-          <div className="sticky top-0 z-50 bg-white dark:bg-slate-900 py-2">
-            <TabsList className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1 h-auto flex flex-wrap sm:flex-nowrap gap-1 justify-start overflow-x-auto no-scrollbar shadow-sm">
+          {/* Sticky Tab Navigation - Adjusted offset to account for sticky header */}
+          <div className="sticky top-[61px] z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm py-2 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-slate-200 dark:border-slate-800">
+            <TabsList className="w-full bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-1 h-auto flex flex-wrap sm:flex-nowrap gap-1 justify-start overflow-x-auto no-scrollbar shadow-sm">
               <TabsTrigger value="extract" className="flex-1 gap-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">ETL & Export</span>
@@ -407,7 +407,7 @@ export default function Home() {
             </TabsList>
           </div>
 
-          <TabsContent value="extract" className="space-y-6 overflow-hidden">
+          <TabsContent value="extract" className="space-y-6">
             <Tabs defaultValue="jira-etl" className="space-y-6">
               <div className="flex justify-center">
                 <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
@@ -1680,6 +1680,13 @@ function ExtractPanel({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'get', storageConfig })
           });
+          
+          if (!masterRes.ok) {
+            const errorText = await masterRes.text();
+            console.error('Master API error:', masterRes.status, errorText);
+            throw new Error(`Master API returned ${masterRes.status}`);
+          }
+          
           const masterData = await masterRes.json();
           if (masterData.success && masterData.data) {
             setMasterDatasetInfo({
@@ -1937,7 +1944,7 @@ function ExtractPanel({
       )}
 
       {extractionResult && (
-        <Card className="border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5">
+        <Card className={`border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5 transition-all duration-300 min-h-[300px] ${extracting ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-emerald-400"><CheckCircle2 className="h-5 w-5" /> Extraction Complete</CardTitle>
           </CardHeader>
