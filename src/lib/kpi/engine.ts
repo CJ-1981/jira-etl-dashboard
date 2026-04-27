@@ -51,10 +51,11 @@ export interface KpiPlugin {
   id: string;
   name: string;
   description: string;
-  category: 'processing_time' | 'turnaround' | 'throughput' | 'sla' | 'quality' | 'custom';
+  category: 'processing_time' | 'turnaround' | 'throughput' | 'sla' | 'quality' | 'assignee' | 'custom';
   unit: string;
   pluginType?: 'builtin' | 'custom';
   isActive?: boolean;
+  visualization?: 'card' | 'horizontal_bar' | 'pie' | 'line';
   calculate(context: KpiContext): KpiResult[];
 }
 
@@ -490,8 +491,9 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
   id: 'open_tickets_by_assignee',
   name: 'Open Tickets by Assignee',
   description: 'Number of non-resolved tickets currently assigned to each user.',
-  category: 'throughput',
+  category: 'assignee',
   unit: 'tickets',
+  visualization: 'horizontal_bar',
   calculate(context) {
     const counts: Record<string, number> = {};
     const openIssues = context.issues.filter(i => !i.resolved);

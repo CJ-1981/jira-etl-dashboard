@@ -47,7 +47,7 @@ import {
   Database, RefreshCw, Download, Settings, BarChart3,
   Clock, AlertTriangle, TrendingUp, Zap, Plug, Calendar,
   CheckCircle2, XCircle, Loader2, Plus, Trash2, FileJson,
-  FileSpreadsheet, Activity, Target, Timer,
+  FileSpreadsheet, Activity, Target, Timer, UserCheck,
   Server, Key, Info, ExternalLink, Search,
   HardDrive, Upload, Shield,
   RotateCw, Wand2, Sliders,
@@ -1616,6 +1616,16 @@ const ExtractPanel = React.memo(function ExtractPanel({
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  const safeJson = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.error('Failed to parse JSON:', text.substring(0, 500));
+      return { success: false, error: `Server error (${res.status})` };
+    }
+  };
+
   const handleExtract = async (daysBack?: number) => {
     if (!activeConnectionId) { toast.error('Please select a connection in the Connections tab'); return; }
     setExtracting(true); setKpiResults([]);
@@ -1654,7 +1664,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
       // Dismiss loading toast
       toast.dismiss(loadingToast);
 
-      const data = await res.json();
+      const data = await safeJson(res);
 
       if (res.ok && data.success) {
         const extractedCount = data.summary.totalExtracted;
@@ -1675,7 +1685,11 @@ const ExtractPanel = React.memo(function ExtractPanel({
           toast.success(`Extracted ${extractedCount} issues${saveMsg}${stats ? ` (${stats})` : ''}`);
         }
 
-        setExtractionResult({ total: extractedCount, etlRunId: data.etlRunId, issues: data.issues });
+        if (extractedCount === 0) {
+          setExtractionResult(null);
+        } else {
+          setExtractionResult({ total: extractedCount, etlRunId: data.etlRunId, issues: data.issues });
+        }
 
         // Reload master dataset info after extraction
         try {
@@ -1685,14 +1699,8 @@ const ExtractPanel = React.memo(function ExtractPanel({
             body: JSON.stringify({ action: 'get', storageConfig })
           });
           
-          if (!masterRes.ok) {
-            const errorText = await masterRes.text();
-            console.error('Master API error:', masterRes.status, errorText);
-            throw new Error(`Master API returned ${masterRes.status}`);
-          }
-          
-          const masterData = await masterRes.json();
-          if (masterData.success && masterData.data) {
+          const masterData = await safeJson(masterRes);
+          if (masterRes.ok && masterData.success && masterData.data) {
             setMasterDatasetInfo({
               totalExtracted: masterData.data.totalExtracted,
               dateRange: masterData.data.dateRange,
@@ -1778,6 +1786,39 @@ const ExtractPanel = React.memo(function ExtractPanel({
       setPollEnabled(polling?.enabled || false);
     }
     setPollSaving(false);
+  };
+
+  const handleShowAllTickets = async () => {
+    if (!activeConnectionId) { toast.error('Please select a connection first'); return; }
+    setExtracting(true);
+    const loadingToast = toast.loading('Fetching all tickets from database...', { duration: 0 });
+
+    try {
+      const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', storageConfig })
+      });
+      
+      toast.dismiss(loadingToast);
+      const data = await safeJson(res);
+      
+      if (res.ok && data.success && data.data) {
+        setExtractionResult({
+          total: data.data.totalExtracted,
+          issues: data.data.issues,
+          isAllTickets: true
+        });
+        toast.success(`Loaded all ${data.data.totalExtracted} tickets from database`);
+      } else {
+        toast.error(data.error || 'Failed to fetch tickets');
+      }
+    } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error('Network error while fetching tickets');
+    } finally {
+      setExtracting(false);
+    }
   };
 
   const quickPullButtons = [
@@ -1916,11 +1957,21 @@ const ExtractPanel = React.memo(function ExtractPanel({
               <span className="text-slate-500">Last Updated:</span>
               <span className="text-slate-700 dark:text-slate-300">{new Date(masterDatasetInfo.lastUpdated).toLocaleString()}</span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-2 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
-              onClick={async () => {
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                onClick={handleShowAllTickets}
+                disabled={extracting || !activeConnectionId || (masterDatasetInfo && masterDatasetInfo.totalExtracted === 0)}
+              >
+                <LayoutGrid className="mr-1 h-3 w-3" /> Show All Tickets
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
+                onClick={async () => {
                 if (confirm('Are you sure you want to clear the entire master dataset for this connection? This cannot be undone.')) {
                   try {
                     const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
@@ -1943,14 +1994,21 @@ const ExtractPanel = React.memo(function ExtractPanel({
             >
               <Trash2 className="h-3 w-3 mr-1" /> Clear Master Dataset
             </Button>
-          </CardContent>
+          </div>
+        </CardContent>
         </Card>
       )}
 
-      {extractionResult && (
+      {extractionResult && (extractionResult.total > 0 || extractionResult.issues?.length > 0) && (
         <Card className={`border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5 ${extracting ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-emerald-400"><CheckCircle2 className="h-5 w-5" /> Extraction Complete</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-emerald-400">
+              {extractionResult.isAllTickets ? (
+                <><HardDrive className="h-5 w-5" /> Master Dataset</>
+              ) : (
+                <><CheckCircle2 className="h-5 w-5" /> Extraction Complete</>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -2197,7 +2255,13 @@ function KpiDashboard({
     setCalculating(false);
   };
 
-  const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
+  const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
+  const assigneeKpis = kpiResults
+    .filter((r) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId))
+    .map(kpi => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) => b.value - a.value)
+    }));
   const statusKpis = kpiResults
     .filter((r) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId))
     .map(kpi => ({
@@ -2362,6 +2426,35 @@ function KpiDashboard({
           </Card>
         )}
 
+
+        {assigneeKpis.length > 0 && (
+          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+            <CardHeader><CardTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-indigo-400" />Tickets by Assignee</CardTitle></CardHeader>
+            <CardContent>
+              <div className="space-y-4">{assigneeKpis.map((kpi) => (
+                <div key={kpi.pluginId} className="space-y-3">
+                  {kpi.results.map((result, idx) => {
+                    const maxVal = Math.max(...kpi.results.map((r: any) => r.value), 1);
+                    return (
+                      <div key={`${kpi.pluginId}-${idx}`} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">{result.dimensions?.assignee || result.name}</span>
+                          <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
+                        </div>
+                        <div className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700" 
+                            style={{ width: `${(result.value / maxVal) * 100}%` }} 
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}</div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Chart Section */}
         {kpiResults.length > 0 && (
@@ -2980,6 +3073,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
     throughput: { label: 'Throughput', color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
     sla: { label: 'SLA', color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-400 border-amber-500/30' },
     quality: { label: 'Quality', color: 'bg-cyan-50 dark:bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
+    assignee: { label: 'Assignee', color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
     custom: { label: 'Custom', color: 'bg-rose-50 dark:bg-rose-500/10 text-rose-400 border-rose-500/30' },
   };
 
@@ -3005,7 +3099,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
               <div className="space-y-2"><Label>Description</Label><Input placeholder="What does this KPI measure?" value={builderData.description} onChange={(e) => setBuilderData({ ...builderData, description: e.target.value })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Category</Label><Select value={builderData.category} onValueChange={(v) => setBuilderData({ ...builderData, category: v })}><SelectTrigger className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="processing_time">Processing Time</SelectItem><SelectItem value="turnaround">Turnaround</SelectItem><SelectItem value="throughput">Throughput</SelectItem><SelectItem value="sla">SLA</SelectItem><SelectItem value="quality">Quality</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Category</Label><Select value={builderData.category} onValueChange={(v) => setBuilderData({ ...builderData, category: v })}><SelectTrigger className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="processing_time">Processing Time</SelectItem><SelectItem value="turnaround">Turnaround</SelectItem><SelectItem value="throughput">Throughput</SelectItem><SelectItem value="sla">SLA</SelectItem><SelectItem value="quality">Quality</SelectItem><SelectItem value="assignee">Assignee</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Unit</Label><Input placeholder="hours, %, tickets" value={builderData.unit} onChange={(e) => setBuilderData({ ...builderData, unit: e.target.value })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" /></div>
             </div>
 

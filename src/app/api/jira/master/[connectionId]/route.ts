@@ -1,3 +1,7 @@
+/**
+ * Jira Master Dataset API
+ * Handles fetching and deleting master tickets for a connection
+ */
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 

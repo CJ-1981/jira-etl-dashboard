@@ -1,3 +1,7 @@
+/**
+ * Latest Extraction API
+ * Retrieves the latest completed ETL run for a connection
+ */
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 

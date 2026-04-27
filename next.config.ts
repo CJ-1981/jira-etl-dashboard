@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Use standalone output only in production
+  ...(process.env.NODE_ENV === 'production' ? { output: 'standalone' } : {}),
 
   // Enable typed routes for better TypeScript support
   typedRoutes: true,
