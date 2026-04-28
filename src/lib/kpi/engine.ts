@@ -208,6 +208,7 @@ const medianProcessingHoursPlugin: KpiPlugin = {
       name: 'Median Processing Hours',
       value: Math.round(median * 100) / 100,
       unit: 'hours',
+      ticketKeys: resolvedIssues.map(i => i.key),
     }];
   },
 };
@@ -395,13 +396,15 @@ const resolutionRatePlugin: KpiPlugin = {
     const total = context.issues.length;
     if (total === 0) return [{ name: 'Resolution Rate', value: 0, unit: '%' }];
 
-    const resolved = context.issues.filter((i) => isIssueDone(i)).length;
+    const resolvedIssues = context.issues.filter((i) => isIssueDone(i));
+    const resolved = resolvedIssues.length;
     const rate = (resolved / total) * 100;
 
     return [{
       name: 'Resolution Rate',
       value: Math.round(rate * 100) / 100,
       unit: '%',
+      ticketKeys: resolvedIssues.map(i => i.key),
       details: [
         { label: 'Resolved', value: resolved },
         { label: 'Open', value: total - resolved },
@@ -431,6 +434,7 @@ const avgWorkingDaysPlugin: KpiPlugin = {
       name: 'Avg. Working Days to Resolution',
       value: Math.round((totalDays / resolvedIssues.length) * 100) / 100,
       unit: 'days',
+      ticketKeys: resolvedIssues.map(i => i.key),
       details: [
         { label: 'Resolved Tickets', value: resolvedIssues.length },
       ],
@@ -456,13 +460,14 @@ const slaByPriorityPlugin: KpiPlugin = {
       'Lowest': 120,
     };
 
-    const resolvedByPriority: Record<string, { total: number; withinSla: number }> = {};
+    const resolvedByPriority: Record<string, { total: number; withinSla: number; ticketKeys: Set<string> }> = {};
 
     for (const issue of context.issues) {
       if (!issue.resolved) continue;
       const priority = issue.priority || 'Unassigned';
-      if (!resolvedByPriority[priority]) resolvedByPriority[priority] = { total: 0, withinSla: 0 };
+      if (!resolvedByPriority[priority]) resolvedByPriority[priority] = { total: 0, withinSla: 0, ticketKeys: new Set() };
       resolvedByPriority[priority].total++;
+      resolvedByPriority[priority].ticketKeys.add(issue.key);
 
       const hours = calculateBusinessHours(issue.created, issue.resolved, context.holidays);
       const target = slaTargets[priority] || 40;
@@ -474,6 +479,7 @@ const slaByPriorityPlugin: KpiPlugin = {
       value: Math.round((data.withinSla / data.total) * 10000) / 100,
       unit: '%',
       dimensions: { priority },
+      ticketKeys: Array.from(data.ticketKeys),
       details: [
         { label: 'Target', value: slaTargets[priority] || 40, unit: 'hours' },
         { label: 'Within SLA', value: data.withinSla },
@@ -495,6 +501,7 @@ const reassignmentPlugin: KpiPlugin = {
   calculate(context) {
     let totalReassignments = 0;
     let issuesWithReassignments = 0;
+    const ticketKeys: string[] = [];
 
     for (const issue of context.issues) {
       const rawIssue = issue as unknown as JiraIssue;
@@ -508,7 +515,10 @@ const reassignmentPlugin: KpiPlugin = {
           }
         }
       }
-      if (reassignments > 0) issuesWithReassignments++;
+      if (reassignments > 0) {
+        issuesWithReassignments++;
+        ticketKeys.push(issue.key);
+      }
       totalReassignments += reassignments;
     }
 
@@ -518,6 +528,7 @@ const reassignmentPlugin: KpiPlugin = {
         ? Math.round((totalReassignments / context.issues.length) * 100) / 100
         : 0,
       unit: 'reassignments',
+      ticketKeys,
       details: [
         { label: 'Total Reassignments', value: totalReassignments },
         { label: 'Issues with Reassignments', value: issuesWithReassignments },
@@ -620,6 +631,7 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
   for (const [configuredStatus, targetHours] of targetEntries) {
     let totalOccurrences = 0;
     let withinSla = 0;
+    const ticketKeys = new Set<string>();
 
     // Try exact match first, then case-insensitive match
     const matchingStatuses = Array.from(availableStatuses).filter(s =>
@@ -634,11 +646,14 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
     const status = matchingStatuses.find(s => s === configuredStatus) || matchingStatuses[0];
 
     for (const issue of context.issues) {
+      let issueMatchedStatus = false;
+
       // Find periods where the ticket was in this status
       for (let i = 0; i < issue.transitions.length; i++) {
         const t = issue.transitions[i];
         if (t.toStatus !== status) continue;
 
+        issueMatchedStatus = true;
         const statusEntry = t.occurredAt;
         const statusExit = issue.transitions[i + 1]
           ? issue.transitions[i + 1].occurredAt
@@ -666,6 +681,7 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
       if (issue.transitions.length > 0) {
         const firstTransition = issue.transitions[0];
         if (firstTransition.fromStatus === status) {
+          issueMatchedStatus = true;
           const statusEntry = issue.created;
           const statusExit = firstTransition.occurredAt;
 
@@ -685,6 +701,10 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
           if (hours <= targetHours) withinSla++;
         }
       }
+
+      if (issueMatchedStatus) {
+        ticketKeys.add(issue.key);
+      }
     }
 
     if (totalOccurrences > 0) {
@@ -694,6 +714,7 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
         value: Math.round(rate * 100) / 100,
         unit: '%',
         dimensions: { status },
+        ticketKeys: Array.from(ticketKeys),
         details: [
           { label: 'Target', value: targetHours, unit: 'hours' },
           { label: 'Within SLA', value: withinSla },
