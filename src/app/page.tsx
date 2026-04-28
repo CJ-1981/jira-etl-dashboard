@@ -2791,8 +2791,17 @@ function KpiDashboard({
                               placeholder="Type JQL-lite query..."
                               value={jqlQuery}
                               onChange={(e) => {
-                                setJqlQuery(e.target.value);
-                                setJqlAutocompleteOpen(true);
+                                const val = e.target.value;
+                                setJqlQuery(val);
+                                
+                                // Only open autocomplete if we're not inside quotes
+                                const quoteCount = (val.match(/"/g) || []).length;
+                                const isInsideQuotes = quoteCount % 2 !== 0;
+                                if (!isInsideQuotes && !val.endsWith('"')) {
+                                  setJqlAutocompleteOpen(true);
+                                } else {
+                                  setJqlAutocompleteOpen(false);
+                                }
                               }}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && jqlQuery.trim()) {
