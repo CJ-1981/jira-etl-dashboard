@@ -138,6 +138,18 @@ function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
   };
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Robust check if an issue is considered "Done" or "Resolved"
+ */
+export function isIssueDone(issue: TransformedIssue): boolean {
+  if (issue.resolved) return true;
+  const status = (issue.status || '').toLowerCase();
+  const category = (issue.statusCategory || '').toLowerCase();
+  return category === 'done' || ['done', 'closed', 'resolved', 'completed', 'close'].includes(status);
+}
+
 // ─── Built-in KPI Plugins ────────────────────────────────────────────────────
 
 /**
@@ -333,7 +345,9 @@ const throughputPlugin: KpiPlugin = {
 
     const openIssues = context.issues.filter((i) => {
       const createdBeforeEnd = i.created <= context.period.end;
-      const notYetResolved = !i.resolved || i.resolved > context.period.end;
+      // An issue is NOT open if it was resolved before the period end OR if it's currently Done (fallback for missing resolution date)
+      const isActuallyDone = isIssueDone(i);
+      const notYetResolved = (!i.resolved && !isActuallyDone) || (i.resolved && i.resolved > context.period.end);
       return createdBeforeEnd && notYetResolved;
     });
 
@@ -381,7 +395,7 @@ const resolutionRatePlugin: KpiPlugin = {
     const total = context.issues.length;
     if (total === 0) return [{ name: 'Resolution Rate', value: 0, unit: '%' }];
 
-    const resolved = context.issues.filter((i) => i.resolved).length;
+    const resolved = context.issues.filter((i) => isIssueDone(i)).length;
     const rate = (resolved / total) * 100;
 
     return [{
@@ -524,7 +538,7 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
   visualization: 'horizontal_bar',
   calculate(context) {
     const counts: Record<string, number> = {};
-    const openIssues = context.issues.filter(i => !i.resolved);
+    const openIssues = context.issues.filter(i => !isIssueDone(i));
 
     for (const issue of openIssues) {
       const assignee = issue.assignee || 'Unassigned';

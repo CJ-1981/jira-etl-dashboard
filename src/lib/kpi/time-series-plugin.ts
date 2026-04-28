@@ -5,7 +5,7 @@
  */
 
 import { calculateBusinessHours } from '../holidays/german-holidays';
-import type { KpiPlugin, KpiContext, TransformedIssue, StatusTransition } from './engine';
+import { isIssueDone, type KpiPlugin, type KpiContext, type TransformedIssue, type StatusTransition } from './engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -200,7 +200,8 @@ function calculateOpenTicketsByAssigneeTrend(
         const resolvedDate = i.resolved;
         
         const wasCreated = createdDate <= period.end;
-        const wasNotYetResolved = !resolvedDate || resolvedDate > period.end;
+        const isActuallyDone = isIssueDone(i);
+        const wasNotYetResolved = (!resolvedDate && !isActuallyDone) || (resolvedDate && resolvedDate > period.end);
         
         return wasCreated && wasNotYetResolved;
       }).length;
@@ -219,7 +220,11 @@ function calculateOpenTicketsByAssigneeTrend(
     // Current value issues (at last complete period end)
     const lastCompletePeriod = periods.filter(p => isPeriodComplete(p.end)).pop();
     const currentTicketKeys = lastCompletePeriod 
-      ? assigneeIssues.filter(i => i.created <= lastCompletePeriod.end && (!i.resolved || i.resolved > lastCompletePeriod.end)).map(i => i.key)
+      ? assigneeIssues.filter(i => {
+          const isActuallyDone = isIssueDone(i);
+          const wasNotYetResolved = (!i.resolved && !isActuallyDone) || (i.resolved && i.resolved > lastCompletePeriod.end);
+          return i.created <= lastCompletePeriod.end && wasNotYetResolved;
+        }).map(i => i.key)
       : [];
 
     // Current value (at last complete period end)
