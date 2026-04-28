@@ -533,15 +533,19 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
 
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1]) // Sort by count descending
-      .map(([assignee, count]) => ({
-        name: `Open: ${assignee}`,
-        value: count,
-        unit: 'tickets',
-        dimensions: { assignee },
-        details: [
-          { label: 'Assignee', value: 0, unit: assignee }, // Value 0 but label shows name
-        ],
-      }));
+      .map(([assignee, count]) => {
+        const issuesForAssignee = openIssues.filter(i => (i.assignee || 'Unassigned') === assignee);
+        return {
+          name: `Open: ${assignee}`,
+          value: count,
+          unit: 'tickets',
+          dimensions: { assignee },
+          ticketKeys: issuesForAssignee.map(i => i.key),
+          details: [
+            { label: 'Assignee', value: 0, unit: assignee }, // Value 0 but label shows name
+          ],
+        };
+      });
   },
 };
 

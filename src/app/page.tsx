@@ -324,7 +324,8 @@ export default function Home() {
           setMasterDatasetInfo({
             totalExtracted: masterData.data.totalExtracted,
             dateRange: masterData.data.dateRange,
-            lastUpdated: masterData.data.lastUpdated
+            lastUpdated: masterData.data.lastUpdated,
+            issues: masterData.data.issues
           });
         } else {
           setMasterDatasetInfo(null);
@@ -1746,7 +1747,8 @@ const ExtractPanel = React.memo(function ExtractPanel({
             setMasterDatasetInfo({
               totalExtracted: masterData.data.totalExtracted,
               dateRange: masterData.data.dateRange,
-              lastUpdated: masterData.data.lastUpdated
+              lastUpdated: masterData.data.lastUpdated,
+              issues: masterData.data.issues
             });
 
             // Ping the polling system to let it know we just did a manual pull
@@ -1860,6 +1862,12 @@ const ExtractPanel = React.memo(function ExtractPanel({
           total: data.data.totalExtracted,
           issues: data.data.issues,
           isAllTickets: true
+        });
+        setMasterDatasetInfo({
+          totalExtracted: data.data.totalExtracted,
+          dateRange: data.data.dateRange,
+          lastUpdated: data.data.lastUpdated,
+          issues: data.data.issues
         });
         toast.success(`Loaded all ${data.data.totalExtracted} tickets from database`);
       } else {
@@ -2405,7 +2413,7 @@ function KpiDashboard({
 
   // Chart section state
   const [charts, setCharts] = useState<ChartConfig[]>([
-    { id: 'chart-1', kpiId: '', type: 'bar', width: 'md' }
+    { id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }
   ]);
 
   const handleAddChart = () => {
@@ -2417,7 +2425,7 @@ function KpiDashboard({
       id: `chart-${Date.now()}`,
       kpiId: '',
       type: 'bar',
-      width: 'md',
+      width: 'full',
     };
     setCharts([...charts, newChart]);
   };
@@ -2436,9 +2444,7 @@ function KpiDashboard({
 
   // Extract unique values for filters from master dataset
   const filterOptions = useMemo(() => {
-    if (!masterDatasetInfo?.issues) return { assignees: [], priorities: [], issueTypes: [], statuses: [], components: [], labels: [] };
-    
-    const issues = masterDatasetInfo.issues as any[];
+    const issues = (masterDatasetInfo?.issues || []) as any[];
     const getValues = (fn: (i: any) => string | string[] | undefined) => {
       const vals = new Set<string>();
       issues.forEach(i => {
@@ -2450,19 +2456,20 @@ function KpiDashboard({
     };
 
     return {
-      assignees: getValues(i => i.fields?.assignee?.displayName || i.assignee),
-      priorities: getValues(i => i.fields?.priority?.name || i.priority),
-      issueTypes: getValues(i => i.fields?.issuetype?.name || i.issueType),
-      statuses: getValues(i => i.fields?.status?.name || i.status),
-      components: getValues(i => (i.fields?.components || i.components || [])?.map((c: any) => c.name || c)),
-      labels: getValues(i => i.fields?.labels || i.labels),
+      assignee: getValues(i => i.fields?.assignee?.displayName || i.assignee),
+      priority: getValues(i => i.fields?.priority?.name || i.priority),
+      issueType: getValues(i => i.fields?.issuetype?.name || i.issueType),
+      status: getValues(i => i.fields?.status?.name || i.status),
+      component: getValues(i => (i.fields?.components || i.components || [])?.map((c: any) => c.name || c)),
+      label: getValues(i => i.fields?.labels || i.labels),
     };
   }, [masterDatasetInfo]);
 
-  const handleUpdateFilter = (key: string, value: string) => {
+  const handleUpdateFilter = useCallback((key: string, value: string) => {
     setGlobalFilters(prev => {
       const current = prev[key] || [];
-      const next = current.includes(value) 
+      const isRemoving = current.includes(value);
+      const next = isRemoving
         ? current.filter(v => v !== value)
         : [...current, value];
       
@@ -2472,7 +2479,7 @@ function KpiDashboard({
       
       return newFilters;
     });
-  };
+  }, []);
 
   // Auto-calculate when filters change
   useEffect(() => {
@@ -2548,6 +2555,12 @@ function KpiDashboard({
         }
         setKpiResults(processedResults);
         const dateRange = masterData.data.dateRange;
+        setMasterDatasetInfo({
+          totalExtracted: masterData.data.totalExtracted,
+          dateRange: dateRange,
+          lastUpdated: masterData.data.lastUpdated,
+          issues: issues
+        });
         const ticketCount = issues.length;
         toast.success(
           `Calculated ${Object.keys(kpiData.results).length} KPI categories using ${ticketCount} tickets ` +
@@ -2708,17 +2721,22 @@ function KpiDashboard({
                   </Button>
                 </div>
               </div>
+              
+              <div className="mb-2 px-2 py-1 rounded bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 flex items-center gap-2 text-[10px] text-blue-600 dark:text-blue-400">
+                <Info className="h-3 w-3" />
+                <span>Tip: Click on KPI cards or breakdown bars to see the specific tickets comprising that metric.</span>
+              </div>
 
               {filterPanelOpen && (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in slide-in-from-top-2 duration-200">
                   {[
-                    { label: 'Assignee', key: 'assignee', options: filterOptions.assignees },
-                    { label: 'Priority', key: 'priority', options: filterOptions.priorities },
-                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueTypes },
-                    { label: 'Status', key: 'status', options: filterOptions.statuses },
-                    { label: 'Component', key: 'component', options: filterOptions.components },
-                    { label: 'Label', key: 'label', options: filterOptions.labels },
-                  ].map(filter => (
+                    { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
+                    { label: 'Priority', key: 'priority', options: filterOptions.priority },
+                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
+                    { label: 'Status', key: 'status', options: filterOptions.status },
+                    { label: 'Component', key: 'component', options: filterOptions.component },
+                    { label: 'Label', key: 'label', options: filterOptions.label },
+                  ].filter(f => f.options.length > 0).map(filter => (
                     <div key={filter.key} className="space-y-1.5">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{filter.label}</Label>
                       <Select 
@@ -2749,7 +2767,10 @@ function KpiDashboard({
                     values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
                         <span className="text-slate-400">{key}:</span> {val}
-                        <X className="h-2.5 w-2.5 cursor-pointer hover:text-red-500" onClick={() => handleUpdateFilter(key, val)} />
+                        <X 
+                          className="h-2.5 w-2.5 cursor-pointer hover:text-red-500" 
+                          onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }} 
+                        />
                       </Badge>
                     ))
                   ))}
@@ -3191,7 +3212,7 @@ function KpiCard({ result, pluginId, onHide, onClick }: {
           )}
         </div>
 
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{result.name}</p>
+        <p className={`text-sm text-slate-500 dark:text-slate-400 mt-1 ${isClickable ? 'group-hover:underline group-hover:text-blue-500' : ''}`}>{result.name}</p>
         <div className="flex items-center justify-between mt-0.5">
           {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500">{result.unit}</p>}
           {result.ticketKeys && result.ticketKeys.length > 0 && (
@@ -3826,7 +3847,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
             {builderLanguage === 'dsl' ? (
               <div className="space-y-6">
                 <div className="space-y-3">
-                  <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">1. Metric Type</Label>
+                  <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">Metric Type</Label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     {METRIC_TYPES.map((mt) => (
                       <div key={mt.id} onClick={() => setBuilderData({ ...builderData, metricType: mt.id })} className={`rounded-lg border p-3 cursor-pointer transition-all hover:border-emerald-500/50 ${builderData.metricType === mt.id ? 'border-emerald-500 bg-emerald-100 dark:bg-emerald-500/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
@@ -3838,7 +3859,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">2. Filters</Label>
+                  <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">Filters</Label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2"><Label className="text-xs">Status (comma-separated)</Label><Input placeholder="Done, Closed" value={builderData.statuses.join(', ')} onChange={(e) => setBuilderData({ ...builderData, statuses: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-sm h-8" /></div>
                     <div className="space-y-2"><Label className="text-xs">Priority (comma-separated)</Label><Input placeholder="High, Highest" value={builderData.priorities.join(', ')} onChange={(e) => setBuilderData({ ...builderData, priorities: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-sm h-8" /></div>
@@ -3847,7 +3868,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">3. Formula DSL Preview</Label>
+                    <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">Formula DSL Preview</Label>
                     <Button variant="ghost" size="sm" className="h-6 text-xs text-slate-500" onClick={() => setBuilderData({ ...builderData, formula: generateFormula() })}><RefreshCw className="h-3 w-3 mr-1" /> Regnerate</Button>
                   </div>
                   <textarea className="w-full min-h-[60px] rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" placeholder={generateFormula()} value={builderData.formula || generateFormula()} onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })} />
@@ -4077,11 +4098,7 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
         <CardContent className="space-y-6">
           {/* General Settings Section */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
-              <Calculator className="h-4 w-4 text-blue-400" />
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">KPI Calculation Defaults</h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
               <div className="space-y-2">
                 <Label className="text-slate-700 dark:text-slate-300">Default German State</Label>
                 <Select value={settings.general.defaultHolidayState} onValueChange={(v) => setSettings({ ...settings, general: { ...settings.general, defaultHolidayState: v } })}>

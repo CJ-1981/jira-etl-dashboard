@@ -216,6 +216,12 @@ function calculateOpenTicketsByAssigneeTrend(
     // Sort by date
     timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
+    // Current value issues (at last complete period end)
+    const lastCompletePeriod = periods.filter(p => isPeriodComplete(p.end)).pop();
+    const currentTicketKeys = lastCompletePeriod 
+      ? assigneeIssues.filter(i => i.created <= lastCompletePeriod.end && (!i.resolved || i.resolved > lastCompletePeriod.end)).map(i => i.key)
+      : [];
+
     // Current value (at last complete period end)
     const currentValue = timeSeries.length > 0 ? timeSeries[timeSeries.length - 1].value : 0;
 
@@ -224,6 +230,7 @@ function calculateOpenTicketsByAssigneeTrend(
       value: currentValue,
       unit: 'tickets',
       dimensions: { assignee },
+      ticketKeys: currentTicketKeys,
       timeSeries,
     });
   }
