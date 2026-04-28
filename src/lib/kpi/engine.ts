@@ -1064,43 +1064,108 @@ function executeCustomFormula(
 
 function applyFilter(issues: KpiContext['issues'], condition: string): KpiContext['issues'] {
   const trimmed = condition.trim();
+  if (!trimmed || trimmed === 'true' || trimmed === '*') return issues;
 
-  if (trimmed === 'true' || trimmed === '*') return issues;
+  // Handle OR (lowest precedence)
+  if (trimmed.toUpperCase().includes(' OR ')) {
+    const parts = splitByTopLevelOperator(trimmed, 'OR');
+    if (parts.length > 1) {
+      const results = parts.map(p => applyFilter(issues, p));
+      // Combine results (Set of keys to ensure uniqueness)
+      const keys = new Set<string>();
+      const combinedIssues: TransformedIssue[] = [];
+      results.forEach(resList => {
+        resList.forEach(issue => {
+          if (!keys.has(issue.key)) {
+            keys.add(issue.key);
+            combinedIssues.push(issue);
+          }
+        });
+      });
+      return combinedIssues;
+    }
+  }
 
-  // Support CONTAINS and NOT CONTAINS
+  // Handle AND
+  if (trimmed.toUpperCase().includes(' AND ')) {
+    const parts = splitByTopLevelOperator(trimmed, 'AND');
+    if (parts.length > 1) {
+      let currentIssues = issues;
+      for (const part of parts) {
+        currentIssues = applyFilter(currentIssues, part);
+      }
+      return currentIssues;
+    }
+  }
+
+  // Handle atomic conditions
   const containsMatch = trimmed.match(/^(\w+)\s+(NOT\s+)?CONTAINS\s+"?([^"]+)"?$/i);
   if (containsMatch) {
     const [, field, not, val] = containsMatch;
     const isNot = !!not;
+    const cleanVal = val.replace(/^"|"$/g, '').toLowerCase();
     return issues.filter((issue) => {
-      const fieldValue = String(getFieldValue(issue, field));
-      const contains = fieldValue.includes(val);
+      const fieldValue = String(getFieldValue(issue, field) || '').toLowerCase();
+      const contains = fieldValue.includes(cleanVal);
       return isNot ? !contains : contains;
     });
   }
 
-  // Parse simple conditions like: status = "Done", resolved = true
-  const eqMatch = trimmed.match(/^(\w+)\s*=\s*"?([^"]+)"?$/);
+  const eqMatch = trimmed.match(/^(\w+)\s*=\s*"?([^"]+)"?$/i);
   if (eqMatch) {
     const [, field, val] = eqMatch;
+    const cleanVal = val.replace(/^"|"$/g, '').toLowerCase();
     return issues.filter((issue) => {
       const fieldValue = getFieldValue(issue, field);
-      if (val === 'true') return !!fieldValue;
-      if (val === 'false') return !fieldValue;
-      return String(fieldValue).toLowerCase() === val.toLowerCase();
+      if (cleanVal === 'true') return !!fieldValue;
+      if (cleanVal === 'false') return !fieldValue;
+      return String(fieldValue || '').toLowerCase() === cleanVal;
     });
   }
 
-  const neqMatch = trimmed.match(/^(\w+)\s*!=\s*"?([^"]+)"?$/);
+  const neqMatch = trimmed.match(/^(\w+)\s*!=\s*"?([^"]+)"?$/i);
   if (neqMatch) {
     const [, field, val] = neqMatch;
+    const cleanVal = val.replace(/^"|"$/g, '').toLowerCase();
     return issues.filter((issue) => {
       const fieldValue = getFieldValue(issue, field);
-      return String(fieldValue).toLowerCase() !== val.toLowerCase();
+      return String(fieldValue || '').toLowerCase() !== cleanVal;
     });
   }
 
   return issues;
+}
+
+/**
+ * Simple splitter that respects quotes (but not parentheses yet)
+ */
+function splitByTopLevelOperator(condition: string, operator: 'AND' | 'OR'): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  const words = condition.split(/\s+/);
+  
+  const op = operator.toUpperCase();
+  
+  let i = 0;
+  while (i < words.length) {
+    const word = words[i];
+    if (word.includes('"')) {
+      const quotes = (word.match(/"/g) || []).length;
+      if (quotes % 2 !== 0) inQuotes = !inQuotes;
+    }
+
+    if (!inQuotes && word.toUpperCase() === op) {
+      parts.push(current.trim());
+      current = '';
+    } else {
+      current += (current ? ' ' : '') + word;
+    }
+    i++;
+  }
+  
+  if (current) parts.push(current.trim());
+  return parts;
 }
 
 function getFieldValue(issue: TransformedIssue, field: string): unknown {
