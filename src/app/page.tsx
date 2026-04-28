@@ -1996,11 +1996,10 @@ const ExtractPanel = React.memo(function ExtractPanel({
             <div className="flex items-center space-x-2 rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
               <Checkbox
                 id="saveThisExtraction"
-                checked={saveThisExtraction}
+                checked={!!saveThisExtraction}
                 onCheckedChange={(checked) => setSaveThisExtraction(checked as boolean)}
               />
-              <div className="flex-1">
-                <label
+              <div className="flex-1">                <label
                   htmlFor="saveThisExtraction"
                   className="text-sm font-medium text-amber-900 dark:text-amber-400 cursor-pointer"
                 >
@@ -2759,11 +2758,10 @@ function KpiDashboard({
                           <SelectItem value="all">All {filter.label}s</SelectItem>
                           {filter.options.map(opt => (
                             <div key={opt} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm" onClick={(e) => { e.stopPropagation(); handleUpdateFilter(filter.key, opt); }}>
-                              <Checkbox checked={globalFilters[filter.key]?.includes(opt)} />
+                              <Checkbox checked={!!globalFilters[filter.key]?.includes(opt)} />
                               <span className="text-xs">{opt}</span>
                             </div>
-                          ))}
-                        </SelectContent>
+                          ))}                        </SelectContent>
                       </Select>
                     </div>
                   ))}
@@ -3950,12 +3948,11 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
                           <div className="flex items-center gap-3 flex-1">
                             <Checkbox
                               id={`plugin-${plugin.id}`}
-                              checked={activePlugins.has(plugin.id)}
+                              checked={!!activePlugins.has(plugin.id)}
                               onCheckedChange={() => togglePlugin(plugin.id)}
                               className="flex-shrink-0"
                             />
-                            <div
-                              onClick={() => togglePlugin(plugin.id)}
+                            <div                              onClick={() => togglePlugin(plugin.id)}
                               className="flex-1 cursor-pointer"
                             >
                               <div className="flex items-center gap-2">
