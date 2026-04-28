@@ -22,6 +22,7 @@ export interface KpiContext {
 
 export interface TransformedIssue {
   key: string;
+  project: string;
   summary: string;
   issueType: string;
   priority: string | null;
@@ -113,6 +114,7 @@ function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
 
   return {
     key: issue.key,
+    project: (issue.fields as any)?.project?.name || (issue.fields as any)?.project?.key || issue.key.split('-')[0],
     summary: issue.fields?.summary || (issue as any).summary || 'No Summary',
     issueType: issue.fields?.issuetype?.name || (issue as any).issueType || 'Task',
     priority: issue.fields?.priority?.name || (issue as any).priority || null,
@@ -855,6 +857,7 @@ export class KpiEngine {
           else if (key === 'priority') issueValue = transformed.priority || 'None';
           else if (key === 'issueType') issueValue = transformed.issueType;
           else if (key === 'status') issueValue = transformed.status;
+          else if (key === 'project') issueValue = transformed.project;
           else if (key === 'component') issueValue = transformed.components;
           else if (key === 'label') issueValue = transformed.labels;
 
@@ -1177,6 +1180,7 @@ function getFieldValue(issue: TransformedIssue, field: string): unknown {
     assignee: () => issue.assignee,
     resolved: () => issue.resolved,
     key: () => issue.key,
+    project: () => issue.project,
     summary: () => issue.summary,
     description: () => (issue as any).description || '',
   };

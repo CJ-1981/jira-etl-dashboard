@@ -2499,6 +2499,7 @@ function KpiDashboard({
       priority: getValues(i => i.fields?.priority?.name || i.priority),
       issueType: getValues(i => i.fields?.issuetype?.name || i.issueType),
       status: getValues(i => i.fields?.status?.name || i.status),
+      project: getValues(i => i.fields?.project?.name || i.fields?.project?.key || i.project || i.key?.split('-')[0]),
       component: getValues(i => (i.fields?.components || i.components || [])?.map((c: any) => c.name || c)),
       label: getValues(i => i.fields?.labels || i.labels),
     };
@@ -2824,7 +2825,7 @@ function KpiDashboard({
                             <CommandList>
                               <CommandEmpty className="text-[10px] p-2">No suggestions found.</CommandEmpty>
                               <CommandGroup heading="Fields">
-                                {['summary', 'key', 'status', 'priority', 'assignee', 'issueType', 'description', 'storyPoints'].map(f => (
+                                {['summary', 'key', 'project', 'status', 'priority', 'assignee', 'issueType', 'description', 'storyPoints'].map(f => (
                                   <CommandItem
                                     key={f}
                                     onSelect={() => {
@@ -2984,9 +2985,9 @@ function KpiDashboard({
 
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                   {[
+                    { label: 'Project', key: 'project', options: filterOptions.project },
                     { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
-                    { label: 'Priority', key: 'priority', options: filterOptions.priority },
-                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
+                    { label: 'Priority', key: 'priority', options: filterOptions.priority },                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
                     { label: 'Status', key: 'status', options: filterOptions.status },
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
