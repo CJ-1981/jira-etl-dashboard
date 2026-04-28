@@ -2774,10 +2774,12 @@ function KpiDashboard({
                     values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
                         <span className="text-slate-400">{key}:</span> {val}
-                        <X 
-                          className="h-2.5 w-2.5 cursor-pointer hover:text-red-500 pointer-events-auto" 
-                          onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }} 
-                        />
+                        <span 
+                          className="flex items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </span>
                       </Badge>
                     ))
                   ))}
