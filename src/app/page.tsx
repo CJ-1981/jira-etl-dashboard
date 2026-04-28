@@ -46,6 +46,30 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { toast } from 'sonner';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -2304,6 +2328,21 @@ function KpiDashboard({
   const [globalFilters, setGlobalFilters] = useState<Record<string, string[]>>({});
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
 
+  // JQL-Lite Filter state
+  const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
+  const [jqlQuery, setJqlQuery] = useState('');
+  const [jqlAutocompleteOpen, setJqlAutocompleteOpen] = useState(false);
+  const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDashboardJqls(localConfig.getDashboardJqls());
+  }, []);
+
+  const saveDashboardJqls = (jqls: SavedJql[]) => {
+    setDashboardJqls(jqls);
+    localConfig.saveDashboardJqls(jqls);
+  };
+
   // Drill-down state
   const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
   const [drillDownTitle, setDrillDownTitle] = useState('');
@@ -2736,7 +2775,154 @@ function KpiDashboard({
               </div>
 
               {filterPanelOpen && (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in slide-in-from-top-2 duration-200">
+                <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                  <div className="flex flex-col gap-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1.5">
+                        <Wand2 className="h-3 w-3" /> Advanced JQL-Lite Filter
+                      </Label>
+                      <span className="text-[9px] text-slate-400 italic">Example: summary CONTAINS "bug" or status = "Done"</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Popover open={jqlAutocompleteOpen} onOpenChange={setJqlAutocompleteOpen}>
+                        <PopoverTrigger asChild>
+                          <div className="flex-1 relative">
+                            <Input
+                              placeholder="Type JQL-lite query..."
+                              value={jqlQuery}
+                              onChange={(e) => {
+                                setJqlQuery(e.target.value);
+                                setJqlAutocompleteOpen(true);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && jqlQuery.trim()) {
+                                  const newJql = { id: `djql-${Date.now()}`, name: jqlQuery.trim(), query: jqlQuery.trim() };
+                                  saveDashboardJqls([...dashboardJqls, newJql]);
+                                  handleUpdateFilter('jql', jqlQuery.trim());
+                                  setJqlQuery('');
+                                  setJqlAutocompleteOpen(false);
+                                }
+                              }}
+                              className="h-8 text-[11px] bg-white dark:bg-slate-900 pr-8"
+                            />
+                            <Search className="absolute right-2.5 top-2 h-3 w-3 text-slate-400" />
+                          </div>
+                        </PopoverTrigger>
+                        <PopoverContent className="p-0 w-[240px]" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search fields/operators..." className="h-8 text-[11px]" />
+                            <CommandList>
+                              <CommandEmpty className="text-[10px] p-2">No suggestions found.</CommandEmpty>
+                              <CommandGroup heading="Fields">
+                                {['summary', 'key', 'status', 'priority', 'assignee', 'issueType', 'description', 'storyPoints'].map(f => (
+                                  <CommandItem
+                                    key={f}
+                                    onSelect={() => {
+                                      const parts = jqlQuery.split(' ');
+                                      parts[parts.length - 1] = f;
+                                      setJqlQuery(parts.join(' ') + ' ');
+                                      setJqlAutocompleteOpen(true);
+                                    }}
+                                    className="text-[11px]"
+                                  >
+                                    {f}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                              <CommandGroup heading="Operators">
+                                {['CONTAINS', 'NOT CONTAINS', '=', '!='].map(o => (
+                                  <CommandItem
+                                    key={o}
+                                    onSelect={() => {
+                                      const parts = jqlQuery.trim().split(' ');
+                                      setJqlQuery(parts.join(' ') + ` ${o} "`);
+                                      setJqlAutocompleteOpen(false);
+                                    }}
+                                    className="text-[11px]"
+                                  >
+                                    {o}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <Button 
+                        size="sm" 
+                        className="h-8 text-[10px] bg-blue-600 hover:bg-blue-700"
+                        onClick={() => {
+                          if (!jqlQuery.trim()) return;
+                          const newJql = { id: `djql-${Date.now()}`, name: jqlQuery.trim(), query: jqlQuery.trim() };
+                          saveDashboardJqls([...dashboardJqls, newJql]);
+                          handleUpdateFilter('jql', jqlQuery.trim());
+                          setJqlQuery('');
+                        }}
+                      >
+                        Add Filter
+                      </Button>
+                    </div>
+
+                    {dashboardJqls.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        {dashboardJqls.map(djql => {
+                          const isActive = globalFilters['jql']?.includes(djql.query);
+                          return (
+                            <div key={djql.id} className="flex items-center gap-1">
+                              <Badge 
+                                variant={isActive ? 'default' : 'outline'}
+                                className={`h-6 px-2 gap-1.5 transition-all cursor-pointer ${isActive ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
+                                onClick={() => handleUpdateFilter('jql', djql.query)}
+                              >
+                                <span className="max-w-[120px] truncate">{djql.query}</span>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <span 
+                                      className="hover:text-red-200 transition-colors p-0.5"
+                                      onClick={(e) => { e.stopPropagation(); setJqlToDelete(djql.id); }}
+                                    >
+                                      <Trash2 className="h-2.5 w-2.5" />
+                                    </span>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete JQL-Lite Filter?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete this saved filter? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel onClick={() => setJqlToDelete(null)}>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction 
+                                        className="bg-red-600 hover:bg-red-700"
+                                        onClick={() => {
+                                          if (jqlToDelete) {
+                                            const updated = dashboardJqls.filter(j => j.id !== jqlToDelete);
+                                            saveDashboardJqls(updated);
+                                            // Also remove from active filters if it was active
+                                            const queryToDelete = dashboardJqls.find(j => j.id === jqlToDelete)?.query;
+                                            if (queryToDelete && globalFilters['jql']?.includes(queryToDelete)) {
+                                              handleUpdateFilter('jql', queryToDelete);
+                                            }
+                                            setJqlToDelete(null);
+                                            toast.success('Filter deleted');
+                                          }
+                                        }}
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </Badge>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                   {[
                     { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
                     { label: 'Priority', key: 'priority', options: filterOptions.priority },
@@ -2761,10 +2947,12 @@ function KpiDashboard({
                               <Checkbox checked={!!globalFilters[filter.key]?.includes(opt)} />
                               <span className="text-xs">{opt}</span>
                             </div>
-                          ))}                        </SelectContent>
+                          ))}
+                        </SelectContent>
                       </Select>
                     </div>
                   ))}
+                  </div>
                 </div>
               )}
 

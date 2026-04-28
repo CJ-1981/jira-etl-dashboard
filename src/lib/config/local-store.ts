@@ -85,6 +85,7 @@ const KEYS = {
   activeConnection: 'cfg_active_connection_id',
   storage: 'cfg_storage_config',
   jql: 'cfg_saved_jqls',
+  dashboardJql: 'cfg_dashboard_jqls',
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -163,6 +164,9 @@ export const localConfig = {
 
   getSavedJqls: () => get<SavedJql[]>(KEYS.jql, []),
   saveJqls: (jqls: SavedJql[]) => set(KEYS.jql, jqls),
+
+  getDashboardJqls: () => get<SavedJql[]>(KEYS.dashboardJql, []),
+  saveDashboardJqls: (jqls: SavedJql[]) => set(KEYS.dashboardJql, jqls),
 
   exportConfig: () => {
     const data = {

@@ -837,6 +837,19 @@ export class KpiEngine {
         for (const [key, values] of Object.entries(globalFilters)) {
           if (!values || values.length === 0) continue;
           
+          if (key === 'jql') {
+            let matchesAllJql = true;
+            for (const query of values) {
+              const result = applyFilter([transformed], query);
+              if (result.length === 0) {
+                matchesAllJql = false;
+                break;
+              }
+            }
+            if (!matchesAllJql) return false;
+            continue;
+          }
+
           let issueValue: string | string[] = '';
           if (key === 'assignee') issueValue = transformed.assignee;
           else if (key === 'priority') issueValue = transformed.priority || 'None';
@@ -1099,6 +1112,8 @@ function getFieldValue(issue: TransformedIssue, field: string): unknown {
     assignee: () => issue.assignee,
     resolved: () => issue.resolved,
     key: () => issue.key,
+    summary: () => issue.summary,
+    description: () => (issue as any).description || '',
   };
 
   // Check timeInStatus for dynamic fields
