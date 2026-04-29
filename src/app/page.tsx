@@ -218,7 +218,7 @@ export default function Home() {
     total: number; etlRunId: string; issues: ExtractedIssue[];
   } | null>(null);
   const [masterDatasetInfo, setMasterDatasetInfo] = useState<{
-    totalExtracted: number; dateRange?: { from: string; to: string }; lastUpdated: string;
+    totalExtracted: number; dateRange?: { from: string; to: string }; lastUpdated: string; issues?: any[];
   } | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -382,7 +382,7 @@ export default function Home() {
             totalExtracted: masterData.data.totalExtracted,
             dateRange: masterData.data.dateRange,
             lastUpdated: masterData.data.lastUpdated,
-            issues: masterData.data.issues
+            issues: masterData.data.issues,
           });
         } else {
           setMasterDatasetInfo(null);
@@ -395,6 +395,16 @@ export default function Home() {
 
     handleConnectionSwitch();
   }, [activeConnectionId]); // Only depend on activeConnectionId
+
+  // Auto-save dashboard state when it changes
+  useEffect(() => {
+    if (!activeConnectionId || !mounted) return;
+    localConfig.saveDashboardState(activeConnectionId, {
+      globalFilters,
+      hiddenDimensions: Array.from(hiddenDimensions),
+      charts: dashboardCharts
+    });
+  }, [activeConnectionId, globalFilters, hiddenDimensions, dashboardCharts, mounted]);
 
   const handleSettingsUpdate = (newSettings: any) => {
     if (newSettings?.general?.defaultHolidayState) {
@@ -1733,15 +1743,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
     localConfig.saveEtlUpdateOnly(updateOnly);
   }, [updateOnly]);
 
-  // Auto-save dashboard state when it changes
-  useEffect(() => {
-    if (!activeConnectionId || !mounted) return;
-    localConfig.saveDashboardState(activeConnectionId, {
-      globalFilters,
-      hiddenDimensions: Array.from(hiddenDimensions),
-      charts: dashboardCharts
-    });
-  }, [activeConnectionId, globalFilters, hiddenDimensions, dashboardCharts, mounted]);
+
 
   const safeJson = async (res: Response) => {
     const text = await res.text();
@@ -2472,7 +2474,7 @@ function KpiDashboard({
       slide1.addText(`Generated on: ${new Date().toLocaleString()}`, { x: 1, y: 3, w: 8, h: 0.5, fontSize: 14, color: '94a3b8', align: 'center' });
       
       if (Object.keys(globalFilters).length > 0) {
-        let filterStr = 'Active Filters: ' + Object.entries(globalFilters).map(([k, v]) => `${k}: ${v.join(', ')}`).join(' | ');
+        let filterStr = 'Active Filters: ' + (Object.entries(globalFilters) as [string, string[]][]).map(([k, v]) => `${k}: ${v.join(', ')}`).join(' | ');
         slide1.addText(filterStr, { x: 1, y: 4.5, w: 8, h: 1, fontSize: 12, italic: true, color: '64748b', align: 'center' });
       }
 
@@ -3202,7 +3204,7 @@ function KpiDashboard({
 
               {Object.keys(globalFilters).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {Object.entries(globalFilters).map(([key, values]) => (
+                  {(Object.entries(globalFilters) as [string, string[]][]).map(([key, values]) => (
                     values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
                         <span className="text-slate-400">{key}:</span> {val}
@@ -3265,11 +3267,11 @@ function KpiDashboard({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
+                {Array.from<string>(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions(prev => {
-                      const next = new Set(prev);
-                      Array.from(next).forEach(k => { if(k.startsWith('time_in_status|')) next.delete(k); });
+                      const next = new Set<string>(prev as Set<string>);
+                      next.forEach(k => { if(k.startsWith('time_in_status|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
@@ -3329,11 +3331,11 @@ function KpiDashboard({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_priority|')) && (
+                {Array.from<string>(hiddenDimensions).some(k => k.startsWith('sla_by_priority|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions(prev => {
-                      const next = new Set(prev);
-                      Array.from(next).forEach(k => { if(k.startsWith('sla_by_priority|')) next.delete(k); });
+                      const next = new Set<string>(prev as Set<string>);
+                      next.forEach(k => { if(k.startsWith('sla_by_priority|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
@@ -3374,11 +3376,11 @@ function KpiDashboard({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) && (
+                {Array.from<string>(hiddenDimensions).some(k => k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions(prev => {
-                      const next = new Set(prev);
-                      Array.from(next).forEach(k => { if(k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) next.delete(k); });
+                      const next = new Set<string>(prev as Set<string>);
+                      next.forEach(k => { if(k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
@@ -3428,11 +3430,11 @@ function KpiDashboard({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-indigo-400" />Tickets by Assignee</CardTitle>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_assignee|')) && (
+                {Array.from<string>(hiddenDimensions).some(k => k.startsWith('open_tickets_by_assignee|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions(prev => {
-                      const next = new Set(prev);
-                      Array.from(next).forEach(k => { if(k.startsWith('open_tickets_by_assignee|')) next.delete(k); });
+                      const next = new Set<string>(prev as Set<string>);
+                      next.forEach(k => { if(k.startsWith('open_tickets_by_assignee|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-indigo-400 hover:text-indigo-500 hover:bg-indigo-500/10">
