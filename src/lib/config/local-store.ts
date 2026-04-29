@@ -86,6 +86,7 @@ const KEYS = {
   storage: 'cfg_storage_config',
   jql: 'cfg_saved_jqls',
   dashboardJql: 'cfg_dashboard_jqls',
+  etlUpdateOnly: 'cfg_etl_update_only',
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -167,6 +168,9 @@ export const localConfig = {
 
   getDashboardJqls: () => get<SavedJql[]>(KEYS.dashboardJql, []),
   saveDashboardJqls: (jqls: SavedJql[]) => set(KEYS.dashboardJql, jqls),
+
+  getEtlUpdateOnly: () => get<boolean>(KEYS.etlUpdateOnly, false),
+  saveEtlUpdateOnly: (val: boolean) => set(KEYS.etlUpdateOnly, val),
 
   exportConfig: () => {
     const data = {

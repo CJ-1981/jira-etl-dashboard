@@ -82,7 +82,7 @@ import {
   FileSpreadsheet, Activity, Target, Timer, UserCheck,
   Server, Key, Info, ExternalLink, Search,
   HardDrive, Upload, Shield, EyeOff, X,
-  RotateCw, Wand2, Sliders,
+  RotateCw, Wand2, Sliders, ChevronDown,
   Save, SaveAll, Sun, Moon,
   LayoutGrid, Edit2, Ticket, GripVertical,
   Calculator,
@@ -235,7 +235,7 @@ export default function Home() {
     { id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }
   ]);
   const [dashboardJqlQuery, setDashboardJqlQuery] = useState('');
-  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(true);
 
   // Client-only: restore persisted state from localStorage on mount
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system on client mount only */
@@ -1711,8 +1711,14 @@ const ExtractPanel = React.memo(function ExtractPanel({
     const savedSettings = localConfig.getSettings();
     setSettings(savedSettings);
     setSaveThisExtraction(savedSettings.persistence?.autoSave ?? true);
+    setUpdateOnly(localConfig.getEtlUpdateOnly());
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Save updateOnly preference
+  useEffect(() => {
+    localConfig.saveEtlUpdateOnly(updateOnly);
+  }, [updateOnly]);
 
   const safeJson = async (res: Response) => {
     const text = await res.text();
@@ -2399,6 +2405,16 @@ function KpiDashboard({
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
 
+  // Staging filters for multi-select without instant update
+  const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
+
+  useEffect(() => {
+    // Sync pending filters when panel is opened
+    if (filterPanelOpen) {
+      setPendingFilters(globalFilters);
+    }
+  }, [filterPanelOpen, globalFilters]);
+
   useEffect(() => {
     setDashboardJqls(localConfig.getDashboardJqls());
   }, []);
@@ -2589,16 +2605,37 @@ function KpiDashboard({
     });
   }, [setGlobalFilters]);
 
-  // Auto-calculate when filters change, but skip initial mount to preserve cached results
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
+  const handleUpdatePendingFilter = useCallback((key: string, value: string) => {
+    if (value === 'all') {
+      setPendingFilters(prev => {
+        const newFilters = { ...prev };
+        delete newFilters[key];
+        return newFilters;
+      });
       return;
     }
-    if (kpiResults.length > 0) handleCalculate();
-  }, [globalFilters]);
 
-  const handleCalculate = async () => {
+    setPendingFilters(prev => {
+      const current = prev[key] || [];
+      const isRemoving = current.includes(value);
+      const next = isRemoving
+        ? current.filter(v => v !== value)
+        : [...current, value];
+      
+      const newFilters = { ...prev };
+      if (next.length > 0) newFilters[key] = next;
+      else delete newFilters[key];
+      
+      return newFilters;
+    });
+  }, []);
+
+  const handleApplyFilters = () => {
+    setGlobalFilters(pendingFilters);
+    toast.success('Filters applied');
+  };
+
+  const handleCalculate = useCallback(async () => {
     if (!activeConnectionId) { toast.error('No active connection. Please select a connection first.'); return; }
     setCalculating(true); setKpiResults([]);
 
@@ -2666,13 +2703,21 @@ function KpiDashboard({
           });
         }
         setKpiResults(processedResults);
+        
+        // Update master dataset info ONLY if different to avoid triggering loops via parent props
         const dateRange = masterData.data.dateRange;
-        setMasterDatasetInfo({
-          totalExtracted: masterData.data.totalExtracted,
-          dateRange: dateRange,
-          lastUpdated: masterData.data.lastUpdated,
-          issues: issues
+        setMasterDatasetInfo((prev: any) => {
+          if (prev && prev.totalExtracted === masterData.data.totalExtracted && prev.lastUpdated === masterData.data.lastUpdated) {
+            return prev;
+          }
+          return {
+            totalExtracted: masterData.data.totalExtracted,
+            dateRange: dateRange,
+            lastUpdated: masterData.data.lastUpdated,
+            issues: issues
+          };
         });
+
         const ticketCount = issues.length;
         toast.success(
           `Calculated ${Object.keys(kpiData.results).length} KPI categories using ${ticketCount} tickets ` +
@@ -2682,7 +2727,16 @@ function KpiDashboard({
       }
     } catch { toast.error('Error during KPI calculation'); }
     setCalculating(false);
-  };
+  }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, setMasterDatasetInfo, setKpiResults]);
+
+  // Auto-calculate when filters change, but skip initial mount to preserve cached results
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (kpiResults.length > 0) handleCalculate();
+  }, [globalFilters, handleCalculate]);
 
   const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = kpiResults
@@ -2872,7 +2926,7 @@ function KpiDashboard({
                                 if (e.key === 'Enter' && jqlQuery.trim()) {
                                   const newJql = { id: `djql-${Date.now()}`, name: jqlQuery.trim(), query: jqlQuery.trim() };
                                   saveDashboardJqls([...dashboardJqls, newJql]);
-                                  handleUpdateFilter('jql', jqlQuery.trim());
+                                  handleUpdatePendingFilter('jql', jqlQuery.trim());
                                   setJqlQuery('');
                                   setJqlAutocompleteOpen(false);
                                 }
@@ -2936,10 +2990,10 @@ function KpiDashboard({
                               j.id === editingJqlId ? { ...j, name: jqlQuery.trim(), query: jqlQuery.trim() } : j
                             );
                             saveDashboardJqls(updated);
-                            // Also update active filter if it was active
+                            // Also update pending filter if it was active
                             const oldQuery = dashboardJqls.find(j => j.id === editingJqlId)?.query;
-                            if (oldQuery && globalFilters['jql']?.includes(oldQuery)) {
-                              setGlobalFilters(prev => ({
+                            if (oldQuery && pendingFilters['jql']?.includes(oldQuery)) {
+                              setPendingFilters(prev => ({
                                 ...prev,
                                 jql: (prev['jql'] || []).map(q => q === oldQuery ? jqlQuery.trim() : q)
                               }));
@@ -2948,7 +3002,7 @@ function KpiDashboard({
                           } else {
                             const newJql = { id: `djql-${Date.now()}`, name: jqlQuery.trim(), query: jqlQuery.trim() };
                             saveDashboardJqls([...dashboardJqls, newJql]);
-                            handleUpdateFilter('jql', jqlQuery.trim());
+                            handleUpdatePendingFilter('jql', jqlQuery.trim());
                           }
                           setJqlQuery('');
                         }}
@@ -2973,14 +3027,14 @@ function KpiDashboard({
                     {dashboardJqls.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                         {dashboardJqls.map(djql => {
-                          const isActive = globalFilters['jql']?.includes(djql.query);
+                          const isActive = pendingFilters['jql']?.includes(djql.query);
                           const isEditing = editingJqlId === djql.id;
                           return (
                             <div key={djql.id} className="flex items-center gap-1">
                               <Badge 
                                 variant={isActive ? 'default' : 'outline'}
                                 className={`h-6 px-2 gap-1.5 transition-all cursor-pointer ${isEditing ? 'ring-2 ring-amber-500' : ''} ${isActive ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
-                                onClick={() => handleUpdateFilter('jql', djql.query)}
+                                onClick={() => handleUpdatePendingFilter('jql', djql.query)}
                               >
                                 <span className="max-w-[120px] truncate font-mono">{djql.query}</span>
                                 <div className="flex items-center gap-1 ml-1">
@@ -3018,10 +3072,10 @@ function KpiDashboard({
                                             if (jqlToDelete) {
                                               const updated = dashboardJqls.filter(j => j.id !== jqlToDelete);
                                               saveDashboardJqls(updated);
-                                              // Also remove from active filters if it was active
+                                              // Also remove from pending filters if it was active
                                               const queryToDelete = dashboardJqls.find(j => j.id === jqlToDelete)?.query;
-                                              if (queryToDelete && globalFilters['jql']?.includes(queryToDelete)) {
-                                                handleUpdateFilter('jql', queryToDelete);
+                                              if (queryToDelete && pendingFilters['jql']?.includes(queryToDelete)) {
+                                                handleUpdatePendingFilter('jql', queryToDelete);
                                               }
                                               if (editingJqlId === jqlToDelete) {
                                                 setEditingJqlId(null);
@@ -3050,32 +3104,71 @@ function KpiDashboard({
                   {[
                     { label: 'Project', key: 'project', options: filterOptions.project },
                     { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
-                    { label: 'Priority', key: 'priority', options: filterOptions.priority },                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
+                    { label: 'Priority', key: 'priority', options: filterOptions.priority },
+                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
                     { label: 'Status', key: 'status', options: filterOptions.status },
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
                   ].filter(f => f.options.length > 0).map(filter => (
                     <div key={filter.key} className="space-y-1.5">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{filter.label}</Label>
-                      <Select 
-                        value={globalFilters[filter.key]?.[0] || 'all'} 
-                        onValueChange={(v) => handleUpdateFilter(filter.key, v)}
-                      >
-                        <SelectTrigger className="h-8 text-[11px] bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800">
-                          <SelectValue placeholder="All" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All {filter.label}s</SelectItem>
-                          {filter.options.map(opt => (
-                            <div key={opt} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm" onClick={(e) => { e.stopPropagation(); handleUpdateFilter(filter.key, opt); }}>
-                              <Checkbox checked={!!globalFilters[filter.key]?.includes(opt)} />
-                              <span className="text-xs">{opt}</span>
-                            </div>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full h-8 text-[11px] justify-between bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-normal"
+                          >
+                            <span className="truncate">
+                              {pendingFilters[filter.key]?.length 
+                                ? `${pendingFilters[filter.key].length} selected` 
+                                : `All ${filter.label}s`}
+                            </span>
+                            <ChevronDown className="h-3 w-3 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[200px] p-0" align="start">
+                          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="w-full h-7 text-[10px] justify-start px-2"
+                              onClick={() => handleUpdatePendingFilter(filter.key, 'all')}
+                            >
+                              Clear All
+                            </Button>
+                          </div>
+                          <div className="max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
+                            {filter.options.map(opt => (
+                              <div 
+                                key={opt} 
+                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm" 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  handleUpdatePendingFilter(filter.key, opt); 
+                                }}
+                              >
+                                <Checkbox checked={!!pendingFilters[filter.key]?.includes(opt)} onCheckedChange={() => {}} />
+                                <span className="text-xs truncate">{opt}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   ))}
+                  </div>
+
+                  <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <Button 
+                      size="sm" 
+                      onClick={handleApplyFilters} 
+                      className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-2"
+                      disabled={JSON.stringify(globalFilters) === JSON.stringify(pendingFilters)}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Apply Filters
+                    </Button>
                   </div>
                 </div>
               )}
