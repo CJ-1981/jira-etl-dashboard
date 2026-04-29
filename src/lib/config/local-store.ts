@@ -77,6 +77,12 @@ export interface SavedJql {
   query: string;
 }
 
+export interface DashboardState {
+  globalFilters?: Record<string, string[]>;
+  hiddenDimensions?: string[];
+  charts?: any[];
+}
+
 const KEYS = {
   jira: 'cfg_jira_connections',
   pg: 'cfg_pg_connections',
@@ -87,6 +93,7 @@ const KEYS = {
   jql: 'cfg_saved_jqls',
   dashboardJql: 'cfg_dashboard_jqls',
   etlUpdateOnly: 'cfg_etl_update_only',
+  dashboardState: 'cfg_dashboard_state',
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -171,6 +178,17 @@ export const localConfig = {
 
   getEtlUpdateOnly: () => get<boolean>(KEYS.etlUpdateOnly, false),
   saveEtlUpdateOnly: (val: boolean) => set(KEYS.etlUpdateOnly, val),
+
+  getDashboardState: (connectionId: string) => {
+    const states = get<Record<string, DashboardState>>(KEYS.dashboardState, {});
+    return states[connectionId] || null;
+  },
+  saveDashboardState: (connectionId: string, state: DashboardState) => {
+    if (!connectionId) return;
+    const states = get<Record<string, DashboardState>>(KEYS.dashboardState, {});
+    states[connectionId] = state;
+    set(KEYS.dashboardState, states);
+  },
 
   exportConfig: () => {
     const data = {

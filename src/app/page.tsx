@@ -287,10 +287,23 @@ export default function Home() {
     const handleConnectionSwitch = async () => {
       // Clear KPI results and reset dashboard state when connection changes
       setKpiResults([]);
-      setGlobalFilters({});
-      setHiddenDimensions(new Set());
+      
+      const savedState = localConfig.getDashboardState(activeConnectionId);
+      if (savedState) {
+        setGlobalFilters(savedState.globalFilters || {});
+        setHiddenDimensions(new Set(savedState.hiddenDimensions || []));
+        if (savedState.charts && savedState.charts.length > 0) {
+          setDashboardCharts(savedState.charts);
+        } else {
+          setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }]);
+        }
+      } else {
+        setGlobalFilters({});
+        setHiddenDimensions(new Set());
+        setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }]);
+      }
+      
       setDashboardJqlQuery('');
-      // Note: we keep dashboardCharts as they are a user preference for layout
 
       // Save active connection ID
       localConfig.setActiveConnectionId(activeConnectionId);
@@ -1017,23 +1030,6 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
   } | null>(null);
   const [loadingStorage, setLoadingStorage] = useState(false);
 
-  // Load PG connections from localStorage - useLayoutEffect for synchronous read
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
-  React.useLayoutEffect(() => {
-    setLoading(true);
-    const updatedPgConnections = localConfig.getPgConnections();
-    setPgConnections(updatedPgConnections);
-    setLoading(false);
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Load storage info on mount - useLayoutEffect for synchronous operation
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: calling handleRefreshStorage which syncs with API external system */
-  React.useLayoutEffect(() => {
-    handleRefreshStorage();
-  }, [storageConfig]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
   const handleRefreshStorage = async () => {
     setLoadingStorage(true);
     try {
@@ -1054,6 +1050,23 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
     }
     setLoadingStorage(false);
   };
+
+  // Load PG connections from localStorage - useLayoutEffect for synchronous read
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
+  React.useLayoutEffect(() => {
+    setLoading(true);
+    const updatedPgConnections = localConfig.getPgConnections();
+    setPgConnections(updatedPgConnections);
+    setLoading(false);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Load storage info on mount - useLayoutEffect for synchronous operation
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: calling handleRefreshStorage which syncs with API external system */
+  React.useLayoutEffect(() => {
+    handleRefreshStorage();
+  }, [storageConfig]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleCleanup = async () => {
     const retentionDays = settings.persistence?.retentionDays;
@@ -1640,9 +1653,11 @@ const ExtractPanel = React.memo(function ExtractPanel({
   const [newJqlName, setNewJqlName] = useState('');
   const [isSavingJql, setIsSavingJql] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: sync with localStorage */
   useEffect(() => {
     setSavedJqls(localConfig.getSavedJqls());
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSaveJql = () => {
     if (!jql.trim()) { toast.error('Enter a JQL query first'); return; }
@@ -1706,7 +1721,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load settings for persistence - useLayoutEffect for synchronous localStorage read
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronization */
   React.useLayoutEffect(() => {
     const savedSettings = localConfig.getSettings();
     setSettings(savedSettings);
@@ -1719,6 +1734,16 @@ const ExtractPanel = React.memo(function ExtractPanel({
   useEffect(() => {
     localConfig.saveEtlUpdateOnly(updateOnly);
   }, [updateOnly]);
+
+  // Auto-save dashboard state when it changes
+  useEffect(() => {
+    if (!activeConnectionId || !mounted) return;
+    localConfig.saveDashboardState(activeConnectionId, {
+      globalFilters,
+      hiddenDimensions: Array.from(hiddenDimensions),
+      charts: dashboardCharts
+    });
+  }, [activeConnectionId, globalFilters, hiddenDimensions, dashboardCharts, mounted]);
 
   const safeJson = async (res: Response) => {
     const text = await res.text();
@@ -2408,6 +2433,7 @@ function KpiDashboard({
   // Staging filters for multi-select without instant update
   const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: sync UI state */
   useEffect(() => {
     // Sync pending filters when panel is opened
     if (filterPanelOpen) {
@@ -2418,6 +2444,7 @@ function KpiDashboard({
   useEffect(() => {
     setDashboardJqls(localConfig.getDashboardJqls());
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const saveDashboardJqls = (jqls: SavedJql[]) => {
     setDashboardJqls(jqls);
@@ -2730,6 +2757,7 @@ function KpiDashboard({
   }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, setMasterDatasetInfo, setKpiResults]);
 
   // Auto-calculate when filters change, but skip initial mount to preserve cached results
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: trigger calculation */
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -2737,6 +2765,7 @@ function KpiDashboard({
     }
     if (kpiResults.length > 0) handleCalculate();
   }, [globalFilters, handleCalculate]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = kpiResults

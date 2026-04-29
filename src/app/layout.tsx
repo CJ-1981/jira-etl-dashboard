@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
+import Script from "next/script";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,16 +43,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className="min-h-screen bg-gray-50 dark:bg-slate-950 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 bg-fixed">
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: `
+      <Script id="theme-init" strategy="beforeInteractive">
+        {`
           try {
             const theme = localStorage.getItem('jira-etl-theme');
             if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
               document.documentElement.classList.add('dark');
             }
           } catch(e){}
-        `}} />
-      </head>
+        `}
+      </Script>
+      <head />
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-900 dark:text-slate-100 min-h-screen`}
       >
