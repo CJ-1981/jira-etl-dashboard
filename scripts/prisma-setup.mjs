@@ -22,8 +22,9 @@ for (const dir of dirs) {
 }
 
 // 2. Determine database provider
-let databaseUrl = '';
-if (fs.existsSync(envFile)) {
+let databaseUrl = process.env.DATABASE_URL || '';
+
+if (!databaseUrl && fs.existsSync(envFile)) {
   const envContent = fs.readFileSync(envFile, 'utf8');
   const match = envContent.match(/DATABASE_URL=["']?(.+?)["']?(\s|$)/m);
   if (match) {
@@ -31,14 +32,21 @@ if (fs.existsSync(envFile)) {
   }
 }
 
-// Default to SQLite if not specified
+// Default to SQLite if not specified (only in local dev environments)
 if (!databaseUrl) {
   databaseUrl = 'file:./db/custom.db';
-  console.log('! No DATABASE_URL found in .env, defaulting to SQLite');
-  if (!fs.existsSync(envFile)) {
-    fs.writeFileSync(envFile, `DATABASE_URL=${databaseUrl}\n`);
-  } else {
-    fs.appendFileSync(envFile, `\nDATABASE_URL=${databaseUrl}\n`);
+  console.log('! No DATABASE_URL found in environment or .env, defaulting to SQLite');
+  
+  // Only write to .env if we are local (not in Vercel/CI)
+  if (!process.env.VERCEL && !process.env.CI) {
+    if (!fs.existsSync(envFile)) {
+      fs.writeFileSync(envFile, `DATABASE_URL=${databaseUrl}\n`);
+    } else {
+      const envContent = fs.readFileSync(envFile, 'utf8');
+      if (!envContent.includes('DATABASE_URL=')) {
+        fs.appendFileSync(envFile, `\nDATABASE_URL=${databaseUrl}\n`);
+      }
+    }
   }
 }
 

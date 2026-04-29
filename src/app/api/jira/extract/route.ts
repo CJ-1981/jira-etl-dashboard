@@ -23,7 +23,8 @@ export async function POST(request: Request) {
       dateTo, 
       daysBack, 
       saveExtraction,
-      storageConfig
+      storageConfig,
+      updateOnly
     } = body;
 
     const db = getDb(storageConfig?.url);
@@ -66,10 +67,28 @@ export async function POST(request: Request) {
     // Build JQL
     let finalJql = jql;
     if (!finalJql) {
-      finalJql = client.buildDefaultJql({ dateFrom: effectiveDateFrom, dateTo: effectiveDateTo });
+      if (updateOnly) {
+        // Special JQL for update only using 'updated' field instead of 'created'
+        const validKeys = (jiraCredentials.projectKeys ? jiraCredentials.projectKeys.split(',') : [])
+          .filter((k: string) => k && k.trim() !== '' && k.trim() !== '*');
+        const projectClause = validKeys.length > 0 
+          ? `(${validKeys.map((key: string) => `project = "${key.trim()}"`).join(' OR ')}) AND `
+          : '';
+        
+        if (daysBack) {
+          finalJql = `${projectClause}updated > -${daysBack}d ORDER BY updated DESC`;
+        } else if (effectiveDateFrom) {
+          finalJql = `${projectClause}updated >= "${effectiveDateFrom}"${effectiveDateTo ? ` AND updated <= "${effectiveDateTo}"` : ''} ORDER BY updated DESC`;
+        } else {
+          // Fallback to default if no dates provided
+          finalJql = client.buildDefaultJql({ dateFrom: effectiveDateFrom, dateTo: effectiveDateTo });
+        }
+      } else {
+        finalJql = client.buildDefaultJql({ dateFrom: effectiveDateFrom, dateTo: effectiveDateTo });
+      }
     }
 
-    console.log(`[Extract API] Starting extraction for ${connectionRef} (JQL: ${finalJql.substring(0, 100)}...)`);
+    console.log(`[Extract API] Starting extraction for ${connectionRef} (JQL: ${finalJql.substring(0, 100)}...)${updateOnly ? ' [UPDATE ONLY MODE]' : ''}`);
 
     // Extract issues
     const issues = await client.extractIssues(finalJql, {
@@ -87,7 +106,8 @@ export async function POST(request: Request) {
     const shouldSave = saveExtraction ?? true;
 
     // Prune old extractions - Optimization: limited pruning scope
-    if (shouldSave && connectionRef) {
+    // Skip pruning in update-only mode to preserve incremental run history
+    if (shouldSave && connectionRef && !updateOnly) {
       try {
         const normalize = (j: string) => j.replace(/created\s*[<>]=\s*"[^"]*"/g, '').replace(/\s+/g, ' ').trim();
         const currentTemplate = normalize(finalJql);
@@ -293,36 +313,39 @@ export async function POST(request: Request) {
     const lowerJql = finalJql.toLowerCase();
     const isBroadSync = !lowerJql.includes('updated') && !lowerJql.includes('created') && !lowerJql.includes('resolved');
     
-    if (isBroadSync) {
-      const existingKeys = Array.from(existingMap.keys());
-      const keysToRemove = existingKeys.filter(k => !currentKeys.has(k));
-      deletedCount = keysToRemove.length;
-      if (deletedCount > 0) {
-        await (db as any).masterTicket.deleteMany({
-          where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
+    // Skip deletion detection in update-only mode
+    if (!updateOnly) {
+      if (isBroadSync) {
+        const existingKeys = Array.from(existingMap.keys());
+        const keysToRemove = existingKeys.filter(k => !currentKeys.has(k));
+        deletedCount = keysToRemove.length;
+        if (deletedCount > 0) {
+          await (db as any).masterTicket.deleteMany({
+            where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
+          });
+        }
+      } else if (effectiveDateFrom) {
+        let dateField = 'created';
+        if (lowerJql.includes('updated')) dateField = 'updated';
+        else if (lowerJql.includes('resolved')) dateField = 'resolved';
+
+        const startDate = new Date(effectiveDateFrom);
+        const endDate = effectiveDateTo ? new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999)) : new Date();
+
+        const dbTicketsInPeriod = await (db as any).masterTicket.findMany({
+          where: { connectionRef: connectionRef, [dateField]: { gte: startDate, lte: endDate } },
+          select: { jiraKey: true }
         });
-      }
-    } else if (effectiveDateFrom) {
-      let dateField = 'created';
-      if (lowerJql.includes('updated')) dateField = 'updated';
-      else if (lowerJql.includes('resolved')) dateField = 'resolved';
 
-      const startDate = new Date(effectiveDateFrom);
-      const endDate = effectiveDateTo ? new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999)) : new Date();
+        const periodKeys = dbTicketsInPeriod.map((t: any) => t.jiraKey);
+        const keysToRemove = periodKeys.filter((k: string) => !currentKeys.has(k));
+        deletedCount = keysToRemove.length;
 
-      const dbTicketsInPeriod = await (db as any).masterTicket.findMany({
-        where: { connectionRef: connectionRef, [dateField]: { gte: startDate, lte: endDate } },
-        select: { jiraKey: true }
-      });
-
-      const periodKeys = dbTicketsInPeriod.map((t: any) => t.jiraKey);
-      const keysToRemove = periodKeys.filter((k: string) => !currentKeys.has(k));
-      deletedCount = keysToRemove.length;
-
-      if (deletedCount > 0) {
-        await (db as any).masterTicket.deleteMany({
-          where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
-        });
+        if (deletedCount > 0) {
+          await (db as any).masterTicket.deleteMany({
+            where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
+          });
+        }
       }
     }
 

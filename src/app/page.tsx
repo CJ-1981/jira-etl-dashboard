@@ -1671,6 +1671,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
 
   // Persistence state
   const [saveThisExtraction, setSaveThisExtraction] = useState(true);
+  const [updateOnly, setUpdateOnly] = useState(false);
 
   // Polling state
   const [polling, setPolling] = useState<PollingStatus | null>(null);
@@ -1749,6 +1750,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         saveExtraction: saveThisExtraction,
+        updateOnly,
         storageConfig
       };
       if (daysBack) body.daysBack = daysBack;
@@ -2066,6 +2068,23 @@ const ExtractPanel = React.memo(function ExtractPanel({
             </div>
           )}
 
+          <div className="flex items-center justify-between p-3 rounded-lg bg-blue-50/50 dark:bg-blue-500/5 border border-blue-200/50 dark:border-blue-500/20">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="update-only" className="text-sm font-semibold text-blue-900 dark:text-blue-400 cursor-pointer">Update Only Mode</Label>
+                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/30">EXPERIMENTAL</Badge>
+              </div>
+              <p className="text-xs text-blue-700 dark:text-blue-500">
+                Upsert existing/new tickets without deleting anything. Uses "updated" field for filtering.
+              </p>
+            </div>
+            <Switch 
+              id="update-only" 
+              checked={updateOnly} 
+              onCheckedChange={setUpdateOnly} 
+            />
+          </div>
+
           <Button onClick={() => handleExtract()} disabled={extracting || !activeConnectionId} className="w-full bg-emerald-600 hover:bg-emerald-700">
             {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting Issues...</> : <><RefreshCw className="mr-2 h-4 w-4" />Run Jira Extraction</>}
           </Button>
@@ -2091,6 +2110,22 @@ const ExtractPanel = React.memo(function ExtractPanel({
             <Button variant="outline" className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-100 dark:bg-emerald-500/10" onClick={handleCustomDaysBack}>
               Pull Baseline
             </Button>
+            {updateOnly && (
+              <Button 
+                variant="outline" 
+                className="border-blue-500/30 text-blue-400 hover:bg-blue-100 dark:bg-blue-500/10"
+                onClick={() => {
+                  const days = parseInt((document.getElementById('customDaysBack') as HTMLInputElement)?.value || '0', 10);
+                  if (days > 0) {
+                    handleExtract(days);
+                  } else {
+                    toast.error('Please enter a valid number of days');
+                  }
+                }}
+              >
+                Quick Update
+              </Button>
+            )}
           </div>
 
           <Separator className="bg-emerald-500/10" />
@@ -3487,17 +3522,19 @@ function KpiCard({ result, pluginId, onHide, onClick }: {
             )}
           </div>
         </div>
+
+        <p className={`text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1 ${isClickable ? 'group-hover:underline group-hover:text-blue-500' : ''}`}>{result.name}</p>
         
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2 mb-2">
           <p className={`text-3xl font-bold font-mono ${getColor()}`}>{result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}</p>
-          {result.comparison && (
-            <div className={`flex items-center gap-1 text-xs font-bold ${result.comparison.change > 0 ? 'text-emerald-500' : result.comparison.change < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
-              <div className="flex items-center">
-                {result.comparison.change > 0 ? <TrendingUp className="h-3 w-3 mr-0.5" /> : result.comparison.change < 0 ? <TrendingUp className="h-3 w-3 mr-0.5 rotate-180" /> : null}
-                {Math.abs(result.comparison.change)}
-              </div>
-              <span className="text-[10px] opacity-60 font-normal">{result.comparison.label}</span>
-            </div>
+          {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500">{result.unit}</p>}
+        </div>
+
+        <div className="flex items-center justify-between mb-1">
+          {result.ticketKeys && result.ticketKeys.length > 0 && (
+            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-400 border-none">
+              {result.ticketKeys.length} tickets
+            </Badge>
           )}
         </div>
 
@@ -3530,16 +3567,6 @@ function KpiCard({ result, pluginId, onHide, onClick }: {
             )}
           </div>
         )}
-
-        <p className={`text-sm text-slate-500 dark:text-slate-400 mt-1 ${isClickable ? 'group-hover:underline group-hover:text-blue-500' : ''}`}>{result.name}</p>
-        <div className="flex items-center justify-between mt-0.5">
-          {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500">{result.unit}</p>}
-          {result.ticketKeys && result.ticketKeys.length > 0 && (
-            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-400 border-none">
-              {result.ticketKeys.length} tickets
-            </Badge>
-          )}
-        </div>
 
         {result.details && <><Separator className="my-3 bg-gray-100 dark:bg-slate-800" /><div className="space-y-1.5">{result.details.map((d, i) => (<div key={i} className="flex items-center justify-between text-xs"><span className="text-slate-400 dark:text-slate-500">{d.label}</span><span className="font-mono text-slate-700 dark:text-slate-300">{d.value}{d.unit ? ` ${d.unit}` : ''}</span></div>))}</div></>}
       </CardContent>
