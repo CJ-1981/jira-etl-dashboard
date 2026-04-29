@@ -110,23 +110,36 @@ export function transformForBarChart(
         ? getColorForValue(result.value, result.unit)
         : CHART_COLORS[index % CHART_COLORS.length];
 
-      return {
+      const dataPoint: ChartDataPoint = {
         name: dimensionName,
         value: Number(result.value.toFixed(2)),
         fill: color,
       };
+
+      // Add weekly breakdown if available in details
+      const tw = result.details?.find(d => d.label === 'This Week');
+      const lw = result.details?.find(d => d.label === 'Previous Week');
+      if (tw) dataPoint.thisWeek = Number(tw.value.toFixed(2));
+      if (lw) dataPoint.prevWeek = Number(lw.value.toFixed(2));
+
+      return dataPoint;
     });
   }
 
   // Single value - show as one bar
   const result = kpi.results[0];
-  return [
-    {
-      name: result.name,
-      value: Number(result.value.toFixed(2)),
-      fill: getColorForValue(result.value, result.unit),
-    },
-  ];
+  const dataPoint: ChartDataPoint = {
+    name: result.name,
+    value: Number(result.value.toFixed(2)),
+    fill: getColorForValue(result.value, result.unit),
+  };
+
+  const tw = result.details?.find(d => d.label === 'This Week');
+  const lw = result.details?.find(d => d.label === 'Previous Week');
+  if (tw) dataPoint.thisWeek = Number(tw.value.toFixed(2));
+  if (lw) dataPoint.prevWeek = Number(lw.value.toFixed(2));
+
+  return [dataPoint];
 }
 
 /**
@@ -157,6 +170,7 @@ export function transformForPieChart(
       name: dimensionName,
       value: Number(result.value.toFixed(2)),
       fill: CHART_COLORS[index % CHART_COLORS.length],
+      unit: result.unit, // Pass unit for better formatting in Pie labels
     };
   });
 }

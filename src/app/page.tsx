@@ -3681,6 +3681,9 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
           );
         }
 
+        // Check for weekly breakdown "layers"
+        const hasWeeklyLayers = selectedKpiData.some(d => d.thisWeek !== undefined || d.prevWeek !== undefined);
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
             <BarChart data={selectedKpiData}>
@@ -3697,7 +3700,14 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                 itemStyle={{ color: '#e2e8f0' }}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
-              <Bar dataKey="value" radius={[8, 8, 0, 0]} />
+              {hasWeeklyLayers && <Legend />}
+              <Bar dataKey="value" name="Total Period" radius={[4, 4, 0, 0]} />
+              {hasWeeklyLayers && (
+                <>
+                  <Bar dataKey="thisWeek" name="This Week" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="prevWeek" name="Prev Week" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                </>
+              )}
             </BarChart>
           </ResponsiveContainer>
         );
@@ -3788,7 +3798,7 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, value, payload }) => `${name}: ${formatChartValue(value, payload.unit)}`}
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
@@ -3805,7 +3815,7 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                 }}
                 labelStyle={{ color: '#e2e8f0' }}
                 itemStyle={{ color: '#e2e8f0' }}
-                formatter={(value: number) => formatChartValue(value, unit)}
+                formatter={(value: number, name: string, props: any) => [formatChartValue(value, props.payload.unit), name]}
               />
             </PieChart>
           </ResponsiveContainer>
