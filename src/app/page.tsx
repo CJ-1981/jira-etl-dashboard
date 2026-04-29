@@ -3507,27 +3507,36 @@ function KpiCard({ result, pluginId, onHide, onClick }: {
       onClick={isClickable ? onClick : undefined}
     >
       <CardContent className="p-5">
-        <div className="flex items-start justify-between mb-3">
-          <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800"><div className={getColor()}>{getIcon()}</div></div>
+        <div className="flex items-center justify-between mb-4">
+          <p className={`text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${isClickable ? 'group-hover:text-blue-500 group-hover:underline' : ''}`}>
+            {result.name}
+          </p>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs text-slate-400 dark:text-slate-500">{pluginId.split('_').slice(0, 2).join(' ')}</Badge>
+            <Badge variant="outline" className="text-[10px] text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800">
+              {pluginId.split('_').slice(0, 2).join(' ')}
+            </Badge>
             {onHide && (
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); onHide(); }}
-                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity p-1"
+                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity p-0.5"
                 title="Hide widget"
               >
-                <EyeOff className="h-3.5 w-3.5" />
+                <EyeOff className="h-3 w-3" />
               </button>
             )}
           </div>
         </div>
 
-        <p className={`text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1 ${isClickable ? 'group-hover:underline group-hover:text-blue-500' : ''}`}>{result.name}</p>
-        
-        <div className="flex items-baseline gap-2 mb-2">
-          <p className={`text-3xl font-bold font-mono ${getColor()}`}>{result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}</p>
-          {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500">{result.unit}</p>}
+        <div className="flex items-center gap-3 mb-3">
+          <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800/50">
+            <div className={getColor()}>{getIcon()}</div>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <p className={`text-3xl font-bold font-mono tracking-tight ${getColor()}`}>
+              {result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}
+            </p>
+            {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{result.unit}</p>}
+          </div>
         </div>
 
         <div className="flex items-center justify-between mb-1">
@@ -3537,7 +3546,6 @@ function KpiCard({ result, pluginId, onHide, onClick }: {
             </Badge>
           )}
         </div>
-
         {/* Weekly Breakdown Section */}
         {result.details && result.details.some(d => ['This Week', 'Previous Week'].includes(d.label)) && (
           <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
