@@ -1699,7 +1699,6 @@ const ExtractPanel = React.memo(function ExtractPanel({
   const [statusFilter, setStatusFilter] = useState('all');
 
   // Load polling status
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing state with polling API external system */
   React.useEffect(() => {
     const loadPolling = () => {
       // Skip polling updates during active extraction to prevent flickering
@@ -1718,7 +1717,6 @@ const ExtractPanel = React.memo(function ExtractPanel({
     const timer = setInterval(loadPolling, 5000);
     return () => clearInterval(timer);
   }, [extracting]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load settings for persistence - useLayoutEffect for synchronous localStorage read
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronization */
