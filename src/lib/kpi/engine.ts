@@ -889,7 +889,79 @@ export class KpiEngine {
 
     const currentResults = plugin.calculate(context);
 
-    // 3. Comparison logic
+    // 3. Weekly breakdown for Overview cards
+    // Only apply to overview plugins (throughput, resolution_rate, etc.) that don't have dimensions
+    const isOverviewPlugin = !currentResults.some(r => r.dimensions && Object.keys(r.dimensions).length > 0);
+    
+    if (isOverviewPlugin) {
+      const now = new Date();
+      // Current week start (Monday)
+      const thisWeekStart = new Date(now);
+      const day = thisWeekStart.getDay();
+      const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
+      thisWeekStart.setDate(diff);
+      thisWeekStart.setHours(0, 0, 0, 0);
+
+      const thisWeekEnd = new Date(thisWeekStart);
+      thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
+
+      const lastWeekStart = new Date(thisWeekStart);
+      lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+      
+      const lastWeekEnd = new Date(thisWeekStart);
+
+      const thisWeekIssues = processedIssues.filter(i => {
+        const d = i.fields?.created ? new Date(i.fields.created) : new Date(i.created);
+        return d >= thisWeekStart && d < thisWeekEnd;
+      });
+
+      const lastWeekIssues = processedIssues.filter(i => {
+        const d = i.fields?.created ? new Date(i.fields.created) : new Date(i.created);
+        return d >= lastWeekStart && d < lastWeekEnd;
+      });
+
+      const thisWeekContext: KpiContext = {
+        ...context,
+        issues: thisWeekIssues.map(transformIssueForKpi),
+        period: { start: thisWeekStart, end: thisWeekEnd }
+      };
+
+      const lastWeekContext: KpiContext = {
+        ...context,
+        issues: lastWeekIssues.map(transformIssueForKpi),
+        period: { start: lastWeekStart, end: lastWeekEnd }
+      };
+
+      try {
+        const thisWeekResults = plugin.calculate(thisWeekContext);
+        const lastWeekResults = plugin.calculate(lastWeekContext);
+
+        currentResults.forEach(res => {
+          const tw = thisWeekResults.find(r => r.name === res.name);
+          const lw = lastWeekResults.find(r => r.name === res.name);
+          
+          if (tw || lw) {
+            res.details = res.details || [];
+            if (tw) res.details.push({ label: 'This Week', value: tw.value, unit: tw.unit });
+            if (lw) res.details.push({ label: 'Previous Week', value: lw.value, unit: lw.unit });
+
+            // Update comparison for overview cards to be Week-over-Week
+            if (tw && lw) {
+              res.comparison = {
+                value: lw.value,
+                change: Number((tw.value - lw.value).toFixed(2)),
+                label: 'vs. prev week'
+              };
+            }
+          }
+        });
+      } catch (e) {
+        console.warn(`Weekly breakdown failed for ${pluginId}:`, e);
+      }
+    }
+
+    // 4. Comparison logic
+    // Only run if not already set by weekly breakdown (overview cards)
     const currentDuration = period.end.getTime() - period.start.getTime();
     const prevPeriod = {
       start: new Date(period.start.getTime() - currentDuration),
@@ -905,6 +977,9 @@ export class KpiEngine {
     try {
       const previousResults = plugin.calculate(prevContext);
       return currentResults.map(res => {
+        // If we already have a comparison (e.g. from weekly breakdown), keep it
+        if (res.comparison) return res;
+
         const prevRes = previousResults.find(p => p.name === res.name);
         if (prevRes && typeof prevRes.value === 'number') {
           const change = res.value - prevRes.value;

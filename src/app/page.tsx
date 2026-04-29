@@ -3491,12 +3491,45 @@ function KpiCard({ result, pluginId, onHide, onClick }: {
         <div className="flex items-baseline gap-2">
           <p className={`text-3xl font-bold font-mono ${getColor()}`}>{result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}</p>
           {result.comparison && (
-            <div className={`flex items-center text-xs font-bold ${result.comparison.change > 0 ? 'text-emerald-500' : result.comparison.change < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
-              {result.comparison.change > 0 ? <TrendingUp className="h-3 w-3 mr-0.5" /> : result.comparison.change < 0 ? <TrendingUp className="h-3 w-3 mr-0.5 rotate-180" /> : null}
-              {Math.abs(result.comparison.change)}
+            <div className={`flex items-center gap-1 text-xs font-bold ${result.comparison.change > 0 ? 'text-emerald-500' : result.comparison.change < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+              <div className="flex items-center">
+                {result.comparison.change > 0 ? <TrendingUp className="h-3 w-3 mr-0.5" /> : result.comparison.change < 0 ? <TrendingUp className="h-3 w-3 mr-0.5 rotate-180" /> : null}
+                {Math.abs(result.comparison.change)}
+              </div>
+              <span className="text-[10px] opacity-60 font-normal">{result.comparison.label}</span>
             </div>
           )}
         </div>
+
+        {/* Weekly Breakdown Section */}
+        {result.details && result.details.some(d => ['This Week', 'Previous Week'].includes(d.label)) && (
+          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
+            {result.details.find(d => d.label === 'This Week') && (
+              <div className="space-y-0.5">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">This Week</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                  {(() => {
+                    const d = result.details.find(det => det.label === 'This Week');
+                    return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
+                  })()}
+                  <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
+                </p>
+              </div>
+            )}
+            {result.details.find(d => d.label === 'Previous Week') && (
+              <div className="space-y-0.5">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Prev. Week</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                  {(() => {
+                    const d = result.details.find(det => det.label === 'Previous Week');
+                    return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
+                  })()}
+                  <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         <p className={`text-sm text-slate-500 dark:text-slate-400 mt-1 ${isClickable ? 'group-hover:underline group-hover:text-blue-500' : ''}`}>{result.name}</p>
         <div className="flex items-center justify-between mt-0.5">
