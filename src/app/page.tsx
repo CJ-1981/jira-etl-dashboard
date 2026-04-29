@@ -159,6 +159,13 @@ interface KpiCalcResult {
   }>;
 }
 
+interface ChartConfig {
+  id: string;
+  kpiId: string;
+  type: 'bar' | 'line' | 'pie';
+  width: 'sm' | 'md' | 'lg' | 'full';
+}
+
 interface PollingStatus {
   enabled: boolean;
   connectionId: string;
@@ -221,6 +228,15 @@ export default function Home() {
   const [kpiResults, setKpiResults] = useState<any>([]);
   const [storageConfig, setStorageConfig] = useState<{ provider: 'sqlite' | 'postgresql', url: string, directUrl?: string, isCustom: boolean }>({ provider: 'sqlite', url: '', isCustom: false });
 
+  // Lifted KPI Dashboard State
+  const [globalFilters, setGlobalFilters] = useState<Record<string, string[]>>({});
+  const [hiddenDimensions, setHiddenDimensions] = useState<Set<string>>(new Set());
+  const [dashboardCharts, setDashboardCharts] = useState<ChartConfig[]>([
+    { id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }
+  ]);
+  const [dashboardJqlQuery, setDashboardJqlQuery] = useState('');
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+
   // Client-only: restore persisted state from localStorage on mount
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system on client mount only */
   useEffect(() => {
@@ -269,8 +285,12 @@ export default function Home() {
     if (!activeConnectionId) return;
 
     const handleConnectionSwitch = async () => {
-      // Clear KPI results when connection changes
+      // Clear KPI results and reset dashboard state when connection changes
       setKpiResults([]);
+      setGlobalFilters({});
+      setHiddenDimensions(new Set());
+      setDashboardJqlQuery('');
+      // Note: we keep dashboardCharts as they are a user preference for layout
 
       // Save active connection ID
       localConfig.setActiveConnectionId(activeConnectionId);
@@ -527,6 +547,16 @@ export default function Home() {
                   kpiResults={kpiResults}
                   setKpiResults={setKpiResults}
                   storageConfig={storageConfig}
+                  globalFilters={globalFilters}
+                  setGlobalFilters={setGlobalFilters}
+                  hiddenDimensions={hiddenDimensions}
+                  setHiddenDimensions={setHiddenDimensions}
+                  charts={dashboardCharts}
+                  setCharts={setDashboardCharts}
+                  jqlQuery={dashboardJqlQuery}
+                  setJqlQuery={setDashboardJqlQuery}
+                  filterPanelOpen={filterPanelOpen}
+                  setFilterPanelOpen={setFilterPanelOpen}
                 />
               </TabsContent>
 
@@ -2321,16 +2351,15 @@ const ExtractPanel = React.memo(function ExtractPanel({
 // ─── KPI Dashboard (unchanged from previous version) ─────────────────────────
 
 function KpiDashboard({
-  connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults, storageConfig
+  connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults, storageConfig,
+  globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions, charts, setCharts, jqlQuery, setJqlQuery, filterPanelOpen, setFilterPanelOpen
 }: any) {
   const [calculating, setCalculating] = useState(false);
-  const [hiddenDimensions, setHiddenDimensions] = useState<Set<string>>(new Set());
-  const [globalFilters, setGlobalFilters] = useState<Record<string, string[]>>({});
-  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const isFirstRender = useRef(true);
 
   // JQL-Lite Filter state
   const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
-  const [jqlQuery, setJqlQuery] = useState('');
+  const [newJqlName, setNewJqlName] = useState('');
   const [jqlAutocompleteOpen, setJqlAutocompleteOpen] = useState(false);
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
@@ -2450,11 +2479,6 @@ function KpiDashboard({
 
   const resetHidden = () => setHiddenDimensions(new Set());
 
-  // Chart section state
-  const [charts, setCharts] = useState<ChartConfig[]>([
-    { id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }
-  ]);
-
   const handleAddChart = () => {
     if (charts.length >= 6) {
       toast.error('Maximum 6 charts allowed');
@@ -2528,10 +2552,14 @@ function KpiDashboard({
       
       return newFilters;
     });
-  }, []);
+  }, [setGlobalFilters]);
 
-  // Auto-calculate when filters change
+  // Auto-calculate when filters change, but skip initial mount to preserve cached results
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     if (kpiResults.length > 0) handleCalculate();
   }, [globalFilters]);
 
