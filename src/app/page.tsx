@@ -2069,11 +2069,15 @@ const ExtractPanel = React.memo(function ExtractPanel({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Date From</Label>
+              <div className="flex items-center h-6">
+                <Label className="text-slate-700 dark:text-slate-300">Date From</Label>
+              </div>
               <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
             </div>
             <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Date To</Label>
+              <div className="flex items-center h-6">
+                <Label className="text-slate-700 dark:text-slate-300">Date To</Label>
+              </div>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
             </div>
           </div>
@@ -2826,7 +2830,9 @@ function KpiDashboard({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Master Dataset</Label>
+              <div className="flex items-center h-6">
+                <Label className="text-slate-700 dark:text-slate-300">Master Dataset</Label>
+              </div>
               <div className="h-10 flex items-center px-3 bg-gray-100 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700">
                 {masterDatasetInfo ? (
                   <div className="flex items-center gap-2 text-emerald-500">
@@ -2847,7 +2853,7 @@ function KpiDashboard({
               </div>
             </div>
             <div className="space-y-2 lg:col-span-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between h-6">
                 <Label className="text-slate-700 dark:text-slate-300">Period</Label>
                 <div className="flex gap-1">
                   {[
@@ -2905,7 +2911,9 @@ function KpiDashboard({
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Region</Label>
+              <div className="flex items-center h-6">
+                <Label className="text-slate-700 dark:text-slate-300">Region</Label>
+              </div>
               <Select value={region} onValueChange={setRegion}>
                 <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-10">
                   <SelectValue />
@@ -4946,7 +4954,9 @@ function ExportPanel({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Source Data</Label>
+              <div className="flex items-center h-6">
+                <Label className="text-slate-700 dark:text-slate-300">Source Data</Label>
+              </div>
               <div className="h-10 flex items-center px-3 bg-gray-100 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700">
                 {extractionResult ? (
                   <div className="flex items-center gap-2 text-emerald-500">
@@ -4974,7 +4984,9 @@ function ExportPanel({
               </div>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label className="text-slate-700 dark:text-slate-300">Period</Label>
+              <div className="flex items-center h-6">
+                <Label className="text-slate-700 dark:text-slate-300">Period</Label>
+              </div>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Input
@@ -4995,7 +5007,9 @@ function ExportPanel({
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Region</Label>
+              <div className="flex items-center h-6">
+                <Label className="text-slate-700 dark:text-slate-300">Region</Label>
+              </div>
               <Select value={region} onValueChange={setRegion}>
                 <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-10">
                   <SelectValue />
