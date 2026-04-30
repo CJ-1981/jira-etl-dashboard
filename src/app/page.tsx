@@ -3183,7 +3183,7 @@ function KpiDashboard({
                     { label: 'Status', key: 'status', options: filterOptions.status },
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
-                  ].filter(f => f.options.length > 0).map(filter => (
+                  ].filter(f => f.options.length > 1).map(filter => (
                     <div key={filter.key} className="space-y-1.5">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{filter.label}</Label>
                       <Popover>
