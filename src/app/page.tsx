@@ -2435,6 +2435,52 @@ function KpiDashboard({
   // Staging filters for multi-select without instant update
   const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
 
+  const mainKpis = kpiResults.filter((r: any) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
+  const assigneeKpis = kpiResults
+    .filter((r: any) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId))
+    .map((kpi: any) => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) => b.value - a.value)
+    }));
+  const statusKpis = kpiResults
+    .filter((r: any) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId))
+    .map((kpi: any) => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) =>
+        (a.dimensions?.status || '').localeCompare(b.dimensions?.status || '', undefined, { numeric: true, sensitivity: 'base' })
+      )
+    }));
+  const slaStatusKpis = kpiResults
+    .filter((r: any) => r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone')
+    .map((kpi: any) => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) =>
+        (a.dimensions?.status || '').localeCompare(b.dimensions?.status || '', undefined, { numeric: true, sensitivity: 'base' })
+      )
+    }));
+  const priorityKpis = kpiResults
+    .filter((r: any) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId))
+    .map((kpi: any) => ({
+      ...kpi,
+      results: [...kpi.results].sort((a, b) =>
+        (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true, sensitivity: 'base' })
+      )
+    }));
+  const trendKpis = kpiResults
+    .filter((r: any) => isTimeSeriesPlugin(r.pluginId))
+    .map((kpi: any) => ({
+      ...kpi,
+      results: kpi.results.map((result: any) => ({
+        ...result,
+        timeSeries: result.timeSeries
+          ?.map((ts: any) => ({
+            ...ts,
+            date: ts.date instanceof Date ? ts.date : new Date(ts.date as string)
+          }))
+          .sort((a: any, b: any) => a.date.getTime() - b.date.getTime())
+      }))
+    }));
+
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: sync UI state */
   useEffect(() => {
     // Sync pending filters when panel is opened
@@ -2487,7 +2533,9 @@ function KpiDashboard({
       let xPos = 0.5;
       let yPos = 1.0;
       
-      const visibleMainKpis = mainKpis.flatMap(k => k.results).filter((r, i) => !hiddenDimensions.has(`${mainKpis[0].pluginId}|`)); // Simple check for now
+      const visibleMainKpis = mainKpis.length > 0 
+        ? mainKpis.flatMap(k => k.results).filter((r, i) => !hiddenDimensions.has(`${mainKpis[0].pluginId}|`))
+        : [];
       
       visibleMainKpis.slice(0, 8).forEach((kpi, idx) => {
         if (idx > 0 && idx % 4 === 0) { xPos = 0.5; yPos += 1.8; }
@@ -2527,7 +2575,7 @@ function KpiDashboard({
         
         const kpi = assigneeKpis[0];
         const rows: any[] = [['Assignee', 'Tickets']];
-        kpi.results.forEach(r => {
+        kpi.results.forEach((r: any) => {
           if (!hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee}`)) {
             rows.push([r.dimensions?.assignee || 'Unassigned', r.value.toString()]);
           }
@@ -2535,6 +2583,71 @@ function KpiDashboard({
         
         slide4.addTable(rows, { x: 0.5, y: 1.0, w: 6, border: { type: 'solid', color: 'cbd5e1' }, fontSize: 11 });
       }
+
+      // 5. SLA by Status Slide
+      if (slaStatusKpis.length > 0) {
+        const slide5 = pres.addSlide();
+        slide5.addText('SLA Compliance by Status', { x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 24, bold: true, color: '3b82f6' });
+        
+        const rows: any[] = [['Status', 'Compliance %', 'Within SLA', 'Total']];
+        slaStatusKpis.forEach((kpi: any) => {
+          kpi.results.forEach((r: any) => {
+            if (!hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status}`)) {
+              const withinSla = r.details?.find((d: any) => d.label === 'Within SLA')?.value.toString() || '0';
+              const total = r.details?.find((d: any) => d.label === 'Total')?.value.toString() || '0';
+              rows.push([r.dimensions?.status || 'Unknown', `${r.value.toFixed(1)}%`, withinSla, total]);
+            }
+          });
+        });
+        
+        slide5.addTable(rows, { x: 0.5, y: 1.0, w: 9, border: { type: 'solid', color: 'cbd5e1' }, fontSize: 11 });
+      }
+
+      // 6. Chart Visualizations
+      charts.forEach((chartConfig: any) => {
+        if (!chartConfig.kpiId) return;
+        
+        const kpi = kpiResults.find((k: any) => k.pluginId === chartConfig.kpiId);
+        if (!kpi) return;
+
+        const slide = pres.addSlide();
+        const kpiLabel = kpi.results[0]?.name || kpi.pluginId.replace(/_/g, ' ').toUpperCase();
+        slide.addText(`Visualization: ${kpiLabel}`, { x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 24, bold: true, color: '3b82f6' });
+
+        // Get data based on chart type
+        let chartData: any = null;
+        if (chartConfig.type === 'bar' || chartConfig.type === 'line') {
+          const transformed = transformForBarChart(kpiResults, chartConfig.kpiId);
+          if (transformed && transformed.length > 0) {
+            chartData = [
+              {
+                name: kpiLabel,
+                labels: transformed.map((d: any) => d.name),
+                values: transformed.map((d: any) => d.value)
+              }
+            ];
+          }
+        } else if (chartConfig.type === 'pie') {
+           const transformed = transformForPieChart(kpiResults, chartConfig.kpiId);
+           if (transformed && transformed.length > 0) {
+             chartData = [
+               {
+                 name: kpiLabel,
+                 labels: transformed.map((d: any) => d.name),
+                 values: transformed.map((d: any) => d.value)
+               }
+             ];
+           }
+        }
+
+        if (chartData) {
+          const pptxChartType = chartConfig.type === 'bar' ? pres.ChartType.bar : 
+                               chartConfig.type === 'line' ? pres.ChartType.line : 
+                               pres.ChartType.pie;
+          
+          slide.addChart(pptxChartType, chartData, { x: 0.5, y: 1.0, w: 9, h: 4.5, showLegend: true });
+        }
+      });
 
       await pres.writeFile({ fileName: `Jira_KPI_Report_${new Date().toISOString().split('T')[0]}.pptx` });
       toast.success('PowerPoint report downloaded');
@@ -2768,55 +2881,6 @@ function KpiDashboard({
     if (kpiResults.length > 0) handleCalculate();
   }, [globalFilters, handleCalculate]);
   /* eslint-enable react-hooks/set-state-in-effect */
-
-  const mainKpis = kpiResults.filter((r) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const assigneeKpis = kpiResults
-    .filter((r) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId))
-    .map(kpi => ({
-      ...kpi,
-      results: [...kpi.results].sort((a, b) => b.value - a.value)
-    }));
-  const statusKpis = kpiResults
-    .filter((r) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId))
-    .map(kpi => ({
-      ...kpi,
-      results: [...kpi.results].sort((a, b) =>
-        (a.dimensions?.status || '').localeCompare(b.dimensions?.status || '', undefined, { numeric: true, sensitivity: 'base' })
-      )
-    }));
-  const slaStatusKpis = kpiResults
-    .filter((r) => r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone')
-    .map(kpi => ({
-      ...kpi,
-      results: [...kpi.results].sort((a, b) =>
-        (a.dimensions?.status || '').localeCompare(b.dimensions?.status || '', undefined, { numeric: true, sensitivity: 'base' })
-      )
-    }));
-  const priorityKpis = kpiResults
-    .filter((r) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId))
-    .map(kpi => ({
-      ...kpi,
-      results: [...kpi.results].sort((a, b) =>
-        (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true, sensitivity: 'base' })
-      )
-    }));
-
-  // Time-series trend KPIs - show in separate section with time-series indicator
-  const trendKpis = kpiResults
-    .filter((r) => isTimeSeriesPlugin(r.pluginId))
-    .map(kpi => ({
-      ...kpi,
-      results: kpi.results.map(result => ({
-        ...result,
-        // Convert date strings to Date objects and sort by date
-        timeSeries: result.timeSeries
-          ?.map((ts) => ({
-            ...ts,
-            date: ts.date instanceof Date ? ts.date : new Date(ts.date as string)
-          }))
-          .sort((a, b) => a.date.getTime() - b.date.getTime())
-      }))
-    }));
 
   return (
     <div className="space-y-6">
@@ -3572,6 +3636,8 @@ function KpiDashboard({
                     <ChartCard
                       config={chartConfig}
                       kpiResults={kpiResults}
+                      hiddenDimensions={hiddenDimensions}
+                      toggleDimension={toggleDimension}
                       onRemove={handleRemoveChart}
                       onChange={handleUpdateChart}
                     />
@@ -3759,11 +3825,13 @@ interface ChartConfig {
 interface ChartCardProps {
   config: ChartConfig;
   kpiResults: any[];
+  hiddenDimensions: Set<string>;
+  toggleDimension: (pluginId: string, value: string) => void;
   onRemove: (id: string) => void;
   onChange: (id: string, newConfig: ChartConfig) => void;
 }
 
-function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
+function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange }: ChartCardProps) {
   const kpiOptions = useMemo(() => getKpiOptions(kpiResults), [kpiResults]);
 
   // Check if selected KPI is a time-series plugin
@@ -3827,24 +3895,49 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
     const kpi = kpiResults.find((k) => k.pluginId === config.kpiId);
     const unit = kpi?.results?.[0]?.unit || '';
 
+    // Handle legend click for toggling visibility
+    const handleLegendClick = (e: any) => {
+      const { dataKey, value, name } = e;
+      const toggleValue = name || value;
+      if (toggleValue) {
+        toggleDimension(config.kpiId, toggleValue);
+      }
+    };
+
+    // Custom legend formatter for hover effects and clear toggle state
+    const renderLegend = (value: any) => {
+      const isHidden = hiddenDimensions.has(`${config.kpiId}|${value}`);
+      return (
+        <span 
+          className={`
+            text-[10px] font-medium transition-all cursor-pointer select-none
+            hover:text-blue-500 hover:underline
+            ${isHidden ? 'opacity-30 line-through text-slate-500' : 'text-slate-700 dark:text-slate-300'}
+          `}
+        >
+          {value}
+        </span>
+      );
+    };
+
     switch (config.type) {
       case 'bar':
         // Check if this is a multi-series chart (multiple results with timeSeries)
         const hasMultipleSeriesBar = kpi?.results && kpi.results.length > 1 &&
-          kpi.results.every(r => r.timeSeries && r.timeSeries.length > 0);
+          kpi.results.every((r: any) => r.timeSeries && r.timeSeries.length > 0);
 
         if (hasMultipleSeriesBar) {
           // Merge all timeSeries data by period
           const allPeriods = new Set<string>();
-          kpi.results.forEach(result => {
-            result.timeSeries?.forEach(point => allPeriods.add(point.period));
+          kpi.results.forEach((result: any) => {
+            result.timeSeries?.forEach((point: any) => allPeriods.add(point.period));
           });
 
           const sortedPeriods = Array.from(allPeriods).sort();
           const mergedData = sortedPeriods.map(period => {
             const dataPoint: any = { name: period };
-            kpi.results.forEach((result, idx) => {
-              const point = result.timeSeries?.find(p => p.period === period);
+            kpi.results.forEach((result: any, idx: number) => {
+              const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
             });
             return dataPoint;
@@ -3866,14 +3959,15 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                   itemStyle={{ color: '#e2e8f0' }}
                   formatter={(value: number) => formatChartValue(value, unit)}
                 />
-                <Legend />
-                {kpi.results.map((result, idx) => (
+                <Legend onClick={handleLegendClick} cursor="pointer" formatter={renderLegend} />
+                {kpi.results.map((result: any, idx: number) => (
                   <Bar
                     key={result.name || idx}
                     dataKey={`series${idx}`}
                     name={result.name}
                     fill={CHART_COLORS[idx % CHART_COLORS.length]}
                     radius={[4, 4, 0, 0]}
+                    hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
                   />
                 ))}
               </BarChart>
@@ -3900,12 +3994,29 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                 itemStyle={{ color: '#e2e8f0' }}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
-              {hasWeeklyLayers && <Legend />}
-              <Bar dataKey="value" name="Total Period" radius={[4, 4, 0, 0]} />
+              {hasWeeklyLayers && <Legend onClick={handleLegendClick} cursor="pointer" formatter={renderLegend} />}
+              <Bar 
+                dataKey="value" 
+                name="Total Period" 
+                radius={[4, 4, 0, 0]} 
+                hide={hiddenDimensions.has(`${config.kpiId}|Total Period`)}
+              />
               {hasWeeklyLayers && (
                 <>
-                  <Bar dataKey="thisWeek" name="This Week" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="prevWeek" name="Prev Week" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                  <Bar 
+                    dataKey="thisWeek" 
+                    name="This Week" 
+                    fill="#3b82f6" 
+                    radius={[4, 4, 0, 0]} 
+                    hide={hiddenDimensions.has(`${config.kpiId}|This Week`)}
+                  />
+                  <Bar 
+                    dataKey="prevWeek" 
+                    name="Prev Week" 
+                    fill="#94a3b8" 
+                    radius={[4, 4, 0, 0]} 
+                    hide={hiddenDimensions.has(`${config.kpiId}|Prev Week`)}
+                  />
                 </>
               )}
             </BarChart>
@@ -3915,20 +4026,20 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
       case 'line':
         // Check if this is a multi-series chart (multiple results with timeSeries)
         const hasMultipleSeries = kpi?.results && kpi.results.length > 1 &&
-          kpi.results.every(r => r.timeSeries && r.timeSeries.length > 0);
+          kpi.results.every((r: any) => r.timeSeries && r.timeSeries.length > 0);
 
         if (hasMultipleSeries) {
           // Merge all timeSeries data by period
           const allPeriods = new Set<string>();
-          kpi.results.forEach(result => {
-            result.timeSeries?.forEach(point => allPeriods.add(point.period));
+          kpi.results.forEach((result: any) => {
+            result.timeSeries?.forEach((point: any) => allPeriods.add(point.period));
           });
 
           const sortedPeriods = Array.from(allPeriods).sort();
           const mergedData = sortedPeriods.map(period => {
             const dataPoint: any = { name: period };
-            kpi.results.forEach((result, idx) => {
-              const point = result.timeSeries?.find(p => p.period === period);
+            kpi.results.forEach((result: any, idx: number) => {
+              const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
             });
             return dataPoint;
@@ -3950,8 +4061,8 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                   itemStyle={{ color: '#e2e8f0' }}
                   formatter={(value: number) => formatChartValue(value, unit)}
                 />
-                <Legend />
-                {kpi.results.map((result, idx) => (
+                <Legend onClick={handleLegendClick} cursor="pointer" formatter={renderLegend} />
+                {kpi.results.map((result: any, idx: number) => (
                   <Line
                     key={result.name || idx}
                     type="monotone"
@@ -3960,6 +4071,7 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                     stroke={CHART_COLORS[idx % CHART_COLORS.length]}
                     strokeWidth={2}
                     dot={{ fill: CHART_COLORS[idx % CHART_COLORS.length] }}
+                    hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
                   />
                 ))}
               </LineChart>
@@ -3990,11 +4102,14 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
         );
 
       case 'pie':
+        // Filter out hidden slices
+        const visiblePieData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
             <PieChart>
               <Pie
-                data={selectedKpiData}
+                data={visiblePieData}
                 cx="50%"
                 cy="50%"
                 labelLine={false}
@@ -4003,10 +4118,11 @@ function ChartCard({ config, kpiResults, onRemove, onChange }: ChartCardProps) {
                 fill="#8884d8"
                 dataKey="value"
               >
-                {selectedKpiData.map((entry, index) => (
+                {visiblePieData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
               </Pie>
+              <Legend onClick={handleLegendClick} cursor="pointer" formatter={renderLegend} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'rgba(15, 23, 42, 0.9)',
