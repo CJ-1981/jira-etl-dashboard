@@ -95,6 +95,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { motion, AnimatePresence } from 'framer-motion';
 import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin, type AppSettings, type SavedJql } from '@/lib/config/local-store';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -236,6 +237,9 @@ export default function Home() {
   ]);
   const [dashboardJqlQuery, setDashboardJqlQuery] = useState('');
   const [filterPanelOpen, setFilterPanelOpen] = useState(true);
+
+
+
 
   // Client-only: restore persisted state from localStorage on mount
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system on client mount only */
@@ -645,6 +649,8 @@ export default function Home() {
           </TabsContent>
         </Tabs>
       </main>
+
+
     </div>
   );
 }
@@ -2457,6 +2463,36 @@ function KpiDashboard({
   const [calculating, setCalculating] = useState(false);
   const isFirstRender = useRef(true);
 
+  // ─── Period Analysis Helpers ──────────────────────────────────────────────
+  const { isAnyPresetActive, isDataTruncated, availableStartDate } = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isToday = dateTo === todayStr;
+    const fromDate = dateFrom ? new Date(dateFrom) : null;
+    const toDate = dateTo ? new Date(dateTo) : null;
+    const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    
+    const presets = [7, 14, 30, 60, 90, 180, 365];
+    const isActive = isToday && presets.includes(diffDays);
+    
+    const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
+    const isTruncated = masterStart && fromDate && fromDate < masterStart;
+    
+    return {
+      isAnyPresetActive: isActive,
+      isDataTruncated: !!isTruncated,
+      availableStartDate: masterStart ? masterStart.toLocaleDateString() : null
+    };
+  }, [dateFrom, dateTo, masterDatasetInfo]);
+
+  const [showFloatingBar, setShowFloatingBar] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowFloatingBar(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   // JQL-Lite Filter state
   const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
   const [newJqlName, setNewJqlName] = useState('');
@@ -2984,7 +3020,14 @@ function KpiDashboard({
             </div>
             <div className="space-y-2 lg:col-span-2">
               <div className="flex items-center justify-between h-6">
-                <Label className="text-slate-700 dark:text-slate-300">Period</Label>
+                <div className="flex items-center gap-2">
+                  <Label className="text-slate-700 dark:text-slate-300">Period</Label>
+                  {!isAnyPresetActive && dateFrom && dateTo && (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">
+                      Custom
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex gap-1">
                   {[
                     { label: '1W', days: 7 },
@@ -3053,6 +3096,12 @@ function KpiDashboard({
                   />
                 </div>
               </div>
+              {isDataTruncated && (
+                <div className="mt-1 flex items-center gap-1.5 text-[10px] text-amber-500 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <AlertTriangle className="h-3 w-3" />
+                  <span>Selected period starts before available data (starts on {availableStartDate})</span>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <div className="flex items-center h-6">
@@ -3782,6 +3831,40 @@ function KpiDashboard({
           </div>
         </SheetContent>
       </Sheet>
+
+      <AnimatePresence>
+        {showFloatingBar && (
+          <motion.div
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            className="fixed top-[61px] left-1/2 -translate-x-1/2 z-[60] w-full max-w-xl px-4"
+          >
+            <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-full shadow-2xl p-1.5 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 px-3">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <Calendar className="h-3.5 w-3.5 text-emerald-500" />
+                  {dateFrom && dateTo ? `${new Date(dateFrom).toLocaleDateString()} - ${new Date(dateTo).toLocaleDateString()}` : 'No Period'}
+                </div>
+                <Separator orientation="vertical" className="h-4 bg-slate-200 dark:bg-slate-800" />
+                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <Sliders className="h-3.5 w-3.5 text-emerald-500" />
+                  {Object.values(globalFilters).flat().length} Filters
+                </div>
+              </div>
+              <Button 
+                size="sm" 
+                onClick={handleCalculate} 
+                disabled={calculating}
+                className="rounded-full h-8 bg-emerald-600 hover:bg-emerald-700 text-xs px-4"
+              >
+                {calculating ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Zap className="h-3 w-3 mr-2" />}
+                Recalculate
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -4022,10 +4105,13 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
           const sortedPeriods = Array.from(allPeriods).sort();
           const mergedData = sortedPeriods.map(period => {
             const dataPoint: any = { name: period };
+            let isComplete = true;
             kpi.results.forEach((result: any, idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
+              if (point && point.isComplete === false) isComplete = false;
             });
+            dataPoint.isComplete = isComplete;
             return dataPoint;
           });
 
@@ -4054,7 +4140,15 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                     fill={CHART_COLORS[idx % CHART_COLORS.length]}
                     radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
-                  />
+                  >
+                    {mergedData.map((entry: any, index: number) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                        fillOpacity={entry.isComplete === false ? 0.4 : 1}
+                      />
+                    ))}
+                  </Bar>
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -4114,6 +4208,7 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                   <Cell 
                     key={`cell-${index}`} 
                     fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]}
+                    fillOpacity={entry.isComplete === false ? 0.4 : 1}
                   />
                 ))}
               </Bar>
@@ -4168,10 +4263,13 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
           const sortedPeriods = Array.from(allPeriods).sort();
           const mergedData = sortedPeriods.map(period => {
             const dataPoint: any = { name: period };
+            let isComplete = true;
             kpi.results.forEach((result: any, idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
+              if (point && point.isComplete === false) isComplete = false;
             });
+            dataPoint.isComplete = isComplete;
             return dataPoint;
           });
 
@@ -4192,18 +4290,36 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                   formatter={(value: number) => formatChartValue(value, unit)}
                 />
                 <Legend onClick={handleLegendClick} cursor="pointer" formatter={renderLegend} />
-                {kpi.results.map((result: any, idx: number) => (
-                  <Line
-                    key={result.name || idx}
-                    type="monotone"
-                    dataKey={`series${idx}`}
-                    name={result.name}
-                    stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                    strokeWidth={2}
-                    dot={{ fill: CHART_COLORS[idx % CHART_COLORS.length] }}
-                    hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
-                  />
-                ))}
+                {kpi.results.map((result: any, idx: number) => {
+                  const color = CHART_COLORS[idx % CHART_COLORS.length];
+                  return (
+                    <Line
+                      key={result.name || idx}
+                      type="monotone"
+                      dataKey={`series${idx}`}
+                      name={result.name}
+                      stroke={color}
+                      strokeWidth={2}
+                      dot={(props) => {
+                        const { cx, cy, payload } = props;
+                        if (payload.isComplete === false) {
+                          return (
+                            <circle 
+                              key={`dot-${idx}-${payload.name}`}
+                              cx={cx} cy={cy} r={4} 
+                              fill="transparent" 
+                              stroke={color} 
+                              strokeWidth={2} 
+                              strokeDasharray="2 2" 
+                            />
+                          );
+                        }
+                        return <circle key={`dot-${idx}-${payload.name}`} cx={cx} cy={cy} r={4} fill={color} />;
+                      }}
+                      hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
+                    />
+                  );
+                })}
               </LineChart>
             </ResponsiveContainer>
           );
@@ -4226,7 +4342,28 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                 itemStyle={{ color: '#e2e8f0' }}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
-              <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                stroke="#3b82f6" 
+                strokeWidth={2} 
+                dot={(props) => {
+                  const { cx, cy, payload } = props;
+                  if (payload.isComplete === false) {
+                    return (
+                      <circle 
+                        key={`dot-${payload.name}`}
+                        cx={cx} cy={cy} r={4} 
+                        fill="transparent" 
+                        stroke="#3b82f6" 
+                        strokeWidth={2} 
+                        strokeDasharray="2 2" 
+                      />
+                    );
+                  }
+                  return <circle key={`dot-${payload.name}`} cx={cx} cy={cy} r={4} fill="#3b82f6" />;
+                }} 
+              />
             </LineChart>
           </ResponsiveContainer>
         );

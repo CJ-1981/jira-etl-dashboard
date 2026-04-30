@@ -27,6 +27,7 @@ export interface TimeSeriesDataPoint {
   date: Date;
   value: number;
   count: number;
+  isComplete?: boolean;
 }
 
 export type TimeInterval = 'daily' | 'weekly' | 'monthly';
@@ -191,7 +192,6 @@ function calculateOpenTicketsByAssigneeTrend(
       const isComplete = isPeriodComplete(period.end);
       if (!isComplete) {
         hasIncompletePeriod = true;
-        continue;
       }
 
       // Count issues that were created before/at period end AND (not resolved OR resolved after period end)
@@ -211,6 +211,7 @@ function calculateOpenTicketsByAssigneeTrend(
         date: period.end,
         value: openAtEnd,
         count: openAtEnd,
+        isComplete,
       });
     }
 
@@ -218,6 +219,7 @@ function calculateOpenTicketsByAssigneeTrend(
     timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
     // Current value issues (at last complete period end)
+    const completePoints = timeSeries.filter(p => p.isComplete);
     const lastCompletePeriod = periods.filter(p => isPeriodComplete(p.end)).pop();
     const currentTicketKeys = lastCompletePeriod 
       ? assigneeIssues.filter(i => {
@@ -228,7 +230,7 @@ function calculateOpenTicketsByAssigneeTrend(
       : [];
 
     // Current value (at last complete period end)
-    const currentValue = timeSeries.length > 0 ? timeSeries[timeSeries.length - 1].value : 0;
+    const currentValue = completePoints.length > 0 ? completePoints[completePoints.length - 1].value : 0;
 
     assigneeResults.push({
       name: `Open Tickets: ${assignee}`,
@@ -240,10 +242,10 @@ function calculateOpenTicketsByAssigneeTrend(
     });
   }
 
-  // Add warning to details of first result if incomplete period was skipped
+  // Add info to details if incomplete period is shown
   if (hasIncompletePeriod && assigneeResults.length > 0) {
     assigneeResults[0].details = [
-      { label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' }
+      { label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' }
     ];
   }
 
@@ -276,10 +278,8 @@ function calculateProcessingTimeTrend(
     const periodEnd = getPeriodEnd(periodKey, interval);
     const isComplete = isPeriodComplete(periodEnd);
 
-    // Skip incomplete periods to avoid misleading spikes
     if (!isComplete) {
       hasIncompletePeriod = true;
-      continue;
     }
 
     const processingTimes = issues.map((issue) =>
@@ -293,6 +293,7 @@ function calculateProcessingTimeTrend(
       date: periodEnd,
       value: Math.round(avgTime * 100) / 100,
       count: issues.length,
+      isComplete: isComplete,
     });
   }
 
@@ -300,25 +301,26 @@ function calculateProcessingTimeTrend(
   timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
   // Calculate overall average from complete periods only
-  const overallAvg = timeSeries.length > 0
-    ? timeSeries.reduce((sum, point) => sum + point.value * point.count, 0) /
-      timeSeries.reduce((sum, point) => sum + point.count, 0)
+  const completePoints = timeSeries.filter(p => p.isComplete);
+  const overallAvg = completePoints.length > 0
+    ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) /
+      completePoints.reduce((sum, point) => sum + point.count, 0)
     : 0;
 
   const details: Array<{ label: string; value: number; unit?: string }> = [
-    { label: 'Complete Periods', value: timeSeries.length },
+    { label: 'Complete Periods', value: completePoints.length },
     { label: 'Total Resolved', value: resolvedIssues.length },
   ];
 
-  if (timeSeries.length > 0) {
+  if (completePoints.length > 0) {
     details.push(
-      { label: 'Min Time', value: Math.round(Math.min(...timeSeries.map(t => t.value)) * 100) / 100, unit: 'hours' },
-      { label: 'Max Time', value: Math.round(Math.max(...timeSeries.map(t => t.value)) * 100) / 100, unit: 'hours' }
+      { label: 'Min Time (Complete)', value: Math.round(Math.min(...completePoints.map(t => t.value)) * 100) / 100, unit: 'hours' },
+      { label: 'Max Time (Complete)', value: Math.round(Math.max(...completePoints.map(t => t.value)) * 100) / 100, unit: 'hours' }
     );
   }
 
   if (hasIncompletePeriod) {
-    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
   }
 
   return [{
@@ -356,10 +358,8 @@ function calculateThroughputTrend(
     const periodEnd = getPeriodEnd(periodKey, interval);
     const isComplete = isPeriodComplete(periodEnd);
 
-    // Skip incomplete periods
     if (!isComplete) {
       hasIncompletePeriod = true;
-      continue;
     }
 
     timeSeries.push({
@@ -367,27 +367,29 @@ function calculateThroughputTrend(
       date: periodEnd,
       value: issues.length,
       count: issues.length,
+      isComplete,
     });
   }
 
   // Sort by date
   timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  const totalResolved = resolvedIssues.length;
-  const avgThroughput = timeSeries.length > 0 ? totalResolved / timeSeries.length : 0;
+  const completePoints = timeSeries.filter(p => p.isComplete);
+  const totalResolvedInComplete = completePoints.reduce((sum, p) => sum + p.value, 0);
+  const avgThroughput = completePoints.length > 0 ? totalResolvedInComplete / completePoints.length : 0;
 
   const details: Array<{ label: string; value: number; unit?: string }> = [
-    { label: 'Complete Periods', value: timeSeries.length },
-    { label: 'Total Resolved', value: totalResolved },
-    { label: 'Avg Throughput', value: Math.round(avgThroughput * 100) / 100, unit: 'tickets/period' },
+    { label: 'Complete Periods', value: completePoints.length },
+    { label: 'Total Resolved', value: resolvedIssues.length },
+    { label: 'Avg Throughput (Complete)', value: Math.round(avgThroughput * 100) / 100, unit: 'tickets/period' },
   ];
 
-  if (timeSeries.length > 0) {
-    details.push({ label: 'Peak Period', value: Math.round(Math.max(...timeSeries.map(t => t.value))), unit: 'tickets' });
+  if (completePoints.length > 0) {
+    details.push({ label: 'Peak Period (Complete)', value: Math.round(Math.max(...completePoints.map(t => t.value))), unit: 'tickets' });
   }
 
   if (hasIncompletePeriod) {
-    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
   }
 
   return [{
@@ -426,10 +428,8 @@ function calculateSlaTrend(
     const periodEnd = getPeriodEnd(periodKey, interval);
     const isComplete = isPeriodComplete(periodEnd);
 
-    // Skip incomplete periods
     if (!isComplete) {
       hasIncompletePeriod = true;
-      continue;
     }
 
     const withinSla = issues.filter((issue) => {
@@ -444,6 +444,7 @@ function calculateSlaTrend(
       date: periodEnd,
       value: Math.round(complianceRate * 100) / 100,
       count: issues.length,
+      isComplete,
     });
   }
 
@@ -451,28 +452,29 @@ function calculateSlaTrend(
   timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
   // Calculate overall compliance from complete periods only
-  const overallCompliance = timeSeries.length > 0
-    ? timeSeries.reduce((sum, point) => sum + point.value * point.count, 0) /
-      timeSeries.reduce((sum, point) => sum + point.count, 0)
+  const completePoints = timeSeries.filter(p => p.isComplete);
+  const overallCompliance = completePoints.length > 0
+    ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) /
+      completePoints.reduce((sum, point) => sum + point.count, 0)
     : 0;
 
   const details: Array<{ label: string; value: number; unit?: string }> = [
-    { label: 'Complete Periods', value: timeSeries.length },
+    { label: 'Complete Periods', value: completePoints.length },
     { label: 'Total Resolved', value: resolvedIssues.length },
     { label: 'SLA Target', value: slaTargetHours, unit: 'hours' },
   ];
 
-  if (timeSeries.length > 0) {
-    const minCompliance = Math.min(...timeSeries.map(t => t.value));
-    const maxCompliance = Math.max(...timeSeries.map(t => t.value));
+  if (completePoints.length > 0) {
+    const minCompliance = Math.min(...completePoints.map(t => t.value));
+    const maxCompliance = Math.max(...completePoints.map(t => t.value));
     details.push(
-      { label: 'Worst Period', value: Math.round(minCompliance), unit: '%' },
-      { label: 'Best Period', value: Math.round(maxCompliance), unit: '%' }
+      { label: 'Worst Period (Complete)', value: Math.round(minCompliance), unit: '%' },
+      { label: 'Best Period (Complete)', value: Math.round(maxCompliance), unit: '%' }
     );
   }
 
   if (hasIncompletePeriod) {
-    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
   }
 
   return [{
@@ -548,10 +550,8 @@ function calculateTimeInStatusTrend(
       const periodEnd = getPeriodEnd(periodKey, interval);
       const isComplete = isPeriodComplete(periodEnd);
 
-      // Skip incomplete periods
       if (!isComplete) {
         hasIncompletePeriod = true;
-        continue;
       }
 
       const avgHours = statusData.count > 0 ? statusData.totalHours / statusData.count : 0;
@@ -561,15 +561,17 @@ function calculateTimeInStatusTrend(
         date: periodEnd,
         value: Math.round(avgHours * 100) / 100,
         count: statusData.count,
+        isComplete,
       });
     }
 
     // Sort by date
     timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    // Calculate overall average for this status
-    const overallAvg = timeSeries.length > 0
-      ? timeSeries.reduce((sum, point) => sum + point.value, 0) / timeSeries.length
+    // Calculate overall average for this status from complete periods only
+    const completePoints = timeSeries.filter(p => p.isComplete);
+    const overallAvg = completePoints.length > 0
+      ? completePoints.reduce((sum, point) => sum + point.value, 0) / completePoints.length
       : 0;
 
     statusResults.push({
@@ -586,7 +588,7 @@ function calculateTimeInStatusTrend(
   ];
 
   if (hasIncompletePeriod) {
-    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
   }
 
   // Return multiple results (one per status) for multi-line chart
@@ -667,10 +669,8 @@ function calculateSlaByStatusTrend(
       const periodEnd = getPeriodEnd(periodKey, interval);
       const isComplete = isPeriodComplete(periodEnd);
 
-      // Skip incomplete periods
       if (!isComplete) {
         hasIncompletePeriod = true;
-        continue;
       }
 
       const complianceRate = statusData.total > 0
@@ -682,16 +682,18 @@ function calculateSlaByStatusTrend(
         date: periodEnd,
         value: Math.round(complianceRate * 100) / 100,
         count: statusData.total,
+        isComplete,
       });
     }
 
     // Sort by date
     timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    // Calculate overall compliance for this status
-    const overallCompliance = timeSeries.length > 0
-      ? timeSeries.reduce((sum, point) => sum + point.value * point.count, 0) /
-        timeSeries.reduce((sum, point) => sum + point.count, 0)
+    // Calculate overall compliance for this status from complete periods only
+    const completePoints = timeSeries.filter(p => p.isComplete);
+    const overallCompliance = completePoints.length > 0
+      ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) /
+        completePoints.reduce((sum, point) => sum + point.count, 0)
       : 0;
 
     statusResults.push({
@@ -708,7 +710,7 @@ function calculateSlaByStatusTrend(
   ];
 
   if (hasIncompletePeriod) {
-    details.push({ label: '⚠️ Current period excluded', value: 1, unit: 'incomplete' });
+    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
   }
 
   // Return multiple results (one per status) for multi-line chart

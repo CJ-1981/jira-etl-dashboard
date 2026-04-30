@@ -21,6 +21,7 @@ export interface KpiResult {
       date: Date;
       value: number;
       count: number;
+      isComplete?: boolean;
     }>;
   }>;
 }
@@ -114,6 +115,9 @@ export function transformForBarChart(
         fill: color,
       };
 
+      // Add isComplete if it's a timeSeries point (unlikely for distribution but good for consistency)
+      if ((result as any).isComplete !== undefined) dataPoint.isComplete = (result as any).isComplete;
+
       // Add weekly breakdown if available in details
       const tw = result.details?.find(d => d.label === 'This Week');
       const lw = result.details?.find(d => d.label === 'Previous Week');
@@ -194,6 +198,7 @@ export function transformForLineChart(
       name: point.period,
       value: Number(point.value.toFixed(2)),
       date: point.date,
+      isComplete: point.isComplete,
     }));
   }
 
