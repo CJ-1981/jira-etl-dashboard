@@ -2107,13 +2107,11 @@ const ExtractPanel = React.memo(function ExtractPanel({
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <Label htmlFor="update-only" className="text-sm font-semibold text-blue-900 dark:text-blue-400 cursor-pointer">Update Only Mode</Label>
-                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/30">EXPERIMENTAL</Badge>
               </div>
               <p className="text-xs text-blue-700 dark:text-blue-500">
                 Upsert existing/new tickets without deleting anything. Uses "updated" field for filtering.
               </p>
-            </div>
-            <Switch 
+            </div>            <Switch 
               id="update-only" 
               checked={updateOnly} 
               onCheckedChange={setUpdateOnly} 
