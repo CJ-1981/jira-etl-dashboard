@@ -2617,15 +2617,47 @@ function KpiDashboard({
         // Get data based on chart type
         let chartData: any = null;
         if (chartConfig.type === 'bar' || chartConfig.type === 'line') {
-          const transformed = transformForBarChart(kpiResults, chartConfig.kpiId);
-          if (transformed && transformed.length > 0) {
-            chartData = [
-              {
-                name: kpiLabel,
-                labels: transformed.map((d: any) => d.name),
-                values: transformed.map((d: any) => d.value)
+          const hasMultipleSeries = kpi.results.length > 1 && 
+            kpi.results.every((r: any) => r.timeSeries && r.timeSeries.length > 0);
+
+          if (hasMultipleSeries) {
+            // Multi-series: each KPI result is a series
+            const allLabels = new Set<string>();
+            kpi.results.forEach((r: any) => {
+              r.timeSeries?.forEach((p: any) => allLabels.add(p.period));
+            });
+            const sortedLabels = Array.from(allLabels).sort();
+
+            chartData = kpi.results.map((r: any) => ({
+              name: r.name || kpiLabel,
+              labels: sortedLabels,
+              values: sortedLabels.map(label => {
+                const point = r.timeSeries?.find((p: any) => p.period === label);
+                return point ? Number(point.value.toFixed(2)) : 0;
+              })
+            }));
+          } else {
+            // Single series or dimension-based
+            const transformed = transformForBarChart(kpiResults, chartConfig.kpiId);
+            if (transformed && transformed.length > 0) {
+              // Check if we have weekly layers (thisWeek/prevWeek)
+              const hasWeekly = transformed.some((d: any) => d.thisWeek !== undefined);
+              if (hasWeekly) {
+                chartData = [
+                  { name: 'Total Period', labels: transformed.map((d: any) => d.name), values: transformed.map((d: any) => d.value) },
+                  { name: 'This Week', labels: transformed.map((d: any) => d.name), values: transformed.map((d: any) => d.thisWeek || 0) },
+                  { name: 'Prev Week', labels: transformed.map((d: any) => d.name), values: transformed.map((d: any) => d.prevWeek || 0) }
+                ];
+              } else {
+                chartData = [
+                  {
+                    name: kpiLabel,
+                    labels: transformed.map((d: any) => d.name),
+                    values: transformed.map((d: any) => d.value)
+                  }
+                ];
               }
-            ];
+            }
           }
         } else if (chartConfig.type === 'pie') {
            const transformed = transformForPieChart(kpiResults, chartConfig.kpiId);
