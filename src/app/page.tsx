@@ -2847,7 +2847,42 @@ function KpiDashboard({
               </div>
             </div>
             <div className="space-y-2 lg:col-span-2">
-              <Label className="text-slate-700 dark:text-slate-300">Period</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-slate-700 dark:text-slate-300">Period</Label>
+                <div className="flex gap-1">
+                  {[
+                    { label: '1W', days: 7 },
+                    { label: '2W', days: 14 },
+                    { label: '1M', days: 30 },
+                    { label: '2M', days: 60 },
+                    { label: '3M', days: 90 },
+                  ].map((p) => {
+                    const dataStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
+                    const targetStart = new Date();
+                    targetStart.setDate(targetStart.getDate() - p.days);
+                    const isAvailable = dataStart && targetStart >= dataStart;
+
+                    return (
+                      <Button
+                        key={p.label}
+                        variant="ghost"
+                        size="sm"
+                        disabled={!isAvailable}
+                        onClick={() => {
+                          const to = new Date();
+                          const from = new Date();
+                          from.setDate(to.getDate() - p.days);
+                          setDateFrom(from.toISOString().split('T')[0]);
+                          setDateTo(to.toISOString().split('T')[0]);
+                        }}
+                        className={`h-6 px-2 text-[10px] ${isAvailable ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10' : 'text-slate-400'}`}
+                      >
+                        {p.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Input
