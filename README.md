@@ -12,16 +12,21 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 - **Actionable Metrics** — Click any KPI card or chart bar to instantly view the specific Jira issues comprising that metric.
 - **Side-out Issue Drawer** — High-speed preview of ticket summaries, assignees, and status with direct links back to Jira.
 
-### 📉 Smart Comparisons (Delta Analysis)
-- **Automatic Benchmarking** — Every KPI automatically calculates the delta against the previous period of equal length.
+### 📊 Professional Visualization Engine
+- **Synchronized Comparison** — Distribution charts include "This Week" and "Previous Week" comparison layers with non-zero data filtering.
+- **Interactive Legends** — Toggle visibility of specific dimensions or comparison series with instant UI reflow.
+- **Modern Aesthetics** — Premium dark-mode interface with glassmorphism effects and smooth transitions.
+
+### 📉 Smart Delta Analysis (Benchmarking)
+- **Automatic Period Comparison** — Every KPI automatically calculates the delta against the previous period of equal length.
 - **Trend Indicators** — Visual green/red arrows and delta values provide immediate context on performance shifts (e.g., "+15 Resolved vs. last week").
 
-### 🌓 Dynamic Global Filters
+### 🌓 Dynamic Global Filters & JQL-Lite
 - **Live UI Slicing** — Filter the entire dashboard in real-time by **Assignee, Priority, Status, Issue Type, Component,** or **Label**.
-- **Data-Driven Options** — Filter choices are dynamically extracted from your active Master Dataset.
-- **Zero-Latency Updates** — KPIs and charts update instantly without requiring a new Jira sync.
+- **JQL-Lite Engine** — Power-user filtering using an advanced JQL-inspired query language with live autocomplete suggestions.
+- **Zero-Latency Updates** — UI components update instantly without requiring a new Jira sync, utilizing a client-side state engine.
 
-### 📤 Professional Reporting
+### 📤 Executive Reporting
 - **PPT Export** — One-click generation of professional multi-slide PowerPoint decks for stakeholder reporting.
 - **Context-Aware** — Reports include executive overviews, status analysis tables, and team workload summaries, respecting all active filters.
 
@@ -31,10 +36,8 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 
 ### Jira ETL & Data Extraction
 - **Master Dataset Management** — Automatically tracks additions, updates, and deletions to maintain a faithful local mirror of Jira data.
-- **Scheduled Pulling** — Robust server-side background sync (1min–4hr intervals) that survives restarts and hot-reloads.
-- **JQL Management** — Save and load custom JQL queries for rapid switching between different analysis scopes.
-- **Quick Pull** presets for 1, 7, 30, 90, and 365-day baseline data.
-- **Rate limiting** with configurable delay, batch size, and backoff strategies.
+- **Scheduled Polling** — Robust server-side background sync (1min–4hr intervals) that survives restarts and hot-reloads.
+- **Extraction Logic** — Smart `update-only` mode that fetches only modified tickets since the last sync to minimize API load.
 
 ### KPI Calculation Engine
 **12+ built-in plugins:**
@@ -46,14 +49,13 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 | SLA Compliance Rate | SLA | % tickets resolved within SLA target |
 | Throughput | Throughput | Tickets created, resolved, and currently open |
 | Open Tickets by Assignee | Assignee | Current workload distribution per user |
-| Open Tickets Trend | Assignee | Weekly workload trends per assignee |
 | Resolution Rate | Quality | % of created tickets that are resolved |
 
 All time-based KPIs **exclude weekends and German holidays** (all 16 states supported), with configurable work hours.
 
-**Custom KPI Plugin System**:
-- **Visual Builder (DSL)**: Metric Type → Filters → Output.
-- **Code Editor (JavaScript)**: Raw JS functions for complex data transformations.
+**Unified Plugin Builder**:
+- **Visual DSL Builder**: Create metrics via dropdowns (Metric Type → Scope → Filter Logic).
+- **Advanced Code Editor**: Write raw JavaScript functions for bespoke data transformations and complex formulas.
 
 ### Export & Integration
 - **Database Sync**: Direct write to PostgreSQL / Supabase with full schema support.
@@ -64,18 +66,18 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 
 ## 🏗️ Technical Architecture
 
-### Unified Tab Structure
-1.  **ETL & Export**: Manage Jira sync, scheduled pulls, and database exports.
-2.  **KPI**: Interactive dashboard with global filters, drill-downs, and trend analysis.
-3.  **Settings**: Configure Jira/PG connections, storage backends (SQLite/Postgres), and system preferences.
+### UI Stability & Performance
+- **Hydration Guard**: Client-side initialization prevents "Flicker of Unstyled Content" and SSR mismatches.
+- **Async Mount Protection**: All network-dependent components use mount guards to prevent state updates on unmounted fibers.
+- **Standardized Layout**: CSS `scrollbar-gutter: stable` and layout-neutral tab transitions ensure zero UI shifting.
 
 ### Tech Stack
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 16.2 (Webpack), React 19, TypeScript 5 |
+| Framework | Next.js 16.2 (App Router), React 19, TypeScript 5 |
 | UI | shadcn/ui, Tailwind CSS 4, Radix UI, Sheet (Vaul) |
 | Database | Prisma 6 ORM (SQLite local, PostgreSQL external) |
-| Charts | Recharts 2.15 |
+| Charts | Recharts 2.15 (Interactive Layers) |
 | Exports | PptxGenJS (PowerPoint), CSV/JSON |
 
 ---
