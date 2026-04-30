@@ -2118,7 +2118,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
             />
           </div>
 
-          <Button onClick={() => handleExtract()} disabled={extracting || !activeConnectionId} className="w-full bg-emerald-600 hover:bg-emerald-700">
+          <Button onClick={() => handleExtract()} disabled={extracting || !activeConnectionId || !dateFrom || !dateTo} className="w-full bg-emerald-600 hover:bg-emerald-700">
             {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting Issues...</> : <><RefreshCw className="mr-2 h-4 w-4" />Run Jira Extraction</>}
           </Button>
         </CardContent>

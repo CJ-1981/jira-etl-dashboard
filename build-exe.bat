@@ -1,0 +1,121 @@
+@echo off
+setlocal enabledelayedexpansion
+title Jira ETL Dashboard - Portable Build
+
+echo ============================================================
+echo   Jira ETL Dashboard - Portable Build
+echo ============================================================
+echo.
+
+:: ── Step 1: Check dependencies ────────────────────────────────
+echo [1/4] Checking dependencies...
+call npm install >nul 2>&1
+echo       Done.
+
+:: ── Step 2: Initialize database with correct schema ───────────
+echo [2/4] Synchronizing database schema...
+
+:: Build an absolute path for the source database to be 100%% sure where we are pushing
+set "SOURCE_DB_ABS=%%~dp0prisma\db\custom.db"
+set "SOURCE_DB_ABS=%%SOURCE_DB_ABS:\=/%%"
+set "DATABASE_URL=file:%%SOURCE_DB_ABS%%"
+
+if not exist "prisma\db" mkdir "prisma\db"
+
+echo       Targeting database: prisma\db\custom.db
+echo       Pushing schema...
+
+:: Generate client
+call npx prisma generate --schema prisma\schema.prisma
+if %errorlevel% neq 0 (
+    echo [ERROR] Prisma generate failed.
+    pause
+    exit /b 1
+)
+
+:: Push schema to the 62MB database file
+call npx prisma db push --schema prisma\schema.prisma --accept-data-loss
+if %errorlevel% neq 0 (
+    echo [ERROR] Prisma db push failed.
+    pause
+    exit /b 1
+)
+echo       Database schema and client ready.
+
+:: ── Step 3: Build (skip if standalone already exists) ─────────
+if exist ".next\standalone\server.js" (
+    echo [3/4] Standalone build already exists - skipping rebuild.
+    echo       Delete .next\ and re-run if you need a fresh build.
+) else (
+    echo [3/4] Preparing production build...
+    set NODE_ENV=production
+    call npm run build
+    if %errorlevel% neq 0 (
+        echo [ERROR] Build failed.
+        pause
+        exit /b 1
+    )
+)
+
+:: ── Step 4: Assemble portable release folder ─────────────────
+echo [4/4] Assembling portable release folder...
+
+if not exist "release" mkdir "release"
+if not exist "release\app" mkdir "release\app"
+
+:: Copy standalone server + node_modules
+echo       Copying server files...
+xcopy /s /e /y ".next\standalone" "release\app\" >nul
+
+:: Copy static assets
+echo       Copying static assets...
+if not exist "release\app\.next\static" mkdir "release\app\.next\static"
+xcopy /s /e /y ".next\static" "release\app\.next\static\" >nul
+
+:: Copy public folder
+if not exist "release\app\public" mkdir "release\app\public"
+xcopy /s /e /y "public" "release\app\public\" >nul
+
+:: Copy the CORRECT database (the 62MB one from prisma/db)
+echo       Copying 62MB master database...
+if not exist "release\app\db" mkdir "release\app\db"
+del /f /q "release\app\db\custom.db" >nul 2>&1
+copy /y "prisma\db\custom.db" "release\app\db\custom.db" >nul
+
+:: ── Write the launcher batch ──────────────────────────────────
+echo       Creating launcher...
+
+> "release\Start Jira Dashboard.bat" (
+    echo @echo off
+    echo setlocal enabledelayedexpansion
+    echo title Jira ETL Dashboard
+    echo.
+    echo :: Move to the app folder
+    echo cd /d "%%~dp0app"
+    echo.
+    echo :: Set absolute DATABASE_URL for the app
+    echo set "DB_ABS=%%~dp0app\db\custom.db"
+    echo set "DB_ABS=%%DB_ABS:\=/%%"
+    echo set "DATABASE_URL=file:%%DB_ABS%%"
+    echo.
+    echo echo  =============================================
+    echo echo    Jira ETL Dashboard
+    echo echo  =============================================
+    echo echo.
+    echo echo  Server starting at http://localhost:3000
+    echo echo  Press Ctrl+C to stop.
+    echo echo.
+    echo set NODE_ENV=production
+    echo node server.js
+    echo pause
+)
+
+echo.
+echo ============================================================
+echo   SUCCESS! Portable build ready in 'release' folder.
+echo   Database: prisma\db\custom.db (62MB) has been bundled.
+echo.
+echo   To run:  Double-click  "release\Start Jira Dashboard.bat"
+echo ============================================================
+echo.
+pause

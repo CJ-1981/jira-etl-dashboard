@@ -13,7 +13,7 @@ echo [1/6] Checking prerequisites...
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] Node.js is not installed or not in PATH.
-    echo         Download it from: https://nodejs.org (v18+)
+    echo         Download it from: https://nodejs.org (v18+^)
     goto :fail
 )
 
