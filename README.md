@@ -15,6 +15,8 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 ### 📊 Professional Visualization Engine
 - **Synchronized Comparison** — Distribution charts include "This Week" and "Previous Week" comparison layers with non-zero data filtering.
 - **Interactive Legends** — Toggle visibility of specific dimensions or comparison series with instant UI reflow.
+- **Individual Chart Export** — Download any specific visualization as a high-quality PNG image for presentations.
+- **Incomplete Period Shading** — Trend charts visually distinguish "current" partial weeks/months from completed data using transparency and dashed indicators.
 - **Modern Aesthetics** — Premium dark-mode interface with glassmorphism effects and smooth transitions.
 
 ### 📉 Smart Delta Analysis (Benchmarking)
@@ -24,10 +26,18 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 ### 🌓 Dynamic Global Filters & JQL-Lite
 - **Live UI Slicing** — Filter the entire dashboard in real-time by **Assignee, Priority, Status, Issue Type, Component,** or **Label**.
 - **JQL-Lite Engine** — Power-user filtering using an advanced JQL-inspired query language with live autocomplete suggestions.
-- **Zero-Latency Updates** — UI components update instantly without requiring a new Jira sync, utilizing a client-side state engine.
+- **Floating Mini-bar** — Persistent control bar that appears when scrolling, providing one-click "Recalculate" and active filter status.
+- **Zero-Latency Updates** — UI components update instantly utilizing a client-side state engine.
+
+### ⚡ Performance & Data Confidence
+- **Web Worker Architecture** — Heavy KPI calculations are offloaded to a background thread, keeping the UI perfectly responsive even with tens of thousands of tickets.
+- **Master Dataset Memory Cache** — Intelligent caching of extracted ticket data avoids redundant network calls during filter and period adjustments.
+- **Data Boundary Validation** — Automatic warnings when selected time periods extend beyond the range of locally extracted data.
+- **Custom Period Detection** — Visual indicator (badge) when using non-standard date ranges outside of presets.
 
 ### 📤 Executive Reporting
 - **PPT Export** — One-click generation of professional multi-slide PowerPoint decks for stakeholder reporting.
+- **PNG Capture** — High-fidelity chart snapshots respecting active theme and visibility settings.
 - **Context-Aware** — Reports include executive overviews, status analysis tables, and team workload summaries, respecting all active filters.
 
 ---
@@ -67,18 +77,20 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 ## 🏗️ Technical Architecture
 
 ### UI Stability & Performance
-- **Hydration Guard**: Client-side initialization prevents "Flicker of Unstyled Content" and SSR mismatches.
-- **Async Mount Protection**: All network-dependent components use mount guards to prevent state updates on unmounted fibers.
-- **Standardized Layout**: CSS `scrollbar-gutter: stable` and layout-neutral tab transitions ensure zero UI shifting.
+- **Web Worker Threading** — Off-main-thread processing for all metric transformations and grouping logic.
+- **Hydration Guard** — Client-side initialization prevents "Flicker of Unstyled Content" and SSR mismatches.
+- **Async Mount Protection** — All network-dependent components use mount guards to prevent state updates on unmounted fibers.
+- **Standardized Layout** — CSS `scrollbar-gutter: stable` and layout-neutral tab transitions ensure zero UI shifting.
 
 ### Tech Stack
 | Layer | Technology |
 |-------|-----------|
 | Framework | Next.js 16.2 (App Router), React 19, TypeScript 5 |
-| UI | shadcn/ui, Tailwind CSS 4, Radix UI, Sheet (Vaul) |
+| Computation | Web Workers (Background Calculation) |
+| UI | shadcn/ui, Tailwind CSS 4, Radix UI, Framer Motion |
 | Database | Prisma 6 ORM (SQLite local, PostgreSQL external) |
 | Charts | Recharts 2.15 (Interactive Layers) |
-| Exports | PptxGenJS (PowerPoint), CSV/JSON |
+| Exports | PptxGenJS (PowerPoint), html-to-image (PNG), CSV/JSON |
 
 ---
 

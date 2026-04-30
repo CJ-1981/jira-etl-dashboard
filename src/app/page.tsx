@@ -96,6 +96,7 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toPng } from 'html-to-image';
 import { localConfig, buildPgConnectionUrl, isSupabaseUrl, type KpiPlugin, type AppSettings, type SavedJql } from '@/lib/config/local-store';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -237,6 +238,8 @@ export default function Home() {
   ]);
   const [dashboardJqlQuery, setDashboardJqlQuery] = useState('');
   const [filterPanelOpen, setFilterPanelOpen] = useState(true);
+  const isFirstRender = useRef(true);
+
 
 
 
@@ -532,6 +535,7 @@ export default function Home() {
               <TabsContent value="db-export" className="mt-0">
                 <ExportPanel
                   extractionResult={extractionResult}
+                  masterDatasetInfo={masterDatasetInfo}
                   dateFrom={dateFrom}
                   setDateFrom={setDateFrom}
                   dateTo={dateTo}
@@ -590,6 +594,7 @@ export default function Home() {
                   setJqlQuery={setDashboardJqlQuery}
                   filterPanelOpen={filterPanelOpen}
                   setFilterPanelOpen={setFilterPanelOpen}
+                  theme={theme}
                 />
               </TabsContent>
 
@@ -2458,7 +2463,7 @@ const ExtractPanel = React.memo(function ExtractPanel({
 
 function KpiDashboard({
   connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults, storageConfig,
-  globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions, charts, setCharts, jqlQuery, setJqlQuery, filterPanelOpen, setFilterPanelOpen
+  globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions, charts, setCharts, jqlQuery, setJqlQuery, filterPanelOpen, setFilterPanelOpen, theme
 }: any) {
   const [calculating, setCalculating] = useState(false);
   const isFirstRender = useRef(true);
@@ -2484,7 +2489,15 @@ function KpiDashboard({
     };
   }, [dateFrom, dateTo, masterDatasetInfo]);
 
+  // JQL-Lite Filter state
+  const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
+  const [newJqlName, setNewJqlName] = useState('');
+  const [jqlAutocompleteOpen, setJqlAutocompleteOpen] = useState(false);
+  const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
+  const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
+
   const [showFloatingBar, setShowFloatingBar] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => {
       setShowFloatingBar(window.scrollY > 400);
@@ -2492,13 +2505,6 @@ function KpiDashboard({
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-
-  // JQL-Lite Filter state
-  const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
-  const [newJqlName, setNewJqlName] = useState('');
-  const [jqlAutocompleteOpen, setJqlAutocompleteOpen] = useState(false);
-  const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
-  const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
 
   // Staging filters for multi-select without instant update
   const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
@@ -2881,99 +2887,112 @@ function KpiDashboard({
     toast.success('Filters applied');
   };
 
+  const calculationWorker = useRef<Worker | null>(null);
+
   const handleCalculate = useCallback(async () => {
     if (!activeConnectionId) { toast.error('No active connection. Please select a connection first.'); return; }
     setCalculating(true); setKpiResults([]);
 
     try {
-      // Load master dataset (all historical tickets)
-      const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig })
-      });
-      const masterData = await masterRes.json();
+      let issues = masterDatasetInfo?.issues;
 
-      if (!masterData.success || !masterData.data?.issues) {
-        toast.error('No master dataset found. Please extract data first to build the master dataset.');
-        setCalculating(false);
-        return;
-      }
-
-      const issues = masterData.data.issues;
-
-      // Calculate KPIs on the full master dataset
-      // Get active plugins from localStorage
-      const activePluginIdsStr = localStorage.getItem('cfg_active_plugins');
-      const activePluginIds = activePluginIdsStr ? JSON.parse(activePluginIdsStr) : undefined;
-      const customPlugins = localConfig.getKpiPlugins();
-
-      const kpiRes = await fetch('/api/kpi/calculate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          issues: issues,
-          holidays: {
-            regions: region === 'all' ? [] : [region],
-            slaTargetHours: settings?.general?.defaultSlaTargetHours || 40
-          },
-          slaTargets: settings?.sla?.statusTargets || {},
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          activePluginIds,
-          customPlugins,
-          globalFilters
-        }),
-      });
-
-      const kpiData = await kpiRes.json();
-      if (kpiData.success) {
-        // Convert date strings in timeSeries to Date objects (JSON serialization)
-        const processedResults: any[] = [];
-        for (const item of kpiData.results) {
-          const pluginId = item.pluginId;
-          const results = item.results as any[];
-          processedResults.push({
-            pluginId,
-            results: results.map((result: any) => {
-              if (!result.timeSeries || result.timeSeries.length === 0) {
-                return result; // No timeSeries data, return as-is
-              }
-              return {
-                ...result,
-                timeSeries: result.timeSeries.map((ts: any) => ({
-                  ...ts,
-                  date: new Date(ts.date)
-                }))
-              };
-            })
-          });
-        }
-        setKpiResults(processedResults);
-        
-        // Update master dataset info ONLY if different to avoid triggering loops via parent props
-        const dateRange = masterData.data.dateRange;
-        setMasterDatasetInfo((prev: any) => {
-          if (prev && prev.totalExtracted === masterData.data.totalExtracted && prev.lastUpdated === masterData.data.lastUpdated) {
-            return prev;
-          }
-          return {
-            totalExtracted: masterData.data.totalExtracted,
-            dateRange: dateRange,
-            lastUpdated: masterData.data.lastUpdated,
-            issues: issues
-          };
+      // If no issues in memory, fetch them from server once
+      if (!issues) {
+        const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get', storageConfig })
         });
+        const masterData = await masterRes.json();
 
-        const ticketCount = issues.length;
-        toast.success(
-          `Calculated ${Object.keys(kpiData.results).length} KPI categories using ${ticketCount} tickets ` +
-          `${dateRange?.from ? `from ${new Date(dateRange.from).toLocaleDateString()} ` : ''}` +
-          `${dateRange?.to ? `to ${new Date(dateRange.to).toLocaleDateString()}` : ''}`
-        );
+        if (!masterData.success || !masterData.data?.issues) {
+          toast.error('No master dataset found. Please extract data first to build the master dataset.');
+          setCalculating(false);
+          return;
+        }
+        issues = masterData.data.issues;
+        
+        // Update memory for next time
+        setMasterDatasetInfo({
+          totalExtracted: masterData.data.totalExtracted,
+          dateRange: masterData.data.dateRange,
+          lastUpdated: masterData.data.lastUpdated,
+          issues: issues
+        });
       }
-    } catch { toast.error('Error during KPI calculation'); }
-    setCalculating(false);
-  }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, setMasterDatasetInfo, setKpiResults]);
+
+      const fromDateObj = dateFrom ? new Date(dateFrom) : new Date(new Date().setDate(new Date().getDate() - 30));
+      const toDateObj = dateTo ? new Date(dateTo) : new Date();
+
+      // Terminate any existing worker
+      if (calculationWorker.current) {
+        calculationWorker.current.terminate();
+      }
+
+      // Create new worker
+      const worker = new Worker(new URL('../lib/kpi/kpi-worker.ts', import.meta.url));
+      calculationWorker.current = worker;
+
+      const holidays = {
+        regions: region === 'national' ? [] : [region],
+        workStartHour: settings.general.workStartHour,
+        workEndHour: settings.general.workEndHour,
+        slaTargetHours: settings.general.defaultSlaTargetHours,
+      };
+
+      const period = { start: fromDateObj, end: toDateObj };
+      const slaTargets = settings.slaTargets || {};
+
+      // Send message to worker
+      worker.postMessage({
+        calculateAll: true,
+        issues: issues,
+        holidays,
+        period,
+        slaTargets,
+        globalFilters,
+      });
+
+      // Handle worker response
+      const resultData = await new Promise<any>((resolve, reject) => {
+        worker.onmessage = (e) => {
+          if (e.data.success) resolve(e.data.result);
+          else reject(new Error(e.data.error));
+        };
+        worker.onerror = () => reject(new Error('Worker error during calculation'));
+      });
+
+      // Transform results back to expected format (parsing dates)
+      const processedResults: any[] = [];
+      for (const [pluginId, results] of Object.entries(resultData)) {
+        processedResults.push({
+          pluginId,
+          results: (results as any[]).map((result: any) => {
+            const res = { ...result };
+            if (res.timeSeries) {
+              res.timeSeries = res.timeSeries.map((ts: any) => ({
+                ...ts,
+                date: new Date(ts.date)
+              }));
+            }
+            return res;
+          })
+        });
+      }
+
+      setKpiResults(processedResults);
+      toast.success(`KPIs recalculated using ${issues.length} tickets`);
+    } catch (error: any) {
+      console.error('Calculation failed:', error);
+      toast.error(error.message || 'Failed to calculate KPIs');
+    } finally {
+      setCalculating(false);
+      if (calculationWorker.current) {
+        calculationWorker.current.terminate();
+        calculationWorker.current = null;
+      }
+    }
+  }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, masterDatasetInfo, storageConfig, setMasterDatasetInfo, setKpiResults]);
 
   // Auto-calculate when filters change, but skip initial mount to preserve cached results
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: trigger calculation */
@@ -3776,6 +3795,7 @@ function KpiDashboard({
                       onRemove={handleRemoveChart}
                       onChange={handleUpdateChart}
                       onClick={handleDrillDown}
+                      theme={theme}
                     />
                   </div>
                 );
@@ -4000,10 +4020,13 @@ interface ChartCardProps {
   onRemove: (id: string) => void;
   onChange: (id: string, newConfig: ChartConfig) => void;
   onClick: (keys: string[], title: string) => void;
+  theme: 'light' | 'dark';
 }
 
-function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick }: ChartCardProps) {
+function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme }: ChartCardProps) {
   const kpiOptions = useMemo(() => getKpiOptions(kpiResults), [kpiResults]);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Check if selected KPI is a time-series plugin
   const isTimeSeries = config.kpiId ? isTimeSeriesPlugin(config.kpiId) : false;
@@ -4048,6 +4071,41 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
   const handleKpiChange = (kpiId: string) => {
     const recommendedType = getRecommendedChartType(kpiResults, kpiId);
     onChange(config.id, { ...config, kpiId, type: recommendedType });
+  };
+
+  const handleExportChart = async () => {
+    if (!chartRef.current) return;
+    setExporting(true);
+    try {
+      // Small delay to ensure any hover states are cleared
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const dataUrl = await toPng(chartRef.current, {
+        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+        cacheBust: true,
+        filter: (node: any) => {
+          if (node.getAttribute && node.getAttribute('data-export-ignore') === 'true') {
+            return false;
+          }
+          return true;
+        },
+        style: {
+          borderRadius: '0'
+        }
+      });
+      
+      const link = document.createElement('a');
+      const kpiName = kpiResults.find(k => k.pluginId === config.kpiId)?.results[0]?.name || 'kpi-chart';
+      link.download = `${kpiName.toLowerCase().replace(/\s+/g, '-')}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success('Chart exported as PNG');
+    } catch (err) {
+      console.error('Failed to export chart:', err);
+      toast.error('Failed to export chart');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const renderChart = () => {
@@ -4410,7 +4468,7 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
   };
 
   return (
-    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+    <Card ref={chartRef} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -4426,19 +4484,34 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
               )}
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onRemove(config.id)}
-            className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {config.kpiId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExportChart}
+                disabled={exporting}
+                data-export-ignore="true"
+                className="text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+              >
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onRemove(config.id)}
+              data-export-ignore="true"
+              className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Inline Controls */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3" data-export-ignore="true">
           <div className="flex-1 min-w-[200px]">
             <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">KPI Metric</Label>
             <Select value={config.kpiId} onValueChange={handleKpiChange}>
@@ -5150,7 +5223,7 @@ function HolidaysPanel({ region, setRegion }: { region: string, setRegion: any }
 // ─── Export Panel (REVAMPED with CSV / PostgreSQL dual mode) ──────────────────
 
 function ExportPanel({
-  extractionResult, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, storageConfig
+  extractionResult, masterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, storageConfig
 }: any) {
   const [exportMode, setExportMode] = useState<'file' | 'database'>('file');
   const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
@@ -5160,6 +5233,14 @@ function ExportPanel({
   const [dbResult, setDbResult] = useState<{
     rowCount: number; success: boolean; error?: string;
   } | null>(null);
+
+  const handleQuickPull = (days: number) => {
+    const today = new Date();
+    const from = new Date();
+    from.setDate(today.getDate() - days);
+    setDateFrom(from.toISOString().split('T')[0]);
+    setDateTo(today.toISOString().split('T')[0]);
+  };
 
   React.useEffect(() => {
     setPgConnections(localConfig.getPgConnections());
@@ -5369,8 +5450,51 @@ function ExportPanel({
               </div>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <div className="flex items-center h-6">
+              <div className="flex items-center justify-between h-6">
                 <Label className="text-slate-700 dark:text-slate-300">Period</Label>
+                <div className="flex gap-1">
+                  {[
+                    { label: '1W', days: 7 },
+                    { label: '2W', days: 14 },
+                    { label: '1M', days: 30 },
+                    { label: '2M', days: 60 },
+                    { label: '3M', days: 90 },
+                    { label: '6M', days: 180 },
+                    { label: '1Yr', days: 365 },
+                  ].map((p) => {
+                    const dataStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
+                    const targetStart = new Date();
+                    targetStart.setDate(targetStart.getDate() - p.days);
+                    const isAvailable = dataStart && targetStart >= dataStart;
+
+                    // Calculate if this period is currently selected
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const isToday = dateTo === todayStr;
+                    const fromDate = dateFrom ? new Date(dateFrom) : null;
+                    const toDate = dateTo ? new Date(dateTo) : null;
+                    const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+                    const isActive = isToday && diffDays === p.days;
+
+                    return (
+                      <Button
+                        key={p.label}
+                        variant={isActive ? "default" : "ghost"}
+                        size="sm"
+                        disabled={!isAvailable}
+                        onClick={() => handleQuickPull(p.days)}
+                        className={`h-6 px-2 text-[10px] ${
+                          isActive 
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                            : isAvailable 
+                              ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10' 
+                              : 'text-slate-400'
+                        }`}
+                      >
+                        {p.label}
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
               <div className="flex gap-2">
                 <div className="relative flex-1">
