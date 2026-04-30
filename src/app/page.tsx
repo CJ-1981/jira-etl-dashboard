@@ -2856,6 +2856,8 @@ function KpiDashboard({
                     { label: '1M', days: 30 },
                     { label: '2M', days: 60 },
                     { label: '3M', days: 90 },
+                    { label: '6M', days: 180 },
+                    { label: '1Yr', days: 365 },
                   ].map((p) => {
                     const dataStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
                     const targetStart = new Date();
