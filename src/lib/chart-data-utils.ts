@@ -96,13 +96,11 @@ export function transformForBarChart(
     });
 
     return sortedResults.map((result, index) => {
-      // Get the first available dimension value, or the result name
-      const dimensionName = 
-        result.dimensions?.status || 
-        result.dimensions?.priority || 
-        result.dimensions?.assignee ||
-        Object.values(result.dimensions || {})[0] || 
-        result.name;
+      // Combine all dimension values for a unique name (e.g. "Done - P1")
+      const dimensionValues = Object.values(result.dimensions || {});
+      const dimensionName = dimensionValues.length > 0 
+        ? dimensionValues.join(' - ') 
+        : result.name;
         
       // Use color palette for distribution metrics (assignees, status counts), 
       // but stick to health colors for performance metrics (SLA, speed)
@@ -159,12 +157,10 @@ export function transformForPieChart(
   });
 
   return sortedResults.map((result, index) => {
-    const dimensionName =
-      result.dimensions?.status ||
-      result.dimensions?.priority ||
-      result.dimensions?.assignee ||
-      Object.values(result.dimensions || {})[0] ||
-      result.name;
+    const dimensionValues = Object.values(result.dimensions || {});
+    const dimensionName = dimensionValues.length > 0 
+      ? dimensionValues.join(' - ') 
+      : result.name;
       
     return {
       name: dimensionName,
@@ -210,12 +206,10 @@ export function transformForLineChart(
     });
 
     return sortedResults.map((result) => {
-      const dimensionName =
-        result.dimensions?.status ||
-        result.dimensions?.priority ||
-        result.dimensions?.assignee ||
-        Object.values(result.dimensions || {})[0] ||
-        result.name;
+      const dimensionValues = Object.values(result.dimensions || {});
+      const dimensionName = dimensionValues.length > 0 
+        ? dimensionValues.join(' - ') 
+        : result.name;
         
       return {
         name: dimensionName,

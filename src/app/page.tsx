@@ -412,11 +412,19 @@ export default function Home() {
     }
   };
 
+  if (!mounted) {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-950 items-center justify-center">
+        <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl">
-        <div className="mx-auto max-w-5xl flex items-center justify-between px-4 sm:px-6 py-3">
+        <div className="mx-auto w-full max-w-5xl flex items-center justify-between px-4 sm:px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
               <Database className="h-5 w-5 text-white" />
@@ -463,7 +471,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 min-h-[calc(100vh-120px)]">
+      <main className="w-full mx-auto max-w-5xl px-4 sm:px-6 py-6 min-h-[calc(100vh-120px)]">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           {/* Sticky Tab Navigation - Adjusted offset to account for sticky header */}
           <div className="sticky top-[61px] z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm py-2 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-slate-200 dark:border-slate-800">
@@ -498,39 +506,37 @@ export default function Home() {
                 </TabsList>
               </div>
 
-              <div className="max-w-4xl mx-auto w-full">
-                <TabsContent value="jira-etl" className="mt-0">
-                  <ExtractPanel
-                    connections={connections}
-                    extractionResult={extractionResult}
-                    setExtractionResult={setExtractionResult}
-                    masterDatasetInfo={masterDatasetInfo}
-                    setMasterDatasetInfo={setMasterDatasetInfo}
-                    dateFrom={dateFrom}
-                    setDateFrom={setDateFrom}
-                    dateTo={dateTo}
-                    setDateTo={setDateTo}
-                    activeConnectionId={activeConnectionId}
-                    settings={settings}
-                    setSettings={setSettings}
-                    setKpiResults={setKpiResults}
-                    storageConfig={storageConfig}
-                  />
-                </TabsContent>
+              <TabsContent value="jira-etl" className="mt-0">
+                <ExtractPanel
+                  connections={connections}
+                  extractionResult={extractionResult}
+                  setExtractionResult={setExtractionResult}
+                  masterDatasetInfo={masterDatasetInfo}
+                  setMasterDatasetInfo={setMasterDatasetInfo}
+                  dateFrom={dateFrom}
+                  setDateFrom={setDateFrom}
+                  dateTo={dateTo}
+                  setDateTo={setDateTo}
+                  activeConnectionId={activeConnectionId}
+                  settings={settings}
+                  setSettings={setSettings}
+                  setKpiResults={setKpiResults}
+                  storageConfig={storageConfig}
+                />
+              </TabsContent>
 
-                <TabsContent value="db-export" className="mt-0">
-                  <ExportPanel
-                    extractionResult={extractionResult}
-                    dateFrom={dateFrom}
-                    setDateFrom={setDateFrom}
-                    dateTo={dateTo}
-                    setDateTo={setDateTo}
-                    region={region}
-                    setRegion={setRegion}
-                    storageConfig={storageConfig}
-                  />
-                </TabsContent>
-              </div>
+              <TabsContent value="db-export" className="mt-0">
+                <ExportPanel
+                  extractionResult={extractionResult}
+                  dateFrom={dateFrom}
+                  setDateFrom={setDateFrom}
+                  dateTo={dateTo}
+                  setDateTo={setDateTo}
+                  region={region}
+                  setRegion={setRegion}
+                  storageConfig={storageConfig}
+                />
+              </TabsContent>
             </Tabs>
           </TabsContent>
 
@@ -583,15 +589,13 @@ export default function Home() {
                 />
               </TabsContent>
 
-              <div className="max-w-4xl mx-auto w-full">
-                <TabsContent value="plugins" className="mt-0">
-                  <PluginsPanel settings={settings} onSettingsUpdate={handleSettingsUpdate} />
-                </TabsContent>
+              <TabsContent value="plugins" className="mt-0">
+                <PluginsPanel settings={settings} onSettingsUpdate={handleSettingsUpdate} />
+              </TabsContent>
 
-                <TabsContent value="holidays" className="mt-0">
-                  <HolidaysPanel region={region} setRegion={setRegion} />
-                </TabsContent>
-              </div>
+              <TabsContent value="holidays" className="mt-0">
+                <HolidaysPanel region={region} setRegion={setRegion} />
+              </TabsContent>
             </Tabs>
           </TabsContent>
 
@@ -614,31 +618,29 @@ export default function Home() {
                 </TabsList>
               </div>
 
-              <div className="max-w-4xl mx-auto w-full">
-                <TabsContent value="connections" className="mt-0">
-                  <ConnectionsPanel
-                    connections={connections}
-                    setConnections={setConnections}
-                    activeConnectionId={activeConnectionId}
-                    setActiveConnectionId={setActiveConnectionId}
-                    storageConfig={storageConfig}
-                    setStorageConfig={setStorageConfig}
-                  />
-                </TabsContent>
+              <TabsContent value="connections" className="mt-0">
+                <ConnectionsPanel
+                  connections={connections}
+                  setConnections={setConnections}
+                  activeConnectionId={activeConnectionId}
+                  setActiveConnectionId={setActiveConnectionId}
+                  storageConfig={storageConfig}
+                  setStorageConfig={setStorageConfig}
+                />
+              </TabsContent>
 
-                <TabsContent value="storage" className="mt-0">
-                  <StoragePanel 
-                    storageConfig={storageConfig} 
-                    setStorageConfig={setStorageConfig}
-                    settings={settings}
-                    setSettings={setSettings}
-                  />
-                </TabsContent>
+              <TabsContent value="storage" className="mt-0">
+                <StoragePanel 
+                  storageConfig={storageConfig} 
+                  setStorageConfig={setStorageConfig}
+                  settings={settings}
+                  setSettings={setSettings}
+                />
+              </TabsContent>
 
-                <TabsContent value="config" className="mt-0">
-                  <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
-                </TabsContent>
-              </div>
+              <TabsContent value="config" className="mt-0">
+                <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
+              </TabsContent>
             </Tabs>
           </TabsContent>
         </Tabs>
@@ -747,15 +749,7 @@ function ConnectionsPanel({ connections, setConnections, activeConnectionId, set
   });
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Load Jira connections from localStorage - useLayoutEffect for synchronous read
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
-  React.useLayoutEffect(() => {
-    setLoading(true);
-    const updatedConnections = localConfig.getJiraConnections();
-    setConnections(updatedConnections);
-    setLoading(false);
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
+
 
   const handleSaveJira = () => {
     if (!form.name || !form.baseUrl || !form.apiToken || !form.email) {
@@ -1039,6 +1033,11 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
     }>;
   } | null>(null);
   const [loadingStorage, setLoadingStorage] = useState(false);
+  const isMounted = React.useRef(true);
+
+  React.useEffect(() => {
+    return () => { isMounted.current = false; };
+  }, []);
 
   const handleRefreshStorage = async () => {
     setLoadingStorage(true);
@@ -1050,33 +1049,26 @@ function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }
         body: JSON.stringify({ activeConnections, storageConfig })
       });
       const data = await res.json();
-      if (data.success) {
-        setStorageInfo(data.storage);
-      } else {
-        toast.error(data.error);
+      if (isMounted.current) {
+        if (data.success) {
+          setStorageInfo(data.storage);
+        } else {
+          toast.error(data.error);
+        }
       }
     } catch {
-      toast.error('Failed to load storage info');
+      if (isMounted.current) toast.error('Failed to load storage info');
     }
-    setLoadingStorage(false);
+    if (isMounted.current) setLoadingStorage(false);
   };
 
-  // Load PG connections from localStorage - useLayoutEffect for synchronous read
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     setLoading(true);
     const updatedPgConnections = localConfig.getPgConnections();
     setPgConnections(updatedPgConnections);
     setLoading(false);
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Load storage info on mount - useLayoutEffect for synchronous operation
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: calling handleRefreshStorage which syncs with API external system */
-  React.useLayoutEffect(() => {
     handleRefreshStorage();
   }, [storageConfig]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleCleanup = async () => {
     const retentionDays = settings.persistence?.retentionDays;
@@ -1710,12 +1702,13 @@ const ExtractPanel = React.memo(function ExtractPanel({
 
   // Load polling status
   React.useEffect(() => {
+    let isMounted = true;
     const loadPolling = () => {
       // Skip polling updates during active extraction to prevent flickering
       if (extracting) return;
       
       fetch('/api/jira/poll').then((r) => r.json()).then((d) => {
-        if (d.success) {
+        if (isMounted && d.success) {
           // Only update if data actually changed to minimize re-renders
           setPolling(prev => JSON.stringify(prev) === JSON.stringify(d.polling) ? prev : d.polling);
           setPollEnabled(d.polling.enabled);
@@ -1725,18 +1718,18 @@ const ExtractPanel = React.memo(function ExtractPanel({
     };
     loadPolling();
     const timer = setInterval(loadPolling, 5000);
-    return () => clearInterval(timer);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
   }, [extracting]);
 
-  // Load settings for persistence - useLayoutEffect for synchronous localStorage read
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronization */
-  React.useLayoutEffect(() => {
+  // Load settings for persistence
+  useEffect(() => {
     const savedSettings = localConfig.getSettings();
-    setSettings(savedSettings);
     setSaveThisExtraction(savedSettings.persistence?.autoSave ?? true);
     setUpdateOnly(localConfig.getEtlUpdateOnly());
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Save updateOnly preference
   useEffect(() => {
@@ -2052,7 +2045,15 @@ const ExtractPanel = React.memo(function ExtractPanel({
               </div>
             </div>
             
-            <textarea className="w-full min-h-[80px] rounded-md bg-gray-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-800 dark:text-slate-200 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" placeholder='project = "PROJ" AND created >= "2024-01-01" ORDER BY created DESC' value={jql} onChange={(e) => setJql(e.target.value)} />
+            <textarea 
+              className="w-full min-h-[80px] rounded-md bg-gray-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-800 dark:text-slate-200 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" 
+              placeholder='project = "PROJ" AND created >= "2024-01-01" ORDER BY created DESC' 
+              value={jql} 
+              onChange={(e) => setJql(e.target.value)} 
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setJql('');
+              }}
+            />
             
             {isSavingJql && (
               <div className="flex items-center gap-2 mt-2 animate-in slide-in-from-top-1 duration-200">
@@ -2132,11 +2133,29 @@ const ExtractPanel = React.memo(function ExtractPanel({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            {quickPullButtons.map((btn) => (
-              <Button key={btn.days} variant="outline" className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700 text-sm" onClick={() => handleQuickPull(btn.days)}>
-                {btn.label}
-              </Button>
-            ))}
+            {quickPullButtons.map((btn) => {
+              const todayStr = new Date().toISOString().split('T')[0];
+              const isToday = dateTo === todayStr;
+              const fromDate = dateFrom ? new Date(dateFrom) : null;
+              const toDate = dateTo ? new Date(dateTo) : null;
+              const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+              const isActive = isToday && diffDays === btn.days;
+
+              return (
+                <Button 
+                  key={btn.days} 
+                  variant={isActive ? "default" : "outline"} 
+                  className={`border-slate-200 dark:border-slate-700 text-sm ${
+                    isActive 
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                      : 'hover:bg-gray-200 dark:hover:bg-slate-700'
+                  }`} 
+                  onClick={() => handleQuickPull(btn.days)}
+                >
+                  {btn.label}
+                </Button>
+              );
+            })}
           </div>
           <div className="flex items-center gap-2">
             <Input id="customDaysBack" type="number" placeholder="Custom days back" className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-40" min="1" />
@@ -2335,10 +2354,23 @@ const ExtractPanel = React.memo(function ExtractPanel({
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
                     placeholder="Search by key or summary..."
-                    className="pl-9 bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9"
+                    className="pl-9 pr-8 bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setSearchQuery('');
+                    }}
                   />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                      title="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-full sm:w-[180px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9">
@@ -2502,6 +2534,10 @@ function KpiDashboard({
   // Drill-down state
   const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
   const [drillDownTitle, setDrillDownTitle] = useState('');
+  const handleDrillDown = (keys: string[], title: string) => {
+    setDrillDownKeys(keys);
+    setDrillDownTitle(title);
+  };
   const [exportingPpt, setExportingPpt] = useState(false);
 
   const handleExportPPT = async () => {
@@ -2964,10 +3000,18 @@ function KpiDashboard({
                     targetStart.setDate(targetStart.getDate() - p.days);
                     const isAvailable = dataStart && targetStart >= dataStart;
 
+                    // Calculate if this period is currently selected
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const isToday = dateTo === todayStr;
+                    const fromDate = dateFrom ? new Date(dateFrom) : null;
+                    const toDate = dateTo ? new Date(dateTo) : null;
+                    const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+                    const isActive = isToday && diffDays === p.days;
+
                     return (
                       <Button
                         key={p.label}
-                        variant="ghost"
+                        variant={isActive ? "default" : "ghost"}
                         size="sm"
                         disabled={!isAvailable}
                         onClick={() => {
@@ -2977,7 +3021,13 @@ function KpiDashboard({
                           setDateFrom(from.toISOString().split('T')[0]);
                           setDateTo(to.toISOString().split('T')[0]);
                         }}
-                        className={`h-6 px-2 text-[10px] ${isAvailable ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10' : 'text-slate-400'}`}
+                        className={`h-6 px-2 text-[10px] ${
+                          isActive 
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                            : isAvailable 
+                              ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10' 
+                              : 'text-slate-400'
+                        }`}
                       >
                         {p.label}
                       </Button>
@@ -3091,6 +3141,10 @@ function KpiDashboard({
                                 }
                               }}
                               onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                  setJqlQuery('');
+                                  setJqlAutocompleteOpen(false);
+                                }
                                 if (e.key === 'Enter' && jqlQuery.trim()) {
                                   const newJql = { id: `djql-${Date.now()}`, name: jqlQuery.trim(), query: jqlQuery.trim() };
                                   saveDashboardJqls([...dashboardJqls, newJql]);
@@ -3672,6 +3726,7 @@ function KpiDashboard({
                       toggleDimension={toggleDimension}
                       onRemove={handleRemoveChart}
                       onChange={handleUpdateChart}
+                      onClick={handleDrillDown}
                     />
                   </div>
                 );
@@ -3693,7 +3748,7 @@ function KpiDashboard({
               {drillDownTitle}
             </SheetTitle>
             <SheetDescription>
-              Displaying {drillDownKeys?.length || 0} issues comprising this metric
+              Displaying {(drillDownKeys as any)?.length || 0} issues comprising this metric
             </SheetDescription>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -3861,9 +3916,10 @@ interface ChartCardProps {
   toggleDimension: (pluginId: string, value: string) => void;
   onRemove: (id: string) => void;
   onChange: (id: string, newConfig: ChartConfig) => void;
+  onClick: (keys: string[], title: string) => void;
 }
 
-function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange }: ChartCardProps) {
+function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick }: ChartCardProps) {
   const kpiOptions = useMemo(() => getKpiOptions(kpiResults), [kpiResults]);
 
   // Check if selected KPI is a time-series plugin
@@ -3899,6 +3955,13 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
     }
   }, [config.kpiId, config.type, kpiResults]);
 
+  const handleLegendClick = (e: any) => {
+    const dimensionName = e.id || e.value;
+    if (dimensionName) {
+      toggleDimension(config.kpiId, dimensionName);
+    }
+  };
+
   const handleKpiChange = (kpiId: string) => {
     const recommendedType = getRecommendedChartType(kpiResults, kpiId);
     onChange(config.id, { ...config, kpiId, type: recommendedType });
@@ -3926,15 +3989,6 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
 
     const kpi = kpiResults.find((k) => k.pluginId === config.kpiId);
     const unit = kpi?.results?.[0]?.unit || '';
-
-    // Handle legend click for toggling visibility
-    const handleLegendClick = (e: any) => {
-      const { dataKey, value, name } = e;
-      const toggleValue = name || value;
-      if (toggleValue) {
-        toggleDimension(config.kpiId, toggleValue);
-      }
-    };
 
     // Custom legend formatter for hover effects and clear toggle state
     const renderLegend = (value: any) => {
@@ -4007,12 +4061,15 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
           );
         }
 
-        // Check for weekly breakdown "layers"
-        const hasWeeklyLayers = selectedKpiData.some(d => d.thisWeek !== undefined || d.prevWeek !== undefined);
+        // Filter out hidden categories (dimensions)
+        const visibleBarData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
+
+        // Check for weekly breakdown "layers" in VISIBLE data
+        const hasWeeklyLayers = visibleBarData.some(d => (d.thisWeek && d.thisWeek !== 0) || (d.prevWeek && d.prevWeek !== 0));
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={selectedKpiData}>
+            <BarChart data={visibleBarData}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" />
               <YAxis className="text-xs" />
@@ -4026,13 +4083,40 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                 itemStyle={{ color: '#e2e8f0' }}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
-              {hasWeeklyLayers && <Legend onClick={handleLegendClick} cursor="pointer" formatter={renderLegend} />}
+              {(hasWeeklyLayers || selectedKpiData.length > 1) && (
+                <Legend 
+                  onClick={handleLegendClick} 
+                  cursor="pointer" 
+                  formatter={renderLegend}
+                  payload={[
+                    ...selectedKpiData.map((d, idx) => ({
+                      value: d.name,
+                      type: 'rect' as any,
+                      id: d.name,
+                      color: d.fill || CHART_COLORS[idx % CHART_COLORS.length]
+                    }))
+                  ]}
+                />
+              )}
               <Bar 
                 dataKey="value" 
                 name="Total Period" 
                 radius={[4, 4, 0, 0]} 
                 hide={hiddenDimensions.has(`${config.kpiId}|Total Period`)}
-              />
+                cursor="pointer"
+                onClick={(data) => {
+                  if (data && data.ticketKeys) {
+                    onClick(data.ticketKeys, data.name || 'Total Period');
+                  }
+                }}
+              >
+                {visibleBarData.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]}
+                  />
+                ))}
+              </Bar>
               {hasWeeklyLayers && (
                 <>
                   <Bar 
@@ -4041,6 +4125,14 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                     fill="#3b82f6" 
                     radius={[4, 4, 0, 0]} 
                     hide={hiddenDimensions.has(`${config.kpiId}|This Week`)}
+                    cursor="pointer"
+                    onClick={(data) => {
+                      // Note: weekly breakdown currently doesn't provide ticketKeys in details, 
+                      // but we enable the handler for future-proofing and consistency.
+                      if (data && data.ticketKeys) {
+                        onClick(data.ticketKeys, "This Week");
+                      }
+                    }}
                   />
                   <Bar 
                     dataKey="prevWeek" 
@@ -4048,6 +4140,12 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                     fill="#94a3b8" 
                     radius={[4, 4, 0, 0]} 
                     hide={hiddenDimensions.has(`${config.kpiId}|Prev Week`)}
+                    cursor="pointer"
+                    onClick={(data) => {
+                      if (data && data.ticketKeys) {
+                        onClick(data.ticketKeys, "Prev Week");
+                      }
+                    }}
                   />
                 </>
               )}
@@ -4308,14 +4406,12 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
   const [settings, setSettings] = useState<any>(globalSettings || localConfig.getSettings());
   const [initialSettings, setInitialSettings] = useState<any>(globalSettings || localConfig.getSettings());
 
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing state with globalSettings prop changes (external system) */
   React.useEffect(() => {
     if (globalSettings) {
       setSettings(globalSettings);
       setInitialSettings(globalSettings);
     }
   }, [globalSettings]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Derived state - use useMemo instead of useEffect + setState
   const hasUnsavedSettings = React.useMemo(() => {
@@ -4346,6 +4442,9 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
     customJql: '',
   });
 
+  const isMounted = React.useRef(true);
+  React.useEffect(() => { return () => { isMounted.current = false; }; }, []);
+
   const loadPlugins = useCallback(async () => {
     setLoading(true);
     try {
@@ -4375,29 +4474,29 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
         return acc;
       }, {} as Record<string, KpiPlugin[]>);
 
-      setPlugins(grouped);
-
-      // 3. Load active plugins from localStorage
-      const savedActivePlugins = localStorage.getItem('cfg_active_plugins');
-      if (savedActivePlugins) {
-        try {
-          const activeIds = JSON.parse(savedActivePlugins) as string[];
-          setActivePlugins(new Set(activeIds));
-        } catch (err) {
-          console.error('Failed to parse active plugins:', err);
+      if (isMounted.current) {
+        setPlugins(grouped);
+        // 3. Load active plugins from localStorage
+        const savedActivePlugins = localStorage.getItem('cfg_active_plugins');
+        if (savedActivePlugins) {
+          try {
+            const activeIds = JSON.parse(savedActivePlugins) as string[];
+            setActivePlugins(new Set(activeIds));
+          } catch (err) {
+            console.error('Failed to parse active plugins:', err);
+            setActivePlugins(new Set(allPlugins.map(p => p.id)));
+          }
+        } else {
           setActivePlugins(new Set(allPlugins.map(p => p.id)));
         }
-      } else {
-        setActivePlugins(new Set(allPlugins.map(p => p.id)));
       }
     } catch {
-      toast.error('Failed to load plugins');
+      if (isMounted.current) toast.error('Failed to load plugins');
     }
-    setLoading(false);
+    if (isMounted.current) setLoading(false);
   }, []);
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: calling loadPlugins which syncs with localStorage + API external systems */
+
   React.useEffect(() => { loadPlugins(); }, [loadPlugins]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const saveActivePlugins = useCallback((pluginIds: Set<string>) => {
     localStorage.setItem('cfg_active_plugins', JSON.stringify(Array.from(pluginIds)));
@@ -4841,14 +4940,17 @@ function PluginsPanel({ settings: globalSettings, onSettingsUpdate }: PluginsPan
 
 
           <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-            <Button onClick={() => {
-              localConfig.saveSettings(settings);
-              setInitialSettings(settings);
-              if (onSettingsUpdate) onSettingsUpdate(settings);
-              toast.success('KPI Defaults saved');
-            }} className="bg-blue-600 hover:bg-blue-700" disabled={!hasUnsavedSettings}>
-              <Save className="mr-2 h-4 w-4" /> Save KPI Defaults
-            </Button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button onClick={() => {
+                localConfig.saveSettings(settings);
+                setInitialSettings(settings);
+                if (onSettingsUpdate) onSettingsUpdate(settings);
+                toast.success('KPI Defaults saved');
+              }} className="bg-blue-600 hover:bg-blue-700" disabled={!hasUnsavedSettings}>
+                <Save className="mr-2 h-4 w-4" /> Save KPI Defaults
+              </Button>
+            </div>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">All rate limiting and general settings will be saved and applied to future extractions</p>
           </div>
         </CardContent>
       </Card>
@@ -4863,22 +4965,24 @@ function HolidaysPanel({ region, setRegion }: { region: string, setRegion: any }
   const [year, setYear] = useState(new Date().getFullYear());
   const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);
   const [loading, setLoading] = useState(false);
+  const isMounted = React.useRef(true);
+  React.useEffect(() => { return () => { isMounted.current = false; }; }, []);
+
   const loadHolidays = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/holidays?year=${year}&region=${region}`);
       const data = await res.json();
-      if (data.success) {
+      if (isMounted.current && data.success) {
         setHolidays(data.holidays);
       }
     } catch {
-      toast.error('Failed to load holidays');
+      if (isMounted.current) toast.error('Failed to load holidays');
     }
-    setLoading(false);
+    if (isMounted.current) setLoading(false);
   }, [year, region]);
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: calling loadHolidays which syncs with API external system */
+  
   React.useEffect(() => { loadHolidays(); }, [loadHolidays]);
-  /* eslint-enable react-hooks/set-state-in-effect */
   const national = holidays.filter((h) => h.isNational).sort((a, b) => a.date.localeCompare(b.date));
   const regional = holidays.filter((h) => !h.isNational).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -4920,11 +5024,9 @@ function ExportPanel({
     rowCount: number; success: boolean; error?: string;
   } | null>(null);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing state with localStorage external system */
   React.useEffect(() => {
     setPgConnections(localConfig.getPgConnections());
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleFileExport = async (format: string) => {
     if (!extractionResult) { toast.error('No extracted data found. Please run Jira Extraction in the Extract tab first.'); return; }
@@ -5266,15 +5368,13 @@ function SettingsPanel({ onSettingsUpdate, storageConfig }: { onSettingsUpdate?:
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [initialSettings, setInitialSettings] = useState<typeof settings | null>(null);
 
-  // Initialize settings from localStorage on mount - useLayoutEffect for synchronous read
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: synchronizing with localStorage external system */
-  React.useLayoutEffect(() => {
+  // Initialize settings from localStorage on mount
+  useEffect(() => {
     const savedSettings = localConfig.getSettings() as any;
     setSettings(savedSettings);
     setInitialSettings(savedSettings);
     setLoading(false);
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Detect unsaved changes - derived state with useMemo
   const hasUnsavedChanges = React.useMemo(() => {

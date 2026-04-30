@@ -42,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="min-h-screen bg-gray-50 dark:bg-slate-950 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 bg-fixed">
+    <html lang="en" suppressHydrationWarning className="min-h-screen bg-gray-50 dark:bg-slate-950 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 bg-fixed" style={{ scrollbarGutter: 'stable' }}>
       <head>
         <Script id="theme-init" strategy="beforeInteractive">
           {`
