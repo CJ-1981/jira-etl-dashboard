@@ -215,54 +215,55 @@ export function KpiDashboard({
     setDrillDownTitle(title);
   };
 
-  useEffect(() => {
-    const runCalculation = async () => {
-      if (!activeConnectionId) return;
-      setCalculating(true); setKpiResults([]);
-      try {
-        const res = await fetch('/api/kpi/calculate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            connectionId: activeConnectionId,
-            issues: masterDatasetInfo?.issues || [],
-            dateFrom,
-            dateTo,
-            region,
-            filters: globalFilters,
-            settings,
-            storageConfig
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
-          const processedResults = data.results.map((r: any) => ({
-            ...r,
-            results: r.results.map((res: any) => ({
-              ...res,
-              unit: res.unit || '',
-              value: typeof res.value === 'number' ? res.value : 0
-            }))
-          }));
-          setKpiResults(processedResults);
-        } else {
-          toast.error(data.error || 'Calculation failed');
-        }
-      } catch (err) {
-        console.error('Calculation error:', err);
-        toast.error('Failed to calculate KPIs');
-      } finally {
-        setCalculating(false);
+  const runCalculation = useCallback(async () => {
+    if (!activeConnectionId) return;
+    setCalculating(true);
+    // setKpiResults([]); // Keep existing results while calculating for better UX
+    try {
+      const res = await fetch('/api/kpi/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connectionId: activeConnectionId,
+          issues: masterDatasetInfo?.issues || [],
+          dateFrom,
+          dateTo,
+          region,
+          filters: globalFilters,
+          settings,
+          storageConfig
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const processedResults = data.results.map((r: any) => ({
+          ...r,
+          results: r.results.map((res: any) => ({
+            ...res,
+            unit: res.unit || '',
+            value: typeof res.value === 'number' ? res.value : 0
+          }))
+        }));
+        setKpiResults(processedResults);
+      } else {
+        toast.error(data.error || 'Calculation failed');
       }
-    };
+    } catch (err) {
+      console.error('Calculation error:', err);
+      toast.error('Failed to calculate KPIs');
+    } finally {
+      setCalculating(false);
+    }
+  }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, setKpiResults, masterDatasetInfo]);
 
+  useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       if (kpiResults.length === 0) runCalculation();
     } else {
       runCalculation();
     }
-  }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, setKpiResults]);
+  }, [runCalculation]);
 
   const mainKpis = kpiResults.filter((r: any) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
@@ -372,6 +373,23 @@ export function KpiDashboard({
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="flex-none pb-0.5">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => runCalculation()} 
+                disabled={calculating || !activeConnectionId}
+                className="h-9 px-3 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 hover:border-emerald-500/50 transition-all shadow-sm bg-white dark:bg-slate-900/50"
+              >
+                {calculating ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RotateCw className="h-4 w-4 mr-2" />
+                )}
+                Recalculate
+              </Button>
             </div>
 
             <div className="flex-1 min-w-[300px]">
