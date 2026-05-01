@@ -225,6 +225,7 @@ export function KpiDashboard({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             connectionId: activeConnectionId,
+            issues: masterDatasetInfo?.issues || [],
             dateFrom,
             dateTo,
             region,
