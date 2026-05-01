@@ -60,6 +60,28 @@ export default function Home() {
   const [filterPanelOpen, setFilterPanelOpen] = useState(true);
   const [showFloatingBar, setShowFloatingBar] = useState(false);
 
+  const loadMasterDataset = useCallback(async (connectionId: string, config: any) => {
+    if (!connectionId) return;
+    try {
+      const res = await fetch(`/api/jira/master/${connectionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', storageConfig: config })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setMasterDatasetInfo({
+          totalExtracted: data.data.totalExtracted,
+          dateRange: data.data.dateRange,
+          lastUpdated: data.data.lastUpdated,
+          issues: data.data.issues
+        });
+      }
+    } catch (e) {
+      console.error('Failed to auto-load master dataset:', e);
+    }
+  }, []);
+
   useEffect(() => {
     if (!mounted) return;
     
@@ -144,34 +166,6 @@ export default function Home() {
     setSettings(newSettings);
     localConfig.saveSettings(newSettings);
   };
-
-  const loadMasterDataset = useCallback(async (connectionId: string, config: any) => {
-    if (!connectionId) return;
-    try {
-      const res = await fetch(`/api/jira/master/${connectionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig: config })
-      });
-      const data = await res.json();
-      if (data.success && data.data) {
-        setMasterDatasetInfo({
-          totalExtracted: data.data.totalExtracted,
-          dateRange: data.data.dateRange,
-          lastUpdated: data.data.lastUpdated,
-          issues: data.data.issues
-        });
-      }
-    } catch (e) {
-      console.error('Failed to auto-load master dataset:', e);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeConnectionId && mounted) {
-      loadMasterDataset(activeConnectionId, storageConfig);
-    }
-  }, [activeConnectionId, storageConfig, mounted, loadMasterDataset]);
 
   if (!mounted) return null;
 

@@ -43,18 +43,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className="min-h-screen bg-gray-50 dark:bg-slate-950 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 bg-fixed" style={{ scrollbarGutter: 'stable' }}>
-      <head>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {`
-            try {
-              const theme = localStorage.getItem('jira-etl-theme');
-              if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                document.documentElement.classList.add('dark');
-              }
-            } catch(e){}
-          `}
-        </Script>
-      </head>
+      <Script id="theme-init" strategy="beforeInteractive">
+        {`
+          try {
+            const theme = localStorage.getItem('jira-etl-theme');
+            if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+              document.documentElement.classList.add('dark');
+            }
+          } catch(e){}
+        `}
+      </Script>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-900 dark:text-slate-100 min-h-screen`}
       >
