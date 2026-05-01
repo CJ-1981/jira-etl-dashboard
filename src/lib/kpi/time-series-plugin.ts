@@ -216,7 +216,7 @@ function calculateOpenTicketsByAssigneeTrend(
     }
 
     // Sort by date
-    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Current value issues (at last complete period end)
     const completePoints = timeSeries.filter(p => p.isComplete);
@@ -298,7 +298,7 @@ function calculateProcessingTimeTrend(
   }
 
   // Sort by date
-  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   // Calculate overall average from complete periods only
   const completePoints = timeSeries.filter(p => p.isComplete);
@@ -372,7 +372,7 @@ function calculateThroughputTrend(
   }
 
   // Sort by date
-  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const completePoints = timeSeries.filter(p => p.isComplete);
   const totalResolvedInComplete = completePoints.reduce((sum, p) => sum + p.value, 0);
@@ -449,7 +449,7 @@ function calculateSlaTrend(
   }
 
   // Sort by date
-  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   // Calculate overall compliance from complete periods only
   const completePoints = timeSeries.filter(p => p.isComplete);
@@ -566,7 +566,7 @@ function calculateTimeInStatusTrend(
     }
 
     // Sort by date
-    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Calculate overall average for this status from complete periods only
     const completePoints = timeSeries.filter(p => p.isComplete);
@@ -687,7 +687,7 @@ function calculateSlaByStatusTrend(
     }
 
     // Sort by date
-    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Calculate overall compliance for this status from complete periods only
     const completePoints = timeSeries.filter(p => p.isComplete);

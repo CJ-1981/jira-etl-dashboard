@@ -190,7 +190,9 @@ export function transformForLineChart(
   // Check if time-series data is available (prefer the first series if we're asked for a single-line data format)
   if (kpi.results[0]?.timeSeries && kpi.results[0].timeSeries.length > 0) {
     const sortedTimeSeries = [...kpi.results[0].timeSeries].sort((a, b) => {
-      if (a.date && b.date) return a.date.getTime() - b.date.getTime();
+      const aTime = a.date ? new Date(a.date).getTime() : 0;
+      const bTime = b.date ? new Date(b.date).getTime() : 0;
+      if (aTime && bTime) return aTime - bTime;
       return a.period.localeCompare(b.period);
     });
 
