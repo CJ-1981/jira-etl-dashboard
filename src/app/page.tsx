@@ -173,19 +173,20 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
         <div className="container flex h-20 items-center justify-between">
-          <div className="flex items-center gap-2 w-1/4">
-            <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20">
-              <Zap className="h-5 w-5 text-white" />
-            </div>
-          </div>
+          <div className="w-1/4" />
           
-          <div className="flex flex-col items-center justify-center flex-1 text-center">
-            <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
-              Jira ETL Dashboard
-            </h1>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
-              Advanced Engineering Analytics & KPI Suite
-            </p>
+          <div className="flex items-center justify-center gap-3 flex-1 text-center">
+            <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0">
+              <Database className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex flex-col items-start">
+              <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 leading-tight">
+                Jira ETL Dashboard
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Jira Extract and KPI Engine with German Holiday
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-4 w-1/4">
