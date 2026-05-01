@@ -66,7 +66,7 @@ import {
   Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
   Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
-  ArrowUp,
+  ArrowUp, Search, ChevronDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
