@@ -179,8 +179,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
-        <div className="container grid grid-cols-3 h-16 items-center px-4 sm:px-6">
-          <div className="flex items-center gap-3 pl-10">
+        <div className="container relative flex h-16 items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3 pl-10 z-10">
             <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0">
               <Database className="h-5 w-5 text-white" />
             </div>
@@ -194,7 +194,7 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="flex justify-center no-print">
+          <div className="absolute left-1/2 -translate-x-1/2 no-print z-0">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
               <TabsList className="bg-transparent border-0 gap-1 h-9">
                 <TabsTrigger value="extract" className="gap-2 px-4 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
@@ -213,7 +213,7 @@ export default function Home() {
             </Tabs>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pr-4">
+          <div className="flex items-center justify-end gap-3 pr-4 z-10">
             {connections.length > 0 && (
               <Select value={activeConnectionId} onValueChange={setActiveConnectionId}>
                 <SelectTrigger className="w-[160px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-8 text-[11px]">
