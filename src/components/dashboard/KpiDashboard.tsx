@@ -1082,14 +1082,30 @@ export function KpiDashboard({
                   </UITooltip>
                 </TooltipProvider>
               </div>
-              <Button 
-                size="sm" 
-                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
-                className="rounded-full h-8 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-3 border border-slate-200 dark:border-slate-700 shadow-sm"
-              >
-                <ArrowUp className="h-3.5 w-3.5 mr-1.5" />
-                Top
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  size="sm" 
+                  variant="ghost"
+                  onClick={() => runCalculation()} 
+                  disabled={calculating}
+                  className="rounded-full h-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-xs px-3 transition-all"
+                >
+                  {calculating ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  ) : (
+                    <RotateCw className="h-3.5 w-3.5 mr-1.5" />
+                  )}
+                  Recalculate
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
+                  className="rounded-full h-8 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-3 border border-slate-200 dark:border-slate-700 shadow-sm"
+                >
+                  <ArrowUp className="h-3.5 w-3.5 mr-1.5" />
+                  Top
+                </Button>
+              </div>
             </div>
           </motion.div>
         )}
