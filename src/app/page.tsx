@@ -180,7 +180,7 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
         <div className="container flex h-16 items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3 min-w-[280px]">
+          <div className="flex items-center gap-3 min-w-[280px] pl-10">
             <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0">
               <Database className="h-5 w-5 text-white" />
             </div>
