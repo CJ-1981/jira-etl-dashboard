@@ -180,15 +180,15 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
         <div className="container grid grid-cols-[minmax(200px,320px)_1fr_minmax(200px,320px)] h-16 items-center px-4 sm:px-6 gap-2">
-          <div className="flex items-center gap-3.5 pl-4 lg:pl-10 min-w-0 h-full">
+          <div className="flex items-center gap-3 pl-4 lg:pl-10 min-w-0">
             <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0 flex items-center justify-center">
               <Database className="h-5 w-5 text-white" />
             </div>
-            <div className="flex flex-col justify-center overflow-hidden h-full py-1 min-w-0">
-              <h1 className="text-sm font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate w-full leading-none mb-1">
+            <div className="flex flex-col gap-[3px] min-w-0 overflow-hidden">
+              <h1 className="text-sm font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate leading-[1.1]">
                 Jira ETL Dashboard
               </h1>
-              <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate w-full leading-none">
+              <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate leading-[1.1]">
                 Jira Extract and KPI Engine with German Holiday
               </p>
             </div>
