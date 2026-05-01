@@ -76,6 +76,13 @@ export default function Home() {
           lastUpdated: data.data.lastUpdated,
           issues: data.data.issues
         });
+        // Auto-populate extraction result to show ticket list
+        setExtractionResult({
+          total: data.data.totalExtracted,
+          issues: data.data.issues,
+          isAllTickets: true,
+          etlRunId: 'master'
+        } as any);
       }
     } catch (e) {
       console.error('Failed to auto-load master dataset:', e);
