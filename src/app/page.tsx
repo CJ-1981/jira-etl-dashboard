@@ -14,6 +14,9 @@ import { PluginsPanel } from '@/components/dashboard/PluginsPanel';
 import { HolidaysPanel } from '@/components/dashboard/HolidaysPanel';
 import { ExportPanel } from '@/components/dashboard/ExportPanel';
 import { SettingsPanel } from '@/components/dashboard/SettingsPanel';
+import { 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from '@/components/ui/select';
 import { ChartConfig, ExtractedIssue, JiraConnection } from '@/types/dashboard';
 
 export default function Home() {
@@ -29,11 +32,7 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!mounted) return;
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('jira-etl-theme', theme);
-  }, [theme, mounted]);
+
 
   const [activeTab, setActiveTab] = useState('extract');
   const [connections, setConnections] = useState<JiraConnection[]>([]);
@@ -62,6 +61,27 @@ export default function Home() {
   const [showFloatingBar, setShowFloatingBar] = useState(false);
 
   useEffect(() => {
+    if (!mounted) return;
+    
+    // Load config from local storage
+    const conns = localConfig.getJiraConnections();
+    setConnections(conns);
+
+    const savedActive = localConfig.getActiveConnectionId();
+    if (savedActive) setActiveConnectionId(savedActive);
+
+    const savedStorage = localConfig.getStorageConfig();
+    if (savedStorage) setStorageConfig(savedStorage);
+    
+    // Set default dates
+    const now = new Date();
+    const lastMonth = new Date(now);
+    lastMonth.setMonth(now.getMonth() - 1);
+    setDateFrom(lastMonth.toISOString().split('T')[0]);
+    setDateTo(now.toISOString().split('T')[0]);
+  }, [mounted]);
+
+  useEffect(() => {
     const handleScroll = () => {
       setShowFloatingBar(window.scrollY > 400);
     };
@@ -69,12 +89,24 @@ export default function Home() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    if (!mounted) return;
+    localConfig.setActiveConnectionId(activeConnectionId);
+  }, [activeConnectionId, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    localStorage.setItem('jira-etl-theme', theme);
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme, mounted]);
+
   const handlePrint = () => {
     window.print();
   };
 
   const handleSettingsUpdate = (newSettings: any) => {
     setSettings(newSettings);
+    localConfig.saveSettings(newSettings);
   };
 
   if (!mounted) return null;
@@ -90,6 +122,20 @@ export default function Home() {
             <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">Jira ETL Dashboard</span>
           </div>
           <div className="flex items-center gap-4">
+            {connections.length > 0 && (
+              <Select value={activeConnectionId} onValueChange={setActiveConnectionId}>
+                <SelectTrigger className="w-[180px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-9 text-xs">
+                  <SelectValue placeholder="Select Connection" />
+                </SelectTrigger>
+                <SelectContent>
+                  {connections.map((c) => (
+                    <SelectItem key={c.id} value={c.id} className="text-xs">
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
