@@ -197,15 +197,15 @@ export default function Home() {
           <div className="flex justify-center no-print">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
               <TabsList className="bg-transparent border-0 gap-1 h-9">
-                <TabsTrigger value="extract" className="gap-2 w-36 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="extract" className="gap-2 w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <Database className="h-3.5 w-3.5" />
                   Data Center
                 </TabsTrigger>
-                <TabsTrigger value="kpi" className="gap-2 w-36 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="kpi" className="gap-2 w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <BarChart3 className="h-3.5 w-3.5" />
                   KPI Analytics
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="gap-2 w-36 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="settings" className="gap-2 w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <Settings className="h-3.5 w-3.5" />
                   Settings
                 </TabsTrigger>
