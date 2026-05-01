@@ -179,51 +179,49 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
-        <div className="container flex h-20 items-center justify-between px-4 sm:px-6">
-          <div className="flex-1 flex items-center justify-start no-print">
+        <div className="container flex h-16 items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3 min-w-[280px]">
+            <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0">
+              <Database className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex flex-col items-start">
+              <h1 className="text-base font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 leading-tight">
+                Jira ETL Dashboard
+              </h1>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                Extract and KPI Engine
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex-1 flex justify-center no-print">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
-              <TabsList className="bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 h-9 p-1 gap-1">
-                <TabsTrigger value="extract" className="gap-1.5 px-3 h-7 text-xs rounded-md data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">
+              <TabsList className="bg-transparent border-0 gap-1 h-9">
+                <TabsTrigger value="extract" className="gap-2 px-4 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <Database className="h-3.5 w-3.5" />
-                  Data
+                  Data Center
                 </TabsTrigger>
-                <TabsTrigger value="kpi" className="gap-1.5 px-3 h-7 text-xs rounded-md data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">
+                <TabsTrigger value="kpi" className="gap-2 px-4 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <BarChart3 className="h-3.5 w-3.5" />
-                  KPI
+                  KPI Analytics
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="gap-1.5 px-3 h-7 text-xs rounded-md data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm">
+                <TabsTrigger value="settings" className="gap-2 px-4 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <Settings className="h-3.5 w-3.5" />
                   Settings
                 </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
-          
-          <div className="flex-[2] flex flex-col items-center justify-center text-center">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0">
-                <Database className="h-5 w-5 text-white" />
-              </div>
-              <div className="flex flex-col items-start">
-                <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 leading-tight">
-                  Jira ETL Dashboard
-                </h1>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Jira Extract and KPI Engine with German Holiday
-                </p>
-              </div>
-            </div>
-          </div>
 
-          <div className="flex-1 flex items-center justify-end gap-3">
+          <div className="flex items-center justify-end gap-3 min-w-[220px]">
             {connections.length > 0 && (
               <Select value={activeConnectionId} onValueChange={setActiveConnectionId}>
-                <SelectTrigger className="w-[170px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-9 text-xs">
+                <SelectTrigger className="w-[160px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-8 text-[11px]">
                   <SelectValue placeholder="Select Connection" />
                 </SelectTrigger>
                 <SelectContent>
                   {connections.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="text-xs">
+                    <SelectItem key={c.id} value={c.id} className="text-[11px]">
                       {c.name}
                     </SelectItem>
                   ))}
@@ -232,9 +230,9 @@ export default function Home() {
             )}
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+              {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </button>
           </div>
         </div>
