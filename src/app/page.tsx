@@ -100,6 +100,36 @@ export default function Home() {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme, mounted]);
 
+  // Persistence for Dashboard State (Filters, Charts, etc.)
+  useEffect(() => {
+    if (!mounted || !activeConnectionId) return;
+    
+    const savedState = localConfig.getDashboardState(activeConnectionId);
+    if (savedState) {
+      if (savedState.globalFilters) setGlobalFilters(savedState.globalFilters);
+      if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
+      if (savedState.charts) setDashboardCharts(savedState.charts);
+      if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
+    } else {
+      setGlobalFilters({});
+      setHiddenDimensions(new Set());
+      setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }]);
+      setDashboardJqlQuery('');
+    }
+  }, [activeConnectionId, mounted]);
+
+  useEffect(() => {
+    if (!mounted || !activeConnectionId) return;
+    
+    const state = {
+      globalFilters,
+      hiddenDimensions: Array.from(hiddenDimensions),
+      charts: dashboardCharts,
+      dashboardJql: dashboardJqlQuery
+    };
+    localConfig.saveDashboardState(activeConnectionId, state);
+  }, [activeConnectionId, globalFilters, hiddenDimensions, dashboardCharts, dashboardJqlQuery, mounted]);
+
   const handlePrint = () => {
     window.print();
   };
@@ -109,19 +139,56 @@ export default function Home() {
     localConfig.saveSettings(newSettings);
   };
 
+  const loadMasterDataset = useCallback(async (connectionId: string, config: any) => {
+    if (!connectionId) return;
+    try {
+      const res = await fetch(`/api/jira/master/${connectionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', storageConfig: config })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setMasterDatasetInfo({
+          totalExtracted: data.data.totalExtracted,
+          dateRange: data.data.dateRange,
+          lastUpdated: data.data.lastUpdated,
+          issues: data.data.issues
+        });
+      }
+    } catch (e) {
+      console.error('Failed to auto-load master dataset:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeConnectionId && mounted) {
+      loadMasterDataset(activeConnectionId, storageConfig);
+    }
+  }, [activeConnectionId, storageConfig, mounted, loadMasterDataset]);
+
   if (!mounted) return null;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="container flex h-20 items-center justify-between">
+          <div className="flex items-center gap-2 w-1/4">
             <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20">
               <Zap className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">Jira ETL Dashboard</span>
           </div>
-          <div className="flex items-center gap-4">
+          
+          <div className="flex flex-col items-center justify-center flex-1 text-center">
+            <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
+              Jira ETL Dashboard
+            </h1>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
+              Advanced Engineering Analytics & KPI Suite
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-4 w-1/4">
             {connections.length > 0 && (
               <Select value={activeConnectionId} onValueChange={setActiveConnectionId}>
                 <SelectTrigger className="w-[180px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-9 text-xs">

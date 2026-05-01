@@ -81,6 +81,7 @@ export interface DashboardState {
   globalFilters?: Record<string, string[]>;
   hiddenDimensions?: string[];
   charts?: any[];
+  dashboardJql?: string;
 }
 
 const KEYS = {
