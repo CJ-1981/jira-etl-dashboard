@@ -179,12 +179,12 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
-        <div className="container grid grid-cols-[320px_1fr_320px] h-16 items-center px-4 sm:px-6">
-          <div className="flex items-center gap-3.5 pl-10 h-full">
+        <div className="container grid grid-cols-[minmax(200px,320px)_1fr_minmax(200px,320px)] h-16 items-center px-4 sm:px-6 gap-2">
+          <div className="flex items-center gap-3.5 pl-4 lg:pl-10 min-w-0 h-full">
             <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0 flex items-center justify-center">
               <Database className="h-5 w-5 text-white" />
             </div>
-            <div className="flex flex-col justify-center overflow-hidden h-full py-1">
+            <div className="flex flex-col justify-center overflow-hidden h-full py-1 min-w-0">
               <h1 className="text-sm font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate w-full leading-none mb-1">
                 Jira ETL Dashboard
               </h1>
@@ -194,30 +194,33 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="flex justify-center no-print">
+          <div className="flex justify-center no-print min-w-0">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
               <TabsList className="bg-transparent border-0 gap-1 h-9">
-                <TabsTrigger value="extract" className="gap-2 w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
+                <TabsTrigger value="extract" className="gap-2 w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
                   <Database className="h-3.5 w-3.5" />
-                  Data Center
+                  <span className="hidden sm:inline">Data Center</span>
+                  <span className="sm:hidden">Data</span>
                 </TabsTrigger>
-                <TabsTrigger value="kpi" className="gap-2 w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
+                <TabsTrigger value="kpi" className="gap-2 w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
                   <BarChart3 className="h-3.5 w-3.5" />
-                  KPI Analytics
+                  <span className="hidden sm:inline">KPI Analytics</span>
+                  <span className="sm:hidden">KPI</span>
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="gap-2 w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
+                <TabsTrigger value="settings" className="gap-2 w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
                   <Settings className="h-3.5 w-3.5" />
-                  Settings
+                  <span className="hidden sm:inline">Settings</span>
+                  <span className="sm:hidden">Set</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pr-4">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 pr-4 min-w-0">
             {connections.length > 0 && (
               <Select value={activeConnectionId} onValueChange={setActiveConnectionId}>
-                <SelectTrigger className="w-[160px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-8 text-[11px]">
-                  <SelectValue placeholder="Select Connection" />
+                <SelectTrigger className="w-[100px] sm:w-[140px] md:w-[160px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-8 text-[11px] min-w-0">
+                  <SelectValue placeholder="Connection" />
                 </SelectTrigger>
                 <SelectContent>
                   {connections.map((c) => (
