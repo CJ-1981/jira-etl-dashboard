@@ -197,15 +197,15 @@ export default function Home() {
           <div className="absolute left-1/2 -translate-x-1/2 no-print z-0">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
               <TabsList className="bg-transparent border-0 gap-1 h-9">
-                <TabsTrigger value="extract" className="gap-2 px-4 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="extract" className="gap-2 w-36 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <Database className="h-3.5 w-3.5" />
                   Data Center
                 </TabsTrigger>
-                <TabsTrigger value="kpi" className="gap-2 px-4 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="kpi" className="gap-2 w-36 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <BarChart3 className="h-3.5 w-3.5" />
                   KPI Analytics
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="gap-2 px-4 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
+                <TabsTrigger value="settings" className="gap-2 w-36 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">
                   <Settings className="h-3.5 w-3.5" />
                   Settings
                 </TabsTrigger>
@@ -294,16 +294,16 @@ export default function Home() {
           <TabsContent value="kpi" className="space-y-6 overflow-hidden">
             <Tabs defaultValue="dashboard" className="space-y-6">
               <div className="flex justify-center no-print">
-                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                  <TabsTrigger value="dashboard" className="gap-2 px-6">
+                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
+                  <TabsTrigger value="dashboard" className="gap-2 w-48 text-xs">
                     <BarChart3 className="h-4 w-4" />
                     Dashboard
                   </TabsTrigger>
-                  <TabsTrigger value="plugins" className="gap-2 px-6">
+                  <TabsTrigger value="plugins" className="gap-2 w-48 text-xs">
                     <Plug className="h-4 w-4" />
                     Plugins Configuration
                   </TabsTrigger>
-                  <TabsTrigger value="holidays" className="gap-2 px-6">
+                  <TabsTrigger value="holidays" className="gap-2 w-48 text-xs">
                     <Calendar className="h-4 w-4" />
                     Holidays Calendar
                   </TabsTrigger>
