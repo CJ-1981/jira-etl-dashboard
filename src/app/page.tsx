@@ -179,8 +179,10 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
-        <div className="container grid grid-cols-[minmax(200px,320px)_1fr_minmax(200px,320px)] h-16 items-center px-4 sm:px-6 gap-2">
-          <div className="flex items-center gap-3 pl-4 lg:pl-10 min-w-0">
+        <div className="container max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-[1fr_auto_1fr] h-auto lg:h-16 items-center px-4 sm:px-6 lg:px-8 py-3 lg:py-0 gap-y-3 gap-x-2">
+          
+          {/* Left / Branding */}
+          <div className="flex items-center gap-3 min-w-0 col-span-1 justify-start">
             <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0 flex items-center justify-center">
               <Database className="h-5 w-5 text-white" />
             </div>
@@ -194,29 +196,31 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="flex justify-center no-print min-w-0">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
-              <TabsList className="bg-transparent border-0 gap-1 h-9">
-                <TabsTrigger value="extract" className="gap-2 w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
-                  <Database className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Data Center</span>
-                  <span className="sm:hidden">Data</span>
+          {/* Middle / Tabs */}
+          <div className="flex justify-center w-full col-span-2 lg:col-span-1 order-last lg:order-none no-print">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+              <TabsList className="bg-transparent border-0 gap-1 h-9 w-full flex">
+                <TabsTrigger value="extract" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
+                  <Database className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline truncate">Data Center</span>
+                  <span className="sm:hidden truncate">Data</span>
                 </TabsTrigger>
-                <TabsTrigger value="kpi" className="gap-2 w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">KPI Analytics</span>
-                  <span className="sm:hidden">KPI</span>
+                <TabsTrigger value="kpi" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
+                  <BarChart3 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline truncate">KPI Analytics</span>
+                  <span className="sm:hidden truncate">KPI</span>
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="gap-2 w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs">
-                  <Settings className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Settings</span>
-                  <span className="sm:hidden">Set</span>
+                <TabsTrigger value="settings" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
+                  <Settings className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline truncate">Settings</span>
+                  <span className="sm:hidden truncate">Set</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
-          <div className="flex items-center justify-end gap-2 sm:gap-3 pr-4 min-w-0">
+          {/* Right / Controls */}
+          <div className="flex items-center justify-end gap-2 sm:gap-3 min-w-0 col-span-1">
             {connections.length > 0 && (
               <Select value={activeConnectionId} onValueChange={setActiveConnectionId}>
                 <SelectTrigger className="w-[100px] sm:w-[140px] md:w-[160px] bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 h-8 text-[11px] min-w-0">
