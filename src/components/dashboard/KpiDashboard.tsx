@@ -612,7 +612,7 @@ export function KpiDashboard({
                           <span className="truncate">
                             {pendingFilters[filter.key]?.length 
                               ? `${pendingFilters[filter.key].length} selected` 
-                              : `All ${filter.label}s`}
+                              : `All ${filter.label}${filter.label === 'Priority' ? 'ies' : filter.label === 'Status' ? 'es' : 's'}`}
                           </span>
                           <ChevronDown className="h-3 w-3 opacity-50" />
                         </Button>
