@@ -376,20 +376,7 @@ export function KpiDashboard({
             </div>
 
             <div className="flex-none pb-0.5">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => runCalculation()} 
-                disabled={calculating || !activeConnectionId}
-                className="h-9 px-3 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-500 hover:border-emerald-500/50 transition-all shadow-sm bg-white dark:bg-slate-900/50"
-              >
-                {calculating ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <RotateCw className="h-4 w-4 mr-2" />
-                )}
-                Recalculate
-              </Button>
+
             </div>
 
             <div className="flex-1 min-w-[300px]">
@@ -1083,20 +1070,7 @@ export function KpiDashboard({
                 </TooltipProvider>
               </div>
               <div className="flex items-center gap-2">
-                <Button 
-                  size="sm" 
-                  variant="ghost"
-                  onClick={() => runCalculation()} 
-                  disabled={calculating}
-                  className="rounded-full h-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-xs px-3 transition-all"
-                >
-                  {calculating ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                  ) : (
-                    <RotateCw className="h-3.5 w-3.5 mr-1.5" />
-                  )}
-                  Recalculate
-                </Button>
+
                 <Button 
                   size="sm" 
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
