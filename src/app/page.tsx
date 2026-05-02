@@ -169,6 +169,26 @@ export default function Home() {
     window.print();
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.key === '1') setActiveTab('extract');
+      if (e.key === '2') setActiveTab('kpi');
+      if (e.key === '3') setActiveTab('settings');
+      
+      if (e.key === 'p' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handlePrint();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleSettingsUpdate = (newSettings: any) => {
     setSettings(newSettings);
     localConfig.saveSettings(newSettings);

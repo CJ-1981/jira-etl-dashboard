@@ -11,6 +11,7 @@ import {
   isTimeSeriesPlugin,
   CHART_COLORS,
 } from '@/lib/chart-data-utils';
+import { KpiDataTable } from './KpiDataTable';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,6 +62,7 @@ import { toast } from 'sonner';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  AreaChart, Area
 } from 'recharts';
 import {
   Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
@@ -70,7 +72,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
-import { localConfig, type SavedJql } from '@/lib/config/local-store';
+import { localConfig, type SavedJql, type DashboardPreset } from '@/lib/config/local-store';
 import { ChartConfig } from '@/types/dashboard';
 
 interface KpiDashboardProps {
@@ -134,22 +136,69 @@ export function KpiDashboard({
 
   // JQL-Lite Filter state
   const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
-  const [newJqlName, setNewJqlName] = useState('');
-  const [jqlAutocompleteOpen, setJqlAutocompleteOpen] = useState(false);
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
-
+  
   // Staging filters for multi-select without instant update
   const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
-
-  // Drill-down state
+  
   const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
   const [drillDownTitle, setDrillDownTitle] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [presets, setPresets] = useState<DashboardPreset[]>([]);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
+
+  const jqlInputRef = useRef<HTMLInputElement>(null);
+
 
   // Load saved JQLs on mount
   useEffect(() => {
     setDashboardJqls(localConfig.getDashboardJqls());
-  }, []);
+    if (activeConnectionId) {
+      setPresets(localConfig.getDashboardPresets(activeConnectionId));
+    }
+  }, [activeConnectionId]);
+
+  const handleSavePreset = () => {
+    if (!newPresetName || !activeConnectionId) return;
+    const newPreset: DashboardPreset = {
+      id: `preset-${Date.now()}`,
+      name: newPresetName,
+      dateFrom,
+      dateTo,
+      globalFilters,
+      charts,
+      dashboardJql: jqlQuery,
+      hiddenDimensions: Array.from(hiddenDimensions)
+    };
+    const updated = [...presets, newPreset];
+    setPresets(updated);
+    localConfig.saveDashboardPresets(activeConnectionId, updated);
+    setNewPresetName('');
+    setPresetPopoverOpen(false);
+    toast.success(`View "${newPresetName}" saved`);
+  };
+
+  const handleLoadPreset = (preset: DashboardPreset) => {
+    setDateFrom(preset.dateFrom);
+    setDateTo(preset.dateTo);
+    setGlobalFilters(preset.globalFilters);
+    setPendingFilters(preset.globalFilters);
+    setCharts(preset.charts);
+    setJqlQuery(preset.dashboardJql);
+    setHiddenDimensions(new Set(preset.hiddenDimensions));
+    toast.success(`Loaded view: ${preset.name}`);
+  };
+
+  const handleDeletePreset = (id: string) => {
+    const updated = presets.filter(p => p.id !== id);
+    setPresets(updated);
+    if (activeConnectionId) {
+      localConfig.saveDashboardPresets(activeConnectionId, updated);
+    }
+    toast.success('View deleted');
+  };
 
   const saveDashboardJqls = (updated: SavedJql[]) => {
     setDashboardJqls(updated);
@@ -256,6 +305,31 @@ export function KpiDashboard({
     }
   }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, setKpiResults, masterDatasetInfo]);
 
+  const handleExportKpis = () => {
+    const rows: string[][] = [['Metric', 'Value', 'Unit', 'Category']];
+    kpiResults.forEach(kpi => {
+      kpi.results.forEach((res: any) => {
+        rows.push([
+          `"${res.name}"`,
+          res.value.toString(),
+          `"${res.unit || ''}"`,
+          `"${kpi.pluginId}"`
+        ]);
+      });
+    });
+
+    const csvContent = "\uFEFF" + rows.map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `jira_kpis_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('KPIs exported to CSV');
+  };
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -265,11 +339,41 @@ export function KpiDashboard({
     }
   }, [runCalculation]);
 
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        if (e.key === 'Escape') {
+          (e.target as HTMLElement).blur();
+        }
+        return;
+      }
+
+      if (e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        runCalculation();
+        toast.info('Recalculating KPIs...');
+      }
+
+      if (e.key === '/') {
+        e.preventDefault();
+        setFilterPanelOpen(true);
+        setTimeout(() => {
+          jqlInputRef.current?.focus();
+        }, 100);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [runCalculation, setFilterPanelOpen]);
+
   const mainKpis = kpiResults.filter((r: any) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const statusKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
   const slaStatusKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
   const priorityKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
+  const distributionKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
   const timeSeriesKpis = kpiResults.filter((r: any) => isTimeSeriesPlugin(r.pluginId));
 
   const filterOptions = useMemo(() => {
@@ -348,6 +452,64 @@ export function KpiDashboard({
                   </UITooltip>
                 )}
               </div>
+              <div className="flex items-center gap-3 no-print">
+              <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800">
+                <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 gap-2 text-[11px] font-bold border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10">
+                      <Zap className="h-3.5 w-3.5" />
+                      Saved Views
+                      {presets.length > 0 && <Badge className="ml-1 h-4 min-w-[16px] px-1 bg-emerald-500">{presets.length}</Badge>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
+                    </div>
+                    <div className="p-2 max-h-[300px] overflow-y-auto">
+                      {presets.length === 0 ? (
+                        <div className="py-8 text-center">
+                          <p className="text-xs text-slate-400 italic">No saved views yet</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {presets.map(p => (
+                            <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
+                                <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500" 
+                                onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                      <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="View Name..." 
+                          value={newPresetName} 
+                          onChange={(e) => setNewPresetName(e.target.value)}
+                          className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                        />
+                        <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
               <div className="flex items-center gap-2">
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
@@ -461,6 +623,7 @@ export function KpiDashboard({
                     <div className="relative flex-1 group">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                       <Input 
+                        ref={jqlInputRef}
                         placeholder="Filter by JQL (e.g. status = Done AND priority = High)..." 
                         value={jqlQuery}
                         onChange={(e) => setJqlQuery(e.target.value)}
@@ -673,11 +836,41 @@ export function KpiDashboard({
 
       {kpiResults.length > 0 && (<>
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
               <Activity className="h-5 w-5 text-emerald-500" />
-              Overview
+              Metrics Overview
             </h3>
+            
+            <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
+              <Button 
+                variant={viewMode === 'grid' ? 'default' : 'ghost'} 
+                size="sm" 
+                onClick={() => setViewMode('grid')}
+                className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'grid' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+              >
+                Grid View
+              </Button>
+              <Button 
+                variant={viewMode === 'table' ? 'default' : 'ghost'} 
+                size="sm" 
+                onClick={() => setViewMode('table')}
+                className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'table' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+              >
+                Table View
+              </Button>
+            </div>
+
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleExportKpis}
+              className="h-8 text-[10px] uppercase tracking-wider font-bold border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+            >
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+              Export CSV
+            </Button>
+
             {Array.from(hiddenDimensions).some(k => mainKpis.some(mk => k === `${mk.pluginId}|`)) && (
               <Button variant="ghost" size="sm" onClick={() => {
                 setHiddenDimensions((prev: Set<string>) => {
@@ -690,22 +883,31 @@ export function KpiDashboard({
               </Button>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
-            {mainKpis.map((kpi) => kpi.results.map((result: any, idx: number) => {
-              if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
-              return (
-                <KpiCard 
-                  key={`${kpi.pluginId}-${idx}`} 
-                  result={result} 
-                  pluginId={kpi.pluginId} 
-                  onHide={() => toggleDimension(kpi.pluginId, '')}
-                  onClick={result.ticketKeys ? () => {
-                    handleDrillDown(result.ticketKeys || [], result.name);
-                  } : undefined}
-                />
-              );
-            }))}
-          </div>
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
+              {mainKpis.map((kpi) => kpi.results.map((result: any, idx: number) => {
+                if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
+                return (
+                  <KpiCard 
+                    key={`${kpi.pluginId}-${idx}`} 
+                    result={result} 
+                    pluginId={kpi.pluginId} 
+                    onHide={() => toggleDimension(kpi.pluginId, '')}
+                    settings={settings}
+                    onClick={result.ticketKeys ? () => {
+                      handleDrillDown(result.ticketKeys || [], result.name);
+                    } : undefined}
+                  />
+                );
+              }))}
+            </div>
+          ) : (
+            <KpiDataTable 
+              results={kpiResults} 
+              settings={settings} 
+              onDrillDown={handleDrillDown} 
+            />
+          )}
         </div>
 
         {statusKpis.length > 0 && (
@@ -765,6 +967,72 @@ export function KpiDashboard({
               })}</div>
             </CardContent>
           </Card>
+        )}
+
+        {distributionKpis.length > 0 && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-purple-400" />
+              Distribution Analysis
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {distributionKpis.map((kpi) => (
+                <Card key={kpi.pluginId} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                  <CardHeader>
+                    <CardTitle className="text-md flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-purple-400" />
+                      {kpi.results[0].name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {(() => {
+                        // Custom sort for buckets based on plugin
+                        let bucketOrder: string[] = [];
+                        if (kpi.pluginId === 'cycle_time_histogram') {
+                          bucketOrder = ['< 4h', '4-8h (1d)', '8-16h (2d)', '16-40h (1w)', '40-80h (2w)', '> 80h (2w+)'];
+                        } else if (kpi.pluginId === 'aging_wip') {
+                          bucketOrder = ['< 1 day', '1-3 days', '3-7 days', '1-2 weeks', '2-4 weeks', '> 4 weeks'];
+                        }
+
+                        const sortedResults = [...kpi.results].sort((a, b) => {
+                          const aIdx = bucketOrder.indexOf(a.dimensions?.bucket);
+                          const bIdx = bucketOrder.indexOf(b.dimensions?.bucket);
+                          if (aIdx === -1 || bIdx === -1) return 0;
+                          return aIdx - bIdx;
+                        });
+                        
+                        const maxVal = Math.max(...sortedResults.map((r: any) => r.value), 1);
+                        
+                        return sortedResults.map((result: any, idx: number) => (
+                          <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
+                            <div className="flex items-center justify-between text-sm">
+                              <span 
+                                className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-purple-500 hover:underline"
+                                onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                              >
+                                {result.dimensions?.bucket || result.name}
+                              </span>
+                              <span className="font-mono font-semibold text-purple-400">{result.value} {result.unit}</span>
+                            </div>
+                            <div 
+                              className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-purple-400 transition-all"
+                              onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                            >
+                              <div 
+                                className="h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-500" 
+                                style={{ width: `${(result.value / maxVal) * 100}%` }} 
+                              />
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
         )}
 
         {priorityKpis.length > 0 && (
@@ -1088,22 +1356,41 @@ export function KpiDashboard({
   );
 }
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-
-function KpiCard({ result, pluginId, onHide, onClick }: { 
+// ─── KPI Card (Single Widget) ────────────────────────────────────────────────
+function KpiCard({ result, pluginId, onHide, onClick, settings }: { 
   result: { 
     name: string; 
     value: number; 
     unit: string; 
     dimensions?: any; 
-    details?: Array<{ label: string; value: number; unit?: string }>;
+    details?: any[];
     ticketKeys?: string[];
     comparison?: { value: number; change: number; label: string };
   }; 
   pluginId: string; 
   onHide?: () => void;
   onClick?: () => void;
+  settings?: any;
 }) {
+  const alertConfig = settings?.alerts?.thresholds?.[pluginId];
+  
+  const getAlertStatus = () => {
+    if (!alertConfig) return null;
+    const { warning, critical, operator } = alertConfig;
+    const val = result.value;
+    
+    if (operator === '>') {
+      if (val >= critical) return 'critical';
+      if (val >= warning) return 'warning';
+    } else {
+      if (val <= critical) return 'critical';
+      if (val <= warning) return 'warning';
+    }
+    return null;
+  };
+
+  const alertStatus = getAlertStatus();
+
   const getIcon = () => {
     if (result.name.includes('Processing')) return <Clock className="h-5 w-5" />;
     if (result.name.includes('Working Days')) return <Calendar className="h-5 w-5" />;
@@ -1132,6 +1419,23 @@ function KpiCard({ result, pluginId, onHide, onClick }: {
             {result.name}
           </p>
           <div className="flex items-center gap-2">
+            {alertStatus && (
+              <TooltipProvider delayDuration={0}>
+                <UITooltip>
+                  <TooltipTrigger asChild>
+                    <Badge className={`h-5 px-1.5 gap-1 animate-pulse border-none ${alertStatus === 'critical' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}`}>
+                      <AlertTriangle className="h-3 w-3" />
+                      <span className="text-[10px] font-bold">{alertStatus.toUpperCase()}</span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="p-2 text-xs">
+                    <p className="font-bold mb-1">Metric Alert Triggered</p>
+                    <p>Current: <span className="font-mono">{result.value}{result.unit}</span></p>
+                    <p>{alertStatus === 'critical' ? 'Critical' : 'Warning'} threshold: <span className="font-mono">{alertConfig.operator}{alertStatus === 'critical' ? alertConfig.critical : alertConfig.warning}</span></p>
+                  </TooltipContent>
+                </UITooltip>
+              </TooltipProvider>
+            )}
             <Badge variant="outline" className="text-[10px] text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800">
               {pluginId.split('_').slice(0, 2).join(' ')}
             </Badge>
@@ -1232,6 +1536,8 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
       case 'pie':
         return transformForPieChart(kpiResults, config.kpiId);
       case 'line':
+        return transformForLineChart(kpiResults, config.kpiId);
+      case 'area':
         return transformForLineChart(kpiResults, config.kpiId);
       default:
         return [];
@@ -1608,6 +1914,95 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
             </LineChart>
           </ResponsiveContainer>
         );
+      
+      case 'area':
+        const hasMultipleSeriesArea = kpi?.results && kpi.results.length > 1 &&
+          kpi.results.every((r: any) => r.timeSeries && r.timeSeries.length > 0);
+
+        if (hasMultipleSeriesArea) {
+          const allPeriods = new Set<string>();
+          kpi.results.forEach((result: any) => {
+            result.timeSeries?.forEach((point: any) => allPeriods.add(point.period));
+          });
+
+          const sortedPeriods = Array.from(allPeriods).sort();
+          const mergedData = sortedPeriods.map(period => {
+            const dataPoint: any = { name: period };
+            kpi.results.forEach((result: any, idx: number) => {
+              const point = result.timeSeries?.find((p: any) => p.period === period);
+              dataPoint[`series${idx}`] = point?.value || 0;
+            });
+            return dataPoint;
+          });
+
+          return (
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <AreaChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                <XAxis dataKey="name" className="text-xs" />
+                <YAxis className="text-xs" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px',
+                  }}
+                  labelStyle={{ color: '#e2e8f0' }}
+                  itemStyle={{ color: '#e2e8f0' }}
+                  formatter={(value: number) => formatChartValue(value, unit)}
+                />
+                <Legend 
+                  onClick={handleLegendClick} 
+                  cursor="pointer" 
+                  formatter={renderLegend} 
+                  verticalAlign="top" 
+                  align="right"
+                  wrapperStyle={{ paddingBottom: '20px' }}
+                />
+                {kpi.results.map((result: any, idx: number) => (
+                  <Area
+                    key={result.name || idx}
+                    type="monotone"
+                    dataKey={`series${idx}`}
+                    name={result.name}
+                    stackId="1"
+                    stroke={CHART_COLORS[idx % CHART_COLORS.length]}
+                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                    fillOpacity={0.6}
+                    hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          );
+        }
+
+        return (
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+              <XAxis dataKey="name" className="text-xs" />
+              <YAxis className="text-xs" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  border: '1px solid rgba(148, 163, 184, 0.2)',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#e2e8f0' }}
+                itemStyle={{ color: '#e2e8f0' }}
+                formatter={(value: number) => formatChartValue(value, unit)}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                stroke="#3b82f6" 
+                fill="#3b82f6" 
+                fillOpacity={0.6} 
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        );
 
       case 'pie':
         const visiblePieData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
@@ -1743,7 +2138,7 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
             <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Chart Type</Label>
             <Select
               value={config.type}
-              onValueChange={(type: 'bar' | 'line' | 'pie') => onChange(config.id, { ...config, type })}
+              onValueChange={(type: 'bar' | 'line' | 'pie' | 'area') => onChange(config.id, { ...config, type })}
               disabled={!config.kpiId}
             >
               <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
@@ -1753,6 +2148,7 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
                 <SelectItem value="bar">Bar Chart</SelectItem>
                 <SelectItem value="line">Line Chart</SelectItem>
                 <SelectItem value="pie">Pie Chart</SelectItem>
+                <SelectItem value="area">Area Chart</SelectItem>
               </SelectContent>
             </Select>
           </div>

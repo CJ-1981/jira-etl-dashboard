@@ -37,7 +37,7 @@ export interface KpiCalcResult {
 export interface ChartConfig {
   id: string;
   kpiId: string;
-  type: 'bar' | 'line' | 'pie';
+  type: 'bar' | 'line' | 'pie' | 'area';
   width: 'sm' | 'md' | 'lg' | 'full';
 }
 

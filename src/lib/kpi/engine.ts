@@ -729,6 +729,154 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
   return results;
 }
 
+/**
+ * Cycle Time Distribution Histogram - Buckets tickets by resolution time (business hours)
+ */
+const cycleTimeHistogramPlugin: KpiPlugin = {
+  id: 'cycle_time_histogram',
+  name: 'Cycle Time Distribution',
+  description: 'Buckets resolved tickets into time ranges based on business hours from creation to resolution.',
+  category: 'processing_time',
+  unit: 'tickets',
+  visualization: 'horizontal_bar',
+  calculate(context) {
+    const resolvedIssues = context.issues.filter((i) => i.resolved);
+    
+    const buckets = [
+      { label: '< 4h', min: 0, max: 4 },
+      { label: '4-8h (1d)', min: 4, max: 8 },
+      { label: '8-16h (2d)', min: 8, max: 16 },
+      { label: '16-40h (1w)', min: 16, max: 40 },
+      { label: '40-80h (2w)', min: 40, max: 80 },
+      { label: '> 80h (2w+)', min: 80, max: Infinity },
+    ];
+
+    const results: Record<string, { count: number; keys: string[] }> = {};
+    buckets.forEach(b => results[b.label] = { count: 0, keys: [] });
+
+    for (const issue of resolvedIssues) {
+      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
+      const bucket = buckets.find(b => hours >= b.min && hours < b.max);
+      if (bucket) {
+        results[bucket.label].count++;
+        results[bucket.label].keys.push(issue.key);
+      }
+    }
+
+    return buckets.map(b => ({
+      name: b.label,
+      value: results[b.label].count,
+      unit: 'tickets',
+      dimensions: { bucket: b.label },
+      ticketKeys: results[b.label].keys,
+      details: [
+        { label: 'Range', value: 0, unit: b.label },
+        { label: 'Total Tickets', value: results[b.label].count },
+      ]
+    }));
+  }
+};
+
+/**
+ * Aging WIP Analysis - Buckets open tickets by time-since-creation (business hours)
+ */
+const agingWipPlugin: KpiPlugin = {
+  id: 'aging_wip',
+  name: 'Aging WIP Analysis',
+  description: 'Buckets open (non-resolved) tickets by how long they have been open in business hours.',
+  category: 'processing_time',
+  unit: 'tickets',
+  visualization: 'horizontal_bar',
+  calculate(context) {
+    const openIssues = context.issues.filter((i) => !isIssueDone(i));
+    
+    const buckets = [
+      { label: '< 1 day', min: 0, max: 8 },
+      { label: '1-3 days', min: 8, max: 24 },
+      { label: '3-7 days', min: 24, max: 56 },
+      { label: '1-2 weeks', min: 56, max: 112 },
+      { label: '2-4 weeks', min: 112, max: 224 },
+      { label: '> 4 weeks', min: 224, max: Infinity },
+    ];
+
+    const results: Record<string, { count: number; keys: string[] }> = {};
+    buckets.forEach(b => results[b.label] = { count: 0, keys: [] });
+
+    for (const issue of openIssues) {
+      const hours = calculateBusinessHours(issue.created, new Date(), context.holidays);
+      const bucket = buckets.find(b => hours >= b.min && hours < b.max);
+      if (bucket) {
+        results[bucket.label].count++;
+        results[bucket.label].keys.push(issue.key);
+      }
+    }
+
+    return buckets.map(b => ({
+      name: b.label,
+      value: results[b.label].count,
+      unit: 'tickets',
+      dimensions: { bucket: b.label },
+      ticketKeys: results[b.label].keys,
+      details: [
+        { label: 'Age Range', value: 0, unit: b.label },
+        { label: 'Total Tickets', value: results[b.label].count },
+      ]
+    }));
+  }
+};
+
+/**
+ * First Response Time - Average business hours from creation to first human response
+ */
+const firstResponseTimePlugin: KpiPlugin = {
+  id: 'first_response_time',
+  name: 'First Response Time',
+  description: 'Average business hours from ticket creation to the first transition or first non-reporter comment.',
+  category: 'processing_time',
+  unit: 'hours',
+  calculate(context) {
+    const issues = context.issues;
+    if (issues.length === 0) return [{ name: 'Avg. First Response Time', value: 0, unit: 'hours' }];
+
+    let totalHours = 0;
+    let respondedCount = 0;
+    const ticketKeys: string[] = [];
+
+    for (const issue of issues) {
+      // 1. Find first transition out of initial status
+      const firstTransition = issue.transitions.length > 0 ? issue.transitions[0] : null;
+      const firstTransitionTime = firstTransition?.occurredAt.getTime() || Infinity;
+
+      // 2. Find first comment by someone other than reporter
+      const firstComment = issue.comments.find(c => c.author !== issue.reporter);
+      const firstCommentTime = firstComment?.created.getTime() || Infinity;
+
+      const responseTimeMs = Math.min(firstTransitionTime, firstCommentTime);
+
+      if (responseTimeMs !== Infinity) {
+        const responseDate = new Date(responseTimeMs);
+        const hours = calculateBusinessHours(issue.created, responseDate, context.holidays);
+        totalHours += hours;
+        respondedCount++;
+        ticketKeys.push(issue.key);
+      }
+    }
+
+    if (respondedCount === 0) return [{ name: 'Avg. First Response Time', value: 0, unit: 'hours' }];
+
+    return [{
+      name: 'Avg. First Response Time',
+      value: Math.round((totalHours / respondedCount) * 100) / 100,
+      unit: 'hours',
+      ticketKeys,
+      details: [
+        { label: 'Responded Tickets', value: respondedCount },
+        { label: 'Total Tickets', value: issues.length },
+      ]
+    }];
+  }
+};
+
 // ─── KPI Engine ──────────────────────────────────────────────────────────────
 
 export class KpiEngine {
@@ -748,6 +896,9 @@ export class KpiEngine {
     this.register(slaByStatusExclClonePlugin);
     this.register(reassignmentPlugin);
     this.register(openTicketsByAssigneePlugin);
+    this.register(cycleTimeHistogramPlugin);
+    this.register(agingWipPlugin);
+    this.register(firstResponseTimePlugin);
 
     // Register time-series plugins
     registerTimeSeriesPlugins(this);
@@ -907,12 +1058,12 @@ export class KpiEngine {
     const lastWeekEnd = new Date(thisWeekStart);
 
     const thisWeekIssues = processedIssues.filter(i => {
-      const d = i.fields?.created ? new Date(i.fields.created) : new Date(i.created);
+      const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
       return d >= thisWeekStart && d < thisWeekEnd;
     });
 
     const lastWeekIssues = processedIssues.filter(i => {
-      const d = i.fields?.created ? new Date(i.fields.created) : new Date(i.created);
+      const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
       return d >= lastWeekStart && d < lastWeekEnd;
     });
 

@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
-  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target
+  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders
 } from 'lucide-react';
 import { localConfig, type KpiPlugin } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
@@ -419,6 +419,141 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
               if (onSettingsUpdate) onSettingsUpdate(settings);
               toast.success('KPI Defaults saved');
             }} className="bg-blue-600 hover:bg-blue-700" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save KPI Defaults</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-400" /> 
+            KPI Alert Thresholds
+          </CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">
+            Define warning and critical limits for specific metrics to highlight performance issues.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 mb-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                const availableKpis = Object.values(plugins).flat().map(p => p.id);
+                const currentThresholds = { ...(settings.alerts?.thresholds || {}) };
+                let added = 0;
+                availableKpis.forEach(id => {
+                  if (!currentThresholds[id]) {
+                    currentThresholds[id] = { warning: 0, critical: 0, operator: '>' };
+                    added++;
+                  }
+                });
+                if (added > 0) {
+                  setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: currentThresholds } });
+                  toast.success(`Added ${added} KPI alert placeholders`);
+                } else {
+                  toast.info('All available KPIs already have thresholds');
+                }
+              }}
+              className="text-xs"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add Alert for all KPIs
+            </Button>
+            <span className="text-xs text-slate-400">
+              {Object.keys(settings.alerts?.thresholds || {}).length} alerts configured
+            </span>
+          </div>
+
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+            {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
+              const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
+              const label = plugin?.name || pluginId;
+              
+              return (
+                <div key={pluginId} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate text-slate-700 dark:text-slate-200">{label}</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{pluginId}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-slate-500 w-12">Operator</Label>
+                    <Select 
+                      value={config.operator} 
+                      onValueChange={(v: any) => {
+                        const updated = { ...settings.alerts.thresholds };
+                        updated[pluginId] = { ...config, operator: v };
+                        setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-16 text-xs bg-white dark:bg-slate-950">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value=">">{'>'}</SelectItem>
+                        <SelectItem value="<">{'<'}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-amber-500 w-14">Warning</Label>
+                    <Input 
+                      type="number" 
+                      value={config.warning} 
+                      onChange={(e) => {
+                        const updated = { ...settings.alerts.thresholds };
+                        updated[pluginId] = { ...config, warning: parseFloat(e.target.value) || 0 };
+                        setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                      }}
+                      className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-red-500 w-12">Critical</Label>
+                    <Input 
+                      type="number" 
+                      value={config.critical} 
+                      onChange={(e) => {
+                        const updated = { ...settings.alerts.thresholds };
+                        updated[pluginId] = { ...config, critical: parseFloat(e.target.value) || 0 };
+                        setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                      }}
+                      className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
+                    />
+                  </div>
+
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" 
+                    onClick={() => {
+                      const updated = { ...settings.alerts.thresholds };
+                      delete updated[pluginId];
+                      setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button 
+              onClick={() => {
+                localConfig.saveSettings(settings);
+                setInitialSettings(settings);
+                if (onSettingsUpdate) onSettingsUpdate(settings);
+                toast.success('Alert thresholds saved');
+              }} 
+              className="bg-red-600 hover:bg-red-700" 
+              disabled={!hasUnsavedSettings}
+            >
+              <Save className="mr-2 h-4 w-4" /> Save Alert Thresholds
+            </Button>
           </div>
         </CardContent>
       </Card>

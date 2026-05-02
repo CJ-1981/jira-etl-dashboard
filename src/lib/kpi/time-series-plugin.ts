@@ -20,6 +20,7 @@ export interface TimeSeriesResult {
     value: number;
     unit?: string;
   }>;
+  ticketKeys?: string[];
 }
 
 export interface TimeSeriesDataPoint {
@@ -121,6 +122,20 @@ export const slaByStatusExclCloneTrendPlugin: KpiPlugin = {
       issues: context.issues.filter(issue => !issue.summary.includes('CLONE'))
     };
     return calculateSlaByStatusTrend(filteredContext, 'weekly');
+  },
+};
+
+/**
+ * Cumulative Flow Diagram (CFD) - Stacked area chart of ticket status over time
+ */
+export const cumulativeFlowPlugin: KpiPlugin = {
+  id: 'cumulative_flow',
+  name: 'Cumulative Flow Diagram',
+  description: 'Number of tickets in each status over time (stacked area chart)',
+  category: 'throughput',
+  unit: 'tickets',
+  calculate(context) {
+    return calculateCumulativeFlow(context, 'daily');
   },
 };
 
@@ -820,6 +835,83 @@ function getWeekNumber(date: Date): number {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+function calculateCumulativeFlow(
+  context: KpiContext,
+  interval: TimeInterval
+): TimeSeriesResult[] {
+  const { start, end } = context.period;
+  const allIssues = context.issues;
+
+  // 1. Generate periods
+  const periods: { key: string; end: Date }[] = [];
+  let current = new Date(start);
+  while (current <= end) {
+    const key = getPeriodKey(current, interval);
+    const periodEnd = getPeriodEnd(key, interval);
+    periods.push({ key, end: periodEnd });
+    
+    if (interval === 'daily') current.setDate(current.getDate() + 1);
+    else if (interval === 'weekly') current.setDate(current.getDate() + 7);
+    else if (interval === 'monthly') current.setMonth(current.getMonth() + 1);
+    if (periods.length > 1000) break;
+  }
+
+  // 2. Identify all statuses
+  const allStatuses = new Set<string>();
+  allIssues.forEach(i => {
+    allStatuses.add(i.status);
+    i.transitions.forEach(t => {
+      if (t.fromStatus) allStatuses.add(t.fromStatus);
+      if (t.toStatus) allStatuses.add(t.toStatus);
+    });
+  });
+
+  const statusResults: TimeSeriesResult[] = [];
+
+  for (const status of allStatuses) {
+    const timeSeries: TimeSeriesDataPoint[] = [];
+
+    for (const period of periods) {
+      // Count tickets in this status at the end of the period
+      const count = allIssues.filter(issue => {
+        // Find the status of the issue at period.end
+        if (issue.created > period.end) return false; // Not created yet
+
+        // Find the last transition before or at period.end
+        const lastTransition = [...issue.transitions]
+          .reverse()
+          .find(t => t.occurredAt <= period.end);
+
+        const currentStatusAtPeriodEnd = lastTransition 
+          ? lastTransition.toStatus 
+          : issue.transitions.length > 0 && issue.transitions[0].occurredAt > period.end
+            ? issue.transitions[0].fromStatus // Still in initial status
+            : issue.status; // Fallback to current status if no transitions or all after
+
+        return currentStatusAtPeriodEnd === status;
+      }).length;
+
+      timeSeries.push({
+        period: period.key,
+        date: period.end,
+        value: count,
+        count: count,
+        isComplete: isPeriodComplete(period.end),
+      });
+    }
+
+    statusResults.push({
+      name: status,
+      value: timeSeries.length > 0 ? timeSeries[timeSeries.length - 1].value : 0,
+      unit: 'tickets',
+      dimensions: { status },
+      timeSeries,
+    });
+  }
+
+  return statusResults;
+}
+
 // ─── Plugin Registration Helper ────────────────────────────────────────────────
 
 /**
@@ -833,4 +925,5 @@ export function registerTimeSeriesPlugins(engine: { register: (plugin: KpiPlugin
   engine.register(slaByStatusTrendPlugin);
   engine.register(slaByStatusExclCloneTrendPlugin);
   engine.register(openTicketsByAssigneeTrendPlugin);
+  engine.register(cumulativeFlowPlugin);
 }
