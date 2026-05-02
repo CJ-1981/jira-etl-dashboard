@@ -16,7 +16,7 @@ import {
 import { toast } from 'sonner';
 import {
   FileSpreadsheet, Database, CheckCircle2, Info, LayoutGrid, Zap, Ticket,
-  FileJson, Loader2, HardDrive, XCircle, AlertTriangle
+  FileJson, Loader2, HardDrive, XCircle, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { localConfig, type PgConnection } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
@@ -57,71 +57,79 @@ export function ExportPanel({
     setPgConnections(localConfig.getPgConnections());
   }, []);
 
+  const exportData = async (type: 'issues' | 'kpis', format: string) => {
+    if (type === 'issues') {
+      if (format === 'json') {
+        const blob = new Blob([JSON.stringify(extractionResult.issues, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'jira-tickets-raw.json'; a.click();
+        URL.revokeObjectURL(url);
+        toast.success('Raw tickets JSON downloaded');
+      } else {
+        const issues = extractionResult.issues as any[];
+        const headers = ['Key', 'Summary', 'Status', 'Priority', 'IssueType', 'Created', 'Resolved', 'Assignee'];
+        const rows = [headers.join(',')];
+        for (const i of issues) {
+          const fields = i.fields || {};
+          rows.push([
+            i.key,
+            `"${(fields.summary || '').replace(/"/g, '""')}"`,
+            fields.status?.name || '',
+            fields.priority?.name || '',
+            fields.issuetype?.name || '',
+            fields.created || '',
+            fields.resolutiondate || '',
+            fields.assignee?.displayName || ''
+          ].join(','));
+        }
+        const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'jira-tickets-raw.csv'; a.click();
+        URL.revokeObjectURL(url);
+        toast.success('Raw tickets CSV downloaded');
+      }
+    } else {
+      const exportRes = await fetch('/api/export/file', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issues: extractionResult.issues,
+          holidays: { regions: region === 'all' ? [] : [region] },
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          format
+        }),
+      });
+
+      if (!exportRes.ok) throw new Error('KPI export failed');
+      const blob = await exportRes.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `jira-kpi-export.${format}`; a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const handleFileExport = async (format: string) => {
     if (!extractionResult) { toast.error('No extracted data found. Please run Jira Extraction in the Extract tab first.'); return; }
     setExporting(true);
-    try {
-      if (exportDataType === 'tickets') {
-        if (format === 'json') {
-          const blob = new Blob([JSON.stringify(extractionResult.issues, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'jira-tickets-raw.json'; a.click();
-          URL.revokeObjectURL(url);
-          toast.success('Raw tickets JSON downloaded');
-        } else {
-          const issues = extractionResult.issues as any[];
-          const headers = ['Key', 'Summary', 'Status', 'Priority', 'IssueType', 'Created', 'Resolved', 'Assignee'];
-          const rows = [headers.join(',')];
-          for (const i of issues) {
-            const fields = i.fields || {};
-            rows.push([
-              i.key,
-              `"${(fields.summary || '').replace(/"/g, '""')}"`,
-              fields.status?.name || '',
-              fields.priority?.name || '',
-              fields.issuetype?.name || '',
-              fields.created || '',
-              fields.resolutiondate || '',
-              fields.assignee?.displayName || ''
-            ].join(','));
-          }
-          const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'jira-tickets-raw.csv'; a.click();
-          URL.revokeObjectURL(url);
-          toast.success('Raw tickets CSV downloaded');
-        }
-      } else {
-        const exportRes = await fetch('/api/export/file', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            issues: extractionResult.issues,
-            holidays: { regions: region === 'all' ? [] : [region] },
-            dateFrom: dateFrom || undefined,
-            dateTo: dateTo || undefined,
-            format
-          }),
-        });
 
-        if (format === 'csv' && exportRes.ok) {
-          const blob = await exportRes.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'jira-kpi-export.csv'; a.click();
-          URL.revokeObjectURL(url);
-          toast.success('KPI CSV downloaded');
-        } else if (format === 'json' && exportRes.ok) {
-          const data = await exportRes.json();
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'jira-kpi-results.json'; a.click();
-          URL.revokeObjectURL(url);
-          toast.success('KPI JSON downloaded');
-        } else {
-          const data = await exportRes.json();
-          toast.error(data.error || 'Export failed');
-        }
+    if (exportDataType === 'both') {
+      try {
+        await exportData('issues', format);
+        await exportData('kpis', format);
+        toast.success('Export completed for both issues and metrics');
+      } catch (err: any) {
+        toast.error(`Export failed: ${err.message}`);
       }
-    } catch (e) { console.error(e); toast.error('Export failed'); }
+      setExporting(false);
+      return;
+    }
+
+    try {
+      await exportData(exportDataType === 'tickets' ? 'issues' : 'kpis', format);
+      toast.success('Export completed');
+    } catch (err: any) {
+      toast.error(`Export failed: ${err.message}`);
+    }
     setExporting(false);
   };
 

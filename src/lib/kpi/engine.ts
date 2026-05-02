@@ -730,7 +730,8 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
 }
 
 /**
- * Cycle Time Distribution Histogram - Buckets tickets by resolution time (business hours)
+ * @MX:NOTE: Cycle Time Distribution Histogram
+ * Buckets tickets by resolution time (business hours)
  */
 const cycleTimeHistogramPlugin: KpiPlugin = {
   id: 'cycle_time_histogram',
@@ -778,7 +779,8 @@ const cycleTimeHistogramPlugin: KpiPlugin = {
 };
 
 /**
- * Aging WIP Analysis - Buckets open tickets by time-since-creation (business hours)
+ * @MX:NOTE: Aging WIP Analysis
+ * Buckets open tickets by time-since-creation (business hours)
  */
 const agingWipPlugin: KpiPlugin = {
   id: 'aging_wip',
@@ -826,7 +828,8 @@ const agingWipPlugin: KpiPlugin = {
 };
 
 /**
- * First Response Time - Average business hours from creation to first human response
+ * @MX:NOTE: First Response Time
+ * Average business hours from creation to first human response
  */
 const firstResponseTimePlugin: KpiPlugin = {
   id: 'first_response_time',

@@ -24,13 +24,14 @@ interface HolidaysPanelProps {
 }
 
 export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear] = useState<number | undefined>(new Date().getFullYear());
   const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);
   const [loading, setLoading] = useState(false);
   const isMounted = useRef(true);
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
 
   const loadHolidays = useCallback(async () => {
+    if (!year) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/holidays?year=${year}&region=${region}`);
@@ -54,8 +55,31 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
         <CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="h-5 w-5 text-emerald-400" /> German Holiday Calendar</CardTitle></CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="space-y-2"><Label className="text-slate-700 dark:text-slate-300">Year</Label><Input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-32" /></div>
-            <div className="space-y-2 flex-1"><Label className="text-slate-700 dark:text-slate-300">State</Label><Select value={region} onValueChange={setRegion}><SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger><SelectContent>{GERMAN_STATES.filter(s => s.code !== 'all').map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}</SelectContent></Select></div>
+            <div className="space-y-2">
+              <Label className="text-slate-700 dark:text-slate-300">Year</Label>
+              <Input 
+                type="number" 
+                placeholder="Year" 
+                value={year || ''} 
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  setYear(isNaN(val) ? undefined : val);
+                }} 
+                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-32" 
+              />
+            </div>
+            <div className="space-y-2 flex-1">
+              <Label className="text-slate-700 dark:text-slate-300">State</Label>
+              <Select value={region} onValueChange={setRegion}>
+                <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Regions</SelectItem>
+                  {GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-end"><Button onClick={loadHolidays} variant="outline" className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
           </div>
         </CardContent>

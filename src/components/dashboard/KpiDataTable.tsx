@@ -100,8 +100,8 @@ export function KpiDataTable({ results, settings, onDrillDown }: KpiDataTablePro
         return (
           <div className="flex flex-col">
             <span 
-              className="font-medium cursor-pointer hover:text-emerald-500 hover:underline"
-              onClick={() => row.ticketKeys && onDrillDown(row.ticketKeys, row.name)}
+              className={`font-medium ${row.ticketKeys?.length ? 'cursor-pointer hover:text-emerald-500 hover:underline' : ''}`}
+              onClick={() => row.ticketKeys?.length && onDrillDown(row.ticketKeys, row.name)}
             >
               {info.getValue()}
             </span>

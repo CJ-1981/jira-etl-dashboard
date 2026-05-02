@@ -30,6 +30,8 @@ export function SettingsPanel({ onSettingsUpdate, storageConfig }: SettingsPanel
     general: { defaultHolidayState: 'national', workStartHour: 9, workEndHour: 17, defaultSlaTargetHours: 40, listMaxHeight: 400 },
     persistence: { autoSave: true, autoRestore: true, retentionDays: 30 },
     sla: { statusTargets: {} },
+    alerts: { thresholds: {} },
+    webhooks: { enabled: false, secret: '' },
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,30 +58,38 @@ export function SettingsPanel({ onSettingsUpdate, storageConfig }: SettingsPanel
     setSaving(false);
   };
 
-  const handleExportConfig = () => {
-    setConfigExporting(true);
-    const config = localConfig.exportConfig();
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  // @MX:ANCHOR: Configuration Management
+  const handleExport = () => {
+    const data = localConfig.exportConfig();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `jira-etl-config-${new Date().toISOString().split('T')[0]}.json`; a.click();
+    a.href = url;
+    a.download = `jira-etl-config-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
     URL.revokeObjectURL(url);
     toast.success('Configuration exported');
-    setConfigExporting(false);
   };
 
-  const handleImportConfig = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    setConfigImporting(true);
-    try {
-      const text = await file.text();
-      const config = JSON.parse(text);
-      localConfig.importConfig(config);
-      toast.success('Configuration imported. Please refresh.');
-      setTimeout(() => window.location.reload(), 1500);
-    } catch { toast.error('Failed to import configuration'); }
-    setConfigImporting(false);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        const result = localConfig.importConfig(data);
+        if (result.success) {
+          toast.success('Configuration imported. Please refresh the page.');
+        } else {
+          toast.error(`Import failed: ${result.error}`);
+        }
+      } catch (err) {
+        toast.error('Invalid configuration file');
+      }
+    };
+    reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -102,13 +112,13 @@ export function SettingsPanel({ onSettingsUpdate, storageConfig }: SettingsPanel
             </p>
           </div>
           <div className="flex gap-3">
-            <Button onClick={handleExportConfig} disabled={configExporting} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={handleExport} disabled={configExporting} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
               {configExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Export
             </Button>
             <Button variant="outline" disabled={configImporting} className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700" onClick={() => fileInputRef.current?.click()}>
               {configImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}Import
             </Button>
-            <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportConfig} />
+            <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
           </div>
         </CardContent>
       </Card>
@@ -180,7 +190,9 @@ export function SettingsPanel({ onSettingsUpdate, storageConfig }: SettingsPanel
                   size="sm" 
                   className="h-9 px-3 border-slate-200 dark:border-slate-700"
                   onClick={() => {
-                    const secret = 'jira-etl-secret-' + Math.random().toString(36).substring(7);
+                    const array = new Uint8Array(16);
+                    window.crypto.getRandomValues(array);
+                    const secret = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
                     setSettings({ ...settings, webhooks: { ...settings.webhooks, secret } });
                     toast.info('New secret generated');
                   }}

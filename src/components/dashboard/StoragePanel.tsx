@@ -164,8 +164,8 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
     if (!pgForm.name || !pgForm.host || !pgForm.database || !pgForm.username) {
       toast.error('Name, host, database, and username are required'); return;
     }
-    const all = localConfig.getPgConnections();
-    const newConn: PgConnection = {
+    const allConns = localConfig.getPgConnections();
+    const pgConnection: PgConnection = {
       id: editingPgId || crypto.randomUUID(),
       name: pgForm.name,
       host: pgForm.host,
@@ -177,10 +177,22 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
       schemaName: pgForm.schemaName,
       tableName: pgForm.tableName,
       isActive: true,
+      hasPassword: !!pgForm.password
     };
-    const updated = editingPgId ? all.map(c => c.id === editingPgId ? newConn : c) : [...all, newConn];
-    localConfig.savePgConnections(updated);
-    setPgConnections(updated);
+    
+    const configToSave = { ...pgConnection };
+    delete (configToSave as any).password;
+    
+    const updatedConns = editingPgId 
+      ? allConns.map(c => c.id === editingPgId ? pgConnection : c) 
+      : [...allConns, pgConnection];
+      
+    const persistentConns = editingPgId
+      ? allConns.map(c => c.id === editingPgId ? configToSave : c)
+      : [...allConns, configToSave];
+
+    localConfig.savePgConnections(persistentConns as any);
+    setPgConnections(updatedConns);
     toast.success('PostgreSQL connection saved');
     setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
     setEditingPgId(null);
@@ -409,6 +421,13 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
                               const updated = pgConnections.filter(c => c.id !== conn.id);
                               localConfig.savePgConnections(updated);
                               setPgConnections(updated);
+                              
+                              const cfg = localConfig.getStorageConfig();
+                              if (cfg.connectionId === conn.id) {
+                                localConfig.saveStorageConfig({ ...cfg, connectionId: undefined });
+                              }
+                              
+                              toast.success('Connection deleted');
                             }
                           }}
                           className="text-[10px] h-7 px-2 flex-1 border-red-200 dark:border-red-900/30 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"

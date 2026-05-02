@@ -252,7 +252,7 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">Formula DSL Preview</Label>
-                    <Button variant="ghost" size="sm" className="h-6 text-xs text-slate-500" onClick={() => setBuilderData({ ...builderData, formula: generateFormula() })}><RefreshCw className="h-3 w-3 mr-1" /> Regnerate</Button>
+                    <Button variant="ghost" size="sm" className="h-6 text-xs text-slate-500" onClick={() => setBuilderData({ ...builderData, formula: generateFormula() })}><RefreshCw className="h-3 w-3 mr-1" /> Regenerate</Button>
                   </div>
                   <textarea className="w-full min-h-[60px] rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" placeholder={generateFormula()} value={builderData.formula || generateFormula()} onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })} />
                 </div>

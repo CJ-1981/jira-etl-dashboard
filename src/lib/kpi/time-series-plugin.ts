@@ -129,7 +129,7 @@ export const slaByStatusExclCloneTrendPlugin: KpiPlugin = {
  * Cumulative Flow Diagram (CFD) - Stacked area chart of ticket status over time
  */
 export const cumulativeFlowPlugin: KpiPlugin = {
-  id: 'cumulative_flow',
+  id: 'cumulative_flow_trend',
   name: 'Cumulative Flow Diagram',
   description: 'Number of tickets in each status over time (stacked area chart)',
   category: 'throughput',
@@ -782,17 +782,17 @@ function getPeriodKey(date: Date, interval: TimeInterval): string {
  * Get the end date of a time period
  */
 function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
-  const [yearStr, rest] = periodKey.split('-');
-  const year = parseInt(yearStr, 10);
+  const parts = periodKey.split('-');
+  const year = parseInt(parts[0], 10);
 
   switch (interval) {
     case 'daily':
-      return new Date(year, parseInt(rest.split('-')[0], 10) - 1, parseInt(rest.split('-')[1], 10));
+      return new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
     case 'weekly':
-      const week = parseInt(rest.replace('W', ''), 10);
+      const week = parseInt(parts[1].replace('W', ''), 10);
       return getWeekEndDate(year, week);
     case 'monthly':
-      const month = parseInt(rest, 10);
+      const month = parseInt(parts[1], 10);
       return new Date(year, month, 0); // Last day of month
     default:
       return new Date();

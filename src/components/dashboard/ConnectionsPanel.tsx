@@ -217,39 +217,36 @@ export function ConnectionsPanel({ connections, setConnections, activeConnection
     }
 
     try {
-      await fetch(`/api/jira/master/${id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', storageConfig })
-      });
-      await fetch(`/api/jira/extract/cleanup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig })
-      });
+      const res = await fetch(`/api/jira/connections/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Delete failed');
 
       const updatedConns = connections.filter(c => c.id !== id);
       localConfig.saveJiraConnections(updatedConns);
       setConnections(updatedConns);
 
-      toast.success(`Connection "${connection.name}" and its database data deleted`);
+      toast.success(`Connection deleted`);
       if (activeConnectionId === id) {
         setActiveConnectionId(updatedConns.length > 0 ? updatedConns[0].id : '');
       }
-    } catch (error) {
-      toast.error('Failed to clean up server-side data');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete connection');
     }
   };
 
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
-    if (active.id !== over.id) {
+    if (!over || active.id === over.id) return;
+    
+    try {
       const oldIndex = connections.findIndex((c) => c.id === active.id);
       const newIndex = connections.findIndex((c) => c.id === over.id);
       const newConnections = arrayMove(connections, oldIndex, newIndex);
       setConnections(newConnections);
       localConfig.saveJiraConnections(newConnections);
       toast.success('Connections reordered');
+    } catch (e) {
+      toast.error('Failed to reorder connections');
     }
   };
 

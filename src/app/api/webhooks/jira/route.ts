@@ -1,13 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { db as prisma } from '@/lib/db';
+import crypto from 'crypto';
 
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const connectionId = searchParams.get('connectionId');
-    
+    const incomingSecret = req.headers.get('x-jira-webhook-secret') || searchParams.get('secret');
+
     if (!connectionId) {
-      return NextResponse.json({ error: 'Missing connectionId parameter' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Missing connectionId' }, { status: 400 });
+    }
+
+    // Verify webhook secret
+    const expectedSecret = process.env.JIRA_WEBHOOK_SECRET;
+    if (expectedSecret) {
+      if (!incomingSecret) {
+        return NextResponse.json({ success: false, error: 'Unauthorized: Missing secret' }, { status: 401 });
+      }
+      
+      const expectedBuffer = Buffer.from(expectedSecret);
+      const incomingBuffer = Buffer.from(incomingSecret);
+      
+      if (expectedBuffer.length !== incomingBuffer.length || !crypto.timingSafeEqual(expectedBuffer, incomingBuffer)) {
+        return NextResponse.json({ success: false, error: 'Unauthorized: Invalid secret' }, { status: 401 });
+      }
     }
 
     const payload = await req.json();
@@ -47,7 +64,7 @@ export async function POST(req: NextRequest) {
         updated: updatedDate,
         resolved: resolvedDate,
         dueDate: dueDate,
-        storyPoints: fields.customfield_10016 || fields.storyPoints || null, // Common SP fields
+        storyPoints: fields.customfield_10016 ?? fields.customfield_10002 ?? fields.storyPoints ?? null,
         labels: JSON.stringify(fields.labels || []),
         components: JSON.stringify((fields.components || []).map((c: any) => c.name)),
         rawData: JSON.stringify(issue),
@@ -66,7 +83,7 @@ export async function POST(req: NextRequest) {
         updated: updatedDate,
         resolved: resolvedDate,
         dueDate: dueDate,
-        storyPoints: fields.customfield_10016 || fields.storyPoints || null,
+        storyPoints: fields.customfield_10016 ?? fields.customfield_10002 ?? fields.storyPoints ?? null,
         labels: JSON.stringify(fields.labels || []),
         components: JSON.stringify((fields.components || []).map((c: any) => c.name)),
         rawData: JSON.stringify(issue),

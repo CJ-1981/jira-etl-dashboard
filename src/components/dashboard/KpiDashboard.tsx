@@ -71,7 +71,7 @@ import {
   Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
   Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
-  ArrowUp, Search, ChevronDown,
+  ArrowUp, Search, ChevronDown, Database, Filter,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
@@ -452,93 +452,101 @@ export function KpiDashboard({
                   </UITooltip>
                 )}
               </div>
-              <div className="flex items-center gap-3 no-print">
-              <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800">
-                <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8 gap-2 text-[11px] font-bold border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10">
-                      <Zap className="h-3.5 w-3.5" />
-                      Saved Views
-                      {presets.length > 0 && <Badge className="ml-1 h-4 min-w-[16px] px-1 bg-emerald-500">{presets.length}</Badge>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
-                    </div>
-                    <div className="p-2 max-h-[300px] overflow-y-auto">
-                      {presets.length === 0 ? (
-                        <div className="py-8 text-center">
-                          <p className="text-xs text-slate-400 italic">No saved views yet</p>
+              
+              <div className="flex flex-wrap items-center gap-4">
+                {masterDatasetInfo?.dateRange?.from && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-full">
+                    <Database className="h-3 w-3 text-blue-500" />
+                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tight">
+                      Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} — {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-3 no-print">
+                  <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800">
+                    <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 gap-2 text-[11px] font-bold border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10">
+                          <Zap className="h-3.5 w-3.5" />
+                          Saved Views
+                          {presets.length > 0 && <Badge className="ml-1 h-4 min-w-[16px] px-1 bg-emerald-500">{presets.length}</Badge>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
                         </div>
-                      ) : (
-                        <div className="space-y-1">
-                          {presets.map(p => (
-                            <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
-                                <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
-                              </div>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500" 
-                                onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                        <div className="p-2 max-h-[300px] overflow-y-auto">
+                          {presets.length === 0 ? (
+                            <div className="py-8 text-center">
+                              <p className="text-xs text-slate-400 italic">No saved views yet</p>
                             </div>
-                          ))}
+                          ) : (
+                            <div className="space-y-1">
+                              {presets.map(p => (
+                                <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
+                                    <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
+                                  </div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500" 
+                                    onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                      <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
-                      <div className="flex gap-2">
-                        <Input 
-                          placeholder="View Name..." 
-                          value={newPresetName} 
-                          onChange={(e) => setNewPresetName(e.target.value)}
-                          className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
-                        />
-                        <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                          <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
+                          <div className="flex gap-2">
+                            <Input 
+                              placeholder="View Name..." 
+                              value={newPresetName} 
+                              onChange={(e) => setNewPresetName(e.target.value)}
+                              className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                            />
+                            <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                        <Calendar className="h-3.5 w-3.5" />
                       </div>
+                      <Input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
+                      />
                     </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-
-              <div className="flex items-center gap-2">
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                    <Calendar className="h-3.5 w-3.5" />
+                    <span className="text-slate-300 dark:text-slate-700">to</span>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                        <Calendar className="h-3.5 w-3.5" />
+                      </div>
+                      <Input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
+                      />
+                    </div>
                   </div>
-                  <Input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
-                  />
-                </div>
-                <span className="text-slate-300 dark:text-slate-700">to</span>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                    <Calendar className="h-3.5 w-3.5" />
-                  </div>
-                  <Input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
-                  />
                 </div>
               </div>
-            </div>
-
-            <div className="flex-none pb-0.5">
-
             </div>
 
             <div className="flex-1 min-w-[300px]">
@@ -552,16 +560,27 @@ export function KpiDashboard({
                   { label: '90D', days: 90 },
                   { label: '180D', days: 180 },
                   { label: '1Y', days: 365 },
+                  { label: 'MAX', days: 0 },
                 ].map((p) => {
                   const today = new Date();
-                  const targetStart = new Date();
+                  today.setHours(23, 59, 59, 999);
+                  
+                  const targetStart = new Date(today);
                   targetStart.setDate(today.getDate() - p.days);
+                  targetStart.setHours(0, 0, 0, 0);
+
                   const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
-                  const isAvailable = !masterStart || targetStart >= masterStart;
+                  const masterStartNormalized = masterStart ? new Date(masterStart) : null;
+                  if (masterStartNormalized) masterStartNormalized.setHours(0, 0, 0, 0);
+
+                  const isAvailable = p.label === 'MAX' ? !!masterStartNormalized : (!masterStartNormalized || targetStart >= masterStartNormalized);
                   
                   const todayStr = today.toISOString().split('T')[0];
                   const startStr = targetStart.toISOString().split('T')[0];
-                  const isActive = dateTo === todayStr && dateFrom === startStr;
+                  
+                  const isActive = p.label === 'MAX' 
+                    ? (masterStart && dateFrom === new Date(masterStart).toISOString().split('T')[0])
+                    : (dateTo === todayStr && dateFrom === startStr);
 
                   return (
                     <Button
@@ -569,8 +588,13 @@ export function KpiDashboard({
                       variant={isActive ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => {
-                        setDateFrom(startStr);
-                        setDateTo(todayStr);
+                        if (p.label === 'MAX' && masterDatasetInfo?.dateRange) {
+                          setDateFrom(new Date(masterDatasetInfo.dateRange.from).toISOString().split('T')[0]);
+                          setDateTo(new Date(masterDatasetInfo.dateRange.to || Date.now()).toISOString().split('T')[0]);
+                        } else {
+                          setDateFrom(startStr);
+                          setDateTo(todayStr);
+                        }
                       }}
                       className={`h-8 px-3 text-[10px] font-bold transition-all ${
                         isActive 

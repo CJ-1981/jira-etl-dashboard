@@ -21,6 +21,7 @@ export interface PgConnection {
   schemaName: string;
   tableName: string;
   isActive: boolean;
+  hasPassword?: boolean;
 }
 
 
@@ -148,7 +149,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   webhooks: {
     enabled: false,
-    secret: 'jira-etl-secret-' + Math.random().toString(36).substring(7),
+    secret: 'jira-etl-secret-' + (typeof window !== 'undefined' && window.crypto ? Array.from(window.crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('') : Math.random().toString(36).substring(7)),
   },
 };
 
