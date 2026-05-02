@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   transformForBarChart,
   transformForPieChart,
@@ -12,6 +13,8 @@ import {
   CHART_COLORS,
 } from '@/lib/chart-data-utils';
 import { KpiDataTable } from './KpiDataTable';
+import { KpiErrorBoundary } from './KpiErrorBoundary';
+import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -110,7 +113,6 @@ export function KpiDashboard({
   connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults, storageConfig,
   globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions, charts, setCharts, jqlQuery, setJqlQuery, filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar, onPrint
 }: KpiDashboardProps) {
-  const [calculating, setCalculating] = useState(false);
   const isFirstRender = useRef(true);
 
   // ─── Period Analysis Helpers ──────────────────────────────────────────────
@@ -264,11 +266,10 @@ export function KpiDashboard({
     setDrillDownTitle(title);
   };
 
-  const runCalculation = useCallback(async () => {
-    if (!activeConnectionId) return;
-    setCalculating(true);
-    // setKpiResults([]); // Keep existing results while calculating for better UX
-    try {
+  const { data: calculationData, isLoading: calculating, refetch: runCalculation } = useQuery({
+    queryKey: ['kpis', activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, masterDatasetInfo?.issues?.length],
+    queryFn: async () => {
+      if (!activeConnectionId) return null;
       const res = await fetch('/api/kpi/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -284,26 +285,25 @@ export function KpiDashboard({
         })
       });
       const data = await res.json();
-      if (data.success) {
-        const processedResults = data.results.map((r: any) => ({
-          ...r,
-          results: r.results.map((res: any) => ({
-            ...res,
-            unit: res.unit || '',
-            value: typeof res.value === 'number' ? res.value : 0
-          }))
-        }));
-        setKpiResults(processedResults);
-      } else {
-        toast.error(data.error || 'Calculation failed');
-      }
-    } catch (err) {
-      console.error('Calculation error:', err);
-      toast.error('Failed to calculate KPIs');
-    } finally {
-      setCalculating(false);
+      if (!data.success) throw new Error(data.error || 'Calculation failed');
+      return data.results.map((r: any) => ({
+        ...r,
+        results: r.results.map((res: any) => ({
+          ...res,
+          unit: res.unit || '',
+          value: typeof res.value === 'number' ? res.value : 0
+        }))
+      }));
+    },
+    enabled: !!activeConnectionId && !!masterDatasetInfo?.issues,
+    refetchInterval: settings?.webhooks?.enabled ? 30000 : false, // Refetch every 30s if webhooks are enabled
+  });
+
+  useEffect(() => {
+    if (calculationData) {
+      setKpiResults(calculationData);
     }
-  }, [activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, setKpiResults, masterDatasetInfo]);
+  }, [calculationData, setKpiResults]);
 
   const handleExportKpis = () => {
     const rows: string[][] = [['Metric', 'Value', 'Unit', 'Category']];
@@ -888,16 +888,17 @@ export function KpiDashboard({
               {mainKpis.map((kpi) => kpi.results.map((result: any, idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
                 return (
-                  <KpiCard 
-                    key={`${kpi.pluginId}-${idx}`} 
-                    result={result} 
-                    pluginId={kpi.pluginId} 
-                    onHide={() => toggleDimension(kpi.pluginId, '')}
-                    settings={settings}
-                    onClick={result.ticketKeys ? () => {
-                      handleDrillDown(result.ticketKeys || [], result.name);
-                    } : undefined}
-                  />
+                  <KpiErrorBoundary key={`${kpi.pluginId}-${idx}`} name={result.name}>
+                    <KpiCard 
+                      result={result} 
+                      pluginId={kpi.pluginId} 
+                      onHide={() => toggleDimension(kpi.pluginId, '')}
+                      settings={settings}
+                      onClick={result.ticketKeys ? () => {
+                        handleDrillDown(result.ticketKeys || [], result.name);
+                      } : undefined}
+                    />
+                  </KpiErrorBoundary>
                 );
               }))}
             </div>
@@ -1256,34 +1257,41 @@ export function KpiDashboard({
               Displaying {(drillDownKeys as any)?.length || 0} issues comprising this metric
             </SheetDescription>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-            <div className="space-y-3">
-              {drillDownKeys && drillDownKeys.map(key => {
-                const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
-                if (!issue) return null;
-                
-                const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
-                const baseUrl = activeConnection?.baseUrl || '';
-                const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-                const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+          <div className="flex-1 overflow-hidden">
+            {drillDownKeys && (
+              <Virtuoso
+                style={{ height: '100%' }}
+                totalCount={drillDownKeys.length}
+                itemContent={(index) => {
+                  const key = drillDownKeys[index];
+                  const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
+                  if (!issue) return null;
+                  
+                  const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
+                  const baseUrl = activeConnection?.baseUrl || '';
+                  const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+                  const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
 
-                return (
-                  <div key={key} className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 group hover:border-blue-500/30 transition-all">
-                    <div className="flex items-start justify-between gap-3 mb-1">
-                      <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-mono font-bold text-blue-500 hover:underline flex items-center gap-1">
-                        {key} <ExternalLink className="h-3 w-3" />
-                      </a>
-                      <Badge variant="outline" className="text-[10px] h-4 py-0">{issue.fields?.status?.name || issue.status}</Badge>
+                  return (
+                    <div className="px-4 pb-3">
+                      <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 group hover:border-blue-500/30 transition-all">
+                        <div className="flex items-start justify-between gap-3 mb-1">
+                          <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-mono font-bold text-blue-500 hover:underline flex items-center gap-1">
+                            {key} <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <Badge variant="outline" className="text-[10px] h-4 py-0">{issue.fields?.status?.name || issue.status}</Badge>
+                        </div>
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 mb-2">{issue.fields?.summary || issue.summary}</p>
+                        <div className="flex items-center gap-4 text-[10px] text-slate-500">
+                          <div className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</div>
+                          <div className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</div>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 mb-2">{issue.fields?.summary || issue.summary}</p>
-                    <div className="flex items-center gap-4 text-[10px] text-slate-500">
-                      <div className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</div>
-                      <div className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                }}
+              />
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -2157,15 +2165,13 @@ function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRe
             <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Width</Label>
             <Select
               value={config.width}
-              onValueChange={(width: 'sm' | 'md' | 'lg' | 'full') => onChange(config.id, { ...config, width })}
+              onValueChange={(width: 'md' | 'full') => onChange(config.id, { ...config, width })}
             >
               <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sm">Narrow</SelectItem>
                 <SelectItem value="md">Medium</SelectItem>
-                <SelectItem value="lg">Wide</SelectItem>
                 <SelectItem value="full">Full</SelectItem>
               </SelectContent>
             </Select>

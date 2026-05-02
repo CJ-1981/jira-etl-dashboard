@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon 
 } from 'lucide-react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { localConfig, type AppSettings } from '@/lib/config/local-store';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
@@ -18,6 +20,15 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
 import { ChartConfig, ExtractedIssue, JiraConnection } from '@/types/dashboard';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 export default function Home() {
   // Static server-safe defaults to prevent hydration mismatch
@@ -194,20 +205,19 @@ export default function Home() {
     localConfig.saveSettings(newSettings);
   };
 
-  if (!mounted) return null;
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-      <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
-        <div className="container max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-[1fr_auto_1fr] h-auto lg:h-16 items-center px-4 sm:px-6 lg:px-8 py-3 lg:py-0 gap-y-3 gap-x-2">
-          
-          {/* Left / Branding */}
-          <div className="flex items-center gap-3 min-w-0 col-span-1 justify-start">
-            <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0 flex items-center justify-center">
-              <Database className="h-5 w-5 text-white" />
-            </div>
-            <div className="flex flex-col gap-[3px] min-w-0 overflow-hidden">
-              <h1 className="text-sm font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate leading-[1.1]">
+    <QueryClientProvider client={queryClient}>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+        <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
+          <div className="container max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-[1fr_auto_1fr] h-auto lg:h-16 items-center px-4 sm:px-6 lg:px-8 py-3 lg:py-0 gap-y-3 gap-x-2">
+            
+            {/* Left / Branding */}
+            <div className="flex items-center gap-3 min-w-0 col-span-1 justify-start">
+              <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0 flex items-center justify-center">
+                <Database className="h-5 w-5 text-white" />
+              </div>
+              <div className="flex flex-col gap-[3px] min-w-0 overflow-hidden">
+                <h1 className="text-sm font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate leading-[1.1]">
                 Jira ETL Dashboard
               </h1>
               <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate leading-[1.1]">
@@ -425,7 +435,9 @@ export default function Home() {
             </Tabs>
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+        </main>
+      </div>
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }

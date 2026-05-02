@@ -61,6 +61,10 @@ export interface AppSettings {
   alerts: {
     thresholds: Record<string, { warning: number; critical: number; operator: '>' | '<' }>;
   };
+  webhooks: {
+    enabled: boolean;
+    secret: string;
+  };
 }
 
 export interface StorageConfig {
@@ -142,6 +146,10 @@ const DEFAULT_SETTINGS: AppSettings = {
       'avg_processing_hours': { warning: 40, critical: 80, operator: '>' },
     },
   },
+  webhooks: {
+    enabled: false,
+    secret: 'jira-etl-secret-' + Math.random().toString(36).substring(7),
+  },
 };
 
 const isBrowser = typeof window !== 'undefined';
@@ -182,6 +190,7 @@ export const localConfig = {
       persistence: { ...DEFAULT_SETTINGS.persistence, ...(s.persistence || {}) },
       sla: { ...DEFAULT_SETTINGS.sla, ...(s.sla || {}) },
       alerts: { ...DEFAULT_SETTINGS.alerts, ...(s.alerts || {}) },
+      webhooks: { ...DEFAULT_SETTINGS.webhooks, ...(s.webhooks || {}) },
     };
   },
   saveSettings: (s: Partial<AppSettings>) => {
