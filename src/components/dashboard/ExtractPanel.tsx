@@ -594,6 +594,11 @@ export const ExtractPanel = React.memo(function ExtractPanel({
                     <span className="text-slate-500">Next Run:</span>
                     <span className="text-slate-700 dark:text-slate-300 font-mono">{polling?.nextRunAt ? new Date(polling.nextRunAt).toLocaleTimeString() : '-'}</span>
                   </div>
+                  {polling?.lastError && (
+                    <div className="text-red-400 truncate mt-1 border-t border-red-500/10 pt-1">
+                      Error: {polling.lastError}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

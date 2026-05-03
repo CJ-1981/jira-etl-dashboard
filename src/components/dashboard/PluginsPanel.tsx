@@ -396,6 +396,7 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                               <div className="flex items-center gap-2">
                                 <h4 className="font-semibold text-sm">{plugin.name}</h4>
                                 <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">{plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}</Badge>
+                                {plugin.language === 'javascript' && <Badge variant="outline" className="text-[10px] text-yellow-500 border-yellow-500/30 py-0 h-4 px-1.5">JS</Badge>}
                               </div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p>
                             </div>

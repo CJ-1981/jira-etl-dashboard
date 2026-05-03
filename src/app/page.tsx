@@ -43,8 +43,6 @@ export default function Home() {
     }
   }, []);
 
-
-
   const [activeTab, setActiveTab] = useState('extract');
   const [connections, setConnections] = useState<JiraConnection[]>([]);
   const [extractionResult, setExtractionResult] = useState<{
