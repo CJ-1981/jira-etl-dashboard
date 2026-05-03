@@ -142,6 +142,12 @@ export default function Home() {
     loadMasterDataset(activeConnectionId, storageConfig);
   }, [activeConnectionId, mounted, loadMasterDataset]);
 
+  // Auto-reload data when storage provider/URL changes (e.g., switching Supabase <-> Local)
+  useEffect(() => {
+    if (!mounted || !activeConnectionId) return;
+    loadMasterDataset(activeConnectionId, storageConfig);
+  }, [storageConfig.provider, storageConfig.url, storageConfig.connectionId, activeConnectionId, mounted, loadMasterDataset]);
+
   useEffect(() => {
     if (!mounted) return;
     localStorage.setItem('jira-etl-theme', theme);
