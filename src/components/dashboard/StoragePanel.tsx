@@ -185,7 +185,7 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
       : [...allConns, pgConnection];
 
     localConfig.savePgConnections(persistentConns as any);
-    setPgConnections(updatedConns);
+    setPgConnections(persistentConns);
     toast.success('PostgreSQL connection saved');
     setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
     setEditingPgId(null);
