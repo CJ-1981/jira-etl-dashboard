@@ -390,6 +390,17 @@ export function KpiDashboard({
   const distributionKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
   const timeSeriesKpis = sortedKpiResults.filter((r: any) => isTimeSeriesPlugin(r.pluginId));
 
+  // Results specifically for the Table View (Metrics Overview)
+  // Excludes trend items (time series) and metrics with specific breakdown dimensions
+  const tableKpiResults = useMemo(() => {
+    return sortedKpiResults.filter((r: any) => 
+      !r.results[0]?.dimensions?.status && 
+      !r.results[0]?.dimensions?.priority && 
+      !r.results[0]?.dimensions?.assignee && 
+      !isTimeSeriesPlugin(r.pluginId)
+    );
+  }, [sortedKpiResults]);
+
   const filterOptions = useMemo(() => {
     const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>() };
     if (masterDatasetInfo?.issues) {
@@ -936,7 +947,7 @@ export function KpiDashboard({
             </div>
           ) : (
             <KpiDataTable 
-              results={kpiResults} 
+              results={tableKpiResults} 
               settings={settings} 
               onDrillDown={handleDrillDown} 
             />
