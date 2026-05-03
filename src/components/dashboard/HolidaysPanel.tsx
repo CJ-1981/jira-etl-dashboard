@@ -33,9 +33,17 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
   const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);
   const [loading, setLoading] = useState(false);
   const isMounted = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   // @MX:WARN: Cleanup ref to prevent state updates on unmounted component
-  useEffect(() => { return () => { isMounted.current = false; }; }, []);
+  useEffect(() => { 
+    return () => { 
+      isMounted.current = false; 
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    }; 
+  }, []);
 
   /**
    * @MX:ANCHOR: loadHolidays
@@ -43,9 +51,20 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
    */
   const loadHolidays = useCallback(async () => {
     if (!year) return;
+
+    // Abort previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     try {
-      const res = await fetch(`/api/holidays?year=${year}&region=${region}`);
+      const res = await fetch(`/api/holidays?year=${year}&region=${region}`, {
+        signal: controller.signal
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -53,7 +72,7 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
       
       const data = await res.json();
       
-      if (isMounted.current) {
+      if (isMounted.current && !controller.signal.aborted) {
         if (data.success) {
           setHolidays(data.holidays || []);
         } else {
@@ -62,14 +81,18 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
           toast.error(data.error || 'Failed to load holidays');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') return;
+      
       if (isMounted.current) {
         setHolidays([]);
         console.error('[Holidays] Fetch error:', error);
         toast.error('Failed to load holidays');
       }
     } finally {
-      if (isMounted.current) setLoading(false);
+      if (isMounted.current && !controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [year, region]);
   

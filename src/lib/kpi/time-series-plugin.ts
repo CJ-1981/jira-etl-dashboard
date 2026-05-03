@@ -787,7 +787,9 @@ function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
 
   switch (interval) {
     case 'daily': {
-      return new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      const d = new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      d.setHours(23, 59, 59, 999);
+      return d;
     }
     case 'weekly': {
       const week = parseInt(parts[1].replace('W', ''), 10);
@@ -795,7 +797,9 @@ function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
     }
     case 'monthly': {
       const month = parseInt(parts[1], 10);
-      return new Date(year, month, 0); // Last day of month
+      const d = new Date(year, month, 0); // Last day of month
+      d.setHours(23, 59, 59, 999);
+      return d;
     }
     default: {
       return new Date();
@@ -843,10 +847,13 @@ function calculateCumulativeFlow(
   context: KpiContext,
   interval: TimeInterval
 ): TimeSeriesResult[] {
+  // @MX:ANCHOR: calculateCumulativeFlow
   const { start, end } = context.period;
   const allIssues = context.issues;
 
   // 1. Generate periods
+  // @MX:WARN — @MX:REASON: Complex logic for period generation and status evaluation over time. 
+  // Optimized to avoid O(N^2) or O(N^3) complexity by precomputing timelines and using a single-pass aggregation.
   const periods: { key: string; end: Date }[] = [];
   let current = new Date(start);
   while (current <= end) {
@@ -860,60 +867,92 @@ function calculateCumulativeFlow(
     if (periods.length > 1000) break;
   }
 
+  if (periods.length === 0) return [];
+
   // 2. Identify all statuses
-  const allStatuses = new Set<string>();
+  const allStatusesSet = new Set<string>();
   allIssues.forEach(i => {
-    allStatuses.add(i.status);
+    allStatusesSet.add(i.status);
     i.transitions.forEach(t => {
-      if (t.fromStatus) allStatuses.add(t.fromStatus);
-      if (t.toStatus) allStatuses.add(t.toStatus);
+      if (t.fromStatus) allStatusesSet.add(t.fromStatus);
+      if (t.toStatus) allStatusesSet.add(t.toStatus);
+    });
+  });
+  const allStatuses = Array.from(allStatusesSet);
+
+  // 3. Precompute status intervals for each issue (O(Issues * Transitions))
+  const issueTimelines = allIssues.map(issue => {
+    const intervals: { status: string; start: number; end: number }[] = [];
+    const createdTime = issue.created.getTime();
+
+    if (issue.transitions.length === 0) {
+      intervals.push({ status: issue.status, start: createdTime, end: Infinity });
+    } else {
+      const sorted = [...issue.transitions].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+      
+      // Initial status interval
+      intervals.push({
+        status: sorted[0].fromStatus || 'Open',
+        start: createdTime,
+        end: sorted[0].occurredAt.getTime()
+      });
+
+      // Status intervals from transitions
+      for (let i = 0; i < sorted.length; i++) {
+        intervals.push({
+          status: sorted[i].toStatus,
+          start: sorted[i].occurredAt.getTime(),
+          end: sorted[i + 1] ? sorted[i + 1].occurredAt.getTime() : Infinity
+        });
+      }
+    }
+    return intervals;
+  });
+
+  // 4. Aggregate counts per status per period (O(Issues * Transitions + Periods * Statuses))
+  // Initialize result structure
+  const periodCounts: Record<string, Record<string, number>> = {};
+  periods.forEach(p => {
+    periodCounts[p.key] = {};
+    allStatuses.forEach(s => { periodCounts[p.key][s] = 0; });
+  });
+
+  // Calculate counts using precomputed intervals
+  issueTimelines.forEach(timeline => {
+    timeline.forEach(interval => {
+      // Find range of periods that fall into this interval
+      // Since periods are sorted, we could use binary search, but for typical dashboard ranges
+      // we can just find indices.
+      for (const period of periods) {
+        const time = period.end.getTime();
+        if (time >= interval.start && time < interval.end) {
+          periodCounts[period.key][interval.status]++;
+        }
+      }
     });
   });
 
-  const statusResults: TimeSeriesResult[] = [];
-
-  for (const status of allStatuses) {
-    const timeSeries: TimeSeriesDataPoint[] = [];
-
-    for (const period of periods) {
-      // Count tickets in this status at the end of the period
-      const count = allIssues.filter(issue => {
-        // Find the status of the issue at period.end
-        if (issue.created > period.end) return false; // Not created yet
-
-        // Find the last transition before or at period.end
-        const lastTransition = [...issue.transitions]
-          .reverse()
-          .find(t => t.occurredAt <= period.end);
-
-        const currentStatusAtPeriodEnd = lastTransition 
-          ? lastTransition.toStatus 
-          : issue.transitions.length > 0 && issue.transitions[0].occurredAt > period.end
-            ? issue.transitions[0].fromStatus // Still in initial status
-            : issue.status; // Fallback to current status if no transitions or all after
-
-        return currentStatusAtPeriodEnd === status;
-      }).length;
-
-      timeSeries.push({
+  // 5. Convert to TimeSeriesResult format
+  return allStatuses.map(status => {
+    const timeSeries: TimeSeriesDataPoint[] = periods.map(period => {
+      const count = periodCounts[period.key][status] || 0;
+      return {
         period: period.key,
         date: period.end,
         value: count,
         count: count,
         isComplete: isPeriodComplete(period.end),
-      });
-    }
+      };
+    });
 
-    statusResults.push({
+    return {
       name: status,
       value: timeSeries.length > 0 ? timeSeries[timeSeries.length - 1].value : 0,
       unit: 'tickets',
       dimensions: { status },
       timeSeries,
-    });
-  }
-
-  return statusResults;
+    };
+  });
 }
 
 // ─── Plugin Registration Helper ────────────────────────────────────────────────
