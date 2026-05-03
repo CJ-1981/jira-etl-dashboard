@@ -223,8 +223,8 @@ export default function Home() {
             
             {/* Left / Branding */}
             <div className="flex items-center gap-3 min-w-0 col-span-1 justify-start">
-              <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0 flex items-center justify-center">
-                <Zap className="h-5 w-5 text-white" />
+              <div className="bg-slate-900 p-1.5 rounded-lg shadow-lg shadow-yellow-500/20 shrink-0 flex items-center justify-center border border-yellow-500/20">
+                <Zap className="h-5 w-5 text-yellow-400 fill-yellow-400" />
               </div>
               <div className="flex flex-col gap-[3px] min-w-0 overflow-hidden">
                 <h1 className="text-sm font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate leading-[1.1]">
@@ -293,7 +293,7 @@ export default function Home() {
               <div className="flex justify-center no-print">
                 <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                   <TabsTrigger value="jira-etl" className="gap-2 px-6">
-                    <Zap className="h-4 w-4" />
+                    <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
                     Jira Extraction
                   </TabsTrigger>
                   <TabsTrigger value="db-export" className="gap-2 px-6">
