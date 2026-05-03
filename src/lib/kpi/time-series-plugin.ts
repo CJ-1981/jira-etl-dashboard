@@ -786,16 +786,20 @@ function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
   const year = parseInt(parts[0], 10);
 
   switch (interval) {
-    case 'daily':
+    case 'daily': {
       return new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-    case 'weekly':
+    }
+    case 'weekly': {
       const week = parseInt(parts[1].replace('W', ''), 10);
       return getWeekEndDate(year, week);
-    case 'monthly':
+    }
+    case 'monthly': {
       const month = parseInt(parts[1], 10);
       return new Date(year, month, 0); // Last day of month
-    default:
+    }
+    default: {
       return new Date();
+    }
   }
 }
 

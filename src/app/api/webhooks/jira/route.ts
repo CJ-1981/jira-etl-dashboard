@@ -98,8 +98,8 @@ export async function POST(req: NextRequest) {
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
-    console.error('[Webhook Error]', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[Webhook Error]', error, error.stack);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

@@ -23,26 +23,54 @@ interface HolidaysPanelProps {
   setRegion: (region: string) => void;
 }
 
+/**
+ * @MX:NOTE: German Holiday Calendar component
+ * Displays national and regional holidays for a selected year and state.
+ */
 export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
+  // @MX:TODO: Add validation for year range and support for multiple regions
   const [year, setYear] = useState<number | undefined>(new Date().getFullYear());
   const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);
   const [loading, setLoading] = useState(false);
   const isMounted = useRef(true);
+  
+  // @MX:WARN: Cleanup ref to prevent state updates on unmounted component
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
 
+  /**
+   * @MX:ANCHOR: loadHolidays
+   * Fetches holiday data from the API with proper error handling and mounting guards.
+   */
   const loadHolidays = useCallback(async () => {
     if (!year) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/holidays?year=${year}&region=${region}`);
-      const data = await res.json();
-      if (isMounted.current && data.success) {
-        setHolidays(data.holidays);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
       }
-    } catch {
-      if (isMounted.current) toast.error('Failed to load holidays');
+      
+      const data = await res.json();
+      
+      if (isMounted.current) {
+        if (data.success) {
+          setHolidays(data.holidays || []);
+        } else {
+          setHolidays([]);
+          console.error('[Holidays] API returned unsuccessful payload:', data);
+          toast.error(data.error || 'Failed to load holidays');
+        }
+      }
+    } catch (error) {
+      if (isMounted.current) {
+        setHolidays([]);
+        console.error('[Holidays] Fetch error:', error);
+        toast.error('Failed to load holidays');
+      }
+    } finally {
+      if (isMounted.current) setLoading(false);
     }
-    if (isMounted.current) setLoading(false);
   }, [year, region]);
   
   useEffect(() => { loadHolidays(); }, [loadHolidays]);
@@ -75,7 +103,6 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Regions</SelectItem>
                   {GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -86,10 +113,10 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
       </Card>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50"><CardHeader><CardTitle className="text-lg flex items-center gap-2"><Badge className="bg-emerald-100 dark:bg-emerald-500/10 text-emerald-400 border-emerald-500/30">National</Badge>({national.length})</CardTitle></CardHeader>
-          <CardContent><div className="space-y-1">{loading ? [1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full bg-gray-100 dark:bg-slate-800" />) : national.map((h, i) => (<div key={i} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-50 dark:bg-slate-800/50"><div><p className="text-sm font-medium">{h.name}</p><p className="text-xs text-slate-400 dark:text-slate-500">{h.nameLocal}</p></div><Badge variant="outline" className="text-xs font-mono">{h.date}</Badge></div>))}</div></CardContent>
+          <CardContent><div className="space-y-1">{loading ? [1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full bg-gray-100 dark:bg-slate-800" />) : national.map((h) => (<div key={`${h.date}-${h.name}`} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-50 dark:bg-slate-800/50"><div><p className="text-sm font-medium">{h.name}</p><p className="text-xs text-slate-400 dark:text-slate-500">{h.nameLocal}</p></div><Badge variant="outline" className="text-xs font-mono">{h.date}</Badge></div>))}</div></CardContent>
         </Card>
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50"><CardHeader><CardTitle className="text-lg flex items-center gap-2"><Badge className="bg-purple-50 dark:bg-purple-500/10 text-purple-400 border-purple-500/30">Regional</Badge>({regional.length})</CardTitle></CardHeader>
-          <CardContent>{regional.length === 0 ? <div className="text-center py-12 text-slate-400 dark:text-slate-500"><Calendar className="h-10 w-10 mx-auto mb-2 opacity-30" /><p className="text-sm">No regional holidays for this selection</p></div> : <div className="space-y-1">{regional.map((h, i) => (<div key={i} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-50 dark:bg-slate-800/50"><div><p className="text-sm font-medium">{h.name}</p><p className="text-xs text-slate-400 dark:text-slate-500">{h.nameLocal} {h.regions.length > 0 && <span className="text-purple-400">({h.regions.join(', ')})</span>}</p></div><Badge variant="outline" className="text-xs font-mono">{h.date}</Badge></div>))}</div>}</CardContent>
+          <CardContent>{regional.length === 0 ? <div className="text-center py-12 text-slate-400 dark:text-slate-500"><Calendar className="h-10 w-10 mx-auto mb-2 opacity-30" /><p className="text-sm">No regional holidays for this selection</p></div> : <div className="space-y-1">{regional.map((h) => (<div key={`${h.date}-${h.name}`} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-50 dark:bg-slate-800/50"><div><p className="text-sm font-medium">{h.name}</p><p className="text-xs text-slate-400 dark:text-slate-500">{h.nameLocal} {h.regions.length > 0 && <span className="text-purple-400">({h.regions.join(', ')})</span>}</p></div><Badge variant="outline" className="text-xs font-mono">{h.date}</Badge></div>))}</div>}</CardContent>
         </Card>
       </div>
     </div>
