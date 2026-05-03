@@ -497,72 +497,70 @@ export const ExtractPanel = React.memo(function ExtractPanel({
             />
           </div>
 
-          <Button onClick={() => handleExtract()} disabled={extracting || !activeConnectionId || !dateFrom || !dateTo} className="w-full bg-emerald-600 hover:bg-emerald-700">
-            {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting Issues...</> : <><RefreshCw className="mr-2 h-4 w-4" />Run Jira Extraction</>}
-          </Button>
-        </CardContent>
-      </Card>
+          <Separator className="bg-slate-200 dark:bg-slate-800" />
 
-      <Card className="border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg"><RotateCw className="h-5 w-5 text-emerald-400" /> Quick Pull</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Auto-fill date range for a baseline data pull</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {quickPullButtons.map((btn) => {
-              const todayStr = new Date().toISOString().split('T')[0];
-              const isToday = dateTo === todayStr;
-              const fromDate = dateFrom ? new Date(dateFrom) : null;
-              const toDate = dateTo ? new Date(dateTo) : null;
-              const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-              const isActive = isToday && diffDays === btn.days;
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <RotateCw className="h-4 w-4 text-emerald-400" />
+              <Label className="text-sm font-semibold">Quick Date Selection</Label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {quickPullButtons.map((btn) => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const isToday = dateTo === todayStr;
+                const fromDate = dateFrom ? new Date(dateFrom) : null;
+                const toDate = dateTo ? new Date(dateTo) : null;
+                const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+                const isActive = isToday && diffDays === btn.days;
 
-              return (
-                <Button 
-                  key={btn.days} 
-                  variant={isActive ? "default" : "outline"} 
-                  className={`border-slate-200 dark:border-slate-700 text-sm ${
-                    isActive 
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
-                      : 'hover:bg-gray-200 dark:hover:bg-slate-700'
-                  }`} 
-                  onClick={() => handleQuickPull(btn.days)}
-                >
-                  {btn.label}
-                </Button>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-2">
-            <Input id="customDaysBack" type="number" placeholder="Custom days back" className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-40" min="1" />
-            <Button variant="outline" className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-100 dark:bg-emerald-500/10" onClick={handleCustomDaysBack}>
-              Pull Baseline
-            </Button>
-            {updateOnly && (
-              <Button 
-                variant="outline" 
-                className="border-blue-500/30 text-blue-400 hover:bg-blue-100 dark:bg-blue-500/10"
-                onClick={() => {
-                  const days = parseInt((document.getElementById('customDaysBack') as HTMLInputElement)?.value || '0', 10);
-                  if (days > 0) {
-                    handleExtract(days);
-                  } else {
-                    toast.error('Please enter a valid number of days');
-                  }
-                }}
-              >
-                Quick Update
+                return (
+                  <Button 
+                    key={btn.days} 
+                    variant={isActive ? "default" : "outline"} 
+                    size="sm"
+                    className={`h-8 text-[11px] border-slate-200 dark:border-slate-700 ${
+                      isActive 
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                        : 'hover:bg-gray-200 dark:hover:bg-slate-700'
+                    }`} 
+                    onClick={() => handleQuickPull(btn.days)}
+                  >
+                    {btn.label}
+                  </Button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <Input id="customDaysBack" type="number" placeholder="Days back" className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-28 h-8 text-xs" min="1" />
+              <Button variant="outline" size="sm" className="h-8 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-100 dark:bg-emerald-500/10" onClick={handleCustomDaysBack}>
+                Set Range
               </Button>
-            )}
+              {updateOnly && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="h-8 text-xs border-blue-500/30 text-blue-400 hover:bg-blue-100 dark:bg-blue-500/10"
+                  onClick={() => {
+                    const days = parseInt((document.getElementById('customDaysBack') as HTMLInputElement)?.value || '0', 10);
+                    if (days > 0) {
+                      handleExtract(days);
+                    } else {
+                      toast.error('Please enter a valid number of days');
+                    }
+                  }}
+                >
+                  Quick Update
+                </Button>
+              )}
+            </div>
           </div>
 
-          <Separator className="bg-emerald-500/10" />
+          <Separator className="bg-slate-200 dark:bg-slate-800" />
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="flex items-center gap-2 text-sm font-medium text-emerald-900 dark:text-emerald-400">
-                <Clock className="h-4 w-4" /> Scheduled Pulling
+              <Label className="flex items-center gap-2 text-sm font-semibold">
+                <Clock className="h-4 w-4 text-emerald-400" /> Scheduled Pulling
               </Label>
               <div className="flex items-center gap-2">
                 {polling?.enabled && (
@@ -575,10 +573,10 @@ export const ExtractPanel = React.memo(function ExtractPanel({
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex-1 min-w-[150px]">
+              <div className="flex-1 min-w-[120px]">
                 <Select value={pollInterval} onValueChange={(v) => { setPollInterval(v); if(pollEnabled) handleTogglePolling(true, v); }} disabled={pollSaving}>
-                  <SelectTrigger className="h-9 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                    <SelectValue placeholder="Select interval" />
+                  <SelectTrigger className="h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                    <SelectValue placeholder="Interval" />
                   </SelectTrigger>
                   <SelectContent>
                     {intervalOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
@@ -586,7 +584,7 @@ export const ExtractPanel = React.memo(function ExtractPanel({
                 </Select>
               </div>
 
-              <div className="flex-1 min-w-[200px] rounded-md bg-white dark:bg-slate-900 border border-emerald-500/10 p-2">
+              <div className="flex-1 min-w-[180px] rounded-md bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 p-2">
                 <div className="flex flex-col gap-1 text-[10px]">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Last Run:</span>
@@ -596,15 +594,14 @@ export const ExtractPanel = React.memo(function ExtractPanel({
                     <span className="text-slate-500">Next Run:</span>
                     <span className="text-slate-700 dark:text-slate-300 font-mono">{polling?.nextRunAt ? new Date(polling.nextRunAt).toLocaleTimeString() : '-'}</span>
                   </div>
-                  {polling?.lastError && (
-                    <div className="text-red-400 truncate mt-1 border-t border-red-500/10 pt-1">
-                      Error: {polling.lastError}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
           </div>
+
+          <Button onClick={() => handleExtract()} disabled={extracting || !activeConnectionId || !dateFrom || !dateTo} className="w-full bg-emerald-600 hover:bg-emerald-700 mt-2">
+            {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting Issues...</> : <><RefreshCw className="mr-2 h-4 w-4" />Run Jira Extraction</>}
+          </Button>
         </CardContent>
       </Card>
 

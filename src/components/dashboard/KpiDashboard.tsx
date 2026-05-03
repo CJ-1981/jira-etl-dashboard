@@ -368,13 +368,27 @@ export function KpiDashboard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [runCalculation, setFilterPanelOpen]);
 
-  const mainKpis = kpiResults.filter((r: any) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const assigneeKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const statusKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
-  const slaStatusKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
-  const priorityKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
-  const distributionKpis = kpiResults.filter((r: any) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
-  const timeSeriesKpis = kpiResults.filter((r: any) => isTimeSeriesPlugin(r.pluginId));
+  const sortedKpiResults = useMemo(() => {
+    const activeOrder = JSON.parse(typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') || '[]' : '[]');
+    if (activeOrder.length === 0) return kpiResults;
+
+    return [...kpiResults].sort((a, b) => {
+      const idxA = activeOrder.indexOf(a.pluginId);
+      const idxB = activeOrder.indexOf(b.pluginId);
+      if (idxA === -1 && idxB === -1) return 0;
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
+  }, [kpiResults]);
+
+  const mainKpis = sortedKpiResults.filter((r: any) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
+  const assigneeKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
+  const statusKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
+  const slaStatusKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
+  const priorityKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
+  const distributionKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
+  const timeSeriesKpis = sortedKpiResults.filter((r: any) => isTimeSeriesPlugin(r.pluginId));
 
   const filterOptions = useMemo(() => {
     const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>() };

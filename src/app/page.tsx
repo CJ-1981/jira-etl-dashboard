@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon 
+  Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon, Loader2 
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -70,9 +70,11 @@ export default function Home() {
   const [dashboardJqlQuery, setDashboardJqlQuery] = useState('');
   const [filterPanelOpen, setFilterPanelOpen] = useState(true);
   const [showFloatingBar, setShowFloatingBar] = useState(false);
+  const [isLoadingDb, setIsLoadingDb] = useState(false);
 
   const loadMasterDataset = useCallback(async (connectionId: string, config: any) => {
     if (!connectionId) return;
+    setIsLoadingDb(true);
     try {
       const res = await fetch(`/api/jira/master/${connectionId}`, {
         method: 'POST',
@@ -97,6 +99,8 @@ export default function Home() {
       }
     } catch (e) {
       console.error('Failed to auto-load master dataset:', e);
+    } finally {
+      setIsLoadingDb(false);
     }
   }, []);
 
@@ -437,6 +441,19 @@ export default function Home() {
         </Tabs>
         </main>
       </div>
+      
+      {isLoadingDb && (
+        <div className="fixed inset-0 z-[100] bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col items-center gap-4">
+            <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
+            <div className="text-center">
+              <h3 className="text-lg font-bold">Loading Database</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Restoring your master dataset...</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );

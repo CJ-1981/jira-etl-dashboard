@@ -24,8 +24,25 @@ import {
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
-  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders
+  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { localConfig, type KpiPlugin } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
 
@@ -43,11 +60,56 @@ interface PluginsPanelProps {
   setSettings: (settings: any) => void;
 }
 
+function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin, isActive: boolean, onToggle: () => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: plugin.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className={`rounded-lg border transition-colors ${isActive ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30'} p-3 flex items-center gap-3`}
+    >
+      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+        <GripVertical className="h-4 w-4" />
+      </div>
+      <Checkbox id={`order-plugin-${plugin.id}`} checked={isActive} onCheckedChange={onToggle} className="flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h4 className="font-semibold text-sm truncate">{plugin.name}</h4>
+          <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">{plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}</Badge>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{plugin.description}</p>
+      </div>
+      <Badge variant="outline" className="text-xs flex-shrink-0">{plugin.unit}</Badge>
+    </div>
+  );
+}
+
 export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: PluginsPanelProps) {
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [initialSettings, setInitialSettings] = useState<any>(settings);
   const [loading, setLoading] = useState(false);
-  const [activePlugins, setActivePlugins] = useState<Set<string>>(new Set());
+  const [activePlugins, setActivePlugins] = useState<string[]>([]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Unified Builder state
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -99,12 +161,12 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
         if (savedActivePlugins) {
           try {
             const activeIds = JSON.parse(savedActivePlugins) as string[];
-            setActivePlugins(new Set(activeIds));
+            setActivePlugins(activeIds);
           } catch (err) {
-            setActivePlugins(new Set(allPlugins.map(p => p.id)));
+            setActivePlugins(allPlugins.map(p => p.id));
           }
         } else {
-          setActivePlugins(new Set(allPlugins.map(p => p.id)));
+          setActivePlugins(allPlugins.map(p => p.id));
         }
       }
     } catch {
@@ -115,30 +177,47 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
 
   useEffect(() => { loadPlugins(); }, [loadPlugins]);
 
-  const saveActivePlugins = useCallback((pluginIds: Set<string>) => {
-    localStorage.setItem('cfg_active_plugins', JSON.stringify(Array.from(pluginIds)));
+  const saveActivePlugins = useCallback((pluginIds: string[]) => {
+    localStorage.setItem('cfg_active_plugins', JSON.stringify(pluginIds));
   }, []);
 
   const togglePlugin = useCallback((pluginId: string) => {
     setActivePlugins(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(pluginId)) newSet.delete(pluginId);
-      else newSet.add(pluginId);
-      saveActivePlugins(newSet);
-      return newSet;
+      let next;
+      if (prev.includes(pluginId)) {
+        next = prev.filter(id => id !== pluginId);
+      } else {
+        next = [...prev, pluginId];
+      }
+      saveActivePlugins(next);
+      return next;
     });
   }, [saveActivePlugins]);
 
   const selectAllPlugins = useCallback(() => {
     const allPluginIds = Object.values(plugins).flat().map(p => p.id);
-    setActivePlugins(new Set(allPluginIds));
-    saveActivePlugins(new Set(allPluginIds));
+    setActivePlugins(allPluginIds);
+    saveActivePlugins(allPluginIds);
   }, [plugins, saveActivePlugins]);
 
   const deselectAllPlugins = useCallback(() => {
-    setActivePlugins(new Set());
-    saveActivePlugins(new Set());
+    setActivePlugins([]);
+    saveActivePlugins([]);
   }, [saveActivePlugins]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setActivePlugins((items) => {
+        const oldIndex = items.indexOf(active.id as string);
+        const newIndex = items.indexOf(over.id as string);
+        const next = arrayMove(items, oldIndex, newIndex);
+        saveActivePlugins(next);
+        return next;
+      });
+    }
+  };
 
   const generateFormula = (): string => {
     const w = builderData;
@@ -282,41 +361,41 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-emerald-400" /> KPI Plugin Registry</CardTitle>
               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setBuilderOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />Create Plugin
+                <Plus className="mr-2 h-4 w-4" />Create
               </Button>
             </div>
+            <CardDescription>Select which KPIs to calculate and display</CardDescription>
           </CardHeader>
           <CardContent>
             {!loading && Object.keys(plugins).length > 0 && (
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                <Badge variant="outline" className="text-xs">{activePlugins.size} of {Object.values(plugins).flat().length} active</Badge>
+                <Badge variant="outline" className="text-xs">{activePlugins.length} active</Badge>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="text-xs" onClick={selectAllPlugins}><CheckCircle2 className="mr-1 h-3 w-3" />Select All</Button>
-                  <Button variant="outline" size="sm" className="text-xs" onClick={deselectAllPlugins}><XCircle className="mr-1 h-3 w-3" />Deselect All</Button>
+                  <Button variant="outline" size="sm" className="text-[10px] h-7 px-2" onClick={selectAllPlugins}>All</Button>
+                  <Button variant="outline" size="sm" className="text-[10px] h-7 px-2" onClick={deselectAllPlugins}>None</Button>
                 </div>
               </div>
             )}
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
-              <div className="space-y-3">
+              <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                 {Object.entries(plugins).map(([category, pluginList]) => (
                   <div key={category}>
                     <div className="flex items-center gap-2 mb-2"><Badge className={categoryLabels[category]?.color || categoryLabels['custom']?.color}>{categoryLabels[category]?.label || category}</Badge><span className="text-xs text-slate-400 dark:text-slate-500">{pluginList.length}</span></div>
                     <div className="space-y-2">{pluginList.map((plugin) => (
-                      <div key={plugin.id} className={`rounded-lg border transition-colors ${activePlugins.has(plugin.id) ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30'} p-3`}>
+                      <div key={plugin.id} className={`rounded-lg border transition-colors ${activePlugins.includes(plugin.id) ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30'} p-3`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3 flex-1">
-                            <Checkbox id={`plugin-${plugin.id}`} checked={!!activePlugins.has(plugin.id)} onCheckedChange={() => togglePlugin(plugin.id)} className="flex-shrink-0" />
+                            <Checkbox id={`plugin-${plugin.id}`} checked={activePlugins.includes(plugin.id)} onCheckedChange={() => togglePlugin(plugin.id)} className="flex-shrink-0" />
                             <div onClick={() => togglePlugin(plugin.id)} className="flex-1 cursor-pointer">
                               <div className="flex items-center gap-2">
                                 <h4 className="font-semibold text-sm">{plugin.name}</h4>
                                 <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">{plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}</Badge>
-                                {plugin.language === 'javascript' && <Badge variant="outline" className="text-[10px] text-yellow-500 border-yellow-500/30 py-0 h-4 px-1.5">JS</Badge>}
                               </div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p>
                             </div>
@@ -327,6 +406,47 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                     ))}</div>
                   </div>
                 ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Sliders className="h-5 w-5 text-emerald-400" /> KPI Display Order</CardTitle>
+            <CardDescription>Drag and drop to reorder active KPIs on the dashboard</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 overflow-hidden flex flex-col">
+            {activePlugins.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-12">
+                <Sliders className="h-10 w-10 mb-2 opacity-20" />
+                <p className="text-sm">No active plugins to reorder</p>
+              </div>
+            ) : (
+              <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar max-h-[600px]">
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext 
+                    items={activePlugins}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {activePlugins.map((id) => {
+                      const plugin = Object.values(plugins).flat().find(p => p.id === id);
+                      if (!plugin) return null;
+                      return (
+                        <SortablePluginItem 
+                          key={id} 
+                          plugin={plugin} 
+                          isActive={true} 
+                          onToggle={() => togglePlugin(id)} 
+                        />
+                      );
+                    })}
+                  </SortableContext>
+                </DndContext>
               </div>
             )}
           </CardContent>
