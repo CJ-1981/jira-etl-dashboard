@@ -70,14 +70,15 @@ export default function Home() {
   const [showFloatingBar, setShowFloatingBar] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
 
-  const loadMasterDataset = useCallback(async (connectionId: string, config: any) => {
+  const loadMasterDataset = useCallback(async (connectionId: string, config: any, signal?: AbortSignal) => {
     if (!connectionId) return;
     setIsLoadingDb(true);
     try {
       const res = await fetch(`/api/jira/master/${connectionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig: config })
+        body: JSON.stringify({ action: 'get', storageConfig: config }),
+        signal
       });
       const data = await res.json();
       if (data.success && data.data) {
@@ -95,7 +96,8 @@ export default function Home() {
           etlRunId: 'master'
         } as any);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e.name === 'AbortError') return;
       console.error('Failed to auto-load master dataset:', e);
     } finally {
       setIsLoadingDb(false);
@@ -115,8 +117,6 @@ export default function Home() {
     const savedActive = localConfig.getActiveConnectionId();
     if (savedActive) {
       setActiveConnectionId(savedActive);
-      // Trigger initial load if we have an active connection and config
-      loadMasterDataset(savedActive, savedStorage || storageConfig);
     }
     
     // Set default dates
@@ -125,30 +125,25 @@ export default function Home() {
     lastMonth.setMonth(now.getMonth() - 1);
     setDateFrom(lastMonth.toISOString().split('T')[0]);
     setDateTo(now.toISOString().split('T')[0]);
-  }, [mounted, loadMasterDataset]);
+  }, [mounted]);
+
+  // Consolidate data loading into a single effect with AbortController
+  useEffect(() => {
+    if (!mounted || !activeConnectionId) return;
+    
+    const controller = new AbortController();
+    
+    // Persist active connection ID
+    localConfig.setActiveConnectionId(activeConnectionId);
+    
+    // Auto-load data
+    loadMasterDataset(activeConnectionId, storageConfig, controller.signal);
+    
+    return () => controller.abort();
+  }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
 
   useEffect(() => {
     const handleScroll = () => {
-      setShowFloatingBar(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted || !activeConnectionId) return;
-    localConfig.setActiveConnectionId(activeConnectionId);
-    // Auto-load data when connection changes
-    loadMasterDataset(activeConnectionId, storageConfig);
-  }, [activeConnectionId, mounted, loadMasterDataset]);
-
-  // Auto-reload data when storage provider/URL changes (e.g., switching Supabase <-> Local)
-  useEffect(() => {
-    if (!mounted || !activeConnectionId) return;
-    loadMasterDataset(activeConnectionId, storageConfig);
-  }, [storageConfig.provider, storageConfig.url, storageConfig.connectionId, activeConnectionId, mounted, loadMasterDataset]);
-
-  useEffect(() => {
     if (!mounted) return;
     localStorage.setItem('jira-etl-theme', theme);
     document.documentElement.classList.toggle('dark', theme === 'dark');

@@ -110,9 +110,19 @@ function stopPolling() {
 }
 
 export async function GET() {
+  // Return a sanitized version of the polling state
+  const sanitizedState = {
+    ...pollingState,
+    storageConfig: pollingState.storageConfig ? {
+      provider: pollingState.storageConfig.provider,
+      isCustom: true,
+      // Omit sensitive URL fields
+    } : undefined
+  };
+
   return NextResponse.json({
     success: true,
-    polling: pollingState,
+    polling: sanitizedState,
   });
 }
 
@@ -137,7 +147,12 @@ export async function POST(request: Request) {
         // Reset timer to start fresh from now
         startPolling();
       }
-      return NextResponse.json({ success: true, polling: pollingState });
+      // Return sanitized state
+      const sanitized = {
+        ...pollingState,
+        storageConfig: pollingState.storageConfig ? { provider: pollingState.storageConfig.provider, isCustom: true } : undefined
+      };
+      return NextResponse.json({ success: true, polling: sanitized });
     }
 
     // Handle Polling State Update
@@ -152,16 +167,26 @@ export async function POST(request: Request) {
       pollingState.dateFrom = dateFrom || pollingState.dateFrom;
       pollingState.dateTo = dateTo || pollingState.dateTo;
       pollingState.jql = jql || pollingState.jql;
-      pollingState.storageConfig = storageConfig || pollingState.storageConfig;
+      
+      // Only update if provided (allows clearing with null, but preserving on undefined)
+      if (storageConfig !== undefined) {
+        pollingState.storageConfig = storageConfig;
+      }
 
       startPolling();
     } else if (enabled === false) {
       stopPolling();
     }
 
+    // Return sanitized state
+    const sanitized = {
+      ...pollingState,
+      storageConfig: pollingState.storageConfig ? { provider: pollingState.storageConfig.provider, isCustom: true } : undefined
+    };
+
     return NextResponse.json({
       success: true,
-      polling: pollingState,
+      polling: sanitized,
     });
   } catch (error) {
     return NextResponse.json(

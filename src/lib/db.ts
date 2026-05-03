@@ -2,18 +2,38 @@ import { PrismaClient as PrismaClientDefault } from '@prisma/client'
 // Import the specialized clients
 // @ts-ignore
 import { PrismaClient as SQLiteClient } from '../../prisma/generated/sqlite';
-// @ts-ignore
-import { PrismaClient as PostgresClient } from '../../prisma/generated/postgresql';
-
 // Use a global cache to avoid excessive client instantiation in serverless env
 const prismaClientCache = new Map<string, any>();
-export function getDb(dynamicUrl?: string, dynamicDirectUrl?: string): any {
-  const effectiveUrl = dynamicUrl || process.env.DATABASE_URL;
+
+/**
+ * Redact sensitive info from connection URL for logging
+ */
+function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = '***';
+    return parsed.toString();
+  } catch {
+    return url.split('@')[0] + (url.includes('@') ? '@***' : '');
+  }
+}
+
+export function getDb(dynamicUrl?: string): any {
+  // SSRF Protection: We resolve the actual connection URL server-side.
+  // The 'dynamicUrl' parameter is now treated as a hint/lookup key if needed,
+  // but we primarily rely on environment variables for security.
+  const envUrl = process.env.DATABASE_URL || process.env.NEXT_PUBLIC_DATABASE_URL;
+
+  // If the requested dynamicUrl is different from envUrl, we validate it or fallback.
+  // For this local tool, we allow the dynamicUrl if it starts with 'file:' (local SQLite)
+  // or matches the env variable.
+  const effectiveUrl = (dynamicUrl?.startsWith('file:') || dynamicUrl === envUrl) 
+    ? dynamicUrl 
+    : envUrl || 'file:./db/custom.db';
 
   if (!effectiveUrl) {
-    // If we're in a browser context (this shouldn't happen for getDb but being safe)
     if (typeof window !== 'undefined') return null as any;
-    throw new Error('Database URL is not configured. Please provide it in the UI or set DATABASE_URL environment variable.');
+    throw new Error('Database URL is not configured.');
   }
 
   // Check cache (using URL as key)
@@ -24,7 +44,7 @@ export function getDb(dynamicUrl?: string, dynamicDirectUrl?: string): any {
   const isPostgres = effectiveUrl.startsWith('postgresql://') || effectiveUrl.startsWith('postgres://');
   const ClientClass = isPostgres ? PostgresClient : SQLiteClient;
 
-  console.log(`[DB] Initializing ${isPostgres ? 'PostgreSQL' : 'SQLite'} client for URL: ${effectiveUrl.split('@')[0]}...`);
+  console.log(`[DB] Initializing ${isPostgres ? 'PostgreSQL' : 'SQLite'} client for URL: ${redactUrl(effectiveUrl)}...`);
 
   // Instantiate new client with dynamic datasource
   const client = new ClientClass({
@@ -38,7 +58,9 @@ export function getDb(dynamicUrl?: string, dynamicDirectUrl?: string): any {
 
   prismaClientCache.set(effectiveUrl, client);
   return client;
-}/**
+}
+
+/**
  * Build a standard PostgreSQL connection string from parts
  */
 export function buildPgUrl(conn: {
@@ -50,12 +72,14 @@ export function buildPgUrl(conn: {
   sslMode?: string;
 }): string {
   const { host, port, database, username, password, sslMode = 'prefer' } = conn;
-  const auth = password ? `${username}:${password}` : encodeURIComponent(password || '') ? `${username}:${encodeURIComponent(password || '')}` : username;
-  
-  // Re-evaluating the auth string construction for safety
-  const authPart = password ? `${username}:${password}` : username;
+
+  // Percent-encode components for safety
+  const encodedUser = encodeURIComponent(username);
+  const encodedPass = password ? `:${encodeURIComponent(password)}` : '';
+  const authPart = `${encodedUser}${encodedPass}`;
+
   return `postgresql://${authPart}@${host}:${port}/${database}?sslmode=${sslMode}`;
 }
 
 // Default export for backward compatibility
-export const db = (typeof process !== 'undefined' && (process.env.DATABASE_URL || process.env.NEXT_PUBLIC_DATABASE_URL)) ? getDb() : ({} as any);
+export const db = (typeof process !== 'undefined') ? getDb(process.env.DATABASE_URL || process.env.NEXT_PUBLIC_DATABASE_URL) : ({} as any);

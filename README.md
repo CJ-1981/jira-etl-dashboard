@@ -92,10 +92,16 @@ npm run dev
 ```
 
 ### Database Initialization
-If you are using an external PostgreSQL database (like Supabase), initialize the schema once:
-```bash
-DATABASE_URL="your-postgresql-url" npm run db:push:pg
-```
+If you are using an external PostgreSQL database (like Supabase), initialize the schema once.
+
+**Option 1: Using a .env file (Recommended)**
+1. Add `DATABASE_URL="your-postgresql-url"` to your `.env` file.
+2. Run: `npm run db:push:pg`
+
+**Option 2: Cross-platform command line**
+*   **Windows (PowerShell):** `$env:DATABASE_URL="your-url"; npm run db:push:pg`
+*   **Windows (cmd):** `set DATABASE_URL=your-url && npm run db:push:pg`
+*   **Linux/macOS:** `DATABASE_URL="your-url" npm run db:push:pg`
 
 ### Build & Release
 ```bash
