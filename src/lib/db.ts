@@ -2,6 +2,8 @@ import { PrismaClient as PrismaClientDefault } from '@prisma/client'
 // Import the specialized clients
 // @ts-ignore
 import { PrismaClient as SQLiteClient } from '../../prisma/generated/sqlite';
+// @ts-ignore
+import { PrismaClient as PostgresClient } from '../../prisma/generated/postgresql';
 // Use a global cache to avoid excessive client instantiation in serverless env
 const prismaClientCache = new Map<string, any>();
 
