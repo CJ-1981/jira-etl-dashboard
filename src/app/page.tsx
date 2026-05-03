@@ -144,6 +144,13 @@ export default function Home() {
 
   useEffect(() => {
     const handleScroll = () => {
+      setShowFloatingBar(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
     if (!mounted) return;
     localStorage.setItem('jira-etl-theme', theme);
     document.documentElement.classList.toggle('dark', theme === 'dark');
