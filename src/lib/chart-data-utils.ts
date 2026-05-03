@@ -190,7 +190,9 @@ export function transformForLineChart(
   // Check if time-series data is available (prefer the first series if we're asked for a single-line data format)
   if (kpi.results[0]?.timeSeries && kpi.results[0].timeSeries.length > 0) {
     const sortedTimeSeries = [...kpi.results[0].timeSeries].sort((a, b) => {
-      if (a.date && b.date) return a.date.getTime() - b.date.getTime();
+      const aTime = a.date ? new Date(a.date).getTime() : 0;
+      const bTime = b.date ? new Date(b.date).getTime() : 0;
+      if (aTime && bTime) return aTime - bTime;
       return a.period.localeCompare(b.period);
     });
 
@@ -263,6 +265,7 @@ export function getKpiOptions(kpiResults: KpiResult[]): {
       .replace('Processing Time Trend', 'Processing Time')
       .replace('Throughput Trend', 'Throughput')
       .replace('SLA Trend', 'SLA Compliance')
+      .replace('Cumulative Flow Diagram', 'Cumulative Flow')
       .replace('Compliance by Status Trend', 'by Status');
 
     // Add emoji indicator for time-series
@@ -284,14 +287,20 @@ export function getKpiOptions(kpiResults: KpiResult[]): {
 /**
  * Get recommended chart type for a KPI
  */
-export function getRecommendedChartType(kpiResults: KpiResult[], kpiId: string): 'bar' | 'line' | 'pie' {
+export function getRecommendedChartType(kpiResults: KpiResult[], kpiId: string): 'bar' | 'line' | 'pie' | 'area' {
   const kpi = kpiResults.find((k) => k.pluginId === kpiId);
   if (!kpi) return 'bar';
 
   const result = kpi.results[0];
+  
+  // CFD - recommend area chart
+  if (kpi.pluginId === 'cumulative_flow') return 'area';
 
   // Time-series data - recommend line chart
   if (result?.timeSeries && result.timeSeries.length > 0) return 'line';
+
+  // Distribution - recommend bar chart
+  if (kpi.pluginId.includes('histogram') || kpi.pluginId.includes('aging')) return 'bar';
 
   // Percentage-based KPIs work well with pie charts
   if (result?.unit === '%') return 'pie';

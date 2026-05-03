@@ -43,7 +43,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className="min-h-screen bg-gray-50 dark:bg-slate-950 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 bg-fixed" style={{ scrollbarGutter: 'stable' }}>
-      <head>
+      {/* @MX:NOTE: Global layout structure with responsive header and font variables */}
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-900 dark:text-slate-100 min-h-screen`}
+      >
         <Script id="theme-init" strategy="beforeInteractive">
           {`
             try {
@@ -54,10 +57,6 @@ export default function RootLayout({
             } catch(e){}
           `}
         </Script>
-      </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-900 dark:text-slate-100 min-h-screen`}
-      >
         {children}
         <Toaster position="top-right" richColors closeButton />
       </body>
