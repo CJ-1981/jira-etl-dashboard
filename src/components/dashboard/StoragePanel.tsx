@@ -180,16 +180,9 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
       hasPassword: !!pgForm.password
     };
     
-    const configToSave = { ...pgConnection };
-    delete (configToSave as any).password;
-    
-    const updatedConns = editingPgId 
-      ? allConns.map(c => c.id === editingPgId ? pgConnection : c) 
-      : [...allConns, pgConnection];
-      
     const persistentConns = editingPgId
-      ? allConns.map(c => c.id === editingPgId ? configToSave : c)
-      : [...allConns, configToSave];
+      ? allConns.map(c => c.id === editingPgId ? pgConnection : c)
+      : [...allConns, pgConnection];
 
     localConfig.savePgConnections(persistentConns as any);
     setPgConnections(updatedConns);
