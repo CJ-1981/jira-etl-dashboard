@@ -50,11 +50,15 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
    * Fetches holiday data from the API with proper error handling and mounting guards.
    */
   const loadHolidays = useCallback(async () => {
-    if (!year) return;
-
-    // Abort previous request
+    // Abort previous request regardless of year state
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+    }
+
+    if (!year) {
+      setHolidays([]);
+      setLoading(false);
+      return;
     }
     
     const controller = new AbortController();
@@ -126,6 +130,7 @@ export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="national">National</SelectItem>
                   {GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}
                 </SelectContent>
               </Select>

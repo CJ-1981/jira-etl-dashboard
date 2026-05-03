@@ -892,7 +892,7 @@ function calculateCumulativeFlow(
       
       // Initial status interval
       intervals.push({
-        status: sorted[0].fromStatus || 'Open',
+        status: sorted[0].fromStatus || allStatuses[0] || 'Open',
         start: createdTime,
         end: sorted[0].occurredAt.getTime()
       });
@@ -926,7 +926,8 @@ function calculateCumulativeFlow(
       for (const period of periods) {
         const time = period.end.getTime();
         if (time >= interval.start && time < interval.end) {
-          periodCounts[period.key][interval.status]++;
+          const s = interval.status;
+          periodCounts[period.key][s] = (periodCounts[period.key][s] || 0) + 1;
         }
       }
     });
@@ -945,9 +946,12 @@ function calculateCumulativeFlow(
       };
     });
 
+    const lastCompletePoint = [...timeSeries].reverse().find(p => p.isComplete);
+    const currentValue = lastCompletePoint ? lastCompletePoint.value : (timeSeries.length > 0 ? timeSeries[timeSeries.length - 1].value : 0);
+
     return {
       name: status,
-      value: timeSeries.length > 0 ? timeSeries[timeSeries.length - 1].value : 0,
+      value: currentValue,
       unit: 'tickets',
       dimensions: { status },
       timeSeries,
