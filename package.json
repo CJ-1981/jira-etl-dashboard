@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "db:push": "prisma db push",
+    "db:push:pg": "prisma db push --schema=prisma/schema.postgresql.prisma",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",

@@ -211,6 +211,8 @@ dist-ssr/
 .firebase/
 
 # User Custom Patterns (preserved by moai update)
+# Prisma
+prisma/generated/
 node_modules
 .next
 test*.js

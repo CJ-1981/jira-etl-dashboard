@@ -1,11 +1,17 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient as PrismaClientDefault } from '@prisma/client'
+// Import the specialized clients
+// @ts-ignore
+import { PrismaClient as SQLiteClient } from '../../prisma/generated/sqlite';
+// @ts-ignore
+import { PrismaClient as PostgresClient } from '../../prisma/generated/postgresql';
 
 // Use a global cache to avoid excessive client instantiation in serverless env
-const prismaClientCache = new Map<string, PrismaClient>();
-
-export function getDb(dynamicUrl?: string): PrismaClient {
+const prismaClientCache = new Map<string, any>();
+export function getDb(dynamicUrl?: string, dynamicDirectUrl?: string): any {
+  // We ignore dynamicDirectUrl for now as Prisma constructor only supports one 'url' override
+  // for dynamic datasource switching without using env vars.
   const effectiveUrl = dynamicUrl || process.env.DATABASE_URL;
-  
+
   if (!effectiveUrl) {
     // If we're in a browser context (this shouldn't happen for getDb but being safe)
     if (typeof window !== 'undefined') return null as any;
@@ -17,8 +23,13 @@ export function getDb(dynamicUrl?: string): PrismaClient {
     return prismaClientCache.get(effectiveUrl)!;
   }
 
+  const isPostgres = effectiveUrl.startsWith('postgresql://') || effectiveUrl.startsWith('postgres://');
+  const ClientClass = isPostgres ? PostgresClient : SQLiteClient;
+
+  console.log(`[DB] Initializing ${isPostgres ? 'PostgreSQL' : 'SQLite'} client for URL: ${effectiveUrl.split('@')[0]}...`);
+
   // Instantiate new client with dynamic datasource
-  const client = new PrismaClient({
+  const client = new ClientClass({
     datasources: {
       db: {
         url: effectiveUrl,
@@ -30,7 +41,6 @@ export function getDb(dynamicUrl?: string): PrismaClient {
   prismaClientCache.set(effectiveUrl, client);
   return client;
 }
-
 /**
  * Build a standard PostgreSQL connection string from parts
  */
@@ -51,4 +61,4 @@ export function buildPgUrl(conn: {
 }
 
 // Default export for backward compatibility
-export const db = (typeof process !== 'undefined' && process.env.DATABASE_URL) ? getDb() : ({} as PrismaClient);
+export const db = (typeof process !== 'undefined' && (process.env.DATABASE_URL || process.env.NEXT_PUBLIC_DATABASE_URL)) ? getDb() : ({} as any);

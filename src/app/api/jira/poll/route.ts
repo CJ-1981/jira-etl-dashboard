@@ -14,6 +14,10 @@ interface PollingState {
   runCount: number;
   status: 'idle' | 'running' | 'error';
   lastError: string | null;
+  storageConfig?: {
+    url: string;
+    directUrl?: string;
+  };
 }
 
 const DEFAULT_STATE: PollingState = {
@@ -28,6 +32,7 @@ const DEFAULT_STATE: PollingState = {
   runCount: 0,
   status: 'idle',
   lastError: null,
+  storageConfig: undefined,
 };
 
 // Use global to persist state in development
@@ -56,7 +61,8 @@ async function runPollingExtraction() {
         jql: pollingState.jql || undefined,
         dateFrom: pollingState.dateFrom || undefined,
         dateTo: pollingState.dateTo || undefined,
-        saveExtraction: true
+        saveExtraction: true,
+        storageConfig: pollingState.storageConfig
       }),
     });
 
@@ -113,7 +119,16 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { connectionId, intervalMinutes, dateFrom, dateTo, jql, enabled, action } = body;
+    const { 
+      connectionId, 
+      intervalMinutes, 
+      dateFrom, 
+      dateTo, 
+      jql, 
+      enabled, 
+      action,
+      storageConfig 
+    } = body;
 
     // Handle Ping Action (Manual override notification)
     if (action === 'ping') {
@@ -137,6 +152,7 @@ export async function POST(request: Request) {
       pollingState.dateFrom = dateFrom || pollingState.dateFrom;
       pollingState.dateTo = dateTo || pollingState.dateTo;
       pollingState.jql = jql || pollingState.jql;
+      pollingState.storageConfig = storageConfig || pollingState.storageConfig;
 
       startPolling();
     } else if (enabled === false) {
