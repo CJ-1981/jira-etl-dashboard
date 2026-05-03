@@ -6,6 +6,30 @@ import { PrismaClient as SQLiteClient } from '../../prisma/generated/sqlite';
 const prismaClientCache = new Map<string, any>();
 
 /**
+ * Validates that a database host is safe to connect to.
+ * Only allows local files, localhost, and trusted cloud providers (Supabase).
+ */
+function validateDatabaseHost(urlStr: string): void {
+  try {
+    if (urlStr.startsWith('file:')) return; // Local SQLite is safe
+    
+    const url = new URL(urlStr);
+    const host = url.hostname;
+    
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    const isSupabase = host.endsWith('.supabase.co') || host.endsWith('.supabase.com') || host.endsWith('.supabase.net');
+    
+    if (!isLocal && !isSupabase) {
+      // @MX:WARN - SSRF Protection: Blocking connection to untrusted host
+      throw new Error(`Connection to host '${host}' is not allowed for security reasons. Only Supabase and local connections are permitted.`);
+    }
+  } catch (e: any) {
+    if (e.message?.includes('not allowed')) throw e;
+    throw new Error('Invalid database connection URL.');
+  }
+}
+
+/**
  * Redact sensitive info from connection URL for logging
  */
 function redactUrl(url: string): string {
@@ -18,23 +42,39 @@ function redactUrl(url: string): string {
   }
 }
 
-export function getDb(dynamicUrl?: string): any {
-  // SSRF Protection: We resolve the actual connection URL server-side.
-  // The 'dynamicUrl' parameter is now treated as a hint/lookup key if needed,
-  // but we primarily rely on environment variables for security.
+export function getDb(config?: string | { provider?: string, connectionId?: string, url?: string, host?: string, port?: number, database?: string, username?: string, password?: string }): any {
+  // If config is a string, it's either an internal call with a trusted URL or a fallback
+  let effectiveUrl: string | undefined;
   const envUrl = process.env.DATABASE_URL || process.env.NEXT_PUBLIC_DATABASE_URL;
 
-  // If the requested dynamicUrl is different from envUrl, we validate it or fallback.
-  // For this local tool, we allow the dynamicUrl if it starts with 'file:' (local SQLite)
-  // or matches the env variable.
-  const effectiveUrl = (dynamicUrl?.startsWith('file:') || dynamicUrl === envUrl) 
-    ? dynamicUrl 
-    : envUrl || 'file:./db/custom.db';
-
-  if (!effectiveUrl) {
-    if (typeof window !== 'undefined') return null as any;
-    throw new Error('Database URL is not configured.');
+  if (typeof config === 'string') {
+    effectiveUrl = config;
+  } else if (config) {
+    if (config.connectionId === 'primary') {
+      effectiveUrl = envUrl;
+    } else if (config.provider === 'sqlite') {
+      effectiveUrl = config.url || 'file:./db/custom.db';
+    } else if (config.provider === 'postgresql') {
+      // If we have parts, build the URL server-side (safer)
+      if (config.host && config.username) {
+        effectiveUrl = buildPgUrl({
+          host: config.host,
+          port: config.port || 5432,
+          database: config.database || 'postgres',
+          username: config.username,
+          password: config.password
+        });
+      } else {
+        effectiveUrl = config.url;
+      }
+    }
   }
+
+  // Final fallback
+  effectiveUrl = effectiveUrl || envUrl || 'file:./db/custom.db';
+
+  // SSRF Protection: Validate the host before proceeding
+  validateDatabaseHost(effectiveUrl);
 
   // Check cache (using URL as key)
   if (prismaClientCache.has(effectiveUrl)) {
@@ -72,14 +112,17 @@ export function buildPgUrl(conn: {
   sslMode?: string;
 }): string {
   const { host, port, database, username, password, sslMode = 'prefer' } = conn;
-
+  
   // Percent-encode components for safety
   const encodedUser = encodeURIComponent(username);
   const encodedPass = password ? `:${encodeURIComponent(password)}` : '';
   const authPart = `${encodedUser}${encodedPass}`;
-
+  
   return `postgresql://${authPart}@${host}:${port}/${database}?sslmode=${sslMode}`;
 }
 
 // Default export for backward compatibility
-export const db = (typeof process !== 'undefined') ? getDb(process.env.DATABASE_URL || process.env.NEXT_PUBLIC_DATABASE_URL) : ({} as any);
+// We pass the envUrl to ensure it's resolved correctly at initialization
+export const db = (typeof process !== 'undefined') 
+  ? getDb(process.env.DATABASE_URL || process.env.NEXT_PUBLIC_DATABASE_URL) 
+  : ({} as any);
