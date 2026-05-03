@@ -14,6 +14,10 @@ interface PollingState {
   runCount: number;
   status: 'idle' | 'running' | 'error';
   lastError: string | null;
+  storageConfig?: {
+    url: string;
+    directUrl?: string;
+  };
 }
 
 const DEFAULT_STATE: PollingState = {
@@ -28,6 +32,7 @@ const DEFAULT_STATE: PollingState = {
   runCount: 0,
   status: 'idle',
   lastError: null,
+  storageConfig: undefined,
 };
 
 // Use global to persist state in development
@@ -56,7 +61,8 @@ async function runPollingExtraction() {
         jql: pollingState.jql || undefined,
         dateFrom: pollingState.dateFrom || undefined,
         dateTo: pollingState.dateTo || undefined,
-        saveExtraction: true
+        saveExtraction: true,
+        storageConfig: pollingState.storageConfig
       }),
     });
 
@@ -104,16 +110,35 @@ function stopPolling() {
 }
 
 export async function GET() {
+  // Return a sanitized version of the polling state
+  const sanitizedState = {
+    ...pollingState,
+    storageConfig: pollingState.storageConfig ? {
+      provider: pollingState.storageConfig.provider,
+      isCustom: true,
+      // Omit sensitive URL fields
+    } : undefined
+  };
+
   return NextResponse.json({
     success: true,
-    polling: pollingState,
+    polling: sanitizedState,
   });
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { connectionId, intervalMinutes, dateFrom, dateTo, jql, enabled, action } = body;
+    const { 
+      connectionId, 
+      intervalMinutes, 
+      dateFrom, 
+      dateTo, 
+      jql, 
+      enabled, 
+      action,
+      storageConfig 
+    } = body;
 
     // Handle Ping Action (Manual override notification)
     if (action === 'ping') {
@@ -122,7 +147,12 @@ export async function POST(request: Request) {
         // Reset timer to start fresh from now
         startPolling();
       }
-      return NextResponse.json({ success: true, polling: pollingState });
+      // Return sanitized state
+      const sanitized = {
+        ...pollingState,
+        storageConfig: pollingState.storageConfig ? { provider: pollingState.storageConfig.provider, isCustom: true } : undefined
+      };
+      return NextResponse.json({ success: true, polling: sanitized });
     }
 
     // Handle Polling State Update
@@ -137,15 +167,26 @@ export async function POST(request: Request) {
       pollingState.dateFrom = dateFrom || pollingState.dateFrom;
       pollingState.dateTo = dateTo || pollingState.dateTo;
       pollingState.jql = jql || pollingState.jql;
+      
+      // Only update if provided (allows clearing with null, but preserving on undefined)
+      if (storageConfig !== undefined) {
+        pollingState.storageConfig = storageConfig;
+      }
 
       startPolling();
     } else if (enabled === false) {
       stopPolling();
     }
 
+    // Return sanitized state
+    const sanitized = {
+      ...pollingState,
+      storageConfig: pollingState.storageConfig ? { provider: pollingState.storageConfig.provider, isCustom: true } : undefined
+    };
+
     return NextResponse.json({
       success: true,
-      polling: pollingState,
+      polling: sanitized,
     });
   } catch (error) {
     return NextResponse.json(

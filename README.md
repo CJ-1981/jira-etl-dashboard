@@ -30,16 +30,19 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
   - `Cmd/Ctrl + P` — Export to Print/PDF
 
 ### ⚡ Architecture & Data Confidence
+- **Hybrid Storage Architecture** — Dynamically switches between local SQLite and remote PostgreSQL (Supabase) at runtime based on frontend storage configuration.
+- **Dual Prisma Clients** — Utilizes a specialized multi-client wrapper to support cross-engine compatibility without re-generating schemas or restarting the server.
 - **TanStack React Query** — Advanced state management for automated background data synchronization, intelligent caching, and consistent loading states.
+- **Scheduled Polling Resilience** — Server-side background sync persists storage configurations across sessions, ensuring data lands in the correct engine automatically.
 - **Resilient Error Boundaries** — Individual widget isolation ensures that a single metric failure or calculation error never crashes the entire dashboard.
 - **Web Worker Architecture** — Heavy KPI calculations are offloaded to a background thread, keeping the UI perfectly responsive even with tens of thousands of tickets.
-- **Jira Webhook Support** — Foundation for real-time synchronization via secure endpoints (`/api/webhooks/jira`), reducing the need for manual polling.
 
 ---
 
 ## 🛠️ Core Capabilities
 
 ### Jira ETL & Data Extraction
+- **Dynamic Storage Engines** — Store your master dataset locally in SQLite for privacy or on Supabase for team-wide accessibility via Metabase.
 - **Master Dataset Management** — Automatically tracks additions, updates, and deletions to maintain a faithful local mirror of Jira data.
 - **Scheduled Polling** — Robust server-side background sync (1min–4hr intervals) that survives restarts and hot-reloads.
 - **Extraction Logic** — Smart `update-only` mode that fetches only modified tickets since the last sync to minimize API load.
@@ -70,7 +73,7 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 | Performance | **React Virtuoso** (Virtual Scrolling) |
 | Computation | Web Workers (Background Calculation) |
 | UI | shadcn/ui, Tailwind CSS 4, Radix UI, Framer Motion |
-| Database | Prisma 6 ORM (SQLite local, PostgreSQL external) |
+| Database | **Prisma 6 (Dual-Client)** — SQLite (local) + PostgreSQL (Supabase) |
 | Charts | Recharts 2.15 (Interactive Layers) |
 | Exports | PptxGenJS (PowerPoint), html-to-image (PNG), CSV/JSON |
 
@@ -87,6 +90,18 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 npm install
 npm run dev
 ```
+
+### Database Initialization
+If you are using an external PostgreSQL database (like Supabase), initialize the schema once.
+
+**Option 1: Using a .env file (Recommended)**
+1. Add `DATABASE_URL="your-postgresql-url"` to your `.env` file.
+2. Run: `npm run db:push:pg`
+
+**Option 2: Cross-platform command line**
+*   **Windows (PowerShell):** `$env:DATABASE_URL="your-url"; npm run db:push:pg`
+*   **Windows (cmd):** `set DATABASE_URL=your-url && npm run db:push:pg`
+*   **Linux/macOS:** `DATABASE_URL="your-url" npm run db:push:pg`
 
 ### Build & Release
 ```bash

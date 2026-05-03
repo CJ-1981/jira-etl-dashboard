@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 export async function POST(request: Request) {
   try {
     const { retentionDays, beforeDate, storageConfig } = await request.json();
-    const db = getDb(storageConfig?.url);
+    const db = getDb(storageConfig?.url, storageConfig?.directUrl);
 
     let cutoffDate: Date;
 

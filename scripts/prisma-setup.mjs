@@ -56,39 +56,32 @@ const targetSchema = 'schema.prisma';
 
 console.log(`> Target Database: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
 
-// 3. Copy schema template
-const sourcePath = path.join(prismaDir, sourceSchema);
-const targetPath = path.join(prismaDir, targetSchema);
-
-if (fs.existsSync(sourcePath)) {
-  // Only copy if different or missing
-  let shouldCopy = true;
-  if (fs.existsSync(targetPath)) {
-    const sourceContent = fs.readFileSync(sourcePath, 'utf8');
-    const targetContent = fs.readFileSync(targetPath, 'utf8');
-    if (sourceContent === targetContent) {
-      shouldCopy = false;
-    }
-  }
-
-  if (shouldCopy) {
-    fs.copyFileSync(sourcePath, targetPath);
-    console.log(`✓ Synchronized ${targetSchema} from ${sourceSchema}`);
-  } else {
-    console.log(`✓ ${targetSchema} is already up to date`);
-  }
-} else {
-  console.error(`✗ Error: Source schema ${sourceSchema} not found in ${prismaDir}`);
-  process.exit(1);
-}
-
-// 4. Run prisma generate
+// 4. Run prisma generate for both providers to support dynamic switching
 try {
-  console.log('> Running npx prisma generate...');
+  console.log('> Generating SQLite Prisma client...');
+  execSync('npx prisma generate --schema=prisma/schema.sqlite.prisma', { stdio: 'inherit', cwd: rootDir });
+  
+  console.log('> Generating PostgreSQL Prisma client...');
+  execSync('npx prisma generate --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit', cwd: rootDir });
+  
+  // Also sync the main schema.prisma for general tools (Studio, etc)
+  const sourcePath = path.join(prismaDir, isPostgres ? 'schema.postgresql.prisma' : 'schema.sqlite.prisma');
+  const targetPath = path.join(prismaDir, 'schema.prisma');
+  
+  // Create a version of the schema without the custom output for the main schema.prisma
+  // so that the default @prisma/client still works for the primary DB
+  let schemaContent = fs.readFileSync(sourcePath, 'utf8');
+  schemaContent = schemaContent.replace(/output\s*=\s*".*"/, '// output is default for main schema.prisma');
+  fs.writeFileSync(targetPath, schemaContent);
+  
+  console.log(`✓ Synchronized schema.prisma from ${isPostgres ? 'schema.postgresql.prisma' : 'schema.sqlite.prisma'}`);
+  
+  console.log('> Running default prisma generate...');
   execSync('npx prisma generate', { stdio: 'inherit', cwd: rootDir });
-  console.log('✓ Prisma client generated');
+  
+  console.log('✓ All Prisma clients generated');
 } catch (error) {
-  console.error('✗ Failed to generate Prisma client');
+  console.error('✗ Failed to generate Prisma clients', error);
   process.exit(1);
 }
 

@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       updateOnly
     } = body;
 
-    const db = getDb(storageConfig?.url);
+    const db = getDb(storageConfig?.url, storageConfig?.directUrl);
 
     if (!connectionRef) {
       return NextResponse.json({ success: false, error: 'connectionRef is required' }, { status: 400 });

@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 export async function POST(request: Request) {
   try {
     const { activeConnections, storageConfig } = await request.json();
-    const db = getDb(storageConfig?.url);
+    const db = getDb(storageConfig?.url, storageConfig?.directUrl);
     
     if (!activeConnections || !Array.isArray(activeConnections)) {
       return NextResponse.json({ success: false, error: 'activeConnections array is required' }, { status: 400 });

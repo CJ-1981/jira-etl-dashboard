@@ -180,19 +180,23 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
       hasPassword: !!pgForm.password
     };
     
-    const configToSave = { ...pgConnection };
-    delete (configToSave as any).password;
+    // @MX:NOTE - Credential security: We omit the password before saving to local storage.
+    // @MX:WARN - Secrets must not be stored client-side in plain text.
+    // @MX:REASON - To prevent credential exposure in browser localStorage.
     
-    const updatedConns = editingPgId 
-      ? allConns.map(c => c.id === editingPgId ? pgConnection : c) 
-      : [...allConns, pgConnection];
-      
+    const sanitize = (conn: PgConnection) => {
+      const { password, ...rest } = conn;
+      return rest;
+    };
+    
     const persistentConns = editingPgId
-      ? allConns.map(c => c.id === editingPgId ? configToSave : c)
-      : [...allConns, configToSave];
+      ? allConns.map(c => c.id === editingPgId ? sanitize(pgConnection) : sanitize(c))
+      : [...allConns.map(sanitize), sanitize(pgConnection)];
 
     localConfig.savePgConnections(persistentConns as any);
-    setPgConnections(updatedConns);
+    setPgConnections(editingPgId
+      ? pgConnections.map(c => c.id === editingPgId ? pgConnection : c)
+      : [...pgConnections, pgConnection]);
     toast.success('PostgreSQL connection saved');
     setPgForm({ name: '', host: '', port: '5432', database: '', username: '', password: '', sslMode: 'prefer', schemaName: 'public', tableName: 'jira_kpi_results' });
     setEditingPgId(null);

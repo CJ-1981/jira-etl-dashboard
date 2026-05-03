@@ -13,7 +13,7 @@ export async function POST(
   const body = await request.json();
   const { storageConfig } = body;
 
-  const db = getDb(storageConfig?.url);
+  const db = getDb(storageConfig?.url, storageConfig?.directUrl);
 
   try {
     // Find the latest completed ETL run for this specific connection
@@ -39,10 +39,12 @@ export async function POST(
 
     // Reconstruct raw issues for the KPI engine
     const reconstructedIssues = latestRun.ticketSnapshots.map(snapshot => {
+      const raw = snapshot.rawData ? JSON.parse(snapshot.rawData) : {};
       return {
         key: snapshot.jiraKey,
         fields: {
           summary: snapshot.summary,
+          project: raw.fields?.project,
           issuetype: { name: snapshot.issueType },
           priority: snapshot.priority ? { name: snapshot.priority } : null,
           status: { name: snapshot.status },

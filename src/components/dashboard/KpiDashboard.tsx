@@ -395,7 +395,8 @@ export function KpiDashboard({
     if (masterDatasetInfo?.issues) {
       masterDatasetInfo.issues.forEach((i: any) => {
         const f = i.fields || {};
-        if (f.project?.name) options.project.add(f.project.name);
+        const projectName = f.project?.name || i.key?.split('-')[0];
+        if (projectName) options.project.add(projectName);
         if (f.assignee?.displayName) options.assignee.add(f.assignee.displayName);
         if (f.priority?.name) options.priority.add(f.priority.name);
         if (f.issuetype?.name) options.issueType.add(f.issuetype.name);
@@ -623,13 +624,6 @@ export function KpiDashboard({
                 })}
               </div>
             </div>
-
-            {calculating && (
-              <div className="flex items-center gap-2 text-emerald-500 animate-pulse pb-2 px-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-xs font-bold uppercase tracking-widest">Calculating...</span>
-              </div>
-            )}
           </div>
 
           {filterPanelOpen && (
@@ -1398,6 +1392,18 @@ export function KpiDashboard({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {calculating && (
+        <div className="fixed inset-0 z-[100] bg-white/60 dark:bg-slate-950/60 backdrop-blur-[2px] flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col items-center gap-4">
+            <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
+            <div className="text-center">
+              <h3 className="text-lg font-bold">Recalculating KPIs</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Processing master dataset analytics...</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

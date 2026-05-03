@@ -70,14 +70,15 @@ export default function Home() {
   const [showFloatingBar, setShowFloatingBar] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
 
-  const loadMasterDataset = useCallback(async (connectionId: string, config: any) => {
+  const loadMasterDataset = useCallback(async (connectionId: string, config: any, signal?: AbortSignal) => {
     if (!connectionId) return;
     setIsLoadingDb(true);
     try {
       const res = await fetch(`/api/jira/master/${connectionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig: config })
+        body: JSON.stringify({ action: 'get', storageConfig: config }),
+        signal
       });
       const data = await res.json();
       if (data.success && data.data) {
@@ -95,7 +96,8 @@ export default function Home() {
           etlRunId: 'master'
         } as any);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e.name === 'AbortError') return;
       console.error('Failed to auto-load master dataset:', e);
     } finally {
       setIsLoadingDb(false);
@@ -115,8 +117,6 @@ export default function Home() {
     const savedActive = localConfig.getActiveConnectionId();
     if (savedActive) {
       setActiveConnectionId(savedActive);
-      // Trigger initial load if we have an active connection and config
-      loadMasterDataset(savedActive, savedStorage || storageConfig);
     }
     
     // Set default dates
@@ -125,7 +125,22 @@ export default function Home() {
     lastMonth.setMonth(now.getMonth() - 1);
     setDateFrom(lastMonth.toISOString().split('T')[0]);
     setDateTo(now.toISOString().split('T')[0]);
-  }, [mounted, loadMasterDataset]);
+  }, [mounted]);
+
+  // Consolidate data loading into a single effect with AbortController
+  useEffect(() => {
+    if (!mounted || !activeConnectionId) return;
+    
+    const controller = new AbortController();
+    
+    // Persist active connection ID
+    localConfig.setActiveConnectionId(activeConnectionId);
+    
+    // Auto-load data
+    loadMasterDataset(activeConnectionId, storageConfig, controller.signal);
+    
+    return () => controller.abort();
+  }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -134,13 +149,6 @@ export default function Home() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-
-  useEffect(() => {
-    if (!mounted || !activeConnectionId) return;
-    localConfig.setActiveConnectionId(activeConnectionId);
-    // Auto-load data when connection changes
-    loadMasterDataset(activeConnectionId, storageConfig);
-  }, [activeConnectionId, mounted, loadMasterDataset]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -216,7 +224,7 @@ export default function Home() {
             {/* Left / Branding */}
             <div className="flex items-center gap-3 min-w-0 col-span-1 justify-start">
               <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-500/20 shrink-0 flex items-center justify-center">
-                <Database className="h-5 w-5 text-white" />
+                <Zap className="h-5 w-5 text-white" />
               </div>
               <div className="flex flex-col gap-[3px] min-w-0 overflow-hidden">
                 <h1 className="text-sm font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate leading-[1.1]">
@@ -285,11 +293,11 @@ export default function Home() {
               <div className="flex justify-center no-print">
                 <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                   <TabsTrigger value="jira-etl" className="gap-2 px-6">
-                    <Database className="h-4 w-4" />
+                    <Zap className="h-4 w-4" />
                     Jira Extraction
                   </TabsTrigger>
                   <TabsTrigger value="db-export" className="gap-2 px-6">
-                    <Zap className="h-4 w-4" />
+                    <Database className="h-4 w-4" />
                     Data Export
                   </TabsTrigger>
                 </TabsList>

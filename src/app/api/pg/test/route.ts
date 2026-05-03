@@ -217,6 +217,11 @@ function getPostgreSuggestions(error: string, host?: string): string[] {
     if (host && host.includes('.supabase.co')) {
       suggestions.push('⚠️ Supabase: Your project might be paused (free tier)');
       suggestions.push('Go to Supabase → Settings → Database → Click "Resume Database"');
+      if (error.includes(':')) {
+        suggestions.push('⚠️ IPv6 Detected: Your network may not support IPv6 connections to Supabase');
+        suggestions.push('Try using the Supabase Connection Pooler (Transaction mode)');
+        suggestions.push('Or enable the "IPv4 Add-on" in Supabase → Settings → Database');
+      }
       suggestions.push('Check if IPv4 is enabled in Supabase → Settings → Database');
       suggestions.push('Verify your Supabase project is active');
     }
