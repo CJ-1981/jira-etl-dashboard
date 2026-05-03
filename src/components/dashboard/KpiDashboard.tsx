@@ -395,7 +395,8 @@ export function KpiDashboard({
     if (masterDatasetInfo?.issues) {
       masterDatasetInfo.issues.forEach((i: any) => {
         const f = i.fields || {};
-        if (f.project?.name) options.project.add(f.project.name);
+        const projectName = f.project?.name || i.key?.split('-')[0];
+        if (projectName) options.project.add(projectName);
         if (f.assignee?.displayName) options.assignee.add(f.assignee.displayName);
         if (f.priority?.name) options.priority.add(f.priority.name);
         if (f.issuetype?.name) options.issueType.add(f.issuetype.name);
@@ -780,7 +781,7 @@ export function KpiDashboard({
                   { label: 'Status', key: 'status', options: filterOptions.status },
                   { label: 'Component', key: 'component', options: filterOptions.component },
                   { label: 'Label', key: 'label', options: filterOptions.label },
-                ].filter(f => f.options.length > 1).map(filter => (
+                ].filter(f => f.options.length > 0).map(filter => (
                   <div key={filter.key} className="space-y-1.5 no-print">
                     <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
                     <Popover>
