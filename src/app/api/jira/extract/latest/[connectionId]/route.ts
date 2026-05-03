@@ -39,10 +39,12 @@ export async function POST(
 
     // Reconstruct raw issues for the KPI engine
     const reconstructedIssues = latestRun.ticketSnapshots.map(snapshot => {
+      const raw = snapshot.rawData ? JSON.parse(snapshot.rawData) : {};
       return {
         key: snapshot.jiraKey,
         fields: {
           summary: snapshot.summary,
+          project: raw.fields?.project,
           issuetype: { name: snapshot.issueType },
           priority: snapshot.priority ? { name: snapshot.priority } : null,
           status: { name: snapshot.status },
