@@ -1335,7 +1335,7 @@ export function KpiDashboard({
       </Sheet>
 
       <AnimatePresence>
-        {showFloatingBar && (
+        {showFloatingBar && !drillDownKeys && (
           <motion.div
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
