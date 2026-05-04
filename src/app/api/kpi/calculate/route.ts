@@ -36,6 +36,10 @@ export async function POST(request: Request) {
 
     // Cast raw issues to JiraIssue format
     const typedIssues = issues as JiraIssue[];
+    console.log(`[KPI API] Starting calculation for ${typedIssues.length} issues.`);
+    if (globalFilters) {
+      console.log(`[KPI API] Applying global filters: ${JSON.stringify(globalFilters)}`);
+    }
 
     let results: Record<string, ReturnType<typeof engine.calculate>>;
 

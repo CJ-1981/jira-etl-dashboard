@@ -1015,14 +1015,16 @@ export class KpiEngine {
           else if (key === 'component') issueValue = transformed.components;
           else if (key === 'label') issueValue = transformed.labels;
 
+          const lowerValues = values.map(v => v.toLowerCase());
           const match = Array.isArray(issueValue) 
-            ? issueValue.some(v => values.includes(v))
-            : values.includes(issueValue);
+            ? issueValue.some(v => lowerValues.includes(v.toLowerCase()))
+            : lowerValues.includes(String(issueValue || '').toLowerCase());
             
           if (!match) return false;
         }
         return true;
       });
+      console.log(`[KPI Engine] Filters reduced issues from ${issues.length} to ${processedIssues.length}`);
     }
 
     // 2. Filter issues to those relevant for the period
@@ -1306,44 +1308,40 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
   const trimmed = condition.trim();
   if (!trimmed || trimmed === 'true' || trimmed === '*') return issues;
 
-  // Handle OR (lowest precedence)
-  if (trimmed.toUpperCase().includes(' OR ')) {
-    const parts = splitByTopLevelOperator(trimmed, 'OR');
-    if (parts.length > 1) {
-      const results = parts.map(p => applyFilter(issues, p));
-      // Combine results (Set of keys to ensure uniqueness)
-      const keys = new Set<string>();
-      const combinedIssues: TransformedIssue[] = [];
-      results.forEach(resList => {
-        resList.forEach(issue => {
-          if (!keys.has(issue.key)) {
-            keys.add(issue.key);
-            combinedIssues.push(issue);
-          }
-        });
+  // 1. Handle OR (lowest precedence)
+  const orParts = splitByTopLevelOperator(trimmed, 'OR');
+  if (orParts.length > 1) {
+    const results = orParts.map(p => applyFilter(issues, p));
+    const keys = new Set<string>();
+    const combinedIssues: TransformedIssue[] = [];
+    results.forEach(resList => {
+      resList.forEach(issue => {
+        if (!keys.has(issue.key)) {
+          keys.add(issue.key);
+          combinedIssues.push(issue);
+        }
       });
-      return combinedIssues;
-    }
+    });
+    return combinedIssues;
   }
 
-  // Handle AND
-  if (trimmed.toUpperCase().includes(' AND ')) {
-    const parts = splitByTopLevelOperator(trimmed, 'AND');
-    if (parts.length > 1) {
-      let currentIssues = issues;
-      for (const part of parts) {
-        currentIssues = applyFilter(currentIssues, part);
-      }
-      return currentIssues;
+  // 2. Handle AND
+  const andParts = splitByTopLevelOperator(trimmed, 'AND');
+  if (andParts.length > 1) {
+    let currentIssues = issues;
+    for (const part of andParts) {
+      currentIssues = applyFilter(currentIssues, part);
     }
+    return currentIssues;
   }
 
   // Handle atomic conditions
-  const containsMatch = trimmed.match(/^(\w+)\s+(NOT\s+)?CONTAINS\s+"?([^"]+)"?$/i);
+  const containsMatch = trimmed.match(/^([\w.-]+)\s+(NOT\s+)?CONTAINS\s+("([^"]+)"|'([^']+)'|(\S+))$/i);
   if (containsMatch) {
-    const [, field, not, val] = containsMatch;
+    const [, field, not, , quotedDouble, quotedSingle, unquoted] = containsMatch;
+    const val = quotedDouble || quotedSingle || unquoted;
     const isNot = !!not;
-    const cleanVal = val.replace(/^"|"$/g, '').toLowerCase();
+    const cleanVal = val.toLowerCase();
     return issues.filter((issue) => {
       const fieldValue = String(getFieldValue(issue, field) || '').toLowerCase();
       const contains = fieldValue.includes(cleanVal);
@@ -1351,10 +1349,11 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
     });
   }
 
-  const eqMatch = trimmed.match(/^(\w+)\s*=\s*"?([^"]+)"?$/i);
+  const eqMatch = trimmed.match(/^([\w.-]+)\s*={1,2}\s*("([^"]+)"|'([^']+)'|(\S+))$/i);
   if (eqMatch) {
-    const [, field, val] = eqMatch;
-    const cleanVal = val.replace(/^"|"$/g, '').toLowerCase();
+    const [, field, , quotedDouble, quotedSingle, unquoted] = eqMatch;
+    const val = quotedDouble || quotedSingle || unquoted;
+    const cleanVal = val.toLowerCase();
     return issues.filter((issue) => {
       const fieldValue = getFieldValue(issue, field);
       if (cleanVal === 'true') return !!fieldValue;
@@ -1363,10 +1362,11 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
     });
   }
 
-  const neqMatch = trimmed.match(/^(\w+)\s*!=\s*"?([^"]+)"?$/i);
+  const neqMatch = trimmed.match(/^([\w.-]+)\s*!=\s*("([^"]+)"|'([^']+)'|(\S+))$/i);
   if (neqMatch) {
-    const [, field, val] = neqMatch;
-    const cleanVal = val.replace(/^"|"$/g, '').toLowerCase();
+    const [, field, , quotedDouble, quotedSingle, unquoted] = neqMatch;
+    const val = quotedDouble || quotedSingle || unquoted;
+    const cleanVal = val.toLowerCase();
     return issues.filter((issue) => {
       const fieldValue = getFieldValue(issue, field);
       return String(fieldValue || '').toLowerCase() !== cleanVal;
@@ -1377,31 +1377,38 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
 }
 
 /**
- * Simple splitter that respects quotes (but not parentheses yet)
+ * Robust splitter that respects quotes
  */
 function splitByTopLevelOperator(condition: string, operator: 'AND' | 'OR'): string[] {
   const parts: string[] = [];
   let current = '';
   let inQuotes = false;
-  const words = condition.split(/\s+/);
+  let quoteChar = '';
   
   const op = operator.toUpperCase();
+  const search = ` ${op} `;
   
-  let i = 0;
-  while (i < words.length) {
-    const word = words[i];
-    if (word.includes('"')) {
-      const quotes = (word.match(/"/g) || []).length;
-      if (quotes % 2 !== 0) inQuotes = !inQuotes;
+  for (let i = 0; i < condition.length; i++) {
+    const char = condition[i];
+    
+    // Handle quotes
+    if ((char === '"' || char === "'") && (i === 0 || condition[i-1] !== '\\')) {
+      if (!inQuotes) {
+        inQuotes = true;
+        quoteChar = char;
+      } else if (char === quoteChar) {
+        inQuotes = false;
+      }
     }
-
-    if (!inQuotes && word.toUpperCase() === op) {
+    
+    // Check for operator if not in quotes
+    if (!inQuotes && condition.substring(i).toUpperCase().startsWith(search)) {
       parts.push(current.trim());
       current = '';
+      i += search.length - 1; // Skip the operator
     } else {
-      current += (current ? ' ' : '') + word;
+      current += char;
     }
-    i++;
   }
   
   if (current) parts.push(current.trim());

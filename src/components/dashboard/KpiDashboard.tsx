@@ -77,6 +77,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import { localConfig, type SavedJql, type DashboardPreset } from '@/lib/config/local-store';
 import { ChartConfig } from '@/types/dashboard';
+import { JqlAutocomplete } from './JqlAutocomplete';
 
 interface KpiDashboardProps {
   connections: any[];
@@ -224,18 +225,18 @@ export function KpiDashboard({
 
   const handleApplyFilters = () => {
     setGlobalFilters(pendingFilters);
-    setFilterPanelOpen(false);
     toast.success('Filters applied');
   };
 
   const handleUpdateFilter = (key: string, value: string) => {
-    const updated = { ...globalFilters };
-    if (updated[key]) {
-      updated[key] = updated[key].filter(v => v !== value);
-      if (updated[key].length === 0) delete updated[key];
-      setGlobalFilters(updated);
-      setPendingFilters(updated);
-    }
+    setPendingFilters(prev => {
+      const updated = { ...prev };
+      if (updated[key]) {
+        updated[key] = updated[key].filter(v => v !== value);
+        if (updated[key].length === 0) delete updated[key];
+      }
+      return updated;
+    });
   };
 
   const toggleDimension = (pluginId: string, value: string) => {
@@ -279,7 +280,7 @@ export function KpiDashboard({
           dateFrom,
           dateTo,
           region,
-          filters: globalFilters,
+          globalFilters,
           settings,
           storageConfig
         })
@@ -663,16 +664,13 @@ export function KpiDashboard({
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <div className="relative flex-1 group">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                      <Input 
-                        ref={jqlInputRef}
-                        placeholder="Filter by JQL (e.g. status = Done AND priority = High)..." 
-                        value={jqlQuery}
-                        onChange={(e) => setJqlQuery(e.target.value)}
-                        className="h-9 pl-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs focus:ring-emerald-500/20"
-                      />
-                    </div>
+                    <JqlAutocomplete 
+                      ref={jqlInputRef}
+                      value={jqlQuery}
+                      onChange={setJqlQuery}
+                      filterOptions={filterOptions}
+                      className="flex-1"
+                    />
                     <Button 
                       size="sm" 
                       className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-xs"
@@ -855,9 +853,9 @@ export function KpiDashboard({
                 </div>
               </div>
 
-              {Object.keys(globalFilters).length > 0 && (
+              {Object.keys(pendingFilters).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {(Object.entries(globalFilters) as [string, string[]][]).map(([key, values]) => (
+                  {(Object.entries(pendingFilters) as [string, string[]][]).map(([key, values]) => (
                     values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
                         <span className="text-slate-400">{key}:</span> {val}
