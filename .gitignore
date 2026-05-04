@@ -234,3 +234,6 @@ release/app/public/icon.png
 release/app/public/logo.svg
 release/app/public/robots.txt
 prisma/%SOURCE_DB_ABS%
+release/release.zip
+next-env.d.ts
+next-env.d.ts
