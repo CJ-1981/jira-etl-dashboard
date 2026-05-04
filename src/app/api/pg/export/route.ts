@@ -15,8 +15,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Issues array is required' }, { status: 400 });
     }
 
-    const dbUrl = buildPgUrl(connection);
-    const db = getDb(dbUrl);
+    const db = getDb({
+      provider: 'postgresql',
+      ...connection
+    });
 
     let rowCount = 0;
     const shouldExportTickets = exportDataType === 'tickets' || exportDataType === 'both';

@@ -21,6 +21,7 @@ export interface PgConnection {
   schemaName: string;
   tableName: string;
   isActive: boolean;
+  hasPassword?: boolean;
 }
 
 
@@ -58,6 +59,13 @@ export interface AppSettings {
   sla: {
     statusTargets: Record<string, number>;
   };
+  alerts: {
+    thresholds: Record<string, { warning: number; critical: number; operator: '>' | '<' }>;
+  };
+  webhooks: {
+    enabled: boolean;
+    secret: string;
+  };
 }
 
 export interface StorageConfig {
@@ -81,6 +89,18 @@ export interface DashboardState {
   globalFilters?: Record<string, string[]>;
   hiddenDimensions?: string[];
   charts?: any[];
+  dashboardJql?: string;
+}
+
+export interface DashboardPreset {
+  id: string;
+  name: string;
+  dateFrom: string;
+  dateTo: string;
+  globalFilters: Record<string, string[]>;
+  charts: any[];
+  dashboardJql: string;
+  hiddenDimensions: string[];
 }
 
 const KEYS = {
@@ -94,6 +114,7 @@ const KEYS = {
   dashboardJql: 'cfg_dashboard_jqls',
   etlUpdateOnly: 'cfg_etl_update_only',
   dashboardState: 'cfg_dashboard_state',
+  presets: 'cfg_dashboard_presets',
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -117,6 +138,18 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   sla: {
     statusTargets: {},
+  },
+  alerts: {
+    thresholds: {
+      'sla_compliance': { warning: 95, critical: 90, operator: '<' },
+      'resolution_rate': { warning: 80, critical: 60, operator: '<' },
+      'reassignment_count': { warning: 2, critical: 4, operator: '>' },
+      'avg_processing_hours': { warning: 40, critical: 80, operator: '>' },
+    },
+  },
+  webhooks: {
+    enabled: false,
+    secret: 'jira-etl-secret-' + (typeof window !== 'undefined' && window.crypto ? Array.from(window.crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('') : Math.random().toString(36).substring(7)),
   },
 };
 
@@ -157,6 +190,8 @@ export const localConfig = {
       general: { ...DEFAULT_SETTINGS.general, ...(s.general || {}) },
       persistence: { ...DEFAULT_SETTINGS.persistence, ...(s.persistence || {}) },
       sla: { ...DEFAULT_SETTINGS.sla, ...(s.sla || {}) },
+      alerts: { ...DEFAULT_SETTINGS.alerts, ...(s.alerts || {}) },
+      webhooks: { ...DEFAULT_SETTINGS.webhooks, ...(s.webhooks || {}) },
     };
   },
   saveSettings: (s: Partial<AppSettings>) => {
@@ -188,6 +223,17 @@ export const localConfig = {
     const states = get<Record<string, DashboardState>>(KEYS.dashboardState, {});
     states[connectionId] = state;
     set(KEYS.dashboardState, states);
+  },
+  
+  getDashboardPresets: (connectionId: string) => {
+    const allPresets = get<Record<string, DashboardPreset[]>>(KEYS.presets, {});
+    return allPresets[connectionId] || [];
+  },
+  saveDashboardPresets: (connectionId: string, presets: DashboardPreset[]) => {
+    if (!connectionId) return;
+    const allPresets = get<Record<string, DashboardPreset[]>>(KEYS.presets, {});
+    allPresets[connectionId] = presets;
+    set(KEYS.presets, allPresets);
   },
 
   exportConfig: () => {
