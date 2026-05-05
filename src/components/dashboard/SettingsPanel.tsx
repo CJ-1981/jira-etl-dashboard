@@ -18,33 +18,19 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { localConfig, type AppSettings } from '@/lib/config/local-store';
+import { useAppStore } from '@/store/app-store';
 
-interface SettingsPanelProps {
-  onSettingsUpdate?: (settings: any) => void;
-  storageConfig: any;
-}
-
-export function SettingsPanel({ onSettingsUpdate, storageConfig }: SettingsPanelProps) {
-  const [settings, setSettings] = useState<AppSettings>({
-    rateLimit: { delayMs: 0, maxRequestsPerMinute: 60, batchSize: 50, backoffStrategy: 'none' },
-    general: { defaultHolidayState: 'national', workStartHour: 9, workEndHour: 17, defaultSlaTargetHours: 40, listMaxHeight: 400 },
-    persistence: { autoSave: true, autoRestore: true, retentionDays: 30 },
-    sla: { statusTargets: {} },
-    alerts: { thresholds: {} },
-    webhooks: { enabled: false, secret: '' },
-  });
-  const [loading, setLoading] = useState(true);
+export function SettingsPanel() {
+  const { settings, setSettings, storageConfig } = useAppStore();
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [configExporting, setConfigExporting] = useState(false);
   const [configImporting, setConfigImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [initialSettings, setInitialSettings] = useState<AppSettings | null>(null);
+  const [initialSettings, setInitialSettings] = useState<AppSettings | null>(settings);
 
   useEffect(() => {
-    const savedSettings = localConfig.getSettings() as AppSettings;
-    setSettings(savedSettings);
-    setInitialSettings(savedSettings);
-    setLoading(false);
+    setInitialSettings(settings);
   }, []);
 
   const hasUnsavedChanges = initialSettings ? JSON.stringify(settings) !== JSON.stringify(initialSettings) : false;
@@ -54,7 +40,6 @@ export function SettingsPanel({ onSettingsUpdate, storageConfig }: SettingsPanel
     localConfig.saveSettings(settings);
     toast.success('Settings saved to browser storage');
     setInitialSettings(settings);
-    if (onSettingsUpdate) onSettingsUpdate(settings);
     setSaving(false);
   };
 

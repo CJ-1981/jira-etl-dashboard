@@ -1,5 +1,7 @@
 'use client';
 
+import { KpiCard, ChartCard } from './KpiCard';
+import { AppSettings } from '@/lib/config/local-store';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -71,49 +73,27 @@ import {
   Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
   Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
-  ArrowUp, Search, ChevronDown, Database, Filter,
+  ArrowUp, Search, ChevronDown, Database, Filter, RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import { localConfig, type SavedJql, type DashboardPreset } from '@/lib/config/local-store';
-import { ChartConfig } from '@/types/dashboard';
+import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { JqlAutocomplete } from './JqlAutocomplete';
+import { useAppStore } from '@/store/app-store';
 
-interface KpiDashboardProps {
-  connections: any[];
-  extractionResult: any;
-  masterDatasetInfo: any;
-  setMasterDatasetInfo: (info: any) => void;
-  dateFrom: string;
-  setDateFrom: (date: string) => void;
-  dateTo: string;
-  setDateTo: (date: string) => void;
-  region: string;
-  setRegion: (region: string) => void;
-  activeConnectionId: string;
-  settings: any;
-  kpiResults: any[];
-  setKpiResults: (results: any[]) => void;
-  storageConfig: any;
-  globalFilters: Record<string, string[]>;
-  setGlobalFilters: (filters: any) => void;
-  hiddenDimensions: Set<string>;
-  setHiddenDimensions: (dimensions: any) => void;
-  charts: ChartConfig[];
-  setCharts: (charts: ChartConfig[]) => void;
-  jqlQuery: string;
-  setJqlQuery: (query: string) => void;
-  filterPanelOpen: boolean;
-  setFilterPanelOpen: (open: boolean) => void;
-  theme: 'light' | 'dark';
-  showFloatingBar: boolean;
-  onPrint?: () => void;
-}
+export function KpiDashboard() {
+  const {
+    connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo,
+    dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion,
+    activeConnectionId, settings, kpiResults, setKpiResults, storageConfig,
+    globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions,
+    dashboardCharts: charts, setDashboardCharts: setCharts,
+    dashboardJqlQuery: jqlQuery, setDashboardJqlQuery: setJqlQuery,
+    filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar
+  } = useAppStore();
 
-export function KpiDashboard({
-  connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, activeConnectionId, settings, kpiResults, setKpiResults, storageConfig,
-  globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions, charts, setCharts, jqlQuery, setJqlQuery, filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar, onPrint
-}: KpiDashboardProps) {
+  const onPrint = () => window.print();
   const isFirstRender = useRef(true);
 
   // ─── Period Analysis Helpers ──────────────────────────────────────────────
@@ -123,13 +103,17 @@ export function KpiDashboard({
     const fromDate = dateFrom ? new Date(dateFrom) : null;
     const toDate = dateTo ? new Date(dateTo) : null;
     const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-    
+
     const presets = [7, 14, 30, 60, 90, 180, 365];
     const isActive = isToday && presets.includes(diffDays);
-    
+
     const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
-    const isTruncated = masterStart && fromDate && fromDate < masterStart;
-    
+
+    const fromDateNormalized = fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate()) : null;
+    const masterStartNormalized = masterStart ? new Date(masterStart.getFullYear(), masterStart.getMonth(), masterStart.getDate()) : null;
+
+    const isTruncated = masterStartNormalized && fromDateNormalized && fromDateNormalized < masterStartNormalized;
+
     return {
       isAnyPresetActive: isActive,
       isDataTruncated: !!isTruncated,
@@ -141,10 +125,10 @@ export function KpiDashboard({
   const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
-  
+
   // Staging filters for multi-select without instant update
   const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
-  
+
   const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
   const [drillDownTitle, setDrillDownTitle] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -183,6 +167,27 @@ export function KpiDashboard({
     toast.success(`View "${newPresetName}" saved`);
   };
 
+  const handleUpdatePreset = (id: string, name: string) => {
+    if (!activeConnectionId) return;
+    const updated = presets.map(p => {
+      if (p.id === id) {
+        return {
+          ...p,
+          dateFrom,
+          dateTo,
+          globalFilters,
+          charts,
+          dashboardJql: jqlQuery,
+          hiddenDimensions: Array.from(hiddenDimensions)
+        };
+      }
+      return p;
+    });
+    setPresets(updated);
+    localConfig.saveDashboardPresets(activeConnectionId, updated);
+    toast.success(`View "${name}" updated`);
+  };
+
   const handleLoadPreset = (preset: DashboardPreset) => {
     setDateFrom(preset.dateFrom);
     setDateTo(preset.dateTo);
@@ -191,6 +196,7 @@ export function KpiDashboard({
     setCharts(preset.charts);
     setJqlQuery(preset.dashboardJql);
     setHiddenDimensions(new Set(preset.hiddenDimensions));
+    setPresetPopoverOpen(false);
     toast.success(`Loaded view: ${preset.name}`);
   };
 
@@ -287,7 +293,7 @@ export function KpiDashboard({
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Calculation failed');
-      return data.results.map((r: any) => ({
+      return data.results.map((r: KpiCalcResult) => ({
         ...r,
         results: r.results.map((res: any) => ({
           ...res,
@@ -297,7 +303,7 @@ export function KpiDashboard({
       }));
     },
     enabled: !!activeConnectionId && !!masterDatasetInfo?.issues,
-    refetchInterval: settings?.webhooks?.enabled ? 30000 : false, // Refetch every 30s if webhooks are enabled
+    refetchInterval: (settings as AppSettings)?.webhooks?.enabled ? 30000 : false, // Refetch every 30s if webhooks are enabled
   });
 
   useEffect(() => {
@@ -383,21 +389,21 @@ export function KpiDashboard({
     });
   }, [kpiResults]);
 
-  const mainKpis = sortedKpiResults.filter((r: any) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const assigneeKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const statusKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
-  const slaStatusKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
-  const priorityKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
-  const distributionKpis = sortedKpiResults.filter((r: any) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
-  const timeSeriesKpis = sortedKpiResults.filter((r: any) => isTimeSeriesPlugin(r.pluginId));
+  const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
+  const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
+  const statusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
+  const slaStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
+  const priorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
+  const distributionKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
+  const timeSeriesKpis = sortedKpiResults.filter((r: KpiCalcResult) => isTimeSeriesPlugin(r.pluginId));
 
   // Results specifically for the Table View (Metrics Overview)
   // Excludes trend items (time series) and metrics with specific breakdown dimensions
   const tableKpiResults = useMemo(() => {
-    return sortedKpiResults.filter((r: any) => 
-      !r.results[0]?.dimensions?.status && 
-      !r.results[0]?.dimensions?.priority && 
-      !r.results[0]?.dimensions?.assignee && 
+    return sortedKpiResults.filter((r: KpiCalcResult) =>
+      !r.results[0]?.dimensions?.status &&
+      !r.results[0]?.dimensions?.priority &&
+      !r.results[0]?.dimensions?.assignee &&
       !isTimeSeriesPlugin(r.pluginId)
     );
   }, [sortedKpiResults]);
@@ -432,11 +438,107 @@ export function KpiDashboard({
               <CardDescription className="text-slate-600 dark:text-slate-400">
                 Detailed performance metrics based on the master dataset
               </CardDescription>
+              {masterDatasetInfo && (
+                <div className="mt-3 flex w-fit items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-full">
+                  <Database className="h-3 w-3 text-blue-500" />
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tight">
+                    {masterDatasetInfo.dateRange?.from ? (
+                      <>Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} — {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}</>
+                    ) : (
+                      <>Data Inventory: Range Unspecified</>
+                    )}
+                  </span>
+                  <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400/80 border-l border-blue-200 dark:border-blue-500/30 pl-2 ml-1">
+                    {masterDatasetInfo.totalExtracted.toLocaleString()} tickets • Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
+                      year: 'numeric', month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 text-xs font-bold border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 no-print">
+                    <Zap className="h-4 w-4" />
+                    Saved Views
+                    {presets.length > 0 && <Badge className="ml-1 bg-emerald-500 hover:bg-emerald-600 border-none h-5 min-w-[20px] flex items-center justify-center p-0 text-[10px]">{presets.length}</Badge>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
+                  </div>
+                  <div className="p-2 max-h-[300px] overflow-y-auto">
+                    {presets.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <p className="text-xs text-slate-400 italic">No saved views yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {presets.map(p => (
+                          <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
+                              <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <UITooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-500"
+                                    onClick={(e) => { e.stopPropagation(); handleUpdatePreset(p.id, p.name); }}
+                                  >
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">Update view with current settings</p>
+                                </TooltipContent>
+                              </UITooltip>
+                              <UITooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
+                                    onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">Delete view</p>
+                                </TooltipContent>
+                              </UITooltip>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="View Name..."
+                        value={newPresetName}
+                        onChange={(e) => setNewPresetName(e.target.value)}
+                        className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                      />
+                      <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setFilterPanelOpen(!filterPanelOpen)}
                 className={`h-9 border-slate-200 dark:border-slate-700 transition-all ${filterPanelOpen ? 'bg-slate-100 dark:bg-slate-800 ring-2 ring-emerald-500/20' : ''}`}
               >
@@ -449,14 +551,14 @@ export function KpiDashboard({
                 )}
               </Button>
               <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-800 hidden md:block" />
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-9 text-slate-500 hover:text-emerald-500 hover:bg-emerald-500/10 no-print"
                 onClick={onPrint}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Export / Print
+                Print
               </Button>
             </div>
           </div>
@@ -473,80 +575,18 @@ export function KpiDashboard({
                         <AlertTriangle className="h-2.5 w-2.5" /> Data Truncated
                       </Badge>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs p-3">
-                      <p className="text-xs">Your selected start date ({new Date(dateFrom).toLocaleDateString()}) is earlier than your local data availability ({availableStartDate}). Results only reflect available data.</p>
+                    <TooltipContent side="top" className="max-w-xs p-3 shadow-lg border-amber-200 dark:border-amber-800">
+                      <p className="text-xs">
+                        Your selected analysis starts on <strong className="text-amber-600 dark:text-amber-400">{new Date(dateFrom).toLocaleDateString()}</strong>, but your local dataset only contains data from <strong className="text-amber-600 dark:text-amber-400">{availableStartDate}</strong> onwards.<br /><br />
+                        The charts and metrics will still render, but will only reflect the available data.
+                      </p>
                     </TooltipContent>
                   </UITooltip>
                 )}
               </div>
-              
+
               <div className="flex flex-wrap items-center gap-4">
-                {masterDatasetInfo?.dateRange?.from && (
-                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-full">
-                    <Database className="h-3 w-3 text-blue-500" />
-                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tight">
-                      Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} — {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}
-                    </span>
-                  </div>
-                )}
-                
                 <div className="flex items-center gap-3 no-print">
-                  <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800">
-                    <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 gap-2 text-[11px] font-bold border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10">
-                          <Zap className="h-3.5 w-3.5" />
-                          Saved Views
-                          {presets.length > 0 && <Badge className="ml-1 h-4 min-w-[16px] px-1 bg-emerald-500">{presets.length}</Badge>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
-                          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
-                        </div>
-                        <div className="p-2 max-h-[300px] overflow-y-auto">
-                          {presets.length === 0 ? (
-                            <div className="py-8 text-center">
-                              <p className="text-xs text-slate-400 italic">No saved views yet</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-1">
-                              {presets.map(p => (
-                                <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
-                                  <div className="flex flex-col gap-0.5">
-                                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
-                                    <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
-                                  </div>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500" 
-                                    onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                          <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
-                          <div className="flex gap-2">
-                            <Input 
-                              placeholder="View Name..." 
-                              value={newPresetName} 
-                              onChange={(e) => setNewPresetName(e.target.value)}
-                              className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
-                            />
-                            <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  
                   <div className="flex items-center gap-2">
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
@@ -591,7 +631,7 @@ export function KpiDashboard({
                 ].map((p) => {
                   const today = new Date();
                   today.setHours(23, 59, 59, 999);
-                  
+
                   const targetStart = new Date(today);
                   targetStart.setDate(today.getDate() - p.days);
                   targetStart.setHours(0, 0, 0, 0);
@@ -601,11 +641,11 @@ export function KpiDashboard({
                   if (masterStartNormalized) masterStartNormalized.setHours(0, 0, 0, 0);
 
                   const isAvailable = p.label === 'MAX' ? !!masterStartNormalized : (!masterStartNormalized || targetStart >= masterStartNormalized);
-                  
+
                   const todayStr = today.toISOString().split('T')[0];
                   const startStr = targetStart.toISOString().split('T')[0];
-                  
-                  const isActive = p.label === 'MAX' 
+
+                  const isActive = p.label === 'MAX'
                     ? (masterStart && dateFrom === new Date(masterStart).toISOString().split('T')[0])
                     : (dateTo === todayStr && dateFrom === startStr);
 
@@ -623,11 +663,10 @@ export function KpiDashboard({
                           setDateTo(todayStr);
                         }
                       }}
-                      className={`h-8 px-3 text-[10px] font-bold transition-all ${
-                        isActive 
-                          ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20 border-transparent' 
+                      className={`h-8 px-3 text-[10px] font-bold transition-all ${isActive
+                          ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20 border-transparent'
                           : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:text-emerald-500 hover:border-emerald-500/50 bg-transparent'
-                      } ${!isAvailable ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        } ${!isAvailable ? 'opacity-40 cursor-not-allowed' : ''}`}
                       disabled={!isAvailable}
                     >
                       {p.label}
@@ -664,15 +703,15 @@ export function KpiDashboard({
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <JqlAutocomplete 
+                    <JqlAutocomplete
                       ref={jqlInputRef}
                       value={jqlQuery}
                       onChange={setJqlQuery}
                       filterOptions={filterOptions}
                       className="flex-1"
                     />
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-xs"
                       onClick={() => {
                         if (!jqlQuery) return;
@@ -713,17 +752,17 @@ export function KpiDashboard({
                         const isEditing = editingJqlId === djql.id;
                         return (
                           <div key={djql.id} className="flex items-center gap-1">
-                            <Badge 
+                            <Badge
                               variant={isActive ? 'default' : 'outline'}
                               className={`h-6 px-2 gap-1.5 transition-all cursor-pointer ${isEditing ? 'ring-2 ring-amber-500' : ''} ${isActive ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
                               onClick={() => handleUpdatePendingFilter('jql', djql.query)}
                             >
                               <span className="max-w-[120px] truncate font-mono">{djql.query}</span>
                               <div className="flex items-center gap-1 ml-1">
-                                <span 
+                                <span
                                   className="hover:text-blue-300 transition-colors p-0.5"
-                                  onClick={(e) => { 
-                                    e.stopPropagation(); 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setEditingJqlId(djql.id);
                                     setJqlQuery(djql.query);
                                   }}
@@ -732,7 +771,7 @@ export function KpiDashboard({
                                 </span>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <span 
+                                    <span
                                       className="hover:text-red-200 transition-colors p-0.5"
                                       onClick={(e) => { e.stopPropagation(); setJqlToDelete(djql.id); }}
                                     >
@@ -748,7 +787,7 @@ export function KpiDashboard({
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel onClick={() => setJqlToDelete(null)}>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction 
+                                      <AlertDialogAction
                                         className="bg-red-600 hover:bg-red-700"
                                         onClick={() => {
                                           if (jqlToDelete) {
@@ -782,68 +821,68 @@ export function KpiDashboard({
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 no-print">
-                {[
-                  { label: 'Project', key: 'project', options: filterOptions.project },
-                  { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
-                  { label: 'Priority', key: 'priority', options: filterOptions.priority },
-                  { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
-                  { label: 'Status', key: 'status', options: filterOptions.status },
-                  { label: 'Component', key: 'component', options: filterOptions.component },
-                  { label: 'Label', key: 'label', options: filterOptions.label },
-                ].filter(f => f.options.length > 1).map(filter => (
-                  <div key={filter.key} className="space-y-1.5 no-print">
-                    <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="w-full h-8 text-[11px] justify-between bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-normal"
-                        >
-                          <span className="truncate">
-                            {pendingFilters[filter.key]?.length 
-                              ? `${pendingFilters[filter.key].length} selected` 
-                              : `All ${filter.label}${filter.label === 'Priority' ? 'ies' : filter.label === 'Status' ? 'es' : 's'}`}
-                          </span>
-                          <ChevronDown className="h-3 w-3 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[200px] p-0" align="start">
-                        <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="w-full h-7 text-[10px] justify-start px-2"
-                            onClick={() => handleUpdatePendingFilter(filter.key, 'all')}
+                  {[
+                    { label: 'Project', key: 'project', options: filterOptions.project },
+                    { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
+                    { label: 'Priority', key: 'priority', options: filterOptions.priority },
+                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
+                    { label: 'Status', key: 'status', options: filterOptions.status },
+                    { label: 'Component', key: 'component', options: filterOptions.component },
+                    { label: 'Label', key: 'label', options: filterOptions.label },
+                  ].filter(f => f.options.length > 1).map(filter => (
+                    <div key={filter.key} className="space-y-1.5 no-print">
+                      <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full h-8 text-[11px] justify-between bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-normal"
                           >
-                            Clear All
+                            <span className="truncate">
+                              {pendingFilters[filter.key]?.length
+                                ? `${pendingFilters[filter.key].length} selected`
+                                : `All ${filter.label}${filter.label === 'Priority' ? 'ies' : filter.label === 'Status' ? 'es' : 's'}`}
+                            </span>
+                            <ChevronDown className="h-3 w-3 opacity-50" />
                           </Button>
-                        </div>
-                        <div className="max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
-                          {filter.options.map(opt => (
-                            <div 
-                              key={opt} 
-                              className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm" 
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
-                                handleUpdatePendingFilter(filter.key, opt); 
-                              }}
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[200px] p-0" align="start">
+                          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full h-7 text-[10px] justify-start px-2"
+                              onClick={() => handleUpdatePendingFilter(filter.key, 'all')}
                             >
-                              <Checkbox checked={!!pendingFilters[filter.key]?.includes(opt)} onCheckedChange={() => {}} />
-                              <span className="text-xs truncate">{opt}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                ))}
+                              Clear All
+                            </Button>
+                          </div>
+                          <div className="max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
+                            {filter.options.map(opt => (
+                              <div
+                                key={opt}
+                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdatePendingFilter(filter.key, opt);
+                                }}
+                              >
+                                <Checkbox checked={!!pendingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
+                                <span className="text-xs truncate">{opt}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800 no-print">
-                  <Button 
-                    size="sm" 
-                    onClick={handleApplyFilters} 
+                  <Button
+                    size="sm"
+                    onClick={handleApplyFilters}
                     className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-2"
                     disabled={JSON.stringify(globalFilters) === JSON.stringify(pendingFilters)}
                   >
@@ -859,7 +898,7 @@ export function KpiDashboard({
                     values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
                         <span className="text-slate-400">{key}:</span> {val}
-                        <span 
+                        <span
                           className="flex items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
                           onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }}
                         >
@@ -882,19 +921,19 @@ export function KpiDashboard({
               <Activity className="h-5 w-5 text-emerald-500" />
               Metrics Overview
             </h3>
-            
+
             <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
-              <Button 
-                variant={viewMode === 'grid' ? 'default' : 'ghost'} 
-                size="sm" 
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="sm"
                 onClick={() => setViewMode('grid')}
                 className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'grid' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
                 Grid View
               </Button>
-              <Button 
-                variant={viewMode === 'table' ? 'default' : 'ghost'} 
-                size="sm" 
+              <Button
+                variant={viewMode === 'table' ? 'default' : 'ghost'}
+                size="sm"
                 onClick={() => setViewMode('table')}
                 className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'table' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
@@ -902,9 +941,9 @@ export function KpiDashboard({
               </Button>
             </div>
 
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleExportKpis}
               className="h-8 text-[10px] uppercase tracking-wider font-bold border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
             >
@@ -926,15 +965,14 @@ export function KpiDashboard({
           </div>
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
-              {mainKpis.map((kpi) => kpi.results.map((result: any, idx: number) => {
+              {mainKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
                 return (
                   <KpiErrorBoundary key={`${kpi.pluginId}-${idx}`} name={result.name}>
-                    <KpiCard 
-                      result={result} 
-                      pluginId={kpi.pluginId} 
+                    <KpiCard
+                      result={result}
+                      pluginId={kpi.pluginId}
                       onHide={() => toggleDimension(kpi.pluginId, '')}
-                      settings={settings}
                       onClick={result.ticketKeys ? () => {
                         handleDrillDown(result.ticketKeys || [], result.name);
                       } : undefined}
@@ -944,10 +982,9 @@ export function KpiDashboard({
               }))}
             </div>
           ) : (
-            <KpiDataTable 
-              results={tableKpiResults} 
-              settings={settings} 
-              onDrillDown={handleDrillDown} 
+            <KpiDataTable
+              results={tableKpiResults}
+              onDrillDown={handleDrillDown}
             />
           )}
         </div>
@@ -961,7 +998,7 @@ export function KpiDashboard({
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
                       const next = new Set(prev);
-                      next.forEach(k => { if(k.startsWith('time_in_status|')) next.delete(k); });
+                      next.forEach(k => { if (k.startsWith('time_in_status|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
@@ -972,20 +1009,20 @@ export function KpiDashboard({
             </CardHeader>
             <CardContent>
               <div className="space-y-3">{statusKpis.map((kpi) => {
-                const visibleResults = kpi.results.filter((r: any) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`));
-                const maxVal = Math.max(...visibleResults.map((r: any) => r.value), 1);
-                
-                return visibleResults.map((result: any, idx: number) => (
+                const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`));
+                const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
+
+                return visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
                   <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
-                        <span 
+                        <span
                           className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-blue-500 hover:underline"
                           onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
                         >
                           {result.name}
                         </span>
-                        <button 
+                        <button
                           onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
                           className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
                           title="Hide bar"
@@ -995,13 +1032,13 @@ export function KpiDashboard({
                       </div>
                       <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
                     </div>
-                    <div 
+                    <div
                       className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-blue-400 transition-all"
                       onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
                     >
-                      <div 
-                        className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500" 
-                        style={{ width: `${(result.value / maxVal) * 100}%` }} 
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500"
+                        style={{ width: `${(result.value / maxVal) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -1038,18 +1075,18 @@ export function KpiDashboard({
                         }
 
                         const sortedResults = [...kpi.results].sort((a, b) => {
-                          const aIdx = bucketOrder.indexOf(a.dimensions?.bucket);
-                          const bIdx = bucketOrder.indexOf(b.dimensions?.bucket);
+                          const aIdx = bucketOrder.indexOf(a.dimensions?.bucket || '');
+                          const bIdx = bucketOrder.indexOf(b.dimensions?.bucket || '');
                           if (aIdx === -1 || bIdx === -1) return 0;
                           return aIdx - bIdx;
                         });
-                        
-                        const maxVal = Math.max(...sortedResults.map((r: any) => r.value), 1);
-                        
-                        return sortedResults.map((result: any, idx: number) => (
+
+                        const maxVal = Math.max(...sortedResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
+
+                        return sortedResults.map((result: KpiCalcResult['results'][0], idx: number) => (
                           <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
                             <div className="flex items-center justify-between text-sm">
-                              <span 
+                              <span
                                 className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-purple-500 hover:underline"
                                 onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
                               >
@@ -1057,13 +1094,13 @@ export function KpiDashboard({
                               </span>
                               <span className="font-mono font-semibold text-purple-400">{result.value} {result.unit}</span>
                             </div>
-                            <div 
+                            <div
                               className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-purple-400 transition-all"
                               onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
                             >
-                              <div 
-                                className="h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-500" 
-                                style={{ width: `${(result.value / maxVal) * 100}%` }} 
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-500"
+                                style={{ width: `${(result.value / maxVal) * 100}%` }}
                               />
                             </div>
                           </div>
@@ -1086,7 +1123,7 @@ export function KpiDashboard({
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
                       const next = new Set(prev);
-                      next.forEach(k => { if(k.startsWith('sla_by_priority|')) next.delete(k); });
+                      next.forEach(k => { if (k.startsWith('sla_by_priority|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
@@ -1096,16 +1133,16 @@ export function KpiDashboard({
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{priorityKpis.map((kpi) => kpi.results.map((result: any, idx: number) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{priorityKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
                 const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
                 return (
-                  <div 
-                    key={`${kpi.pluginId}-${idx}`} 
+                  <div
+                    key={`${kpi.pluginId}-${idx}`}
                     className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
                     onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`) : undefined}
                   >
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.priority || ''); }}
                       className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
                       title="Hide widget"
@@ -1129,7 +1166,7 @@ export function KpiDashboard({
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
                       const next = new Set(prev);
-                      next.forEach(k => { if(k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) next.delete(k); });
+                      next.forEach(k => { if (k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
@@ -1140,16 +1177,16 @@ export function KpiDashboard({
               <CardDescription className="text-slate-600 dark:text-slate-400">Compliance with per-status SLA targets. Assignee comments reset the clock.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaStatusKpis.map((kpi) => kpi.results.map((result: any, idx: number) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaStatusKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
                 const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
                 return (
-                  <div 
-                    key={`${kpi.pluginId}-${idx}`} 
+                  <div
+                    key={`${kpi.pluginId}-${idx}`}
                     className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
                     onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.status}`) : undefined}
                   >
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.status || ''); }}
                       className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
                       title="Hide widget"
@@ -1159,8 +1196,8 @@ export function KpiDashboard({
                     <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
                     {result.details && (
                       <div className="space-y-1 mt-2">
-                        <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Target')?.value || '-'}h</span></div>
-                        <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: any) => d.label === 'Total')?.value || 0}</span></div>
+                        <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Target')?.value || '-'}h</span></div>
+                        <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Total')?.value || 0}</span></div>
                       </div>
                     )}
                   </div>
@@ -1179,7 +1216,7 @@ export function KpiDashboard({
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
                       const next = new Set(prev);
-                      next.forEach(k => { if(k.startsWith('open_tickets_by_assignee|')) next.delete(k); });
+                      next.forEach(k => { if (k.startsWith('open_tickets_by_assignee|')) next.delete(k); });
                       return next;
                     });
                   }} className="h-7 text-[10px] text-indigo-400 hover:text-indigo-500 hover:bg-indigo-500/10">
@@ -1190,22 +1227,22 @@ export function KpiDashboard({
             </CardHeader>
             <CardContent>
               <div className="space-y-4">{assigneeKpis.map((kpi) => {
-                const visibleResults = kpi.results.filter((r: any) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`));
-                const maxVal = Math.max(...visibleResults.map((r: any) => r.value), 1);
-                
+                const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`));
+                const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
+
                 return (
                   <div key={kpi.pluginId} className="space-y-3">
-                    {visibleResults.map((result: any, idx: number) => (
+                    {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
                       <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
                         <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-2">
-                            <span 
+                            <span
                               className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
                               onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
                             >
                               {result.dimensions?.assignee || result.name}
                             </span>
-                            <button 
+                            <button
                               onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
                               className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
                               title="Hide bar"
@@ -1215,13 +1252,13 @@ export function KpiDashboard({
                           </div>
                           <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
                         </div>
-                        <div 
+                        <div
                           className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-indigo-400 transition-all"
                           onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
                         >
-                          <div 
-                            className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700" 
-                            style={{ width: `${(result.value / maxVal) * 100}%` }} 
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700"
+                            style={{ width: `${(result.value / maxVal) * 100}%` }}
                           />
                         </div>
                       </div>
@@ -1307,7 +1344,7 @@ export function KpiDashboard({
                   const key = drillDownKeys[index];
                   const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
                   if (!issue) return null;
-                  
+
                   const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
                   const baseUrl = activeConnection?.baseUrl || '';
                   const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
@@ -1388,9 +1425,9 @@ export function KpiDashboard({
               </div>
               <div className="flex items-center gap-2">
 
-                <Button 
-                  size="sm" 
-                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
+                <Button
+                  size="sm"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                   className="rounded-full h-8 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-3 border border-slate-200 dark:border-slate-700 shadow-sm"
                 >
                   <ArrowUp className="h-3.5 w-3.5 mr-1.5" />
@@ -1414,826 +1451,5 @@ export function KpiDashboard({
         </div>
       )}
     </div>
-  );
-}
-
-// ─── KPI Card (Single Widget) ────────────────────────────────────────────────
-function KpiCard({ result, pluginId, onHide, onClick, settings }: { 
-  result: { 
-    name: string; 
-    value: number; 
-    unit: string; 
-    dimensions?: any; 
-    details?: any[];
-    ticketKeys?: string[];
-    comparison?: { value: number; change: number; label: string };
-  }; 
-  pluginId: string; 
-  onHide?: () => void;
-  onClick?: () => void;
-  settings?: any;
-}) {
-  const alertConfig = settings?.alerts?.thresholds?.[pluginId];
-  
-  const getAlertStatus = () => {
-    if (!alertConfig) return null;
-    const { warning, critical, operator } = alertConfig;
-    const val = result.value;
-    
-    if (operator === '>') {
-      if (val >= critical) return 'critical';
-      if (val >= warning) return 'warning';
-    } else {
-      if (val <= critical) return 'critical';
-      if (val <= warning) return 'warning';
-    }
-    return null;
-  };
-
-  const alertStatus = getAlertStatus();
-
-  const getIcon = () => {
-    if (result.name.includes('Processing')) return <Clock className="h-5 w-5" />;
-    if (result.name.includes('Working Days')) return <Calendar className="h-5 w-5" />;
-    if (result.name.includes('SLA')) return <Target className="h-5 w-5" />;
-    if (result.name.includes('Throughput')) return <TrendingUp className="h-5 w-5" />;
-    if (result.name.includes('Resolution')) return <CheckCircle2 className="h-5 w-5" />;
-    if (result.name.includes('Reassign')) return <AlertTriangle className="h-5 w-5" />;
-    return <Zap className="h-5 w-5" />;
-  };
-  const getColor = () => {
-    if (result.unit === '%') { if (result.value >= 80) return 'text-emerald-400'; if (result.value >= 50) return 'text-amber-400'; return 'text-red-400'; }
-    if (result.unit === 'hours') { if (result.value <= 40) return 'text-emerald-400'; if (result.value <= 80) return 'text-amber-400'; return 'text-red-400'; }
-    return 'text-blue-400';
-  };
-
-  const isClickable = !!onClick || (result.ticketKeys && result.ticketKeys.length > 0);
-
-  return (
-    <Card 
-      className={`border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700 transition-colors group relative ${isClickable ? 'cursor-pointer hover:shadow-md' : ''}`}
-      onClick={isClickable ? onClick : undefined}
-    >
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-4">
-          <p className={`text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${isClickable ? 'group-hover:text-blue-500 group-hover:underline' : ''}`}>
-            {result.name}
-          </p>
-          <div className="flex items-center gap-2">
-            {alertStatus && (
-              <TooltipProvider delayDuration={0}>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <Badge className={`h-5 px-1.5 gap-1 animate-pulse border-none ${alertStatus === 'critical' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}`}>
-                      <AlertTriangle className="h-3 w-3" />
-                      <span className="text-[10px] font-bold">{alertStatus.toUpperCase()}</span>
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="p-2 text-xs">
-                    <p className="font-bold mb-1">Metric Alert Triggered</p>
-                    <p>Current: <span className="font-mono">{result.value}{result.unit}</span></p>
-                    <p>{alertStatus === 'critical' ? 'Critical' : 'Warning'} threshold: <span className="font-mono">{alertConfig.operator}{alertStatus === 'critical' ? alertConfig.critical : alertConfig.warning}</span></p>
-                  </TooltipContent>
-                </UITooltip>
-              </TooltipProvider>
-            )}
-            <Badge variant="outline" className="text-[10px] text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800">
-              {pluginId.split('_').slice(0, 2).join(' ')}
-            </Badge>
-            {onHide && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onHide(); }}
-                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity p-0.5"
-                title="Hide widget"
-              >
-                <EyeOff className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 mb-3">
-          <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800/50">
-            <div className={getColor()}>{getIcon()}</div>
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <p className={`text-3xl font-bold font-mono tracking-tight ${getColor()}`}>
-              {result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}
-            </p>
-            {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{result.unit}</p>}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between mb-1">
-          {result.ticketKeys && result.ticketKeys.length > 0 && (
-            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-400 border-none">
-              {result.ticketKeys.length} tickets
-            </Badge>
-          )}
-        </div>
-        {/* Weekly Breakdown Section */}
-        {result.details && result.details.some((d: any) => ['This Week', 'Previous Week'].includes(d.label)) && (
-          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
-            {result.details.find((d: any) => d.label === 'This Week') && (
-              <div className="space-y-0.5">
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">This Week</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
-                  {(() => {
-                    const d = result.details.find((det: any) => det.label === 'This Week');
-                    return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
-                  })()}
-                  <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
-                </p>
-              </div>
-            )}
-            {result.details.find((d: any) => d.label === 'Previous Week') && (
-              <div className="space-y-0.5">
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Prev. Week</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
-                  {(() => {
-                    const d = result.details.find((det: any) => det.label === 'Previous Week');
-                    return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
-                  })()}
-                  <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {result.details && <><Separator className="my-3 bg-gray-100 dark:bg-slate-800" /><div className="space-y-1.5">{result.details.map((d: any, i: number) => (<div key={i} className="flex items-center justify-between text-xs"><span className="text-slate-400 dark:text-slate-500">{d.label}</span><span className="font-mono text-slate-700 dark:text-slate-300">{d.value}{d.unit ? ` ${d.unit}` : ''}</span></div>))}</div></>}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ─── Chart Card (Configurable Chart Component) ────────────────────────────────
-
-interface ChartCardProps {
-  config: ChartConfig;
-  kpiResults: any[];
-  hiddenDimensions: Set<string>;
-  toggleDimension: (pluginId: string, value: string) => void;
-  onRemove: (id: string) => void;
-  onChange: (id: string, newConfig: ChartConfig) => void;
-  onClick: (keys: string[], title: string) => void;
-  theme: 'light' | 'dark';
-}
-
-function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme }: ChartCardProps) {
-  const kpiOptions = useMemo(() => getKpiOptions(kpiResults), [kpiResults]);
-  const chartRef = useRef<HTMLDivElement>(null);
-  const [exporting, setExporting] = useState(false);
-
-  // Check if selected KPI is a time-series plugin
-  const isTimeSeries = config.kpiId ? isTimeSeriesPlugin(config.kpiId) : false;
-
-  const selectedKpiData = useMemo(() => {
-    if (!config.kpiId) return null;
-
-    switch (config.type) {
-      case 'bar':
-        return transformForBarChart(kpiResults, config.kpiId);
-      case 'pie':
-        return transformForPieChart(kpiResults, config.kpiId);
-      case 'line':
-        return transformForLineChart(kpiResults, config.kpiId);
-      case 'area':
-        return transformForLineChart(kpiResults, config.kpiId);
-      default:
-        return [];
-    }
-  }, [config.kpiId, config.type, kpiResults]);
-
-  const handleLegendClick = (e: any) => {
-    const dimensionName = e.id || e.value;
-    if (dimensionName) {
-      toggleDimension(config.kpiId, dimensionName);
-    }
-  };
-
-  const handleKpiChange = (kpiId: string) => {
-    const recommendedType = getRecommendedChartType(kpiResults, kpiId);
-    onChange(config.id, { ...config, kpiId, type: recommendedType });
-  };
-
-  const handleExportChart = async () => {
-    if (!chartRef.current) return;
-    setExporting(true);
-    try {
-      // Wait for any animations to finish
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const dataUrl = await toPng(chartRef.current, {
-        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-        cacheBust: true,
-        filter: (node: any) => {
-          if (node.getAttribute && node.getAttribute('data-export-ignore') === 'true') {
-            return false;
-          }
-          return true;
-        },
-        style: {
-          borderRadius: '0'
-        }
-      });
-      
-      const link = document.createElement('a');
-      const kpiName = kpiResults.find(k => k.pluginId === config.kpiId)?.results[0]?.name || 'kpi-chart';
-      link.download = `${kpiName.toLowerCase().replace(/\s+/g, '-')}.png`;
-      link.href = dataUrl;
-      link.click();
-      toast.success('Chart exported as PNG');
-    } catch (err) {
-      console.error('Failed to export chart:', err);
-      toast.error('Failed to export chart');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const renderChart = () => {
-    if (!config.kpiId || !selectedKpiData || selectedKpiData.length === 0) {
-      return (
-        <div className="h-64 flex items-center justify-center text-slate-400 dark:text-slate-500">
-          <div className="text-center">
-            <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Select a KPI to visualize</p>
-          </div>
-        </div>
-      );
-    }
-
-    // Dynamic height based on width
-    const chartHeight = {
-      sm: 250,   // Narrow
-      md: 300,   // Medium
-      lg: 350,   // Wide
-      full: 400,  // Full
-    }[config.width];
-
-    const kpi = kpiResults.find((k) => k.pluginId === config.kpiId);
-    const unit = kpi?.results?.[0]?.unit || '';
-
-    const renderLegend = (value: any) => {
-      const isHidden = hiddenDimensions.has(`${config.kpiId}|${value}`);
-      return (
-        <span 
-          className={`
-            text-[10px] font-medium transition-all cursor-pointer select-none
-            hover:text-blue-500 hover:underline
-            ${isHidden ? 'opacity-30 line-through text-slate-500' : 'text-slate-700 dark:text-slate-300'}
-          `}
-        >
-          {value}
-        </span>
-      );
-    };
-
-    switch (config.type) {
-      case 'bar':
-        const hasMultipleSeriesBar = kpi?.results && kpi.results.length > 1 &&
-          kpi.results.every((r: any) => r.timeSeries && r.timeSeries.length > 0);
-
-        if (hasMultipleSeriesBar) {
-          const allPeriods = new Set<string>();
-          kpi.results.forEach((result: any) => {
-            result.timeSeries?.forEach((point: any) => allPeriods.add(point.period));
-          });
-
-          const sortedPeriods = Array.from(allPeriods).sort();
-          const mergedData = sortedPeriods.map(period => {
-            const dataPoint: any = { name: period };
-            let isComplete = true;
-            kpi.results.forEach((result: any, idx: number) => {
-              const point = result.timeSeries?.find((p: any) => p.period === period);
-              dataPoint[`series${idx}`] = point?.value || 0;
-              if (point && point.isComplete === false) isComplete = false;
-            });
-            dataPoint.isComplete = isComplete;
-            return dataPoint;
-          });
-
-          return (
-            <ResponsiveContainer width="100%" height={chartHeight}>
-              <BarChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="name" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
-                  itemStyle={{ color: '#e2e8f0' }}
-                  formatter={(value: number) => formatChartValue(value, unit)}
-                />
-                <Legend 
-                  onClick={handleLegendClick} 
-                  cursor="pointer" 
-                  formatter={renderLegend} 
-                  verticalAlign="top" 
-                  align="right"
-                  wrapperStyle={{ paddingBottom: '20px' }}
-                />
-                {kpi.results.map((result: any, idx: number) => (
-                  <Bar
-                    key={result.name || idx}
-                    dataKey={`series${idx}`}
-                    name={result.name}
-                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                    radius={[4, 4, 0, 0]}
-                    hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
-                  >
-                    {mergedData.map((entry: any, index: number) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                        fillOpacity={entry.isComplete === false ? 0.4 : 1}
-                      />
-                    ))}
-                  </Bar>
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          );
-        }
-
-        const visibleBarData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
-        const hasWeeklyLayers = visibleBarData.some(d => (d.thisWeek && d.thisWeek !== 0) || (d.prevWeek && d.prevWeek !== 0));
-
-        return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" />
-              <YAxis className="text-xs" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
-                formatter={(value: number) => formatChartValue(value, unit)}
-              />
-              {(hasWeeklyLayers || selectedKpiData.length > 1) && (
-                <Legend 
-                  onClick={handleLegendClick} 
-                  cursor="pointer" 
-                  formatter={renderLegend}
-                  verticalAlign="top"
-                  align="right"
-                  wrapperStyle={{ paddingBottom: '20px' }}
-                  payload={[
-                    ...selectedKpiData.map((d, idx) => ({
-                      value: d.name,
-                      type: 'rect' as any,
-                      id: d.name,
-                      color: d.fill || CHART_COLORS[idx % CHART_COLORS.length]
-                    }))
-                  ]}
-                />
-              )}
-              <Bar 
-                dataKey="value" 
-                name="Total Period" 
-                radius={[4, 4, 0, 0]} 
-                hide={hiddenDimensions.has(`${config.kpiId}|Total Period`)}
-                cursor="pointer"
-                onClick={(data) => {
-                  if (data && data.ticketKeys) {
-                    onClick(data.ticketKeys, data.name || 'Total Period');
-                  }
-                }}
-              >
-                {visibleBarData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]}
-                    fillOpacity={entry.isComplete === false ? 0.4 : 1}
-                  />
-                ))}
-              </Bar>
-              {hasWeeklyLayers && (
-                <>
-                  <Bar 
-                    dataKey="thisWeek" 
-                    name="This Week" 
-                    fill="#3b82f6" 
-                    radius={[4, 4, 0, 0]} 
-                    hide={hiddenDimensions.has(`${config.kpiId}|This Week`)}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "This Week");
-                      }
-                    }}
-                  />
-                  <Bar 
-                    dataKey="prevWeek" 
-                    name="Prev Week" 
-                    fill="#94a3b8" 
-                    radius={[4, 4, 0, 0]} 
-                    hide={hiddenDimensions.has(`${config.kpiId}|Prev Week`)}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "Prev Week");
-                      }
-                    }}
-                  />
-                </>
-              )}
-            </BarChart>
-          </ResponsiveContainer>
-        );
-
-      case 'line':
-        const hasMultipleSeries = kpi?.results && kpi.results.length > 1 &&
-          kpi.results.every((r: any) => r.timeSeries && r.timeSeries.length > 0);
-
-        if (hasMultipleSeries) {
-          const allPeriods = new Set<string>();
-          kpi.results.forEach((result: any) => {
-            result.timeSeries?.forEach((point: any) => allPeriods.add(point.period));
-          });
-
-          const sortedPeriods = Array.from(allPeriods).sort();
-          const mergedData = sortedPeriods.map(period => {
-            const dataPoint: any = { name: period };
-            let isComplete = true;
-            kpi.results.forEach((result: any, idx: number) => {
-              const point = result.timeSeries?.find((p: any) => p.period === period);
-              dataPoint[`series${idx}`] = point?.value || 0;
-              if (point && point.isComplete === false) isComplete = false;
-            });
-            dataPoint.isComplete = isComplete;
-            return dataPoint;
-          });
-
-          return (
-            <ResponsiveContainer width="100%" height={chartHeight}>
-              <LineChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="name" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
-                  itemStyle={{ color: '#e2e8f0' }}
-                  formatter={(value: number) => formatChartValue(value, unit)}
-                />
-                <Legend 
-                  onClick={handleLegendClick} 
-                  cursor="pointer" 
-                  formatter={renderLegend} 
-                  verticalAlign="top" 
-                  align="right"
-                  wrapperStyle={{ paddingBottom: '20px' }}
-                />
-                {kpi.results.map((result: any, idx: number) => {
-                  const color = CHART_COLORS[idx % CHART_COLORS.length];
-                  return (
-                    <Line
-                      key={result.name || idx}
-                      type="monotone"
-                      dataKey={`series${idx}`}
-                      name={result.name}
-                      stroke={color}
-                      strokeWidth={2}
-                      dot={(props) => {
-                        const { cx, cy, payload } = props;
-                        if (payload.isComplete === false) {
-                          return (
-                            <circle 
-                              key={`dot-${idx}-${payload.name}`}
-                              cx={cx} cy={cy} r={4} 
-                              fill="transparent" 
-                              stroke={color} 
-                              strokeWidth={2} 
-                              strokeDasharray="2 2" 
-                            />
-                          );
-                        }
-                        return <circle key={`dot-${idx}-${payload.name}`} cx={cx} cy={cy} r={4} fill={color} />;
-                      }}
-                      hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
-                    />
-                  );
-                })}
-              </LineChart>
-            </ResponsiveContainer>
-          );
-        }
-
-        return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <LineChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" />
-              <YAxis className="text-xs" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
-                formatter={(value: number) => formatChartValue(value, unit)}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                stroke="#3b82f6" 
-                strokeWidth={2} 
-                dot={(props) => {
-                  const { cx, cy, payload } = props;
-                  if (payload.isComplete === false) {
-                    return (
-                      <circle 
-                        key={`dot-${payload.name}`}
-                        cx={cx} cy={cy} r={4} 
-                        fill="transparent" 
-                        stroke="#3b82f6" 
-                        strokeWidth={2} 
-                        strokeDasharray="2 2" 
-                      />
-                    );
-                  }
-                  return <circle key={`dot-${payload.name}`} cx={cx} cy={cy} r={4} fill="#3b82f6" />;
-                }} 
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        );
-      
-      case 'area':
-        const hasMultipleSeriesArea = kpi?.results && kpi.results.length > 1 &&
-          kpi.results.every((r: any) => r.timeSeries && r.timeSeries.length > 0);
-
-        if (hasMultipleSeriesArea) {
-          const allPeriods = new Set<string>();
-          kpi.results.forEach((result: any) => {
-            result.timeSeries?.forEach((point: any) => allPeriods.add(point.period));
-          });
-
-          const sortedPeriods = Array.from(allPeriods).sort();
-          const mergedData = sortedPeriods.map(period => {
-            const dataPoint: any = { name: period };
-            kpi.results.forEach((result: any, idx: number) => {
-              const point = result.timeSeries?.find((p: any) => p.period === period);
-              dataPoint[`series${idx}`] = point?.value || 0;
-            });
-            return dataPoint;
-          });
-
-          return (
-            <ResponsiveContainer width="100%" height={chartHeight}>
-              <AreaChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="name" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
-                  itemStyle={{ color: '#e2e8f0' }}
-                  formatter={(value: number) => formatChartValue(value, unit)}
-                />
-                <Legend 
-                  onClick={handleLegendClick} 
-                  cursor="pointer" 
-                  formatter={renderLegend} 
-                  verticalAlign="top" 
-                  align="right"
-                  wrapperStyle={{ paddingBottom: '20px' }}
-                />
-                {kpi.results.map((result: any, idx: number) => (
-                  <Area
-                    key={result.name || idx}
-                    type="monotone"
-                    dataKey={`series${idx}`}
-                    name={result.name}
-                    stackId="1"
-                    stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                    fillOpacity={0.6}
-                    hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
-                  />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
-          );
-        }
-
-        return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" />
-              <YAxis className="text-xs" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
-                formatter={(value: number) => formatChartValue(value, unit)}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="value" 
-                stroke="#3b82f6" 
-                fill="#3b82f6" 
-                fillOpacity={0.6} 
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        );
-
-      case 'pie':
-        const visiblePieData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
-
-        return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <PieChart>
-              <Pie
-                data={visiblePieData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, value, payload }) => `${name}: ${formatChartValue(value, payload.unit)}`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {visiblePieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]} />
-                ))}
-              </Pie>
-              <Legend 
-                onClick={handleLegendClick} 
-                cursor="pointer" 
-                formatter={renderLegend} 
-                verticalAlign="top" 
-                align="right"
-                wrapperStyle={{ paddingBottom: '20px' }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
-                formatter={(value: number, name: string, props: any) => [formatChartValue(value, props.payload.unit), name]}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <Card id={`chart-card-${config.id}`} ref={chartRef} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`rounded-lg p-2 ${isTimeSeries ? 'bg-blue-100 dark:bg-blue-500/10' : 'bg-emerald-100 dark:bg-emerald-500/10'}`}>
-              <BarChart3 className={`h-5 w-5 ${isTimeSeries ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
-            </div>
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-lg">Chart Visualization</CardTitle>
-              {isTimeSeries && (
-                <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/30">
-                  📈 Trend
-                </Badge>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            {config.kpiId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleExportChart}
-                disabled={exporting}
-                data-export-ignore="true"
-                className="text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
-              >
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onRemove(config.id)}
-              data-export-ignore="true"
-              className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Inline Controls */}
-        <div className="flex flex-wrap gap-3" data-export-ignore="true">
-          <div className="flex-1 min-w-[200px]">
-            <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">KPI Metric</Label>
-            <Select value={config.kpiId} onValueChange={handleKpiChange}>
-              <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                <SelectValue placeholder="Select KPI..." />
-              </SelectTrigger>
-              <SelectContent>
-                {kpiOptions.timeSeries.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      📈 Time-Series Trends
-                    </SelectLabel>
-                    {kpiOptions.timeSeries.map((option: any) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-                {kpiOptions.regular.length > 0 && (
-                  <>
-                    {kpiOptions.timeSeries.length > 0 && <SelectSeparator />}
-                    <SelectGroup>
-                      <SelectLabel className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        📊 Standard KPIs
-                      </SelectLabel>
-                      {kpiOptions.regular.map((option: any) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="w-[140px]">
-            <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Chart Type</Label>
-            <Select
-              value={config.type}
-              onValueChange={(type: 'bar' | 'line' | 'pie' | 'area') => onChange(config.id, { ...config, type })}
-              disabled={!config.kpiId}
-            >
-              <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="bar">Bar Chart</SelectItem>
-                <SelectItem value="line">Line Chart</SelectItem>
-                <SelectItem value="pie">Pie Chart</SelectItem>
-                <SelectItem value="area">Area Chart</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="w-[120px]">
-            <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Width</Label>
-            <Select
-              value={config.width}
-              onValueChange={(width: 'md' | 'full') => onChange(config.id, { ...config, width })}
-            >
-              <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="md">Medium</SelectItem>
-                <SelectItem value="full">Full</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Chart Area */}
-        <div className="mt-4">{renderChart()}</div>
-      </CardContent>
-    </Card>
   );
 }

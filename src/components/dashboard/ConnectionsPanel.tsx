@@ -28,6 +28,7 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { localConfig, JiraConnection } from '@/lib/config/local-store';
+import { useAppStore } from '@/store/app-store';
 
 // Helper component
 interface SortableConnectionItemProps {
@@ -104,14 +105,13 @@ function SortableConnectionItem({
   );
 }
 
-export function ConnectionsPanel({ connections, setConnections, activeConnectionId, setActiveConnectionId, storageConfig, setStorageConfig }: {
-  connections: JiraConnection[];
-  setConnections: any;
-  activeConnectionId: string;
-  setActiveConnectionId: (id: string) => void;
-  storageConfig: any;
-  setStorageConfig: any;
-}) {
+export function ConnectionsPanel() {
+  const {
+    connections,
+    setConnections,
+    activeConnectionId,
+    setActiveConnectionId
+  } = useAppStore();
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});

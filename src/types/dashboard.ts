@@ -30,7 +30,10 @@ export interface KpiCalcResult {
     value: number;
     unit: string;
     dimensions?: Record<string, string>;
-    details?: Array<{ label: string; value: number; unit?: string }>;
+    details?: Array<{ label: string; value: number | string; unit?: string }>;
+    ticketKeys?: string[];
+    comparison?: { value: number; change: number; label: string };
+    timeSeries?: Array<{ period: string; value: number; isComplete?: boolean }>;
   }>;
 }
 

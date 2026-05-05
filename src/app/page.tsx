@@ -19,7 +19,8 @@ import { SettingsPanel } from '@/components/dashboard/SettingsPanel';
 import { 
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
-import { ChartConfig, ExtractedIssue, JiraConnection } from '@/types/dashboard';
+import { JiraConnection } from '@/lib/config/local-store';
+import { useAppStore } from '@/store/app-store';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,9 +32,29 @@ const queryClient = new QueryClient({
 });
 
 export default function Home() {
-  // Static server-safe defaults to prevent hydration mismatch
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [mounted, setMounted] = useState(false);
+  const [isLoadingDb, setIsLoadingDb] = useState(false);
+
+  const {
+    theme, setTheme,
+    activeTab, setActiveTab,
+    connections, setConnections,
+    extractionResult, setExtractionResult,
+    masterDatasetInfo, setMasterDatasetInfo,
+    dateFrom, setDateFrom,
+    dateTo, setDateTo,
+    region, setRegion,
+    activeConnectionId, setActiveConnectionId,
+    settings, setSettings,
+    kpiResults, setKpiResults,
+    storageConfig, setStorageConfig,
+    globalFilters, setGlobalFilters,
+    hiddenDimensions, setHiddenDimensions,
+    dashboardCharts, setDashboardCharts,
+    dashboardJqlQuery, setDashboardJqlQuery,
+    filterPanelOpen, setFilterPanelOpen,
+    showFloatingBar, setShowFloatingBar,
+  } = useAppStore();
 
   useEffect(() => {
     setMounted(true);
@@ -41,34 +62,7 @@ export default function Home() {
     if (savedTheme === 'light' || savedTheme === 'dark') {
       setTheme(savedTheme as 'light' | 'dark');
     }
-  }, []);
-
-  const [activeTab, setActiveTab] = useState('extract');
-  const [connections, setConnections] = useState<JiraConnection[]>([]);
-  const [extractionResult, setExtractionResult] = useState<{
-    total: number; etlRunId: string; issues: ExtractedIssue[];
-  } | null>(null);
-  const [masterDatasetInfo, setMasterDatasetInfo] = useState<{
-    totalExtracted: number; dateRange?: { from: string; to: string }; lastUpdated: string; issues?: any[];
-  } | null>(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [region, setRegion] = useState('national');
-  const [activeConnectionId, setActiveConnectionId] = useState<string>('');
-  const [settings, setSettings] = useState<AppSettings | any>(localConfig.getSettings());
-  const [kpiResults, setKpiResults] = useState<any>([]);
-  const [storageConfig, setStorageConfig] = useState<{ provider: 'sqlite' | 'postgresql', url: string, directUrl?: string, isCustom: boolean }>({ provider: 'sqlite', url: '', isCustom: false });
-
-  // Lifted KPI Dashboard State
-  const [globalFilters, setGlobalFilters] = useState<Record<string, string[]>>({});
-  const [hiddenDimensions, setHiddenDimensions] = useState<Set<string>>(new Set());
-  const [dashboardCharts, setDashboardCharts] = useState<ChartConfig[]>([
-    { id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }
-  ]);
-  const [dashboardJqlQuery, setDashboardJqlQuery] = useState('');
-  const [filterPanelOpen, setFilterPanelOpen] = useState(true);
-  const [showFloatingBar, setShowFloatingBar] = useState(false);
-  const [isLoadingDb, setIsLoadingDb] = useState(false);
+  }, [setTheme]);
 
   const loadMasterDataset = useCallback(async (connectionId: string, config: any, signal?: AbortSignal) => {
     if (!connectionId) return;
@@ -208,12 +202,7 @@ export default function Home() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const handleSettingsUpdate = (newSettings: any) => {
-    setSettings(newSettings);
-    localConfig.saveSettings(newSettings);
-  };
+  }, [setActiveTab]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -304,36 +293,11 @@ export default function Home() {
               </div>
 
               <TabsContent value="jira-etl" className="mt-0">
-                <ExtractPanel
-                  connections={connections}
-                  extractionResult={extractionResult}
-                  setExtractionResult={setExtractionResult}
-                  masterDatasetInfo={masterDatasetInfo}
-                  setMasterDatasetInfo={setMasterDatasetInfo}
-                  dateFrom={dateFrom}
-                  setDateFrom={setDateFrom}
-                  dateTo={dateTo}
-                  setDateTo={setDateTo}
-                  activeConnectionId={activeConnectionId}
-                  settings={settings}
-                  setSettings={setSettings}
-                  setKpiResults={setKpiResults}
-                  storageConfig={storageConfig}
-                />
+                <ExtractPanel />
               </TabsContent>
 
               <TabsContent value="db-export" className="mt-0">
-                <ExportPanel
-                  extractionResult={extractionResult}
-                  masterDatasetInfo={masterDatasetInfo}
-                  dateFrom={dateFrom}
-                  setDateFrom={setDateFrom}
-                  dateTo={dateTo}
-                  setDateTo={setDateTo}
-                  region={region}
-                  setRegion={setRegion}
-                  storageConfig={storageConfig}
-                />
+                <ExportPanel />
               </TabsContent>
             </Tabs>
           </TabsContent>
@@ -358,44 +322,15 @@ export default function Home() {
               </div>
 
               <TabsContent value="dashboard" className="mt-0">
-                <KpiDashboard
-                  connections={connections}
-                  extractionResult={extractionResult}
-                  masterDatasetInfo={masterDatasetInfo}
-                  setMasterDatasetInfo={setMasterDatasetInfo}
-                  dateFrom={dateFrom}
-                  setDateFrom={setDateFrom}
-                  dateTo={dateTo}
-                  setDateTo={setDateTo}
-                  region={region}
-                  setRegion={setRegion}
-                  activeConnectionId={activeConnectionId}
-                  settings={settings}
-                  kpiResults={kpiResults}
-                  setKpiResults={setKpiResults}
-                  storageConfig={storageConfig}
-                  globalFilters={globalFilters}
-                  setGlobalFilters={setGlobalFilters}
-                  hiddenDimensions={hiddenDimensions}
-                  setHiddenDimensions={setHiddenDimensions}
-                  charts={dashboardCharts}
-                  setCharts={setDashboardCharts}
-                  jqlQuery={dashboardJqlQuery}
-                  setJqlQuery={setDashboardJqlQuery}
-                  filterPanelOpen={filterPanelOpen}
-                  setFilterPanelOpen={setFilterPanelOpen}
-                  theme={theme}
-                  showFloatingBar={showFloatingBar}
-                  onPrint={handlePrint}
-                />
+                <KpiDashboard />
               </TabsContent>
 
               <TabsContent value="plugins" className="mt-0">
-                <PluginsPanel settings={settings} setSettings={setSettings} onSettingsUpdate={handleSettingsUpdate} />
+                <PluginsPanel />
               </TabsContent>
 
               <TabsContent value="holidays" className="mt-0">
-                <HolidaysPanel region={region} setRegion={setRegion} />
+                <HolidaysPanel />
               </TabsContent>
             </Tabs>
           </TabsContent>
@@ -420,27 +355,15 @@ export default function Home() {
               </div>
 
               <TabsContent value="connections" className="mt-0">
-                <ConnectionsPanel
-                  connections={connections}
-                  setConnections={setConnections}
-                  activeConnectionId={activeConnectionId}
-                  setActiveConnectionId={setActiveConnectionId}
-                  storageConfig={storageConfig}
-                  setStorageConfig={setStorageConfig}
-                />
+                <ConnectionsPanel />
               </TabsContent>
 
               <TabsContent value="storage" className="mt-0">
-                <StoragePanel 
-                  storageConfig={storageConfig} 
-                  setStorageConfig={setStorageConfig}
-                  settings={settings}
-                  setSettings={setSettings}
-                />
+                <StoragePanel />
               </TabsContent>
 
               <TabsContent value="config" className="mt-0">
-                <SettingsPanel onSettingsUpdate={handleSettingsUpdate} storageConfig={storageConfig} />
+                <SettingsPanel />
               </TabsContent>
             </Tabs>
           </TabsContent>

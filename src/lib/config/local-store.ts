@@ -117,7 +117,7 @@ const KEYS = {
   presets: 'cfg_dashboard_presets',
 };
 
-const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
   rateLimit: {
     delayMs: 0,
     maxRequestsPerMinute: 60,

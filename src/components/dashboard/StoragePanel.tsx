@@ -19,9 +19,16 @@ import { toast } from 'sonner';
 import {
   Database, HardDrive, Shield, Server, RefreshCw, Edit2, Trash2, Plus, Loader2
 } from 'lucide-react';
-import { localConfig, PgConnection, buildPgConnectionUrl, isSupabaseUrl } from '@/lib/config/local-store';
+import { localConfig, PgConnection, buildPgConnectionUrl, isSupabaseUrl, AppSettings } from '@/lib/config/local-store';
+import { useAppStore } from '@/store/app-store';
 
-export function StoragePanel({ storageConfig, setStorageConfig, settings, setSettings }: { storageConfig: any, setStorageConfig: any, settings: any, setSettings: any }) {
+export function StoragePanel() {
+  const {
+    storageConfig,
+    setStorageConfig,
+    settings,
+    setSettings
+  } = useAppStore();
   const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -90,7 +97,7 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
   }, [storageConfig]);
 
   const handleCleanup = async () => {
-    const retentionDays = settings.persistence?.retentionDays;
+    const retentionDays = (settings as AppSettings).persistence?.retentionDays;
     if (retentionDays === 'never') {
       toast.error('Cannot cleanup: retention policy is set to "Never"');
       return;
@@ -256,7 +263,7 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div
               onClick={() => {
-                const cfg = { ...storageConfig, provider: 'sqlite', url: '', isCustom: false, connectionId: undefined };
+                const cfg = { ...storageConfig, provider: 'sqlite' as const, url: '', isCustom: false, connectionId: undefined };
                 setStorageConfig(cfg);
                 localConfig.saveStorageConfig(cfg);
                 toast.info('Switched to Local SQLite');
@@ -573,11 +580,11 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
               </p>
             </div>
             <Switch
-              checked={settings.persistence?.autoSave ?? true}
+              checked={(settings as AppSettings).persistence?.autoSave ?? true}
               onCheckedChange={(checked) =>
                 setSettings({
                   ...settings,
-                  persistence: { ...settings.persistence, autoSave: checked }
+                  persistence: { ...(settings as AppSettings).persistence, autoSave: checked }
                 })
               }
             />
@@ -593,11 +600,11 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
               </p>
             </div>
             <Switch
-              checked={settings.persistence?.autoRestore ?? true}
+              checked={(settings as AppSettings).persistence?.autoRestore ?? true}
               onCheckedChange={(checked) =>
                 setSettings({
                   ...settings,
-                  persistence: { ...settings.persistence, autoRestore: checked }
+                  persistence: { ...(settings as AppSettings).persistence, autoRestore: checked }
                 })
               }
             />
@@ -608,14 +615,14 @@ export function StoragePanel({ storageConfig, setStorageConfig, settings, setSet
               Auto-cleanup after
             </Label>
             <Select
-              value={String(settings.persistence?.retentionDays ?? 30)}
+              value={String((settings as AppSettings).persistence?.retentionDays ?? 30)}
               onValueChange={(value) =>
                 setSettings({
                   ...settings,
-                  persistence: {
-                    ...settings.persistence,
-                    retentionDays: value === 'never' ? 'never' : parseInt(value)
-                  }
+                    persistence: {
+                      ...(settings as AppSettings).persistence,
+                      retentionDays: value === 'never' ? 'never' : parseInt(value)
+                    }
                 })
               }
             >

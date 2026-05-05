@@ -311,6 +311,7 @@
     "MOAI_CONFIG_SOURCE": "sections",
     "CLAUDE_CODE_NO_FLICKER": "1",
     "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
+    "DISABLE_PROMPT_CACHING": "false",
     "PATH": "/Users/chimin/.local/bin:/Users/chimin/go/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
   },
   "permissions": {

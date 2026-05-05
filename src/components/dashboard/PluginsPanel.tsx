@@ -43,8 +43,9 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { localConfig, type KpiPlugin } from '@/lib/config/local-store';
+import { localConfig, type KpiPlugin, AppSettings } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
+import { useAppStore } from '@/store/app-store';
 
 const METRIC_TYPES = [
   { id: 'count', label: 'Count', icon: '🔢' },
@@ -54,11 +55,7 @@ const METRIC_TYPES = [
   { id: 'time', label: 'Time-to-X', icon: '⏱️' },
 ];
 
-interface PluginsPanelProps {
-  onSettingsUpdate?: (settings: any) => void;
-  settings: any;
-  setSettings: (settings: any) => void;
-}
+
 
 function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin, isActive: boolean, onToggle: () => void }) {
   const {
@@ -98,9 +95,10 @@ function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin,
   );
 }
 
-export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: PluginsPanelProps) {
+export function PluginsPanel() {
+  const { settings, setSettings } = useAppStore();
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
-  const [initialSettings, setInitialSettings] = useState<any>(settings);
+  const [initialSettings, setInitialSettings] = useState<AppSettings>(settings);
   const [loading, setLoading] = useState(false);
   const [activePlugins, setActivePlugins] = useState<string[]>([]);
 
@@ -481,9 +479,9 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                   for (const h of changelog) for (const item of h.items) if (item.field === 'status' && item.toString) statusSet.add(item.toString);
                   if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
                 }
-                const currentTargets = { ...(settings.sla?.statusTargets || {}) };
+                const currentTargets = { ...((settings as AppSettings).sla?.statusTargets || {}) };
                 for (const s of statusSet) if (!(s in currentTargets)) currentTargets[s] = 0;
-                setSettings({ ...settings, sla: { ...settings.sla, statusTargets: currentTargets } });
+                setSettings({ ...settings, sla: { ...(settings as AppSettings).sla, statusTargets: currentTargets } });
                 toast.success(`Detected ${statusSet.size} unique statuses`);
               } catch { toast.error('Failed to detect statuses'); }
             }} className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"><Activity className="mr-2 h-4 w-4" /> Detect Statuses from Data</Button>
@@ -496,12 +494,12 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                   <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
                   <Input type="number" min="0" value={(hours as number) || ''} onChange={(e) => {
                     const val = parseFloat(e.target.value) || 0;
-                    setSettings({ ...settings, sla: { ...settings.sla, statusTargets: { ...settings.sla.statusTargets, [status]: val } } });
-                  }} className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                  <span className="text-xs text-slate-400">hours</span>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
-                    const updated = { ...settings.sla.statusTargets }; delete updated[status];
-                    setSettings({ ...settings, sla: { ...settings.sla, statusTargets: updated } });
+                  setSettings({ ...settings, sla: { ...(settings as AppSettings).sla, statusTargets: { ...(settings as AppSettings).sla.statusTargets, [status]: val } } });
+                }} className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                <span className="text-xs text-slate-400">hours</span>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
+                  const updated = { ...(settings as AppSettings).sla.statusTargets }; delete updated[status];
+                  setSettings({ ...settings, sla: { ...(settings as AppSettings).sla, statusTargets: updated } });
                   }}><Trash2 className="h-3 w-3" /></Button>
                 </div>
               ))}
@@ -510,7 +508,6 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
           <Button onClick={() => {
             localConfig.saveSettings(settings);
             setInitialSettings(settings);
-            if (onSettingsUpdate) onSettingsUpdate(settings);
             toast.success('SLA targets saved');
           }} className="bg-amber-600 hover:bg-amber-700" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save SLA Targets</Button>
         </CardContent>
@@ -525,19 +522,18 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
             <div className="space-y-2">
               <Label>Default German State</Label>
-              <Select value={settings.general.defaultHolidayState} onValueChange={(v) => setSettings({ ...settings, general: { ...settings.general, defaultHolidayState: v } })}>
+              <Select value={(settings as AppSettings).general.defaultHolidayState} onValueChange={(v) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, defaultHolidayState: v } })}>
                 <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
                 <SelectContent>{GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}</SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Work hours start</Label><Input type="number" value={settings.general.workStartHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workStartHour: parseInt(e.target.value) || 9 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="space-y-2"><Label>Work hours end</Label><Input type="number" value={settings.general.workEndHour} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, workEndHour: parseInt(e.target.value) || 17 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="space-y-2"><Label>Default SLA target (hours)</Label><Input type="number" value={settings.general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...settings.general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
+            <div className="space-y-2"><Label>Work hours start</Label><Input type="number" value={(settings as AppSettings).general.workStartHour} onChange={(e) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, workStartHour: parseInt(e.target.value) || 9 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
+            <div className="space-y-2"><Label>Work hours end</Label><Input type="number" value={(settings as AppSettings).general.workEndHour} onChange={(e) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, workEndHour: parseInt(e.target.value) || 17 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
+            <div className="space-y-2"><Label>Default SLA target (hours)</Label><Input type="number" value={(settings as AppSettings).general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
           </div>
           <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
             <Button onClick={() => {
               localConfig.saveSettings(settings); setInitialSettings(settings);
-              if (onSettingsUpdate) onSettingsUpdate(settings);
               toast.success('KPI Defaults saved');
             }} className="bg-blue-600 hover:bg-blue-700" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save KPI Defaults</Button>
           </div>
@@ -561,7 +557,7 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
               size="sm" 
               onClick={() => {
                 const availableKpis = Object.values(plugins).flat().map(p => p.id);
-                const currentThresholds = { ...(settings.alerts?.thresholds || {}) };
+                const currentThresholds = { ...((settings as AppSettings).alerts?.thresholds || {}) };
                 let added = 0;
                 availableKpis.forEach(id => {
                   if (!currentThresholds[id]) {
@@ -570,7 +566,7 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                   }
                 });
                 if (added > 0) {
-                  setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: currentThresholds } });
+                  setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: currentThresholds } });
                   toast.success(`Added ${added} KPI alert placeholders`);
                 } else {
                   toast.info('All available KPIs already have thresholds');
@@ -581,12 +577,12 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
               <Plus className="h-3.5 w-3.5 mr-1" /> Add Alert for all KPIs
             </Button>
             <span className="text-xs text-slate-400">
-              {Object.keys(settings.alerts?.thresholds || {}).length} alerts configured
+              {Object.keys((settings as AppSettings).alerts?.thresholds || {}).length} alerts configured
             </span>
           </div>
 
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-            {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
+            {(Object.entries((settings as AppSettings).alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
               const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
               const label = plugin?.name || pluginId;
               
@@ -602,9 +598,9 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                     <Select 
                       value={config.operator} 
                       onValueChange={(v: any) => {
-                        const updated = { ...settings.alerts.thresholds };
+                        const updated = { ...(settings as AppSettings).alerts.thresholds };
                         updated[pluginId] = { ...config, operator: v };
-                        setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                        setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
                       }}
                     >
                       <SelectTrigger className="h-8 w-16 text-xs bg-white dark:bg-slate-950">
@@ -623,9 +619,9 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                       type="number" 
                       value={config.warning} 
                       onChange={(e) => {
-                        const updated = { ...settings.alerts.thresholds };
+                        const updated = { ...(settings as AppSettings).alerts.thresholds };
                         updated[pluginId] = { ...config, warning: parseFloat(e.target.value) || 0 };
-                        setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                        setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
                       }}
                       className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
                     />
@@ -637,9 +633,9 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                       type="number" 
                       value={config.critical} 
                       onChange={(e) => {
-                        const updated = { ...settings.alerts.thresholds };
+                        const updated = { ...(settings as AppSettings).alerts.thresholds };
                         updated[pluginId] = { ...config, critical: parseFloat(e.target.value) || 0 };
-                        setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                        setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
                       }}
                       className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
                     />
@@ -650,9 +646,9 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
                     size="sm" 
                     className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" 
                     onClick={() => {
-                      const updated = { ...settings.alerts.thresholds };
+                      const updated = { ...(settings as AppSettings).alerts.thresholds };
                       delete updated[pluginId];
-                      setSettings({ ...settings, alerts: { ...settings.alerts, thresholds: updated } });
+                      setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
                     }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -667,7 +663,6 @@ export function PluginsPanel({ onSettingsUpdate, settings, setSettings }: Plugin
               onClick={() => {
                 localConfig.saveSettings(settings);
                 setInitialSettings(settings);
-                if (onSettingsUpdate) onSettingsUpdate(settings);
                 toast.success('Alert thresholds saved');
               }} 
               className="bg-red-600 hover:bg-red-700" 

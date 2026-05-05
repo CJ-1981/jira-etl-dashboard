@@ -13,7 +13,7 @@ export async function POST(
   const body = await request.json();
   const { storageConfig } = body;
 
-  const db = getDb(storageConfig?.url, storageConfig?.directUrl);
+  const db = getDb(storageConfig);
 
   try {
     // Find the latest completed ETL run for this specific connection

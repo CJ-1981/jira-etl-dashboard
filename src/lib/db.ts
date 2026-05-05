@@ -84,19 +84,35 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
   }
 
   const isPostgres = effectiveUrl.startsWith('postgresql://') || effectiveUrl.startsWith('postgres://');
-  const ClientClass = isPostgres ? PostgresClient : SQLiteClient;
-
+  
   console.log(`[DB] Initializing ${isPostgres ? 'PostgreSQL' : 'SQLite'} client for URL: ${redactUrl(effectiveUrl)}...`);
 
-  // Instantiate new client with dynamic datasource
-  const client = new ClientClass({
-    datasources: {
-      db: {
-        url: effectiveUrl,
-      },
-    },
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-  });
+  let client: any;
+  
+  try {
+    if (isPostgres) {
+      // @ts-ignore
+      const { PrismaClient } = require('../../prisma/generated/postgresql');
+      client = new PrismaClient({
+        datasources: { db: { url: effectiveUrl } },
+        log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+      });
+    } else {
+      // @ts-ignore
+      const { PrismaClient } = require('../../prisma/generated/sqlite');
+      client = new PrismaClient({
+        datasources: { db: { url: effectiveUrl } },
+        log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+      });
+    }
+  } catch (err) {
+    console.error(`[DB] Failed to initialize ${isPostgres ? 'PostgreSQL' : 'SQLite'} client:`, err);
+    // Fallback to default if available
+    client = new PrismaClientDefault({
+      datasources: { db: { url: effectiveUrl } },
+      log: ['error'],
+    });
+  }
 
   prismaClientCache.set(effectiveUrl, client);
   return client;

@@ -132,7 +132,7 @@ function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     transitions,
     timeInStatus,
     comments: ((issue.fields as any)?.comment?.comments || [])
-      .map((c: any) => ({
+      .map((c: { author?: { displayName?: string }; created: string | number | Date }) => ({
         author: c.author?.displayName || 'Unknown',
         created: new Date(c.created),
       }))
@@ -1206,7 +1206,7 @@ export class KpiEngine {
               return result;
             }
             return [{ name: definition.name, value: Number(result) || 0, unit: definition.unit }];
-          } catch (err: any) {
+          } catch (err: Error | unknown) {
             console.error('Plugin JS error:', err);
             return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'JS Error', value: 0 }] }];
           }

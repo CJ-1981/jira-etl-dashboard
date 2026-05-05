@@ -22,25 +22,26 @@ import {
 } from 'lucide-react';
 import { localConfig, JiraConnection, SavedJql } from '@/lib/config/local-store';
 import { PollingStatus } from '@/types/dashboard';
+import { useAppStore } from '@/store/app-store';
+import { AppSettings } from '@/lib/config/local-store';
 
-export const ExtractPanel = React.memo(function ExtractPanel({
-  connections, extractionResult, setExtractionResult, masterDatasetInfo, setMasterDatasetInfo,
-  dateFrom, setDateFrom, dateTo, setDateTo,
-  activeConnectionId, settings, setSettings, setKpiResults, storageConfig
-}: {
-  connections: JiraConnection[],
-  extractionResult: any,
-  setExtractionResult: any,
-  masterDatasetInfo: any,
-  setMasterDatasetInfo: any,
-  dateFrom: string, setDateFrom: any,
-  dateTo: string, setDateTo: any,
-  activeConnectionId: string,
-  settings: any,
-  setSettings: any,
-  setKpiResults: any,
-  storageConfig: any,
-}) {
+export const ExtractPanel = React.memo(function ExtractPanel() {
+  const {
+    connections,
+    extractionResult,
+    setExtractionResult,
+    masterDatasetInfo,
+    setMasterDatasetInfo,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
+    activeConnectionId,
+    settings,
+    setSettings,
+    setKpiResults,
+    storageConfig
+  } = useAppStore();
   const [jql, setJql] = useState('');
   const [extracting, setExtracting] = useState(false);
 
@@ -460,7 +461,7 @@ export const ExtractPanel = React.memo(function ExtractPanel({
             </div>
           </div>
 
-          {settings && !settings.persistence?.autoSave && (
+          {settings && !(settings as AppSettings).persistence?.autoSave && (
             <div className="flex items-center space-x-2 rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
               <Checkbox
                 id="saveThisExtraction"
@@ -760,7 +761,7 @@ export const ExtractPanel = React.memo(function ExtractPanel({
 
               <div 
                 className="space-y-1 overflow-y-auto pr-1 custom-scrollbar"
-                style={{ maxHeight: `${settings.general.listMaxHeight || 400}px` }}
+                style={{ maxHeight: `${(settings as AppSettings).general?.listMaxHeight || 400}px` }}
               >
                 {(extractionResult.issues || []).filter((issue: any) => {
                   const key = (issue.key || '').toLowerCase();

@@ -20,22 +20,20 @@ import {
 } from 'lucide-react';
 import { localConfig, type PgConnection } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
+import { useAppStore } from '@/store/app-store';
 
-interface ExportPanelProps {
-  extractionResult: any;
-  masterDatasetInfo: any;
-  dateFrom: string;
-  setDateFrom: (date: string) => void;
-  dateTo: string;
-  setDateTo: (date: string) => void;
-  region: string;
-  setRegion: (region: string) => void;
-  storageConfig: any;
-}
-
-export function ExportPanel({
-  extractionResult, masterDatasetInfo, dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion, storageConfig
-}: ExportPanelProps) {
+export function ExportPanel() {
+  const {
+    extractionResult,
+    masterDatasetInfo,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
+    region,
+    setRegion,
+    storageConfig
+  } = useAppStore();
   const [exportMode, setExportMode] = useState<'file' | 'database'>('file');
   const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
   const [selectedPgConn, setSelectedPgConn] = useState('');
@@ -58,6 +56,7 @@ export function ExportPanel({
   }, []);
 
   const exportData = async (type: 'issues' | 'kpis', format: string) => {
+    if (!extractionResult) return;
     if (type === 'issues') {
       if (format === 'json') {
         const blob = new Blob([JSON.stringify(extractionResult.issues, null, 2)], { type: 'application/json' });
@@ -92,7 +91,7 @@ export function ExportPanel({
       const exportRes = await fetch('/api/export/file', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          issues: extractionResult.issues,
+          issues: extractionResult?.issues || [],
           holidays: { regions: region === 'all' ? [] : [region] },
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,

@@ -20,7 +20,7 @@ export async function POST(
     }
     
     const { action, storageConfig } = body;
-    const db = getDb(storageConfig?.url, storageConfig?.directUrl);
+    const db = getDb(storageConfig);
 
     if (action === 'get') {
       console.log(`[Master API] Fetching tickets for connection: ${connectionId}`);

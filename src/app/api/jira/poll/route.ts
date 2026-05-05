@@ -15,8 +15,10 @@ interface PollingState {
   status: 'idle' | 'running' | 'error';
   lastError: string | null;
   storageConfig?: {
+    provider: 'sqlite' | 'postgresql';
     url: string;
     directUrl?: string;
+    isCustom?: boolean;
   };
 }
 

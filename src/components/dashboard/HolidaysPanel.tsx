@@ -17,17 +17,10 @@ import {
 import { toast } from 'sonner';
 import { Calendar, RefreshCw } from 'lucide-react';
 import { GERMAN_STATES } from '@/lib/config/constants';
+import { useAppStore } from '@/store/app-store';
 
-interface HolidaysPanelProps {
-  region: string;
-  setRegion: (region: string) => void;
-}
-
-/**
- * @MX:NOTE: German Holiday Calendar component
- * Displays national and regional holidays for a selected year and state.
- */
-export function HolidaysPanel({ region, setRegion }: HolidaysPanelProps) {
+export function HolidaysPanel() {
+  const { region, setRegion } = useAppStore();
   // @MX:TODO: Add validation for year range and support for multiple regions
   const [year, setYear] = useState<number | undefined>(new Date().getFullYear());
   const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);

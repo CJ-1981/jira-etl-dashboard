@@ -25,6 +25,7 @@ import {
   ArrowUpDown, Search, AlertTriangle, CheckCircle2, 
   Clock, Target, TrendingUp, Zap, ChevronDown
 } from 'lucide-react';
+import { useAppStore } from '@/store/app-store';
 
 interface KpiDataRow {
   id: string;
@@ -39,11 +40,11 @@ interface KpiDataRow {
 
 interface KpiDataTableProps {
   results: any[];
-  settings: any;
   onDrillDown: (keys: string[], title: string) => void;
 }
 
-export function KpiDataTable({ results, settings, onDrillDown }: KpiDataTableProps) {
+export function KpiDataTable({ results, onDrillDown }: KpiDataTableProps) {
+  const { settings } = useAppStore();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
 

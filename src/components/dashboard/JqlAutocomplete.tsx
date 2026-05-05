@@ -95,11 +95,11 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     const thirdLastPart = parts[parts.length - 3]?.toLowerCase();
 
     // If last part is an operator, suggest values for the field before it
-    let field = null;
-    if (['=', '==', '!=', 'CONTAINS'].includes(lastPart)) {
-      field = parts[parts.length - 2]?.toLowerCase();
+    let field: string | null = null;
+    if (lastPart && ['=', '==', '!=', 'CONTAINS'].includes(lastPart)) {
+      field = parts[parts.length - 2]?.toLowerCase() || null;
     } else if (lastPart === 'CONTAINS' && secondLastPart === 'NOT') {
-      field = thirdLastPart;
+      field = thirdLastPart || null;
     }
 
     if (field) {
@@ -189,9 +189,9 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
                         onSelect={() => handleSelect(s.label)}
                         className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
-                        {'icon' in s ? s.icon : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold text-slate-400">#</span>}
+                        {'icon' in s ? (s as any).icon : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold text-slate-400">#</span>}
                         <span className="text-xs font-medium">{s.label}</span>
-                        {'description' in s && <span className="ml-auto text-[10px] text-slate-400">{s.description}</span>}
+                        {'description' in s && <span className="ml-auto text-[10px] text-slate-400">{(s as any).description}</span>}
                       </CommandItem>
                     ))}
                   </CommandGroup>
