@@ -1373,6 +1373,44 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
     });
   }
 
+  const inMatch = trimmed.match(/^([\w.-]+)\s+(NOT\s+)?IN\s*\((.*)\)$/i);
+  if (inMatch) {
+    const [, field, not, valuesStr] = inMatch;
+    const isNot = !!not;
+    
+    // Parse comma separated values respecting quotes
+    const values: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+    
+    for (let i = 0; i < valuesStr.length; i++) {
+      const char = valuesStr[i];
+      if ((char === '"' || char === "'") && (i === 0 || valuesStr[i-1] !== '\\')) {
+        if (!inQuotes) {
+          inQuotes = true;
+          quoteChar = char;
+        } else if (char === quoteChar) {
+          inQuotes = false;
+        } else {
+          current += char;
+        }
+      } else if (char === ',' && !inQuotes) {
+        values.push(current.trim().toLowerCase());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) values.push(current.trim().toLowerCase());
+
+    return issues.filter((issue) => {
+      const fieldValue = String(getFieldValue(issue, field) || '').toLowerCase();
+      const isIn = values.includes(fieldValue);
+      return isNot ? !isIn : isIn;
+    });
+  }
+
   return issues;
 }
 

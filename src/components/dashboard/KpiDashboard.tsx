@@ -716,16 +716,28 @@ export function KpiDashboard() {
                       onClick={() => {
                         if (!jqlQuery) return;
                         if (editingJqlId) {
+                          const oldJql = dashboardJqls.find(j => j.id === editingJqlId);
                           const updated = dashboardJqls.map(j => j.id === editingJqlId ? { ...j, query: jqlQuery } : j);
                           saveDashboardJqls(updated);
                           setEditingJqlId(null);
                           toast.success('Filter updated');
+                          
+                          setPendingFilters(prev => {
+                            const jqlFilters = (prev['jql'] || []).filter(q => oldJql ? q !== oldJql.query : true);
+                            if (!jqlFilters.includes(jqlQuery)) jqlFilters.push(jqlQuery);
+                            return { ...prev, jql: jqlFilters };
+                          });
                         } else {
                           const id = `djql-${Date.now()}`;
                           saveDashboardJqls([...dashboardJqls, { id, name: jqlQuery, query: jqlQuery }]);
                           toast.success('Filter saved to dashboard');
+                          
+                          setPendingFilters(prev => {
+                            const jqlFilters = prev['jql'] || [];
+                            if (!jqlFilters.includes(jqlQuery)) return { ...prev, jql: [...jqlFilters, jqlQuery] };
+                            return prev;
+                          });
                         }
-                        handleUpdatePendingFilter('jql', jqlQuery);
                       }}
                     >
                       {editingJqlId ? 'Update' : 'Add'} Filter

@@ -113,6 +113,7 @@ export function transformForBarChart(
         name: dimensionName,
         value: Number(result.value.toFixed(2)),
         fill: color,
+        ticketKeys: (result as any).ticketKeys || [],
       };
 
       // Add isComplete if it's a timeSeries point (unlikely for distribution but good for consistency)
@@ -134,6 +135,7 @@ export function transformForBarChart(
     name: result.name,
     value: Number(result.value.toFixed(2)),
     fill: getColorForValue(result.value, result.unit),
+    ticketKeys: (result as any).ticketKeys || [],
   };
 
   const tw = result.details?.find(d => d.label === 'This Week');
@@ -171,6 +173,7 @@ export function transformForPieChart(
       value: Number(result.value.toFixed(2)),
       fill: CHART_COLORS[index % CHART_COLORS.length],
       unit: result.unit, // Pass unit for better formatting in Pie labels
+      ticketKeys: (result as any).ticketKeys || [],
     };
   });
 }
@@ -201,6 +204,7 @@ export function transformForLineChart(
       value: Number(point.value.toFixed(2)),
       date: point.date,
       isComplete: point.isComplete,
+      ticketKeys: (point as any).ticketKeys || [],
     }));
   }
 
@@ -221,6 +225,7 @@ export function transformForLineChart(
       return {
         name: dimensionName,
         value: Number((result.value || 0).toFixed(2)),
+        ticketKeys: (result as any).ticketKeys || [],
       };
     });
   }
@@ -231,6 +236,7 @@ export function transformForLineChart(
     {
       name: result.name,
       value: Number((result.value || 0).toFixed(2)),
+      ticketKeys: (result as any).ticketKeys || [],
     },
   ];
 }

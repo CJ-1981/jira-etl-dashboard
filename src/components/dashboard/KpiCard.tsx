@@ -335,6 +335,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             kpi.results.forEach((result: KpiCalcResult['results'][0], idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
+              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || result.ticketKeys || [];
               if (point && point.isComplete === false) isComplete = false;
             });
             dataPoint.isComplete = isComplete;
@@ -373,6 +374,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     fill={CHART_COLORS[idx % CHART_COLORS.length]}
                     radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
+                    cursor="pointer"
+                    onClick={(data) => {
+                      const keys = data[`ticketKeys${idx}`] || data.ticketKeys;
+                      if (keys && keys.length > 0) {
+                        onClick(keys, `${result.name} - ${data.name}`);
+                      }
+                    }}
                   >
                     {mergedData.map((entry: any, index: number) => (
                       <Cell 
@@ -496,6 +504,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             kpi.results.forEach((result: KpiCalcResult['results'][0], idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
+              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || result.ticketKeys || [];
               if (point && point.isComplete === false) isComplete = false;
             });
             dataPoint.isComplete = isComplete;
@@ -536,6 +545,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                       name={result.name}
                       stroke={color}
                       strokeWidth={2}
+                      activeDot={{
+                        onClick: (_e: any, payload: any) => {
+                          const keys = payload.payload[`ticketKeys${idx}`];
+                          if (keys && keys.length > 0) {
+                            onClick(keys, `${result.name} - ${payload.payload.name}`);
+                          }
+                        },
+                        cursor: "pointer"
+                      }}
                       dot={(props) => {
                         const { cx, cy, payload } = props;
                         if (payload.isComplete === false) {
@@ -582,6 +600,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 dataKey="value" 
                 stroke="#3b82f6" 
                 strokeWidth={2} 
+                activeDot={{
+                  onClick: (_e: any, payload: any) => {
+                    const keys = payload.payload.ticketKeys;
+                    if (keys && keys.length > 0) {
+                      onClick(keys, payload.payload.name || 'Total Period');
+                    }
+                  },
+                  cursor: "pointer"
+                }}
                 dot={(props) => {
                   const { cx, cy, payload } = props;
                   if (payload.isComplete === false) {
@@ -619,6 +646,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             kpi.results.forEach((result: KpiCalcResult['results'][0], idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
+              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || result.ticketKeys || [];
             });
             return dataPoint;
           });
@@ -658,6 +686,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     fill={CHART_COLORS[idx % CHART_COLORS.length]}
                     fillOpacity={0.6}
                     hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
+                    activeDot={{
+                      onClick: (_e: any, payload: any) => {
+                        const keys = payload.payload[`ticketKeys${idx}`];
+                        if (keys && keys.length > 0) {
+                          onClick(keys, `${result.name} - ${payload.payload.name}`);
+                        }
+                      },
+                      cursor: "pointer"
+                    }}
                   />
                 ))}
               </AreaChart>
@@ -687,6 +724,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 stroke="#3b82f6" 
                 fill="#3b82f6" 
                 fillOpacity={0.6} 
+                activeDot={{
+                  onClick: (_e: any, payload: any) => {
+                    const keys = payload.payload.ticketKeys;
+                    if (keys && keys.length > 0) {
+                      onClick(keys, payload.payload.name || 'Total Period');
+                    }
+                  },
+                  cursor: "pointer"
+                }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -707,6 +753,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
+                onClick={(entry) => {
+                  const keys = entry.ticketKeys || (entry.payload && entry.payload.ticketKeys);
+                  if (keys && keys.length > 0) {
+                    onClick(keys, entry.name || (entry.payload && entry.payload.name) || 'Selected Item');
+                  }
+                }}
+                cursor="pointer"
               >
                 {visiblePieData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]} />
