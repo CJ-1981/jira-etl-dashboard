@@ -268,6 +268,17 @@ export function KpiDashboard() {
     setCharts(charts.map(c => c.id === id ? newConfig : c));
   };
 
+  const handleMoveChart = (id: string, direction: 'up' | 'down') => {
+    const index = charts.findIndex(c => c.id === id);
+    if (index === -1) return;
+    const newCharts = [...charts];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= charts.length) return;
+    [newCharts[index], newCharts[targetIndex]] = [newCharts[targetIndex], newCharts[index]];
+    setCharts(newCharts);
+    toast.info('Chart order updated');
+  };
+
   const handleDrillDown = (keys: string[], title: string) => {
     setDrillDownKeys(keys);
     setDrillDownTitle(title);
@@ -432,9 +443,107 @@ export function KpiDashboard() {
         <CardHeader className="pb-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-blue-600 dark:from-emerald-400 dark:to-blue-400">
-                KPI Analytics
-              </CardTitle>
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-blue-600 dark:from-emerald-400 dark:to-blue-400">
+                  KPI Analytics
+                </CardTitle>
+                <div className="flex items-center gap-1 no-print">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      runCalculation();
+                      toast.info('Recalculating KPIs...');
+                    }}
+                    disabled={calculating}
+                    className="h-6 px-2 text-[10px] text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 gap-1 rounded-md"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${calculating ? 'animate-spin' : ''}`} />
+                    Recalculate
+                  </Button>
+                  <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[10px] text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 gap-1 rounded-md"
+                      >
+                        <Zap className="h-3 w-3" />
+                        Saved Views
+                        {presets.length > 0 && <Badge className="ml-1 bg-emerald-500 hover:bg-emerald-600 border-none h-3 min-w-[12px] flex items-center justify-center p-0 text-[8px]">{presets.length}</Badge>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
+                      <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
+                      </div>
+                      <div className="p-2 max-h-[300px] overflow-y-auto">
+                        {presets.length === 0 ? (
+                          <div className="py-8 text-center">
+                            <p className="text-xs text-slate-400 italic">No saved views yet</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            {presets.map(p => (
+                              <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
+                                  <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <UITooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-500"
+                                        onClick={(e) => { e.stopPropagation(); handleUpdatePreset(p.id, p.name); }}
+                                      >
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                      <p className="text-xs">Update view with current settings</p>
+                                    </TooltipContent>
+                                  </UITooltip>
+                                  <UITooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
+                                        onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                      <p className="text-xs">Delete view</p>
+                                    </TooltipContent>
+                                  </UITooltip>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                        <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="View Name..."
+                            value={newPresetName}
+                            onChange={(e) => setNewPresetName(e.target.value)}
+                            className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                          />
+                          <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
               <CardDescription className="text-slate-600 dark:text-slate-400">
                 Detailed performance metrics based on the master dataset
               </CardDescription>
@@ -458,84 +567,6 @@ export function KpiDashboard() {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 gap-2 text-xs font-bold border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 no-print">
-                    <Zap className="h-4 w-4" />
-                    Saved Views
-                    {presets.length > 0 && <Badge className="ml-1 bg-emerald-500 hover:bg-emerald-600 border-none h-5 min-w-[20px] flex items-center justify-center p-0 text-[10px]">{presets.length}</Badge>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
-                  </div>
-                  <div className="p-2 max-h-[300px] overflow-y-auto">
-                    {presets.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <p className="text-xs text-slate-400 italic">No saved views yet</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        {presets.map(p => (
-                          <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
-                              <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-500"
-                                    onClick={(e) => { e.stopPropagation(); handleUpdatePreset(p.id, p.name); }}
-                                  >
-                                    <RefreshCw className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  <p className="text-xs">Update view with current settings</p>
-                                </TooltipContent>
-                              </UITooltip>
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
-                                    onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  <p className="text-xs">Delete view</p>
-                                </TooltipContent>
-                              </UITooltip>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                    <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="View Name..."
-                        value={newPresetName}
-                        onChange={(e) => setNewPresetName(e.target.value)}
-                        className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
-                      />
-                      <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-
               <Button
                 variant="outline"
                 size="sm"
@@ -1290,7 +1321,7 @@ export function KpiDashboard() {
                 <BarChart3 className="h-5 w-5 text-emerald-500" />
                 Visualizations
               </h3>
-              {charts.length < 6 && (
+              {charts.length < 12 && (
                 <Button
                   onClick={handleAddChart}
                   variant="outline"
@@ -1321,8 +1352,10 @@ export function KpiDashboard() {
                       toggleDimension={toggleDimension}
                       onRemove={handleRemoveChart}
                       onChange={handleUpdateChart}
+                      onMoveUp={handleMoveChart ? (id) => handleMoveChart(id, 'up') : undefined}
+                      onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
                       onClick={handleDrillDown}
-                      theme={theme}
+                      theme={theme as any}
                     />
                   </div>
                 );
@@ -1436,13 +1469,31 @@ export function KpiDashboard() {
                 </TooltipProvider>
               </div>
               <div className="flex items-center gap-2">
-
                 <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    runCalculation();
+                    toast.info('Recalculating KPIs...');
+                  }}
+                  disabled={calculating}
+                  className="rounded-full h-8 px-3 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 text-[11px] font-medium transition-all"
+                >
+                  {calculating ? (
+                    <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3 mr-1.5" />
+                  )}
+                  Recalculate
+                </Button>
+                <Separator orientation="vertical" className="h-4 bg-slate-200 dark:bg-slate-800" />
+                <Button
+                  variant="ghost"
                   size="sm"
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                  className="rounded-full h-8 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-3 border border-slate-200 dark:border-slate-700 shadow-sm"
+                  className="rounded-full h-8 px-3 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-medium transition-all"
                 >
-                  <ArrowUp className="h-3.5 w-3.5 mr-1.5" />
+                  <ArrowUp className="h-3 w-3 mr-1.5" />
                   Top
                 </Button>
               </div>

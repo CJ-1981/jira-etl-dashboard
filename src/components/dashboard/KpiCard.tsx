@@ -10,7 +10,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area
 } from 'recharts';
-import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2 } from 'lucide-react';
+import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import {
   Tooltip as UITooltip,
   TooltipContent,
@@ -205,9 +205,11 @@ interface ChartCardProps {
   onChange: (id: string, newConfig: ChartConfig) => void;
   onClick: (keys: string[], title: string) => void;
   theme: 'light' | 'dark';
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
 }
 
-export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme }: ChartCardProps) {
+export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme, onMoveUp, onMoveDown }: ChartCardProps) {
   const kpiOptions = useMemo(() => getKpiOptions(kpiResults), [kpiResults]);
   const chartRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -344,9 +346,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <BarChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <BarChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="name" className="text-xs" />
+                <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
                 <Tooltip
                   contentStyle={{
@@ -401,9 +403,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" />
+              <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
               <Tooltip
                 contentStyle={{
@@ -513,9 +515,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <LineChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <LineChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="name" className="text-xs" />
+                <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
                 <Tooltip
                   contentStyle={{
@@ -581,9 +583,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <LineChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <LineChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" />
+              <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
               <Tooltip
                 contentStyle={{
@@ -653,9 +655,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <AreaChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <AreaChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="name" className="text-xs" />
+                <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
                 <Tooltip
                   contentStyle={{
@@ -704,9 +706,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" />
+              <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
               <Tooltip
                 contentStyle={{
@@ -822,6 +824,30 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </Button>
             )}
+            <div className="flex items-center border-l border-slate-100 dark:border-slate-800 ml-1 pl-1">
+              {onMoveUp && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onMoveUp(config.id)}
+                  data-export-ignore="true"
+                  className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </Button>
+              )}
+              {onMoveDown && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onMoveDown(config.id)}
+                  data-export-ignore="true"
+                  className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"

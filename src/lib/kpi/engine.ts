@@ -577,6 +577,43 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
 };
 
 /**
+ * Open Tickets by Priority - Count non-resolved tickets per unique priority
+ */
+const openTicketsByPriorityPlugin: KpiPlugin = {
+  id: 'open_tickets_by_priority',
+  name: 'Open Tickets by Priority',
+  description: 'Number of non-resolved tickets for each priority level.',
+  category: 'throughput',
+  unit: 'tickets',
+  visualization: 'pie',
+  calculate(context) {
+    const counts: Record<string, number> = {};
+    const openIssues = context.issues.filter(i => !isIssueDone(i));
+
+    for (const issue of openIssues) {
+      const priority = issue.priority || 'Unassigned';
+      counts[priority] = (counts[priority] || 0) + 1;
+    }
+
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1]) // Sort by count descending
+      .map(([priority, count]) => {
+        const issuesForPriority = openIssues.filter(i => (i.priority || 'Unassigned') === priority);
+        return {
+          name: `Priority: ${priority}`,
+          value: count,
+          unit: 'tickets',
+          dimensions: { priority },
+          ticketKeys: issuesForPriority.map(i => i.key),
+          details: [
+            { label: 'Priority', value: 0, unit: priority },
+          ],
+        };
+      });
+  },
+};
+
+/**
  * SLA by Status - Compliance per workflow status with comment-based clock reset.
  * When the assignee comments while a ticket is in a status, the SLA clock resets
  * to that comment timestamp (the last assignee comment becomes the new SLA start).
@@ -899,6 +936,7 @@ export class KpiEngine {
     this.register(slaByStatusExclClonePlugin);
     this.register(reassignmentPlugin);
     this.register(openTicketsByAssigneePlugin);
+    this.register(openTicketsByPriorityPlugin);
     this.register(cycleTimeHistogramPlugin);
     this.register(agingWipPlugin);
     this.register(firstResponseTimePlugin);
