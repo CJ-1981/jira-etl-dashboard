@@ -59,6 +59,9 @@ interface AppState {
 
   kpiResults: KpiCalcResult[];
   setKpiResults: (results: KpiCalcResult[]) => void;
+
+  kpiSubTab: string;
+  setKpiSubTab: (tab: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -123,4 +126,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   kpiResults: [],
   setKpiResults: (results) => set({ kpiResults: results }),
+
+  kpiSubTab: 'dashboard',
+  setKpiSubTab: (tab) => set({ kpiSubTab: tab }),
 }));

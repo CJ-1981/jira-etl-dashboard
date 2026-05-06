@@ -90,11 +90,13 @@ export function KpiDashboard() {
     globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions,
     dashboardCharts: charts, setDashboardCharts: setCharts,
     dashboardJqlQuery: jqlQuery, setDashboardJqlQuery: setJqlQuery,
-    filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar
+    filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar,
+    setActiveTab, kpiSubTab, setKpiSubTab
   } = useAppStore();
 
   const onPrint = () => window.print();
   const isFirstRender = useRef(true);
+  const hasUserInitiatedCalc = useRef(false);
 
   // ─── Period Analysis Helpers ──────────────────────────────────────────────
   const { isAnyPresetActive, isDataTruncated, availableStartDate } = useMemo(() => {
@@ -189,12 +191,14 @@ export function KpiDashboard() {
   };
 
   const handleLoadPreset = (preset: DashboardPreset) => {
+    hasUserInitiatedCalc.current = true;
     setDateFrom(preset.dateFrom);
     setDateTo(preset.dateTo);
     setGlobalFilters(preset.globalFilters);
     setPendingFilters(preset.globalFilters);
     setCharts(preset.charts);
-    setJqlQuery(preset.dashboardJql);
+    // Don't load JQL into input field - only apply it via globalFilters
+    // User can click edit icon on saved filters to edit them
     setHiddenDimensions(new Set(preset.hiddenDimensions));
     setPresetPopoverOpen(false);
     toast.success(`Loaded view: ${preset.name}`);
@@ -230,6 +234,7 @@ export function KpiDashboard() {
   };
 
   const handleApplyFilters = () => {
+    hasUserInitiatedCalc.current = true;
     setGlobalFilters(pendingFilters);
     toast.success('Filters applied');
   };
@@ -349,11 +354,13 @@ export function KpiDashboard() {
   };
 
   useEffect(() => {
+    // Only auto-calculate if user has previously initiated a calculation
+    if (hasUserInitiatedCalc.current) {
+      runCalculation();
+    }
+    // On first render, just mark as rendered - don't auto-calculate
     if (isFirstRender.current) {
       isFirstRender.current = false;
-      if (kpiResults.length === 0) runCalculation();
-    } else {
-      runCalculation();
     }
   }, [runCalculation]);
 
@@ -370,6 +377,7 @@ export function KpiDashboard() {
 
       if (e.key.toLowerCase() === 'r') {
         e.preventDefault();
+        hasUserInitiatedCalc.current = true;
         runCalculation();
         toast.info('Recalculating KPIs...');
       }
@@ -452,6 +460,7 @@ export function KpiDashboard() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
+                      hasUserInitiatedCalc.current = true;
                       runCalculation();
                       toast.info('Recalculating KPIs...');
                     }}
@@ -668,17 +677,36 @@ export function KpiDashboard() {
                   targetStart.setHours(0, 0, 0, 0);
 
                   const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
+                  // Safely handle masterEnd - use Date.now() if 'to' is missing or invalid
+                  let masterEnd: Date | null = null;
+                  if (masterDatasetInfo?.dateRange?.to) {
+                    try {
+                      const parsedEnd = new Date(masterDatasetInfo.dateRange.to);
+                      if (!isNaN(parsedEnd.getTime())) {
+                        masterEnd = parsedEnd;
+                      }
+                    } catch {
+                      // Invalid date, will use null
+                    }
+                  }
+
                   const masterStartNormalized = masterStart ? new Date(masterStart) : null;
+                  const masterEndNormalized = masterEnd ? new Date(masterEnd) : null;
                   if (masterStartNormalized) masterStartNormalized.setHours(0, 0, 0, 0);
+                  if (masterEndNormalized) masterEndNormalized.setHours(23, 59, 59, 999);
 
                   const isAvailable = p.label === 'MAX' ? !!masterStartNormalized : (!masterStartNormalized || targetStart >= masterStartNormalized);
 
                   const todayStr = today.toISOString().split('T')[0];
                   const startStr = targetStart.toISOString().split('T')[0];
+                  const maxEndStr = masterEndNormalized ? masterEndNormalized.toISOString().split('T')[0] : todayStr;
+
+                  // Check if MAX should be active (must match both start AND end dates)
+                  const isMaxActive = masterStart && dateFrom === new Date(masterStart).toISOString().split('T')[0] && dateTo === maxEndStr;
 
                   const isActive = p.label === 'MAX'
-                    ? (masterStart && dateFrom === new Date(masterStart).toISOString().split('T')[0])
-                    : (dateTo === todayStr && dateFrom === startStr);
+                    ? isMaxActive
+                    : !isMaxActive && dateTo === todayStr && dateFrom === startStr;
 
                   return (
                     <Button
@@ -686,9 +714,15 @@ export function KpiDashboard() {
                       variant={isActive ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => {
+                        // Skip if already active to prevent unnecessary recalculation
+                        if (isActive) return;
+
+                        hasUserInitiatedCalc.current = true;
                         if (p.label === 'MAX' && masterDatasetInfo?.dateRange) {
-                          setDateFrom(new Date(masterDatasetInfo.dateRange.from).toISOString().split('T')[0]);
-                          setDateTo(new Date(masterDatasetInfo.dateRange.to || Date.now()).toISOString().split('T')[0]);
+                          const fromStr = new Date(masterDatasetInfo.dateRange.from).toISOString().split('T')[0];
+                          const toStr = maxEndStr;
+                          setDateFrom(fromStr);
+                          setDateTo(toStr);
                         } else {
                           setDateFrom(startStr);
                           setDateTo(todayStr);
@@ -709,7 +743,7 @@ export function KpiDashboard() {
           </div>
 
           {filterPanelOpen && (
-            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-in slide-in-from-top-4 duration-300">
+            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-in slide-in-from-top-4 duration-300" data-filter-section>
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-slate-300">
                   <Sliders className="h-4 w-4 text-emerald-500" />
@@ -751,8 +785,9 @@ export function KpiDashboard() {
                           const updated = dashboardJqls.map(j => j.id === editingJqlId ? { ...j, query: jqlQuery } : j);
                           saveDashboardJqls(updated);
                           setEditingJqlId(null);
+                          setJqlQuery('');
                           toast.success('Filter updated');
-                          
+
                           setPendingFilters(prev => {
                             const jqlFilters = (prev['jql'] || []).filter(q => oldJql ? q !== oldJql.query : true);
                             if (!jqlFilters.includes(jqlQuery)) jqlFilters.push(jqlQuery);
@@ -760,12 +795,14 @@ export function KpiDashboard() {
                           });
                         } else {
                           const id = `djql-${Date.now()}`;
-                          saveDashboardJqls([...dashboardJqls, { id, name: jqlQuery, query: jqlQuery }]);
+                          const newQuery = jqlQuery;
+                          saveDashboardJqls([...dashboardJqls, { id, name: newQuery, query: newQuery }]);
+                          setJqlQuery('');
                           toast.success('Filter saved to dashboard');
-                          
+
                           setPendingFilters(prev => {
                             const jqlFilters = prev['jql'] || [];
-                            if (!jqlFilters.includes(jqlQuery)) return { ...prev, jql: [...jqlFilters, jqlQuery] };
+                            if (!jqlFilters.includes(newQuery)) return { ...prev, jql: [...jqlFilters, newQuery] };
                             return prev;
                           });
                         }
@@ -1437,12 +1474,20 @@ export function KpiDashboard() {
                 <TooltipProvider delayDuration={0}>
                   <UITooltip>
                     <TooltipTrigger asChild>
-                      <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-help">
+                      <div
+                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
+                        onClick={() => {
+                          setFilterPanelOpen(true);
+                          setTimeout(() => {
+                            document.querySelector('[data-filter-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 100);
+                        }}
+                      >
                         <Sliders className="h-3.5 w-3.5 text-emerald-500" />
                         {Object.values(globalFilters).flat().length} Filters
                       </div>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom" className="p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-2xl max-w-xs z-[70]">
+                    <TooltipContent side="bottom" className="p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-2xl max-w-xs z-[70]" hideArrow={true}>
                       <div className="space-y-2">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Applied Filters</p>
                         {Object.keys(globalFilters).length > 0 ? (
@@ -1467,12 +1512,58 @@ export function KpiDashboard() {
                     </TooltipContent>
                   </UITooltip>
                 </TooltipProvider>
+                <Separator orientation="vertical" className="h-4 bg-slate-200 dark:bg-slate-800" />
+                <TooltipProvider delayDuration={0}>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
+                        onClick={() => {
+                          setActiveTab('kpi');
+                          setKpiSubTab('plugins');
+                          setTimeout(() => {
+                            document.querySelector('[data-plugins-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 100);
+                        }}
+                      >
+                        <BarChart3 className="h-3.5 w-3.5 text-blue-500" />
+                        {sortedKpiResults.length} Plugins
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-2xl max-w-xs z-[70] rounded-lg" sideOffset={8} hideArrow={true}>
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Active Plugins</p>
+                        {sortedKpiResults.length > 0 ? (
+                          <div className="space-y-1.5">
+                            {sortedKpiResults.map((kpi) => {
+                              const pluginDisplay = kpi.pluginId
+                                .split('_')
+                                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                .join(' ');
+                              return (
+                                <div key={kpi.pluginId} className="flex items-center gap-2">
+                                  <Badge variant="secondary" className="text-[10px] py-0 h-4 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 border-none">
+                                    {pluginDisplay}
+                                  </Badge>
+                                  <span className="text-[10px] text-slate-500">{kpi.results.length} metric{kpi.results.length !== 1 ? 's' : ''}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic">No active plugins</p>
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
+                    hasUserInitiatedCalc.current = true;
                     runCalculation();
                     toast.info('Recalculating KPIs...');
                   }}

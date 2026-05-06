@@ -54,6 +54,7 @@ export default function Home() {
     dashboardJqlQuery, setDashboardJqlQuery,
     filterPanelOpen, setFilterPanelOpen,
     showFloatingBar, setShowFloatingBar,
+    kpiSubTab, setKpiSubTab,
   } = useAppStore();
 
   useEffect(() => {
@@ -306,7 +307,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="kpi" className="space-y-6 overflow-hidden">
-            <Tabs defaultValue="dashboard" className="space-y-6">
+            <Tabs value={kpiSubTab} onValueChange={setKpiSubTab} className="space-y-6">
               <div className="flex justify-center no-print">
                 <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
                   <TabsTrigger value="dashboard" className="gap-2 w-48 text-xs">
@@ -329,7 +330,9 @@ export default function Home() {
               </TabsContent>
 
               <TabsContent value="plugins" className="mt-0">
-                <PluginsPanel />
+                <div data-plugins-section>
+                  <PluginsPanel />
+                </div>
               </TabsContent>
 
               <TabsContent value="holidays" className="mt-0">

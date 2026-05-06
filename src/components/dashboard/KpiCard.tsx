@@ -128,8 +128,8 @@ export function KpiCard({ result, pluginId, onHide, onClick }: {
                 </UITooltip>
               </TooltipProvider>
             )}
-            <Badge variant="outline" className="text-[10px] text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800">
-              {pluginId.split('_').slice(0, 2).join(' ')}
+            <Badge variant="outline" className="text-[10px] text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800" title={pluginId}>
+              {pluginId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
             </Badge>
             {onHide && (
               <button

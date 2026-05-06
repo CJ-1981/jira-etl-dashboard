@@ -261,25 +261,18 @@ export function getKpiOptions(kpiResults: KpiResult[]): {
 
   for (const kpi of kpiResults) {
     const isTrend = isTimeSeriesPlugin(kpi.pluginId);
-    const rawLabel = kpi.results[0]?.name || kpi.pluginId;
 
-    // Clean up label - remove duplicates and improve formatting
-    let label = rawLabel
-      .replace('SLA Compliance by Status', 'SLA by Status')
-      .replace('SLA Compliance by Priority', 'SLA by Priority')
-      .replace('Turnaround Time by Status', 'Time in Status')
-      .replace('Processing Time Trend', 'Processing Time')
-      .replace('Throughput Trend', 'Throughput')
-      .replace('SLA Trend', 'SLA Compliance')
-      .replace('Cumulative Flow Diagram', 'Cumulative Flow')
-      .replace('Compliance by Status Trend', 'by Status');
+    // Format plugin ID for display (convert underscores to spaces, capitalize)
+    const pluginDisplay = kpi.pluginId
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
 
     // Add emoji indicator for time-series
     if (isTrend) {
-      label = `📈 ${label}`;
-      timeSeries.push({ id: kpi.pluginId, label });
+      timeSeries.push({ id: kpi.pluginId, label: `📈 ${pluginDisplay}` });
     } else {
-      regular.push({ id: kpi.pluginId, label });
+      regular.push({ id: kpi.pluginId, label: pluginDisplay });
     }
   }
 
