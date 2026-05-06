@@ -328,6 +328,56 @@ export function KpiDashboard() {
     }
   }, [calculationData, setKpiResults]);
 
+  // Filter KPI results and dashboard charts based on active plugins
+  const lastFilteredPlugins = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const filterByActivePlugins = () => {
+      const activePlugins = JSON.parse(typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') || '[]' : '[]') as string[];
+      const activePluginsSet = new Set<string>(activePlugins);
+
+      // Skip if active plugins haven't changed
+      if (activePluginsSet.size === lastFilteredPlugins.current.size &&
+          Array.from(activePluginsSet).every(p => lastFilteredPlugins.current.has(p))) {
+        return;
+      }
+
+      lastFilteredPlugins.current = activePluginsSet;
+
+      // Filter kpiResults to only include active plugins
+      if (activePlugins.length === 0) {
+        if (kpiResults.length > 0) setKpiResults([]);
+      } else {
+        const filteredResults = kpiResults.filter(kpi => activePlugins.includes(kpi.pluginId));
+        if (filteredResults.length !== kpiResults.length) {
+          setKpiResults(filteredResults);
+        }
+      }
+
+      // Filter dashboard charts to only include active plugins
+      if (activePlugins.length === 0) {
+        if (charts.length > 0) setCharts([]);
+      } else {
+        const filteredCharts = charts.filter(chart => !chart.kpiId || activePlugins.includes(chart.kpiId));
+        if (filteredCharts.length !== charts.length) {
+          setCharts(filteredCharts);
+        }
+      }
+    };
+
+    // Filter on mount and when storage changes
+    filterByActivePlugins();
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'cfg_active_plugins') {
+        filterByActivePlugins();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [kpiResults, charts, setKpiResults, setCharts]);
+
   const handleExportKpis = () => {
     const rows: string[][] = [['Metric', 'Value', 'Unit', 'Category']];
     kpiResults.forEach(kpi => {

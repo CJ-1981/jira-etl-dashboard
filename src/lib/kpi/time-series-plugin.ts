@@ -83,7 +83,7 @@ export const slaTrendPlugin: KpiPlugin = {
  */
 export const timeInStatusTrendPlugin: KpiPlugin = {
   id: 'time_in_status_trend',
-  name: 'Turnaround Time by Status Trend',
+  name: 'Time In Status Trend',
   description: 'Average business hours tickets spend in each workflow status, grouped by week',
   category: 'turnaround',
   unit: 'hours',

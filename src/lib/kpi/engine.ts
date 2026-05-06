@@ -220,7 +220,7 @@ const medianProcessingHoursPlugin: KpiPlugin = {
  */
 const timeInStatusPlugin: KpiPlugin = {
   id: 'time_in_status',
-  name: 'Turnaround Time by Status',
+  name: 'Time In Status',
   description: 'Average business hours tickets spend in each workflow status.',
   category: 'turnaround',
   unit: 'hours',
@@ -775,7 +775,7 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
  */
 const cycleTimeHistogramPlugin: KpiPlugin = {
   id: 'cycle_time_histogram',
-  name: 'Cycle Time Distribution',
+  name: 'Cycle Time Histogram',
   description: 'Buckets resolved tickets into time ranges based on business hours from creation to resolution.',
   category: 'processing_time',
   unit: 'tickets',
@@ -873,7 +873,7 @@ const agingWipPlugin: KpiPlugin = {
  */
 const firstResponseTimePlugin: KpiPlugin = {
   id: 'first_response_time',
-  name: 'First Response Time',
+  name: 'Avg. First Response Time',
   description: 'Average business hours from ticket creation to the first transition or first non-reporter comment.',
   category: 'processing_time',
   unit: 'hours',
