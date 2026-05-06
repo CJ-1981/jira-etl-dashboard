@@ -223,24 +223,12 @@ prisma/db/
 scripts/*.log
 scripts/temp/
 .moai/plans/optimized-orbiting-kurzweil.md
-release/Start Jira Dashboard.bat
-release/app/package.json
-release/app/server.js
-release/app/prisma/schema.postgresql.prisma
-release/app/prisma/schema.prisma
-release/app/prisma/schema.sqlite.prisma
-release/app/prisma/migrations/migration_lock.toml
-release/app/prisma/migrations/20260422082933_make_pipeline_optional/migration.sql
-release/app/prisma/migrations/20260424214947_metabase_ready_schema/migration.sql
-release/app/public/icon.png
-release/app/public/logo.svg
-release/app/public/robots.txt
-prisma/%SOURCE_DB_ABS%
-release/release.zip
-next-env.d.ts
-next-env.d.ts
 # Release artifacts
-release/
+release/app/
+release/*.7z
+release/*.zip
+!release/README.md
+
 
 # Local Database Files
 *.db

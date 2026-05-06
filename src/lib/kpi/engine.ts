@@ -1051,6 +1051,8 @@ export class KpiEngine {
           else if (key === 'priority') issueValue = transformed.priority || 'None';
           else if (key === 'issueType') issueValue = transformed.issueType;
           else if (key === 'status') issueValue = transformed.status;
+          else if (key === 'statusCategory') issueValue = transformed.statusCategory;
+          else if (key === 'reporter') issueValue = transformed.reporter;
           else if (key === 'project') issueValue = transformed.project;
           else if (key === 'component') issueValue = transformed.components;
           else if (key === 'label') issueValue = transformed.labels;
@@ -1446,8 +1448,17 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
     if (current.trim()) values.push(current.trim().toLowerCase());
 
     return issues.filter((issue) => {
-      const fieldValue = String(getFieldValue(issue, field) || '').toLowerCase();
-      const isIn = values.includes(fieldValue);
+      const fieldValue = getFieldValue(issue, field);
+      
+      let isIn = false;
+      if (Array.isArray(fieldValue)) {
+        // If issue field is an array (e.g. labels, components), match if ANY element is in the values list
+        isIn = fieldValue.some(v => values.includes(String(v || '').toLowerCase()));
+      } else {
+        // Standard scalar comparison
+        isIn = values.includes(String(fieldValue || '').toLowerCase());
+      }
+      
       return isNot ? !isIn : isIn;
     });
   }
@@ -1499,8 +1510,12 @@ function getFieldValue(issue: TransformedIssue, field: string): unknown {
     storyPoints: () => issue.storyPoints,
     priority: () => issue.priority,
     status: () => issue.status,
+    statusCategory: () => issue.statusCategory,
     issueType: () => issue.issueType,
     assignee: () => issue.assignee,
+    reporter: () => issue.reporter,
+    labels: () => issue.labels,
+    components: () => issue.components,
     resolved: () => issue.resolved,
     key: () => issue.key,
     project: () => issue.project,

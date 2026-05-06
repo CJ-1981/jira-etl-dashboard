@@ -80,8 +80,8 @@ export const useAppStore = create<AppState>((set) => ({
   storageConfig: { provider: 'sqlite', url: '', isCustom: false },
   setStorageConfig: (config) => set({ storageConfig: config }),
 
-  settings: DEFAULT_SETTINGS,
-  setSettings: (settings) => set({ settings }),
+  settings: typeof structuredClone !== 'undefined' ? structuredClone(DEFAULT_SETTINGS) : JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+  setSettings: (settings) => set({ settings: typeof structuredClone !== 'undefined' ? structuredClone(settings) : JSON.parse(JSON.stringify(settings)) }),
 
   dateFrom: '',
   setDateFrom: (date) => set({ dateFrom: date }),

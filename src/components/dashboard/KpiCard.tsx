@@ -132,6 +132,7 @@ export function KpiCard({ result, pluginId, onHide, onClick }: {
                 onClick={(e) => { e.stopPropagation(); onHide(); }}
                 className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity p-0.5"
                 title="Hide widget"
+                aria-label="Hide widget"
               >
                 <EyeOff className="h-3 w-3" />
               </button>
@@ -796,6 +797,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 disabled={exporting}
                 data-export-ignore="true"
                 className="text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                aria-label="Export chart as PNG"
+                title="Export chart as PNG"
               >
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </Button>
@@ -808,6 +811,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   onClick={() => onMoveUp(config.id)}
                   data-export-ignore="true"
                   className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
+                  aria-label="Move chart up"
+                  title="Move chart up"
                 >
                   <ChevronUp className="h-4 w-4" />
                 </Button>
@@ -819,6 +824,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   onClick={() => onMoveDown(config.id)}
                   data-export-ignore="true"
                   className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
+                  aria-label="Move chart down"
+                  title="Move chart down"
                 >
                   <ChevronDown className="h-4 w-4" />
                 </Button>
@@ -830,6 +837,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               onClick={() => onRemove(config.id)}
               data-export-ignore="true"
               className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+              aria-label="Remove chart"
+              title="Remove chart"
             >
               <Trash2 className="h-4 w-4" />
             </Button>

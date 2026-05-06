@@ -68,6 +68,8 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     { label: '!=', description: 'Not Equals', type: 'operator' },
     { label: 'CONTAINS', description: 'Includes text', type: 'operator' },
     { label: 'NOT CONTAINS', description: 'Excludes text', type: 'operator' },
+    { label: 'IN', description: 'In list', type: 'operator' },
+    { label: 'NOT IN', description: 'Not in list', type: 'operator' },
     { label: 'AND', description: 'Both conditions', type: 'operator' },
     { label: 'OR', description: 'Either condition', type: 'operator' },
   ], []);
@@ -101,18 +103,40 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     // @MX:WARN: Position-based index access is brittle.
     // @MX:REASON: Relying on simple whitespace splitting and fixed array indices (parts.length - 2) fails when there are extra spaces, nested queries, or multi-word field names.
     let field: string | null = null;
-    if (lastPart === 'CONTAINS' && secondLastPart === 'NOT') {
+    if ((lastPart === 'CONTAINS' || lastPart === 'IN') && secondLastPart === 'NOT') {
       field = thirdLastPart || null;
-    } else if (lastPart && ['=', '==', '!=', 'CONTAINS'].includes(lastPart)) {
+    } else if (lastPart && ['=', '==', '!=', 'CONTAINS', 'IN'].includes(lastPart)) {
       field = parts[parts.length - 2]?.toLowerCase() || null;
+    }
+    
+    // Also handle context inside parentheses for IN (...)
+    // This is a simple heuristic: if we see an opening parenthesis after IN
+    if (!field && beforeCursor.match(/IN\s*\(\s*$/i)) {
+      const partsBeforeIn = beforeCursor.split(/\s+IN\s*\(\s*$/i)[0].split(/\s+/);
+      field = partsBeforeIn[partsBeforeIn.length - 1]?.toLowerCase() || null;
+      // Handle NOT IN (
+      if (field?.toUpperCase() === 'NOT') {
+        field = partsBeforeIn[partsBeforeIn.length - 2]?.toLowerCase() || null;
+      }
     }
 
     if (field) {
-      if (field === 'status') return filterOptions.status.map(v => ({ label: `"${v}"`, type: 'value', category: 'Status' }));
-      if (field === 'priority') return filterOptions.priority.map(v => ({ label: `"${v}"`, type: 'value', category: 'Priority' }));
-      if (field === 'project') return filterOptions.project.map(v => ({ label: `"${v}"`, type: 'value', category: 'Project' }));
-      if (field === 'issuetype') return filterOptions.issueType.map(v => ({ label: `"${v}"`, type: 'value', category: 'Issue Type' }));
-      if (field === 'assignee') return filterOptions.assignee.map(v => ({ label: `"${v}"`, type: 'value', category: 'Assignee' }));
+      const fieldValues: any[] = [];
+      
+      // Suggest opening parenthesis for IN operators if not already there
+      if (lastPart === 'IN') {
+        fieldValues.push({ label: '(', description: 'Start list', type: 'operator', category: 'Operators' });
+      }
+
+      if (field === 'status') fieldValues.push(...filterOptions.status.map(v => ({ label: `"${v}"`, type: 'value', category: 'Status' })));
+      else if (field === 'priority') fieldValues.push(...filterOptions.priority.map(v => ({ label: `"${v}"`, type: 'value', category: 'Priority' })));
+      else if (field === 'project') fieldValues.push(...filterOptions.project.map(v => ({ label: `"${v}"`, type: 'value', category: 'Project' })));
+      else if (field === 'issuetype') fieldValues.push(...filterOptions.issueType.map(v => ({ label: `"${v}"`, type: 'value', category: 'Issue Type' })));
+      else if (field === 'assignee') fieldValues.push(...filterOptions.assignee.map(v => ({ label: `"${v}"`, type: 'value', category: 'Assignee' })));
+      else if (field === 'label' || field === 'labels') fieldValues.push(...filterOptions.label.map(v => ({ label: `"${v}"`, type: 'value', category: 'Label' })));
+      else if (field === 'component' || field === 'components') fieldValues.push(...filterOptions.component.map(v => ({ label: `"${v}"`, type: 'value', category: 'Component' })));
+      
+      return fieldValues.filter(v => v.label.toLowerCase().includes(lowerWord));
     }
 
     // Default: suggest fields and operators

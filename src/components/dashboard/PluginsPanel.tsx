@@ -535,18 +535,55 @@ export function PluginsPanel() {
                 <SelectContent>{GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}</SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Work hours start</Label><Input type="number" value={(settings as AppSettings).general?.workStartHour} onChange={(e) => {
-              const general = (settings as AppSettings).general ?? {};
-              setSettings({ ...settings, general: { ...general, workStartHour: parseInt(e.target.value) || 9 } });
-            }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="space-y-2"><Label>Work hours end</Label><Input type="number" value={(settings as AppSettings).general?.workEndHour} onChange={(e) => {
-              const general = (settings as AppSettings).general ?? {};
-              setSettings({ ...settings, general: { ...general, workEndHour: parseInt(e.target.value) || 17 } });
-            }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="space-y-2"><Label>Default SLA target (hours)</Label><Input type="number" value={(settings as AppSettings).general?.defaultSlaTargetHours} onChange={(e) => {
-              const general = (settings as AppSettings).general ?? {};
-              setSettings({ ...settings, general: { ...general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } });
-            }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
+            <div className="space-y-2">
+              <Label>Work hours start</Label>
+              <Input 
+                type="number" 
+                value={(settings as AppSettings).general?.workStartHour} 
+                onChange={(e) => {
+                  let val = parseInt(e.target.value);
+                  if (isNaN(val)) val = 9;
+                  val = Math.max(0, Math.min(23, val));
+                  const general = (settings as AppSettings).general ?? {};
+                  const end = general.workEndHour || 17;
+                  if (val >= end) val = end - 1;
+                  setSettings({ ...settings, general: { ...general, workStartHour: val } });
+                }} 
+                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Work hours end</Label>
+              <Input 
+                type="number" 
+                value={(settings as AppSettings).general?.workEndHour} 
+                onChange={(e) => {
+                  let val = parseInt(e.target.value);
+                  if (isNaN(val)) val = 17;
+                  val = Math.max(1, Math.min(24, val));
+                  const general = (settings as AppSettings).general ?? {};
+                  const start = general.workStartHour || 9;
+                  if (val <= start) val = start + 1;
+                  setSettings({ ...settings, general: { ...general, workEndHour: val } });
+                }} 
+                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Default SLA target (hours)</Label>
+              <Input 
+                type="number" 
+                value={(settings as AppSettings).general?.defaultSlaTargetHours} 
+                onChange={(e) => {
+                  let val = parseInt(e.target.value);
+                  if (isNaN(val)) val = 40;
+                  val = Math.max(1, val);
+                  const general = (settings as AppSettings).general ?? {};
+                  setSettings({ ...settings, general: { ...general, defaultSlaTargetHours: val } });
+                }} 
+                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" 
+              />
+            </div>
           </div>
           <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
             <Button onClick={() => {
