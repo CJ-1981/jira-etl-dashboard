@@ -304,6 +304,16 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     const kpi = kpiResults.find((k) => k.pluginId === config.kpiId);
     const unit = kpi?.results?.[0]?.unit || '';
 
+    const tooltipStyle = {
+      contentStyle: {
+        backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+        border: theme === 'dark' ? '1px solid rgba(148, 163, 184, 0.2)' : '1px solid rgba(226, 232, 240, 0.8)',
+        borderRadius: '8px',
+      },
+      labelStyle: { color: theme === 'dark' ? '#e2e8f0' : '#1e293b' },
+      itemStyle: { color: theme === 'dark' ? '#e2e8f0' : '#1e293b' },
+    };
+
     const renderLegend = (value: any) => {
       const isHidden = hiddenDimensions.has(`${config.kpiId}|${value}`);
       return (
@@ -320,7 +330,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     };
 
     switch (config.type) {
-      case 'bar':
+      case 'bar': {
         const hasMultipleSeriesBar = kpi?.results && kpi.results.length > 1 &&
           kpi.results.every((r: KpiCalcResult['results'][0]) => r.timeSeries && r.timeSeries.length > 0);
 
@@ -351,13 +361,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
-                  itemStyle={{ color: '#e2e8f0' }}
+                  {...tooltipStyle}
                   formatter={(value: number) => formatChartValue(value, unit)}
                 />
                 <Legend 
@@ -408,13 +412,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
+                {...tooltipStyle}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
               {(hasWeeklyLayers || selectedKpiData.length > 1) && (
@@ -488,8 +486,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             </BarChart>
           </ResponsiveContainer>
         );
+      }
 
-      case 'line':
+
+      case 'line': {
         const hasMultipleSeries = kpi?.results && kpi.results.length > 1 &&
           kpi.results.every((r: KpiCalcResult['results'][0]) => r.timeSeries && r.timeSeries.length > 0);
 
@@ -520,13 +520,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
-                  itemStyle={{ color: '#e2e8f0' }}
+                  {...tooltipStyle}
                   formatter={(value: number) => formatChartValue(value, unit)}
                 />
                 <Legend 
@@ -588,13 +582,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
+                {...tooltipStyle}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
               <Line 
@@ -631,8 +619,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             </LineChart>
           </ResponsiveContainer>
         );
+      }
+
       
-      case 'area':
+      case 'area': {
         const hasMultipleSeriesArea = kpi?.results && kpi.results.length > 1 &&
           kpi.results.every((r: KpiCalcResult['results'][0]) => r.timeSeries && r.timeSeries.length > 0);
 
@@ -660,13 +650,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
-                  itemStyle={{ color: '#e2e8f0' }}
+                  {...tooltipStyle}
                   formatter={(value: number) => formatChartValue(value, unit)}
                 />
                 <Legend 
@@ -711,13 +695,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
+                {...tooltipStyle}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
               <Area 
@@ -739,8 +717,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             </AreaChart>
           </ResponsiveContainer>
         );
+      }
 
-      case 'pie':
+
+      case 'pie': {
         const visiblePieData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
 
         return (
@@ -776,18 +756,14 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 wrapperStyle={{ paddingBottom: '20px' }}
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
-                itemStyle={{ color: '#e2e8f0' }}
+                {...tooltipStyle}
                 formatter={(value: number, name: string, props: any) => [formatChartValue(value, props.payload.unit), name]}
               />
             </PieChart>
           </ResponsiveContainer>
         );
+      }
+
 
       default:
         return null;

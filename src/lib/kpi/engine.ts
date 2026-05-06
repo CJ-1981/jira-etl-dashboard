@@ -1244,8 +1244,9 @@ export class KpiEngine {
               return result;
             }
             return [{ name: definition.name, value: Number(result) || 0, unit: definition.unit }];
-          } catch (err: Error | unknown) {
-            console.error('Plugin JS error:', err);
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            console.error('Plugin JS error:', errorMessage);
             return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'JS Error', value: 0 }] }];
           }
         }

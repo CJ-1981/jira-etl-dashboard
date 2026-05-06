@@ -117,6 +117,8 @@ const KEYS = {
   presets: 'cfg_dashboard_presets',
 };
 
+// @MX:ANCHOR: DEFAULT_SETTINGS
+// @MX:NOTE: DEFAULT_SETTINGS defines the baseline application configuration, including rate limits and SLA thresholds, used for initialization and state merging.
 export const DEFAULT_SETTINGS: AppSettings = {
   rateLimit: {
     delayMs: 0,

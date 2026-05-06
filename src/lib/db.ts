@@ -91,27 +91,32 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
   
   try {
     if (isPostgres) {
-      // @ts-ignore
-      const { PrismaClient } = require('../../prisma/generated/postgresql');
-      client = new PrismaClient({
+      client = new PostgresClient({
         datasources: { db: { url: effectiveUrl } },
         log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
       });
     } else {
-      // @ts-ignore
-      const { PrismaClient } = require('../../prisma/generated/sqlite');
-      client = new PrismaClient({
+      client = new SQLiteClient({
         datasources: { db: { url: effectiveUrl } },
         log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
       });
     }
   } catch (err) {
     console.error(`[DB] Failed to initialize ${isPostgres ? 'PostgreSQL' : 'SQLite'} client:`, err);
-    // Fallback to default if available
-    client = new PrismaClientDefault({
-      datasources: { db: { url: effectiveUrl } },
-      log: ['error'],
-    });
+    
+    // Check if the provider matches the default client's provider (SQLite)
+    const isSqlite = effectiveUrl.startsWith('file:') || effectiveUrl.startsWith('sqlite:');
+    
+    if (isSqlite) {
+      // Fallback to default if available and providers match
+      client = new PrismaClientDefault({
+        datasources: { db: { url: effectiveUrl } },
+        log: ['error'],
+      });
+    } else {
+      // Rethrow to fail loud if there is a provider mismatch
+      throw err;
+    }
   }
 
   prismaClientCache.set(effectiveUrl, client);

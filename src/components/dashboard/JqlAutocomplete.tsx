@@ -95,11 +95,16 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     const thirdLastPart = parts[parts.length - 3]?.toLowerCase();
 
     // If last part is an operator, suggest values for the field before it
+    // @MX:ANCHOR: JQL Field Selection Logic
+    // @MX:NOTE: This logic identifies the current field context by looking back from the cursor position to find operators like '=', '==', '!=', or 'CONTAINS'. It handles the special case of 'NOT CONTAINS' by checking the second to last part.
+    // @MX:TODO: Implement a proper JQL parser to handle complex expressions, parentheses, and list-based operators (e.g., IN, NOT IN).
+    // @MX:WARN: Position-based index access is brittle.
+    // @MX:REASON: Relying on simple whitespace splitting and fixed array indices (parts.length - 2) fails when there are extra spaces, nested queries, or multi-word field names.
     let field: string | null = null;
-    if (lastPart && ['=', '==', '!=', 'CONTAINS'].includes(lastPart)) {
-      field = parts[parts.length - 2]?.toLowerCase() || null;
-    } else if (lastPart === 'CONTAINS' && secondLastPart === 'NOT') {
+    if (lastPart === 'CONTAINS' && secondLastPart === 'NOT') {
       field = thirdLastPart || null;
+    } else if (lastPart && ['=', '==', '!=', 'CONTAINS'].includes(lastPart)) {
+      field = parts[parts.length - 2]?.toLowerCase() || null;
     }
 
     if (field) {
@@ -189,6 +194,13 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
                         onSelect={() => handleSelect(s.label)}
                         className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
+                        {/* 
+                          @MX:ANCHOR: Suggestion Item Rendering
+                          @MX:NOTE: Renders individual suggestion items with icons for fields and hash symbols for values.
+                          @MX:TODO: Support custom icon rendering for specific value types (e.g. project avatars).
+                          @MX:WARN: Inline type assertions (s as any) are used for flexibility in suggestion object structure.
+                          @MX:REASON: Suggestion items can be either fields (with icons) or operators (with descriptions), and the current interface doesn't strictly separate them.
+                        */}
                         {'icon' in s ? (s as any).icon : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold text-slate-400">#</span>}
                         <span className="text-xs font-medium">{s.label}</span>
                         {'description' in s && <span className="ml-auto text-[10px] text-slate-400">{(s as any).description}</span>}

@@ -97,7 +97,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   hiddenDimensions: new Set(),
   setHiddenDimensions: (dims) => set((state) => ({
-    hiddenDimensions: typeof dims === 'function' ? dims(state.hiddenDimensions) : dims
+    hiddenDimensions: new Set(typeof dims === 'function' ? dims(new Set(state.hiddenDimensions)) : dims)
   })),
 
   dashboardCharts: [{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }],

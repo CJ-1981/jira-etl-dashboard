@@ -479,9 +479,10 @@ export function PluginsPanel() {
                   for (const h of changelog) for (const item of h.items) if (item.field === 'status' && item.toString) statusSet.add(item.toString);
                   if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
                 }
-                const currentTargets = { ...((settings as AppSettings).sla?.statusTargets || {}) };
+                const sla = (settings as AppSettings).sla ?? {};
+                const currentTargets = { ...(sla.statusTargets || {}) };
                 for (const s of statusSet) if (!(s in currentTargets)) currentTargets[s] = 0;
-                setSettings({ ...settings, sla: { ...(settings as AppSettings).sla, statusTargets: currentTargets } });
+                setSettings({ ...settings, sla: { ...sla, statusTargets: currentTargets } });
                 toast.success(`Detected ${statusSet.size} unique statuses`);
               } catch { toast.error('Failed to detect statuses'); }
             }} className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"><Activity className="mr-2 h-4 w-4" /> Detect Statuses from Data</Button>
@@ -494,12 +495,16 @@ export function PluginsPanel() {
                   <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
                   <Input type="number" min="0" value={(hours as number) || ''} onChange={(e) => {
                     const val = parseFloat(e.target.value) || 0;
-                  setSettings({ ...settings, sla: { ...(settings as AppSettings).sla, statusTargets: { ...(settings as AppSettings).sla.statusTargets, [status]: val } } });
+                    const sla = (settings as AppSettings).sla ?? {};
+                    const statusTargets = sla.statusTargets ?? {};
+                    setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
                 }} className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
                 <span className="text-xs text-slate-400">hours</span>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
-                  const updated = { ...(settings as AppSettings).sla.statusTargets }; delete updated[status];
-                  setSettings({ ...settings, sla: { ...(settings as AppSettings).sla, statusTargets: updated } });
+                  const sla = (settings as AppSettings).sla ?? {};
+                  const updated = { ...(sla.statusTargets || {}) }; 
+                  delete updated[status];
+                  setSettings({ ...settings, sla: { ...sla, statusTargets: updated } });
                   }}><Trash2 className="h-3 w-3" /></Button>
                 </div>
               ))}
@@ -522,14 +527,26 @@ export function PluginsPanel() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
             <div className="space-y-2">
               <Label>Default German State</Label>
-              <Select value={(settings as AppSettings).general.defaultHolidayState} onValueChange={(v) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, defaultHolidayState: v } })}>
+              <Select value={(settings as AppSettings).general?.defaultHolidayState} onValueChange={(v) => {
+                const general = (settings as AppSettings).general ?? {};
+                setSettings({ ...settings, general: { ...general, defaultHolidayState: v } });
+              }}>
                 <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
                 <SelectContent>{GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}</SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Work hours start</Label><Input type="number" value={(settings as AppSettings).general.workStartHour} onChange={(e) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, workStartHour: parseInt(e.target.value) || 9 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="space-y-2"><Label>Work hours end</Label><Input type="number" value={(settings as AppSettings).general.workEndHour} onChange={(e) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, workEndHour: parseInt(e.target.value) || 17 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
-            <div className="space-y-2"><Label>Default SLA target (hours)</Label><Input type="number" value={(settings as AppSettings).general.defaultSlaTargetHours} onChange={(e) => setSettings({ ...settings, general: { ...(settings as AppSettings).general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
+            <div className="space-y-2"><Label>Work hours start</Label><Input type="number" value={(settings as AppSettings).general?.workStartHour} onChange={(e) => {
+              const general = (settings as AppSettings).general ?? {};
+              setSettings({ ...settings, general: { ...general, workStartHour: parseInt(e.target.value) || 9 } });
+            }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
+            <div className="space-y-2"><Label>Work hours end</Label><Input type="number" value={(settings as AppSettings).general?.workEndHour} onChange={(e) => {
+              const general = (settings as AppSettings).general ?? {};
+              setSettings({ ...settings, general: { ...general, workEndHour: parseInt(e.target.value) || 17 } });
+            }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
+            <div className="space-y-2"><Label>Default SLA target (hours)</Label><Input type="number" value={(settings as AppSettings).general?.defaultSlaTargetHours} onChange={(e) => {
+              const general = (settings as AppSettings).general ?? {};
+              setSettings({ ...settings, general: { ...general, defaultSlaTargetHours: parseInt(e.target.value) || 40 } });
+            }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" /></div>
           </div>
           <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
             <Button onClick={() => {
@@ -566,7 +583,8 @@ export function PluginsPanel() {
                   }
                 });
                 if (added > 0) {
-                  setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: currentThresholds } });
+                  const alerts = (settings as AppSettings).alerts ?? {};
+                  setSettings({ ...settings, alerts: { ...alerts, thresholds: currentThresholds } });
                   toast.success(`Added ${added} KPI alert placeholders`);
                 } else {
                   toast.info('All available KPIs already have thresholds');
@@ -598,9 +616,10 @@ export function PluginsPanel() {
                     <Select 
                       value={config.operator} 
                       onValueChange={(v: any) => {
-                        const updated = { ...(settings as AppSettings).alerts.thresholds };
+                        const alerts = (settings as AppSettings).alerts ?? {};
+                        const updated = { ...(alerts.thresholds || {}) };
                         updated[pluginId] = { ...config, operator: v };
-                        setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
+                        setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
                       }}
                     >
                       <SelectTrigger className="h-8 w-16 text-xs bg-white dark:bg-slate-950">
@@ -619,9 +638,10 @@ export function PluginsPanel() {
                       type="number" 
                       value={config.warning} 
                       onChange={(e) => {
-                        const updated = { ...(settings as AppSettings).alerts.thresholds };
+                        const alerts = (settings as AppSettings).alerts ?? {};
+                        const updated = { ...(alerts.thresholds || {}) };
                         updated[pluginId] = { ...config, warning: parseFloat(e.target.value) || 0 };
-                        setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
+                        setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
                       }}
                       className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
                     />
@@ -633,9 +653,10 @@ export function PluginsPanel() {
                       type="number" 
                       value={config.critical} 
                       onChange={(e) => {
-                        const updated = { ...(settings as AppSettings).alerts.thresholds };
+                        const alerts = (settings as AppSettings).alerts ?? {};
+                        const updated = { ...(alerts.thresholds || {}) };
                         updated[pluginId] = { ...config, critical: parseFloat(e.target.value) || 0 };
-                        setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
+                        setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
                       }}
                       className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
                     />
@@ -646,9 +667,10 @@ export function PluginsPanel() {
                     size="sm" 
                     className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" 
                     onClick={() => {
-                      const updated = { ...(settings as AppSettings).alerts.thresholds };
+                      const alerts = (settings as AppSettings).alerts ?? {};
+                      const updated = { ...(alerts.thresholds || {}) };
                       delete updated[pluginId];
-                      setSettings({ ...settings, alerts: { ...(settings as AppSettings).alerts, thresholds: updated } });
+                      setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
                     }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />

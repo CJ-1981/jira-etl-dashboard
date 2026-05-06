@@ -2,9 +2,14 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
-  return (
+/**
+ * @MX:WARN Card must use forwardRef for DOM access
+ * @MX:REASON chartRef passed from KpiCard requires direct DOM access for toPng export functionality
+ */
+const Card = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
+  ({ className, ...props }, ref) => (
     <div
+      ref={ref}
       data-slot="card"
       className={cn(
         "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
@@ -13,7 +18,8 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
       {...props}
     />
   )
-}
+)
+Card.displayName = "Card"
 
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,10 +28,6 @@ export function SettingsPanel() {
   const [configImporting, setConfigImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [initialSettings, setInitialSettings] = useState<AppSettings | null>(settings);
-
-  useEffect(() => {
-    setInitialSettings(settings);
-  }, []);
 
   const hasUnsavedChanges = initialSettings ? JSON.stringify(settings) !== JSON.stringify(initialSettings) : false;
 
