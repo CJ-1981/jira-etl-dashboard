@@ -579,7 +579,8 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
 };
 
 /**
- * Open Tickets by Priority - Count non-resolved tickets per unique priority
+ * @MX:NOTE: Open Tickets by Priority
+ * Count non-resolved tickets per unique priority to visualize distribution.
  */
 const openTicketsByPriorityPlugin: KpiPlugin = {
   id: 'open_tickets_by_priority',
@@ -1416,6 +1417,9 @@ function applyFilter(issues: KpiContext['issues'], condition: string): KpiContex
     });
   }
 
+  // @MX:NOTE: Array-aware IN/NOT IN semantics
+  // Handles both scalar values and multi-value fields (labels, components).
+  // For multi-value fields, the condition matches if ANY element of the field is present in the value list.
   const inMatch = trimmed.match(/^([\w.-]+)\s+(NOT\s+)?IN\s*\((.*)\)$/i);
   if (inMatch) {
     const [, field, not, valuesStr] = inMatch;

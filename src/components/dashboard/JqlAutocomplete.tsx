@@ -13,6 +13,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input';
 import { Zap, Search, Braces, User, Tag, Type, ListChecks, CheckCircle2 } from 'lucide-react';
 
+type Suggestion = 
+  | { kind: 'field'; label: string; icon: React.ReactNode; category?: string }
+  | { kind: 'operator'; label: string; description?: string; category?: string }
+  | { kind: 'value'; label: string; category?: string };
+
 interface JqlAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
@@ -48,30 +53,30 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     setInputValue(value);
   }, [value]);
 
-  const fields = useMemo(() => [
-    { label: 'project', icon: <Search className="h-3 w-3" />, type: 'field' },
-    { label: 'status', icon: <CheckCircle2 className="h-3 w-3" />, type: 'field' },
-    { label: 'statusCategory', icon: <CheckCircle2 className="h-3 w-3" />, type: 'field' },
-    { label: 'priority', icon: <Zap className="h-3 w-3" />, type: 'field' },
-    { label: 'issueType', icon: <Type className="h-3 w-3" />, type: 'field' },
-    { label: 'assignee', icon: <User className="h-3 w-3" />, type: 'field' },
-    { label: 'reporter', icon: <User className="h-3 w-3" />, type: 'field' },
-    { label: 'labels', icon: <Tag className="h-3 w-3" />, type: 'field' },
-    { label: 'components', icon: <Braces className="h-3 w-3" />, type: 'field' },
-    { label: 'key', icon: <Tag className="h-3 w-3" />, type: 'field' },
-    { label: 'summary', icon: <Type className="h-3 w-3" />, type: 'field' },
-    { label: 'storyPoints', icon: <ListChecks className="h-3 w-3" />, type: 'field' },
+  const fields: Suggestion[] = useMemo(() => [
+    { label: 'project', icon: <Search className="h-3 w-3" />, kind: 'field' },
+    { label: 'status', icon: <CheckCircle2 className="h-3 w-3" />, kind: 'field' },
+    { label: 'statusCategory', icon: <CheckCircle2 className="h-3 w-3" />, kind: 'field' },
+    { label: 'priority', icon: <Zap className="h-3 w-3" />, kind: 'field' },
+    { label: 'issueType', icon: <Type className="h-3 w-3" />, kind: 'field' },
+    { label: 'assignee', icon: <User className="h-3 w-3" />, kind: 'field' },
+    { label: 'reporter', icon: <User className="h-3 w-3" />, kind: 'field' },
+    { label: 'labels', icon: <Tag className="h-3 w-3" />, kind: 'field' },
+    { label: 'components', icon: <Braces className="h-3 w-3" />, kind: 'field' },
+    { label: 'key', icon: <Tag className="h-3 w-3" />, kind: 'field' },
+    { label: 'summary', icon: <Type className="h-3 w-3" />, kind: 'field' },
+    { label: 'storyPoints', icon: <ListChecks className="h-3 w-3" />, kind: 'field' },
   ], []);
 
-  const operators = useMemo(() => [
-    { label: '==', description: 'Equals', type: 'operator' },
-    { label: '!=', description: 'Not Equals', type: 'operator' },
-    { label: 'CONTAINS', description: 'Includes text', type: 'operator' },
-    { label: 'NOT CONTAINS', description: 'Excludes text', type: 'operator' },
-    { label: 'IN', description: 'In list', type: 'operator' },
-    { label: 'NOT IN', description: 'Not in list', type: 'operator' },
-    { label: 'AND', description: 'Both conditions', type: 'operator' },
-    { label: 'OR', description: 'Either condition', type: 'operator' },
+  const operators: Suggestion[] = useMemo(() => [
+    { label: '==', description: 'Equals', kind: 'operator' },
+    { label: '!=', description: 'Not Equals', kind: 'operator' },
+    { label: 'CONTAINS', description: 'Includes text', kind: 'operator' },
+    { label: 'NOT CONTAINS', description: 'Excludes text', kind: 'operator' },
+    { label: 'IN', description: 'In list', kind: 'operator' },
+    { label: 'NOT IN', description: 'Not in list', kind: 'operator' },
+    { label: 'AND', description: 'Both conditions', kind: 'operator' },
+    { label: 'OR', description: 'Either condition', kind: 'operator' },
   ], []);
 
   // Get current word being typed
@@ -110,9 +115,9 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     }
     
     // Also handle context inside parentheses for IN (...)
-    // This is a simple heuristic: if we see an opening parenthesis after IN
-    if (!field && beforeCursor.match(/IN\s*\(\s*$/i)) {
-      const partsBeforeIn = beforeCursor.split(/\s+IN\s*\(\s*$/i)[0].split(/\s+/);
+    // This heuristic matches when the cursor is inside an unclosed IN(...) list
+    if (!field && /(?:NOT\s+)?IN\s*\([^)]*$/i.test(beforeCursor)) {
+      const partsBeforeIn = beforeCursor.split(/(?:NOT\s+)?IN\s*\(/i)[0].trim().split(/\s+/);
       field = partsBeforeIn[partsBeforeIn.length - 1]?.toLowerCase() || null;
       // Handle NOT IN (
       if (field?.toUpperCase() === 'NOT') {
@@ -121,20 +126,20 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     }
 
     if (field) {
-      const fieldValues: any[] = [];
+      const fieldValues: Suggestion[] = [];
       
       // Suggest opening parenthesis for IN operators if not already there
       if (lastPart === 'IN') {
-        fieldValues.push({ label: '(', description: 'Start list', type: 'operator', category: 'Operators' });
+        fieldValues.push({ label: '(', description: 'Start list', kind: 'operator', category: 'Operators' });
       }
 
-      if (field === 'status') fieldValues.push(...filterOptions.status.map(v => ({ label: `"${v}"`, type: 'value', category: 'Status' })));
-      else if (field === 'priority') fieldValues.push(...filterOptions.priority.map(v => ({ label: `"${v}"`, type: 'value', category: 'Priority' })));
-      else if (field === 'project') fieldValues.push(...filterOptions.project.map(v => ({ label: `"${v}"`, type: 'value', category: 'Project' })));
-      else if (field === 'issuetype') fieldValues.push(...filterOptions.issueType.map(v => ({ label: `"${v}"`, type: 'value', category: 'Issue Type' })));
-      else if (field === 'assignee') fieldValues.push(...filterOptions.assignee.map(v => ({ label: `"${v}"`, type: 'value', category: 'Assignee' })));
-      else if (field === 'label' || field === 'labels') fieldValues.push(...filterOptions.label.map(v => ({ label: `"${v}"`, type: 'value', category: 'Label' })));
-      else if (field === 'component' || field === 'components') fieldValues.push(...filterOptions.component.map(v => ({ label: `"${v}"`, type: 'value', category: 'Component' })));
+      if (field === 'status') fieldValues.push(...filterOptions.status.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Status' })));
+      else if (field === 'priority') fieldValues.push(...filterOptions.priority.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Priority' })));
+      else if (field === 'project') fieldValues.push(...filterOptions.project.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Project' })));
+      else if (field === 'issuetype') fieldValues.push(...filterOptions.issueType.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Issue Type' })));
+      else if (field === 'assignee') fieldValues.push(...filterOptions.assignee.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Assignee' })));
+      else if (field === 'label' || field === 'labels') fieldValues.push(...filterOptions.label.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Label' })));
+      else if (field === 'component' || field === 'components') fieldValues.push(...filterOptions.component.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Component' })));
       
       return fieldValues.filter(v => v.label.toLowerCase().includes(lowerWord));
     }
@@ -222,12 +227,12 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
                           @MX:ANCHOR: Suggestion Item Rendering
                           @MX:NOTE: Renders individual suggestion items with icons for fields and hash symbols for values.
                           @MX:TODO: Support custom icon rendering for specific value types (e.g. project avatars).
-                          @MX:WARN: Inline type assertions (s as any) are used for flexibility in suggestion object structure.
-                          @MX:REASON: Suggestion items can be either fields (with icons) or operators (with descriptions), and the current interface doesn't strictly separate them.
+                          @MX:WARN: Discriminant (kind) is used to safely access icons and descriptions.
+                          @MX:REASON: Suggestion items can be fields, operators, or values, each with different optional properties.
                         */}
-                        {'icon' in s ? (s as any).icon : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold text-slate-400">#</span>}
+                        {s.kind === 'field' ? s.icon : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold text-slate-400">#</span>}
                         <span className="text-xs font-medium">{s.label}</span>
-                        {'description' in s && <span className="ml-auto text-[10px] text-slate-400">{(s as any).description}</span>}
+                        {s.kind === 'operator' && s.description && <span className="ml-auto text-[10px] text-slate-400">{s.description}</span>}
                       </CommandItem>
                     ))}
                   </CommandGroup>

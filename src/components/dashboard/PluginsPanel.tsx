@@ -479,7 +479,7 @@ export function PluginsPanel() {
                   for (const h of changelog) for (const item of h.items) if (item.field === 'status' && item.toString) statusSet.add(item.toString);
                   if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
                 }
-                const sla = (settings as AppSettings).sla ?? {};
+                const sla = settings.sla ?? {};
                 const currentTargets = { ...(sla.statusTargets || {}) };
                 for (const s of statusSet) if (!(s in currentTargets)) currentTargets[s] = 0;
                 setSettings({ ...settings, sla: { ...sla, statusTargets: currentTargets } });
@@ -495,13 +495,13 @@ export function PluginsPanel() {
                   <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
                   <Input type="number" min="0" value={(hours as number) || ''} onChange={(e) => {
                     const val = parseFloat(e.target.value) || 0;
-                    const sla = (settings as AppSettings).sla ?? {};
+                    const sla = settings.sla ?? {};
                     const statusTargets = sla.statusTargets ?? {};
                     setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
                 }} className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
                 <span className="text-xs text-slate-400">hours</span>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
-                  const sla = (settings as AppSettings).sla ?? {};
+                  const sla = settings.sla ?? {};
                   const updated = { ...(sla.statusTargets || {}) }; 
                   delete updated[status];
                   setSettings({ ...settings, sla: { ...sla, statusTargets: updated } });
@@ -527,8 +527,8 @@ export function PluginsPanel() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
             <div className="space-y-2">
               <Label>Default German State</Label>
-              <Select value={(settings as AppSettings).general?.defaultHolidayState} onValueChange={(v) => {
-                const general = (settings as AppSettings).general ?? {};
+              <Select value={settings.general?.defaultHolidayState} onValueChange={(v) => {
+                const general = settings.general ?? {};
                 setSettings({ ...settings, general: { ...general, defaultHolidayState: v } });
               }}>
                 <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
@@ -539,12 +539,12 @@ export function PluginsPanel() {
               <Label>Work hours start</Label>
               <Input 
                 type="number" 
-                value={(settings as AppSettings).general?.workStartHour} 
+                value={settings.general?.workStartHour} 
                 onChange={(e) => {
                   let val = parseInt(e.target.value);
                   if (isNaN(val)) val = 9;
                   val = Math.max(0, Math.min(23, val));
-                  const general = (settings as AppSettings).general ?? {};
+                  const general = settings.general ?? {};
                   const end = general.workEndHour || 17;
                   if (val >= end) val = end - 1;
                   setSettings({ ...settings, general: { ...general, workStartHour: val } });
@@ -556,12 +556,12 @@ export function PluginsPanel() {
               <Label>Work hours end</Label>
               <Input 
                 type="number" 
-                value={(settings as AppSettings).general?.workEndHour} 
+                value={settings.general?.workEndHour} 
                 onChange={(e) => {
                   let val = parseInt(e.target.value);
                   if (isNaN(val)) val = 17;
                   val = Math.max(1, Math.min(24, val));
-                  const general = (settings as AppSettings).general ?? {};
+                  const general = settings.general ?? {};
                   const start = general.workStartHour || 9;
                   if (val <= start) val = start + 1;
                   setSettings({ ...settings, general: { ...general, workEndHour: val } });
@@ -573,12 +573,12 @@ export function PluginsPanel() {
               <Label>Default SLA target (hours)</Label>
               <Input 
                 type="number" 
-                value={(settings as AppSettings).general?.defaultSlaTargetHours} 
+                value={settings.general?.defaultSlaTargetHours} 
                 onChange={(e) => {
                   let val = parseInt(e.target.value);
                   if (isNaN(val)) val = 40;
                   val = Math.max(1, val);
-                  const general = (settings as AppSettings).general ?? {};
+                  const general = settings.general ?? {};
                   setSettings({ ...settings, general: { ...general, defaultSlaTargetHours: val } });
                 }} 
                 className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" 
@@ -611,16 +611,16 @@ export function PluginsPanel() {
               size="sm" 
               onClick={() => {
                 const availableKpis = Object.values(plugins).flat().map(p => p.id);
-                const currentThresholds = { ...((settings as AppSettings).alerts?.thresholds || {}) };
+                const currentThresholds = { ...(settings.alerts?.thresholds || {}) };
                 let added = 0;
                 availableKpis.forEach(id => {
                   if (!currentThresholds[id]) {
-                    currentThresholds[id] = { warning: 0, critical: 0, operator: '>' };
+                    currentThresholds[id] = { warning: NaN, critical: NaN, operator: '>' };
                     added++;
                   }
                 });
                 if (added > 0) {
-                  const alerts = (settings as AppSettings).alerts ?? {};
+                  const alerts = settings.alerts ?? {};
                   setSettings({ ...settings, alerts: { ...alerts, thresholds: currentThresholds } });
                   toast.success(`Added ${added} KPI alert placeholders`);
                 } else {
@@ -632,12 +632,12 @@ export function PluginsPanel() {
               <Plus className="h-3.5 w-3.5 mr-1" /> Add Alert for all KPIs
             </Button>
             <span className="text-xs text-slate-400">
-              {Object.keys((settings as AppSettings).alerts?.thresholds || {}).length} alerts configured
+              {Object.keys(settings.alerts?.thresholds || {}).length} alerts configured
             </span>
           </div>
 
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-            {(Object.entries((settings as AppSettings).alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
+            {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
               const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
               const label = plugin?.name || pluginId;
               
@@ -653,7 +653,7 @@ export function PluginsPanel() {
                     <Select 
                       value={config.operator} 
                       onValueChange={(v: any) => {
-                        const alerts = (settings as AppSettings).alerts ?? {};
+                        const alerts = settings.alerts ?? {};
                         const updated = { ...(alerts.thresholds || {}) };
                         updated[pluginId] = { ...config, operator: v };
                         setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
@@ -673,11 +673,11 @@ export function PluginsPanel() {
                     <Label className="text-xs text-amber-500 w-14">Warning</Label>
                     <Input 
                       type="number" 
-                      value={config.warning} 
+                      value={isNaN(config.warning) ? '' : config.warning} 
                       onChange={(e) => {
-                        const alerts = (settings as AppSettings).alerts ?? {};
+                        const alerts = settings.alerts ?? {};
                         const updated = { ...(alerts.thresholds || {}) };
-                        updated[pluginId] = { ...config, warning: parseFloat(e.target.value) || 0 };
+                        updated[pluginId] = { ...config, warning: parseFloat(e.target.value) };
                         setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
                       }}
                       className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
@@ -688,11 +688,11 @@ export function PluginsPanel() {
                     <Label className="text-xs text-red-500 w-12">Critical</Label>
                     <Input 
                       type="number" 
-                      value={config.critical} 
+                      value={isNaN(config.critical) ? '' : config.critical} 
                       onChange={(e) => {
-                        const alerts = (settings as AppSettings).alerts ?? {};
+                        const alerts = settings.alerts ?? {};
                         const updated = { ...(alerts.thresholds || {}) };
-                        updated[pluginId] = { ...config, critical: parseFloat(e.target.value) || 0 };
+                        updated[pluginId] = { ...config, critical: parseFloat(e.target.value) };
                         setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
                       }}
                       className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
@@ -704,7 +704,7 @@ export function PluginsPanel() {
                     size="sm" 
                     className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" 
                     onClick={() => {
-                      const alerts = (settings as AppSettings).alerts ?? {};
+                      const alerts = settings.alerts ?? {};
                       const updated = { ...(alerts.thresholds || {}) };
                       delete updated[pluginId];
                       setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });

@@ -1,4 +1,5 @@
 import { PrismaClient as PrismaClientDefault } from '@prisma/client'
+import crypto from 'crypto';
 // Import the specialized clients
 // @ts-ignore
 import { PrismaClient as SQLiteClient } from '../../prisma/generated/sqlite';
@@ -7,6 +8,13 @@ import { PrismaClient as PostgresClient } from '../../prisma/generated/postgresq
 // Use a global cache to avoid excessive client instantiation in serverless env
 type DbClient = SQLiteClient | PostgresClient;
 const prismaClientCache = new Map<string, DbClient>();
+
+/**
+ * Derives a safe cache key from a connection URL (avoids storing secrets in Map keys)
+ */
+function getSafeKey(url: string): string {
+  return crypto.createHash('sha256').update(url).digest('hex');
+}
 
 /**
  * Determine the provider type from a connection URL
@@ -89,9 +97,10 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
   // SSRF Protection: Validate the host before proceeding
   validateDatabaseHost(effectiveUrl);
 
-  // Check cache (using URL as key)
-  if (prismaClientCache.has(effectiveUrl)) {
-    return prismaClientCache.get(effectiveUrl)!;
+  // Check cache (using hashed URL as key to avoid storing secrets)
+  const safeKey = getSafeKey(effectiveUrl);
+  if (prismaClientCache.has(safeKey)) {
+    return prismaClientCache.get(safeKey)!;
   }
 
   const provider = determineProvider(effectiveUrl);
@@ -123,7 +132,7 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
     throw err;
   }
 
-  prismaClientCache.set(effectiveUrl, client);
+  prismaClientCache.set(safeKey, client);
   return client;
 }
 

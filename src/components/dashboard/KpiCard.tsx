@@ -65,6 +65,10 @@ export function KpiCard({ result, pluginId, onHide, onClick }: {
   const getAlertStatus = () => {
     if (!alertConfig) return null;
     const { warning, critical, operator } = alertConfig;
+    
+    // Short-circuit if thresholds are not valid numbers
+    if (isNaN(warning) || isNaN(critical)) return null;
+    
     const val = result.value;
     
     if (operator === '>') {
@@ -254,6 +258,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
       // Wait for any animations to finish
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // @MX:WARN: ref-based chart capture
+      // @MX:REASON: capture depends on DOM element availability and size; hidden or non-rendered charts cannot be captured.
       const dataUrl = await toPng(chartRef.current, {
         backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
         cacheBust: true,
@@ -299,8 +305,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
       sm: 250,   // Narrow
       md: 300,   // Medium
       lg: 350,   // Wide
-      full: 400,  // Full
-    }[config.width];
+      full: 400, // Full
+    }[config.width] || 300;
 
     const kpi = kpiResults.find((k) => k.pluginId === config.kpiId);
     const unit = kpi?.results?.[0]?.unit || '';
@@ -335,6 +341,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
         const hasMultipleSeriesBar = kpi?.results && kpi.results.length > 1 &&
           kpi.results.every((r: KpiCalcResult['results'][0]) => r.timeSeries && r.timeSeries.length > 0);
 
+        // @MX:NOTE: Multi-series bar chart merging logic
         if (hasMultipleSeriesBar) {
           const allPeriods = new Set<string>();
           kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
@@ -348,13 +355,14 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             kpi.results.forEach((result: KpiCalcResult['results'][0], idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
-              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || result.ticketKeys || [];
+              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || [];
               if (point && point.isComplete === false) isComplete = false;
             });
             dataPoint.isComplete = isComplete;
             return dataPoint;
           });
 
+          // @MX:ANCHOR: Bar Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
               <BarChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
@@ -434,6 +442,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   ]}
                 />
               )}
+              {/* @MX:ANCHOR: Bar Chart (Standard) */}
               <Bar 
                 dataKey="value" 
                 name="Total Period" 
@@ -507,13 +516,14 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             kpi.results.forEach((result: KpiCalcResult['results'][0], idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
-              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || result.ticketKeys || [];
+              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || [];
               if (point && point.isComplete === false) isComplete = false;
             });
             dataPoint.isComplete = isComplete;
             return dataPoint;
           });
 
+          // @MX:ANCHOR: Line Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
               <LineChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
@@ -586,6 +596,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {...tooltipStyle}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
+              {/* @MX:ANCHOR: Line Chart (Standard) */}
               <Line 
                 type="monotone" 
                 dataKey="value" 
@@ -639,11 +650,12 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             kpi.results.forEach((result: KpiCalcResult['results'][0], idx: number) => {
               const point = result.timeSeries?.find((p: any) => p.period === period);
               dataPoint[`series${idx}`] = point?.value || 0;
-              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || result.ticketKeys || [];
+              dataPoint[`ticketKeys${idx}`] = (point as any)?.ticketKeys || [];
             });
             return dataPoint;
           });
 
+          // @MX:ANCHOR: Area Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
               <AreaChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
@@ -699,6 +711,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {...tooltipStyle}
                 formatter={(value: number) => formatChartValue(value, unit)}
               />
+              {/* @MX:ANCHOR: Area Chart (Standard) */}
               <Area 
                 type="monotone" 
                 dataKey="value" 
@@ -727,6 +740,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
             <PieChart>
+              {/* @MX:ANCHOR: Pie Chart Rendering */}
               <Pie
                 data={visiblePieData}
                 cx="50%"
@@ -909,13 +923,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Width</Label>
             <Select
               value={config.width}
-              onValueChange={(width: 'md' | 'full') => onChange(config.id, { ...config, width })}
+              onValueChange={(width: 'sm' | 'md' | 'lg' | 'full') => onChange(config.id, { ...config, width })}
             >
               <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="sm">Small</SelectItem>
                 <SelectItem value="md">Medium</SelectItem>
+                <SelectItem value="lg">Large</SelectItem>
                 <SelectItem value="full">Full</SelectItem>
               </SelectContent>
             </Select>
