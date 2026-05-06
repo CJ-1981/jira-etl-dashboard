@@ -239,3 +239,6 @@ prisma/%SOURCE_DB_ABS%
 release/release.zip
 next-env.d.ts
 next-env.d.ts
+
+# Release artifacts
+release/

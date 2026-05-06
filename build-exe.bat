@@ -9,38 +9,50 @@ echo.
 
 :: ── Step 1: Check dependencies ────────────────────────────────
 echo [1/4] Checking dependencies...
+
+:: Check for running node processes that might lock Prisma files (excluding this script's host)
+tasklist /FI "IMAGENAME eq node.exe" 2>NUL | find /I /N "node.exe">NUL
+if "%ERRORLEVEL%"=="0" (
+    echo [WARNING] Multiple 'node.exe' processes are running. 
+    echo           This may cause EPERM errors during Prisma generation.
+    echo           If the build fails, please close all other terminals/IDE.
+    echo.
+)
+
 call npm install >nul 2>&1
 echo       Done.
 
 :: ── Step 2: Initialize database with correct schema ───────────
 echo [2/4] Synchronizing database schema...
 
-:: Build an absolute path for the source database to be 100%% sure where we are pushing
-set "SOURCE_DB_ABS=%%~dp0prisma\db\custom.db"
-set "SOURCE_DB_ABS=%%SOURCE_DB_ABS:\=/%%"
-set "DATABASE_URL=file:%%SOURCE_DB_ABS%%"
+:: Build an absolute path for the source database
+set "SOURCE_DB_ABS=%~dp0prisma\db\custom.db"
+set "SOURCE_DB_ABS=%SOURCE_DB_ABS:\=/%"
+set "DATABASE_URL=file:%SOURCE_DB_ABS%"
 
 if not exist "prisma\db" mkdir "prisma\db"
 
 echo       Targeting database: prisma\db\custom.db
 echo       Pushing schema...
 
-:: Generate client
-call npx prisma generate --schema prisma\schema.prisma
+:: Run our central setup script first to ensure all schemas and clients are ready
+:: This replaces the redundant manual calls and handles locks better
+call node scripts/prisma-setup.mjs
 if %errorlevel% neq 0 (
-    echo [ERROR] Prisma generate failed.
+    echo [ERROR] Prisma setup failed.
     pause
     exit /b 1
 )
 
-:: Push schema to the 62MB database file
+:: Push schema to the 62MB database file (using the synchronized schema.prisma)
 call npx prisma db push --schema prisma\schema.prisma --accept-data-loss
 if %errorlevel% neq 0 (
     echo [ERROR] Prisma db push failed.
     pause
     exit /b 1
 )
-echo       Database schema and client ready.
+echo       Database schema and clients ready.
+
 
 :: ── Step 3: Build (skip if standalone already exists) ─────────
 if exist ".next\standalone\server.js" (

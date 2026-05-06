@@ -476,7 +476,9 @@ const slaByPriorityPlugin: KpiPlugin = {
       if (hours <= target) resolvedByPriority[priority].withinSla++;
     }
 
-    return Object.entries(resolvedByPriority).map(([priority, data]) => ({
+    return Object.entries(resolvedByPriority)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([priority, data]) => ({
       name: `SLA: ${priority}`,
       value: Math.round((data.withinSla / data.total) * 10000) / 100,
       unit: '%',

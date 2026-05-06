@@ -11,6 +11,23 @@ const envFile = path.join(rootDir, '.env');
 
 console.log('--- Prisma Setup Script ---');
 
+// Helper for cleaning directories with retry (handles Windows file locks)
+function cleanDirectorySync(dir) {
+  if (!fs.existsSync(dir)) return true;
+  
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+    return true;
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EBUSY') {
+      console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);
+      console.warn('  Common causes: A running dev server, VS Code Prisma extension, or an open terminal.');
+      return false;
+    }
+    throw error;
+  }
+}
+
 // 1. Ensure required directories exist
 const dirs = ['db', 'data'];
 for (const dir of dirs) {
@@ -58,10 +75,15 @@ console.log(`> Target Database: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
 
 // 4. Run prisma generate for both providers to support dynamic switching
 try {
+  const sqliteGenDir = path.join(prismaDir, 'generated', 'sqlite');
+  const pgGenDir = path.join(prismaDir, 'generated', 'postgresql');
+
   console.log('> Generating SQLite Prisma client...');
+  cleanDirectorySync(sqliteGenDir);
   execSync('npx prisma generate --schema=prisma/schema.sqlite.prisma', { stdio: 'inherit', cwd: rootDir });
   
   console.log('> Generating PostgreSQL Prisma client...');
+  cleanDirectorySync(pgGenDir);
   execSync('npx prisma generate --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit', cwd: rootDir });
   
   // Also sync the main schema.prisma for general tools (Studio, etc)
@@ -81,6 +103,12 @@ try {
   
   console.log('✓ All Prisma clients generated');
 } catch (error) {
+  if (error.message && (error.message.includes('EPERM') || error.message.includes('operation not permitted'))) {
+    console.error('\n--- CRITICAL: FILE LOCK DETECTED ---');
+    console.error('Prisma cannot update its engine because it is currently in use.');
+    console.error('Please CLOSE all running "node" processes, dev servers, and VS Code, then try again.');
+    console.error('-------------------------------------\n');
+  }
   console.error('✗ Failed to generate Prisma clients', error);
   process.exit(1);
 }
