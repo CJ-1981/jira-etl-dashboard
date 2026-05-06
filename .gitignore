@@ -242,3 +242,11 @@ next-env.d.ts
 
 # Release artifacts
 release/
+
+# Local Database Files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+/db/*
+/prisma/db/*
