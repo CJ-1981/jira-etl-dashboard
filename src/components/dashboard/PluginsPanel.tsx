@@ -43,7 +43,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { localConfig, type KpiPlugin, AppSettings } from '@/lib/config/local-store';
+import { localConfig, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 
@@ -99,6 +99,15 @@ export function PluginsPanel() {
   const { settings, setSettings } = useAppStore();
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [initialSettings, setInitialSettings] = useState<AppSettings>(settings);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Sync initialSettings once the store settings are loaded from localStorage
+  useEffect(() => {
+    if (!isInitialized && JSON.stringify(settings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+      setInitialSettings(settings);
+      setIsInitialized(true);
+    }
+  }, [settings, isInitialized]);
   const [loading, setLoading] = useState(false);
   const [activePlugins, setActivePlugins] = useState<string[]>([]);
 
@@ -493,7 +502,7 @@ export function PluginsPanel() {
               {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
                 <div key={status} className="flex items-center gap-3">
                   <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
-                  <Input type="number" min="0" value={(hours as number) || ''} onChange={(e) => {
+                  <Input type="number" min="0" value={hours ?? ''} onChange={(e) => {
                     const val = parseFloat(e.target.value) || 0;
                     const sla = settings.sla ?? {};
                     const statusTargets = sla.statusTargets ?? {};

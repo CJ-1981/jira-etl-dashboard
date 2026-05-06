@@ -17,7 +17,7 @@ import {
   SaveAll, Download, Upload, Loader2, Info, Settings, Sliders, Save, Link2, Copy, ShieldCheck, Zap
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { localConfig, type AppSettings } from '@/lib/config/local-store';
+import { localConfig, type AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 
 export function SettingsPanel() {
@@ -28,6 +28,15 @@ export function SettingsPanel() {
   const [configImporting, setConfigImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [initialSettings, setInitialSettings] = useState<AppSettings | null>(settings);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Sync initialSettings once the store settings are loaded from localStorage
+  React.useEffect(() => {
+    if (!isInitialized && settings && JSON.stringify(settings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+      setInitialSettings(settings);
+      setIsInitialized(true);
+    }
+  }, [settings, isInitialized]);
 
   const hasUnsavedChanges = initialSettings ? JSON.stringify(settings) !== JSON.stringify(initialSettings) : false;
 

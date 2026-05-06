@@ -112,6 +112,9 @@ export default function Home() {
     if (savedActive) {
       setActiveConnectionId(savedActive);
     }
+
+    const savedSettings = localConfig.getSettings();
+    if (savedSettings) setSettings(savedSettings);
     
     // Set default dates
     const now = new Date();
@@ -119,7 +122,7 @@ export default function Home() {
     lastMonth.setMonth(now.getMonth() - 1);
     setDateFrom(lastMonth.toISOString().split('T')[0]);
     setDateTo(now.toISOString().split('T')[0]);
-  }, [mounted]);
+  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setDateFrom, setDateTo]);
 
   // Consolidate data loading into a single effect with AbortController
   useEffect(() => {
