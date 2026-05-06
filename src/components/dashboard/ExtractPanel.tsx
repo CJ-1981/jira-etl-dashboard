@@ -696,7 +696,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                   {(extractionResult.issues || []).filter((i: any) => {
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
                     const category = (i.statusCategory || '').toLowerCase();
-                    return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
+                    return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed', 'ready to close'].includes(status);
                   }).length}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Resolved</p>
@@ -706,7 +706,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                   {(extractionResult.issues || []).filter((i: any) => {
                     const status = (i.fields?.status?.name || i.status || '').toLowerCase();
                     const category = (i.statusCategory || '').toLowerCase();
-                    return category !== 'done' && !['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
+                    return category !== 'done' && !['done', 'closed', 'close', 'resolved', 'completed', 'ready to close'].includes(status);
                   }).length}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Open</p>
@@ -779,7 +779,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                   const isResolved = (() => {
                     const status = (issue.fields?.status?.name || issue.status || '').toLowerCase();
                     const category = (issue.statusCategory || '').toLowerCase();
-                    return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed'].includes(status);
+                    return category === 'done' || ['done', 'closed', 'close', 'resolved', 'completed', 'ready to close'].includes(status);
                   })();
 
                   return (

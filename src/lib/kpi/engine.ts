@@ -149,7 +149,7 @@ export function isIssueDone(issue: TransformedIssue): boolean {
   if (issue.resolved) return true;
   const status = (issue.status || '').toLowerCase();
   const category = (issue.statusCategory || '').toLowerCase();
-  return category === 'done' || ['done', 'closed', 'resolved', 'completed', 'close'].includes(status);
+  return category === 'done' || ['done', 'closed', 'resolved', 'completed', 'close', 'ready to close'].includes(status);
 }
 
 // ─── Built-in KPI Plugins ────────────────────────────────────────────────────
