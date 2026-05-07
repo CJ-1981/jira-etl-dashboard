@@ -170,6 +170,10 @@ export function useKpiDashboard() {
     toast.info('Filters cleared');
   }, [setJqlQuery]);
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   const handleApplyFilters = () => {
     hasUserInitiatedCalc.current = true;
     setGlobalFilters(pendingFilters);
@@ -409,11 +413,13 @@ export function useKpiDashboard() {
     dashboardJqls, setDashboardJqls, jqlToDelete, setJqlToDelete, editingJqlId, setEditingJqlId,
     jqlInputRef, filterOptions,
     // KPI Data
+    kpiResults,
     mainKpis, assigneeKpis, statusKpis, slaStatusKpis, priorityKpis, distributionKpis, timeSeriesKpis, tableKpiResults,
     filteredCharts,
     // Actions
     runCalculation, handleSavePreset, handleUpdatePreset, handleLoadPreset, handleDeletePreset,
-    handleUpdatePendingFilter, handleApplyFilters, handleClearAll, handleExportKpis, toggleDimension,
-    handleAddChart, handleRemoveChart, handleUpdateChart, handleMoveChart, handleDrillDown
+    handleUpdatePendingFilter, handleApplyFilters, handleClearAll, handlePrint, handleExportKpis, toggleDimension,
+    handleAddChart, handleRemoveChart, handleUpdateChart, handleMoveChart, handleDrillDown,
+    activePluginsState
   };
 }

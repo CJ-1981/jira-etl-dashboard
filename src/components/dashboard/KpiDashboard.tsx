@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useAppStore } from '@/store/app-store';
-import useKpiDashboard from '@/hooks/use-kpi-dashboard';
+import { useKpiDashboard } from '@/hooks/use-kpi-dashboard';
 import { KpiDashboardToolbar } from './KpiDashboardToolbar';
 import { KpiMetricsGrid } from './KpiMetricsGrid';
 import { KpiDrilldownDrawer } from './KpiDrilldownDrawer';
@@ -11,6 +11,12 @@ import { RefreshCw, Sliders, Loader2, BarChart3, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { localConfig } from '@/lib/config/local-store';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function KpiDashboard() {
   const {
@@ -62,10 +68,10 @@ export default function KpiDashboard() {
         filterPanelOpen={filterPanelOpen}
         setFilterPanelOpen={setFilterPanelOpen}
         onPrint={hook.handlePrint}
-        onSavePreset={hook.handleSavePreset}
-        onLoadPreset={hook.handleLoadPreset}
-        onUpdatePreset={hook.handleUpdatePreset}
-        onDeletePreset={hook.handleDeletePreset}
+        handleSavePreset={hook.handleSavePreset}
+        handleLoadPreset={hook.handleLoadPreset}
+        handleUpdatePreset={hook.handleUpdatePreset}
+        handleDeletePreset={hook.handleDeletePreset}
         presets={hook.presets}
         periodAnalysis={hook.periodAnalysis}
         setEditingJqlId={hook.setEditingJqlId}
@@ -162,18 +168,41 @@ export default function KpiDashboard() {
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] no-print"
           >
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-2xl rounded-full px-4 py-2 flex items-center gap-3">
-              <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800">
-                <div className="bg-emerald-500/10 p-1.5 rounded-full">
-                  <BarChart3 className="h-4 w-4 text-emerald-500" />
-                </div>
-                <span className="text-xs font-bold whitespace-nowrap">Dashboard</span>
-              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800 cursor-help">
+                      <div className="bg-emerald-500/10 p-1.5 rounded-full">
+                        <BarChart3 className="h-4 w-4 text-emerald-500" />
+                      </div>
+                      <span className="text-xs font-bold whitespace-nowrap">Dashboard</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-slate-900 text-white border-slate-800 text-[10px] p-2">
+                    <div className="space-y-1">
+                      <p className="font-bold border-b border-slate-700 pb-1 mb-1">Active Plugins ({hook.activePluginsState.length})</p>
+                      <div className="max-h-[150px] overflow-y-auto pr-1">
+                        {hook.activePluginsState.length > 0 ? (
+                          hook.activePluginsState.map(p => (
+                            <div key={p} className="flex items-center gap-2">
+                              <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                              <span>{p.replace(/_/g, ' ')}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-slate-500 italic">No plugins active</p>
+                        )}
+                      </div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               
               <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={hook.runCalculation}
+                  onClick={() => hook.runCalculation()}
                   disabled={hook.calculating}
                   className="h-8 px-3 text-xs gap-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-500/10 text-slate-600 dark:text-slate-400 hover:text-blue-500"
                 >
@@ -184,7 +213,10 @@ export default function KpiDashboard() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setFilterPanelOpen(!filterPanelOpen)}
+                  onClick={() => {
+                    setFilterPanelOpen(true);
+                    document.getElementById('dashboard-toolbar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
                   className={`h-8 px-3 text-xs gap-2 rounded-full transition-all ${filterPanelOpen ? 'bg-emerald-500/10 text-emerald-500' : 'text-slate-600 dark:text-slate-400 hover:text-emerald-500'}`}
                 >
                   <Sliders className="h-3.5 w-3.5" />

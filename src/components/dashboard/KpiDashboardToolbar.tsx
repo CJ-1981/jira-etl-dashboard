@@ -97,7 +97,7 @@ export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
   } = props;
 
   return (
-    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-sm overflow-visible">
+    <Card id="dashboard-toolbar" className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-sm overflow-visible">
       <CardHeader className="pb-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
