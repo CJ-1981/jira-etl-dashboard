@@ -372,7 +372,12 @@ export function KpiDashboard() {
           }
         }
 
+        console.log('[calculateWidgetJql] Original query:', query);
         console.log('[calculateWidgetJql] Parsed JQL:', { field, operator, value });
+        console.log('[calculateWidgetJql] Pattern matches:', patterns.map(p => ({
+          op: p.op,
+          match: query.match(p.regex)
+        })));
 
         if (field && operator && value) {
           filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
