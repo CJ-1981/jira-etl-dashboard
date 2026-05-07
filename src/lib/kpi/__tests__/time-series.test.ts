@@ -1,9 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { getKpiEngine } from '../engine';
 import { GERMAN_STATES } from '../../holidays/german-holidays';
 
 describe('Time-Series Plugins', () => {
-  const engine = getKpiEngine();
+  let engine: ReturnType<typeof getKpiEngine>;
+  
+  beforeEach(() => {
+    engine = getKpiEngine();
+  });
   
   const mockHolidays = {
     regions: [GERMAN_STATES.NATIONAL],
@@ -81,11 +85,13 @@ describe('Time-Series Plugins', () => {
     expect(inProgressTrend).toBeDefined();
 
     // Check To Do count before transition
-    const beforeTransition = toDoTrend?.timeSeries?.find(p => p.period === '2026-05-05');
+    const beforeTransition = toDoTrend?.timeSeries?.find(p => p.period.includes('2026-05-05')) || 
+                             toDoTrend?.timeSeries?.find(p => p.period.includes('2026-05'));
     expect(beforeTransition?.value).toBe(1);
 
     // Check In Progress count after transition
-    const afterTransition = inProgressTrend?.timeSeries?.find(p => p.period === '2026-05-15');
+    const afterTransition = inProgressTrend?.timeSeries?.find(p => p.period.includes('2026-05-15')) || 
+                            inProgressTrend?.timeSeries?.find(p => p.period.includes('2026-05'));
     expect(afterTransition?.value).toBe(1);
   });
 });

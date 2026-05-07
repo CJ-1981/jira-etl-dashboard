@@ -48,7 +48,7 @@ export function useKpiDashboard() {
   }, [dateFrom, dateTo, masterDatasetInfo]);
 
   // JQL-Lite Filter state
-  const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
+  const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>(() => localConfig.getDashboardJqls());
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
 
@@ -62,9 +62,8 @@ export function useKpiDashboard() {
   const [newPresetName, setNewPresetName] = useState('');
   const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
 
-  // Load saved JQLs on mount
+  // Load saved presets on mount
   useEffect(() => {
-    setDashboardJqls(localConfig.getDashboardJqls());
     if (activeConnectionId) {
       setPresets(localConfig.getDashboardPresets(activeConnectionId));
     }
@@ -132,13 +131,22 @@ export function useKpiDashboard() {
     toast.success('View deleted');
   };
 
-  const handleUpdatePendingFilter = (key: string, value: string) => {
+  const handleUpdatePendingFilter = (key: string, value: string, newValue?: string | null) => {
     if (value === 'all') {
       setPendingFilters(prev => ({ ...prev, [key]: [] }));
       return;
     }
     setPendingFilters(prev => {
       const current = prev[key] || [];
+      
+      // If newValue is provided (even if null), we are replacing or removing
+      if (newValue !== undefined) {
+        const filtered = current.filter(v => v !== value);
+        if (newValue === null) return { ...prev, [key]: filtered };
+        return { ...prev, [key]: [...filtered, newValue] };
+      }
+
+      // Standard toggle behavior
       if (current.includes(value)) {
         return { ...prev, [key]: current.filter(v => v !== value) };
       } else {
@@ -146,6 +154,12 @@ export function useKpiDashboard() {
       }
     });
   };
+
+  const handleClearAll = useCallback(() => {
+    setPendingFilters({});
+    setJqlQuery('');
+    toast.info('Filters cleared');
+  }, [setJqlQuery]);
 
   const handleApplyFilters = () => {
     hasUserInitiatedCalc.current = true;
@@ -231,51 +245,34 @@ export function useKpiDashboard() {
     }
   }, [calculationData, setKpiResults]);
 
-  // Filter KPI results and dashboard charts based on active plugins
-  const lastFilteredPlugins = useRef<Set<string>>(new Set());
+  // Derive filtered KPI results and dashboard charts based on active plugins
+  const activePlugins = useMemo(() => {
+    return JSON.parse(typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') || '[]' : '[]') as string[];
+  }, []);
+
+  // Note: Since activePlugins comes from localStorage, we might need a way to refresh it.
+  // The original code used a storage event listener.
+  const [activePluginsState, setActivePluginsState] = useState<string[]>(activePlugins);
 
   useEffect(() => {
-    const filterByActivePlugins = () => {
-      const activePlugins = JSON.parse(typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') || '[]' : '[]') as string[];
-      const activePluginsSet = new Set<string>(activePlugins);
-
-      if (activePluginsSet.size === lastFilteredPlugins.current.size &&
-          Array.from(activePluginsSet).every(p => lastFilteredPlugins.current.has(p))) {
-        return;
-      }
-
-      lastFilteredPlugins.current = activePluginsSet;
-
-      if (activePlugins.length === 0) {
-        if (kpiResults.length > 0) setKpiResults([]);
-      } else {
-        const filteredResults = kpiResults.filter(kpi => activePlugins.includes(kpi.pluginId));
-        if (filteredResults.length !== kpiResults.length) {
-          setKpiResults(filteredResults);
-        }
-      }
-
-      if (activePlugins.length === 0) {
-        if (charts.length > 0) setCharts([]);
-      } else {
-        const filteredCharts = charts.filter(chart => !chart.kpiId || activePlugins.includes(chart.kpiId));
-        if (filteredCharts.length !== charts.length) {
-          setCharts(filteredCharts);
-        }
-      }
-    };
-
-    filterByActivePlugins();
-
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'cfg_active_plugins') {
-        filterByActivePlugins();
+        setActivePluginsState(JSON.parse(e.newValue || '[]'));
       }
     };
-
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [kpiResults, charts, setKpiResults, setCharts]);
+  }, []);
+
+  const filteredKpiResults = useMemo(() => {
+    if (activePluginsState.length === 0) return [];
+    return kpiResults.filter(kpi => activePluginsState.includes(kpi.pluginId));
+  }, [kpiResults, activePluginsState]);
+
+  const filteredCharts = useMemo(() => {
+    if (activePluginsState.length === 0) return [];
+    return charts.filter(chart => !chart.kpiId || activePluginsState.includes(chart.kpiId));
+  }, [charts, activePluginsState]);
 
   const handleExportKpis = () => {
     const rows: string[][] = [['Metric', 'Value', 'Unit', 'Category']];
@@ -341,10 +338,10 @@ export function useKpiDashboard() {
   }, [runCalculation, setFilterPanelOpen]);
 
   const sortedKpiResults = useMemo(() => {
-    const activeOrder = JSON.parse(typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') || '[]' : '[]');
-    if (activeOrder.length === 0) return kpiResults;
+    const activeOrder = activePluginsState;
+    if (activeOrder.length === 0) return filteredKpiResults;
 
-    return [...kpiResults].sort((a, b) => {
+    return [...filteredKpiResults].sort((a, b) => {
       const idxA = activeOrder.indexOf(a.pluginId);
       const idxB = activeOrder.indexOf(b.pluginId);
       if (idxA === -1 && idxB === -1) return 0;
@@ -352,7 +349,7 @@ export function useKpiDashboard() {
       if (idxB === -1) return -1;
       return idxA - idxB;
     });
-  }, [kpiResults]);
+  }, [filteredKpiResults, activePluginsState]);
 
   const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
@@ -398,9 +395,10 @@ export function useKpiDashboard() {
     jqlInputRef, filterOptions,
     // KPI Data
     mainKpis, assigneeKpis, statusKpis, slaStatusKpis, priorityKpis, distributionKpis, timeSeriesKpis, tableKpiResults,
+    filteredCharts,
     // Actions
     runCalculation, handleSavePreset, handleUpdatePreset, handleLoadPreset, handleDeletePreset,
-    handleUpdatePendingFilter, handleApplyFilters, handleExportKpis, toggleDimension,
+    handleUpdatePendingFilter, handleApplyFilters, handleClearAll, handleExportKpis, toggleDimension,
     handleAddChart, handleRemoveChart, handleUpdateChart, handleMoveChart, handleDrillDown
   };
 }

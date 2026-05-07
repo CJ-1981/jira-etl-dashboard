@@ -1,8 +1,10 @@
 import { defineConfig } from 'vitest/config';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
+// @MX:ANCHOR: Vitest configuration with native tsconfig path resolution
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  resolve: {
+    tsconfigPaths: true
+  },
   test: {
     globals: true,
     environment: 'jsdom',

@@ -53,9 +53,17 @@ export function KpiDrilldownDrawer({ drillDownKeys, setDrillDownKeys, drillDownT
             <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Ticket Breakdown</p>
             {activeConnection && (
               <Button variant="link" size="sm" className="h-auto p-0 text-[10px] text-blue-500 hover:text-blue-600 gap-1" asChild>
-                <a href={`${activeConnection.baseUrl}/issues/?jql=key in (${drillDownKeys?.join(',') || ''})`} target="_blank" rel="noopener noreferrer">
-                  View in Jira <ExternalLink className="h-3 w-3" />
-                </a>
+                {(() => {
+                  const baseUrl = activeConnection.baseUrl.trim().replace(/\/+$/, '');
+                  const normalizedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+                  const jql = `key in (${drillDownKeys?.join(',') || ''})`;
+                  const jiraUrl = `${normalizedBaseUrl}/issues/?jql=${encodeURIComponent(jql)}`;
+                  return (
+                    <a href={jiraUrl} target="_blank" rel="noopener noreferrer">
+                      View in Jira <ExternalLink className="h-3 w-3" />
+                    </a>
+                  );
+                })()}
               </Button>
             )}
           </div>

@@ -74,7 +74,15 @@ interface KpiDashboardToolbarProps {
   saveDashboardJqls: (updated: SavedJql[]) => void;
   jqlToDelete: string | null;
   setJqlToDelete: (id: string | null) => void;
+  handleClearAll: () => void;
 }
+
+const formatDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
   const {
@@ -84,7 +92,8 @@ export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
     newPresetName, setNewPresetName, handleSavePreset, presetPopoverOpen, setPresetPopoverOpen,
     pendingFilters, handleUpdatePendingFilter, handleApplyFilters,
     jqlQuery, setJqlQuery, editingJqlId, setEditingJqlId, dashboardJqls,
-    jqlInputRef, filterOptions, saveDashboardJqls, jqlToDelete, setJqlToDelete
+    jqlInputRef, filterOptions, saveDashboardJqls, jqlToDelete, setJqlToDelete,
+    handleClearAll
   } = props;
 
   return (
@@ -331,11 +340,11 @@ export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
 
                 const isAvailable = p.label === 'MAX' ? !!masterStartNormalized : (!masterStartNormalized || targetStart >= masterStartNormalized);
 
-                const todayStr = today.toISOString().split('T')[0];
-                const startStr = targetStart.toISOString().split('T')[0];
-                const maxEndStr = masterEndNormalized ? masterEndNormalized.toISOString().split('T')[0] : todayStr;
+                const todayStr = formatDate(today);
+                const startStr = formatDate(targetStart);
+                const maxEndStr = masterEndNormalized ? formatDate(masterEndNormalized) : todayStr;
 
-                const isMaxActive = masterStart && dateFrom === new Date(masterStart).toISOString().split('T')[0] && dateTo === maxEndStr;
+                const isMaxActive = masterStart && dateFrom === formatDate(new Date(masterStart)) && dateTo === maxEndStr;
                 const isActive = p.label === 'MAX' ? isMaxActive : !isMaxActive && dateTo === todayStr && dateFrom === startStr;
 
                 return (
@@ -346,7 +355,7 @@ export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
                     onClick={() => {
                       if (isActive) return;
                       if (p.label === 'MAX' && masterDatasetInfo?.dateRange) {
-                        setDateFrom(new Date(masterDatasetInfo.dateRange.from).toISOString().split('T')[0]);
+                        setDateFrom(formatDate(new Date(masterDatasetInfo.dateRange.from)));
                         setDateTo(maxEndStr);
                       } else {
                         setDateFrom(startStr);
@@ -374,9 +383,13 @@ export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
                 <Sliders className="h-4 w-4 text-emerald-500" />
                 Advanced Filtering
               </h4>
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-400 hover:text-red-500" onClick={() => {
-                // handleClearAll would be better but we'll use props
-              }}>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-7 text-xs text-slate-400 hover:text-red-500" 
+                onClick={handleClearAll}
+                disabled={Object.values(pendingFilters).every(v => !v || v.length === 0) && !jqlQuery}
+              >
                 Clear All Filters
               </Button>
             </div>
@@ -410,7 +423,9 @@ export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
                         saveDashboardJqls(updated);
                         setEditingJqlId(null);
                         setJqlQuery('');
-                        // handleUpdatePendingFilter('jql', oldJql?.query, jqlQuery)
+                        if (oldJql) {
+                          handleUpdatePendingFilter('jql', oldJql.query, jqlQuery);
+                        }
                       } else {
                         const id = `djql-${Date.now()}`;
                         saveDashboardJqls([...dashboardJqls, { id, name: jqlQuery, query: jqlQuery }]);
@@ -454,6 +469,9 @@ export function KpiDashboardToolbar(props: KpiDashboardToolbarProps) {
                                       <AlertDialogAction onClick={() => {
                                         const updated = dashboardJqls.filter(j => j.id !== djql.id);
                                         saveDashboardJqls(updated);
+                                        if (pendingFilters['jql']?.includes(djql.query)) {
+                                          handleUpdatePendingFilter('jql', djql.query, null);
+                                        }
                                       }}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>

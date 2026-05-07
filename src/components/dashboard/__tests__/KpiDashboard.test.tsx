@@ -15,14 +15,30 @@ vi.mock('@/hooks/use-kpi-dashboard', () => ({
 
 describe('KpiDashboard', () => {
   it('renders "No Active Connection" state when activeConnectionId is null', () => {
-    (useAppStore as any).mockReturnValue({
+    vi.mocked(useAppStore).mockReturnValue({
       activeConnectionId: null,
       theme: 'light',
-    });
+      globalFilters: {},
+      setGlobalFilters: vi.fn(),
+      hiddenDimensions: new Set(),
+      setHiddenDimensions: vi.fn(),
+      dashboardCharts: [],
+      setDashboardCharts: vi.fn(),
+      dashboardJqlQuery: '',
+      setDashboardJqlQuery: vi.fn(),
+      kpiResults: [],
+      masterDatasetInfo: null,
+      filterPanelOpen: false,
+      setFilterPanelOpen: vi.fn(),
+      dateFrom: '',
+      setDateFrom: vi.fn(),
+      dateTo: '',
+      setDateTo: vi.fn(),
+    } as any);
     
-    (useKpiDashboard as any).mockReturnValue({
+    vi.mocked(useKpiDashboard).mockReturnValue({
       calculating: false,
-    });
+    } as any);
 
     render(<KpiDashboard />);
     

@@ -15,7 +15,11 @@ export default function KpiDashboard() {
     hiddenDimensions, setHiddenDimensions,
     dashboardCharts, setDashboardCharts,
     dashboardJqlQuery, setDashboardJqlQuery,
-    kpiResults
+    kpiResults,
+    masterDatasetInfo,
+    filterPanelOpen, setFilterPanelOpen,
+    dateFrom, setDateFrom,
+    dateTo, setDateTo
   } = useAppStore();
 
   const hook = useKpiDashboard();
@@ -41,16 +45,16 @@ export default function KpiDashboard() {
       <KpiDashboardToolbar
         calculating={hook.calculating}
         runCalculation={hook.runCalculation}
-        masterDatasetInfo={useAppStore.getState().masterDatasetInfo}
-        filterPanelOpen={useAppStore.getState().filterPanelOpen}
-        setFilterPanelOpen={useAppStore.getState().setFilterPanelOpen}
+        masterDatasetInfo={masterDatasetInfo}
+        filterPanelOpen={filterPanelOpen}
+        setFilterPanelOpen={setFilterPanelOpen}
         globalFilters={globalFilters}
         onPrint={onPrint}
         periodAnalysis={hook.periodAnalysis}
-        dateFrom={useAppStore.getState().dateFrom}
-        setDateFrom={useAppStore.getState().setDateFrom}
-        dateTo={useAppStore.getState().dateTo}
-        setDateTo={useAppStore.getState().setDateTo}
+        dateFrom={dateFrom}
+        setDateFrom={setDateFrom}
+        dateTo={dateTo}
+        setDateTo={setDateTo}
         presets={hook.presets}
         handleLoadPreset={hook.handleLoadPreset}
         handleUpdatePreset={hook.handleUpdatePreset}
@@ -76,6 +80,7 @@ export default function KpiDashboard() {
         }}
         jqlToDelete={hook.jqlToDelete}
         setJqlToDelete={hook.setJqlToDelete}
+        handleClearAll={hook.handleClearAll}
       />
 
       <KpiMetricsGrid
@@ -94,7 +99,7 @@ export default function KpiDashboard() {
         setHiddenDimensions={setHiddenDimensions}
         toggleDimension={hook.toggleDimension}
         handleDrillDown={hook.handleDrillDown}
-        charts={dashboardCharts}
+        charts={hook.filteredCharts}
         handleAddChart={hook.handleAddChart}
         handleRemoveChart={hook.handleRemoveChart}
         handleUpdateChart={hook.handleUpdateChart}
