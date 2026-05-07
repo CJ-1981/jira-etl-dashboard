@@ -355,13 +355,14 @@ export function KpiDashboard() {
         let value = '';
 
         // Parse field operator value patterns
+        // IMPORTANT: More specific patterns must come first!
         const patterns = [
           { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
           { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
+          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' }, // Before CONTAINS
           { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
-          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
-          { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' },
-          { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' }
+          { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' }, // Before IN
+          { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' }
         ];
 
         for (const pattern of patterns) {
