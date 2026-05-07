@@ -267,12 +267,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
   };
 
   const handleJqlFilterSave = async (filter: any) => {
+    console.log('[ChartCard] Saving JQL filter for widget:', config.id, filter);
     onChange(config.id, { ...config, jqlFilter: filter });
 
     // Trigger calculation if custom JQL is enabled
     if (filter.enabled && filter.query && calculateWidgetJql) {
+      console.log('[ChartCard] Triggering calculation for widget:', config.id);
       await calculateWidgetJql(config.id, filter);
     }
+    setJqlSettingsOpen(false);
   };
 
   const isCalculating = calculatingWidgets.has(config.id);
@@ -890,7 +893,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 </Button>
               )}
             </div>
-            <Popover open={jqlSettingsOpen} onOpenChange={setJqlSettingsOpen}>
+            <Popover open={jqlSettingsOpen} onOpenChange={(open) => {
+              console.log('[ChartCard] Popover state changing:', open, 'for widget:', config.id);
+              setJqlSettingsOpen(open);
+            }}>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
@@ -899,6 +905,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   className="text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 h-8 w-8 p-0 border border-indigo-200 dark:border-indigo-500/30"
                   aria-label="JQL filter settings"
                   title="Configure JQL filter for this chart"
+                  onClick={() => console.log('[ChartCard] Gear icon button clicked! Widget:', config.id)}
                 >
                   {isCalculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
                 </Button>

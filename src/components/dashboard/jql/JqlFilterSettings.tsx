@@ -44,14 +44,21 @@ export function JqlFilterSettings({
   };
 
   const handleApply = async () => {
+    console.log('[JqlFilterSettings] Applying filter:', { enabled, query, mode });
     setIsApplying(true);
     const newFilter: JqlFilter = {
       enabled,
       query: enabled ? query : '',
       mode,
     };
-    await onSave(newFilter);
-    setIsApplying(false);
+    try {
+      await onSave(newFilter);
+      console.log('[JqlFilterSettings] Filter saved successfully');
+    } catch (error) {
+      console.error('[JqlFilterSettings] Error saving filter:', error);
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   const handleClear = () => {
@@ -88,24 +95,22 @@ export function JqlFilterSettings({
           <Label className="text-xs font-medium">Filter Mode</Label>
           <RadioGroup value={enabled ? 'custom' : 'global'} onValueChange={(v) => setEnabled(v === 'custom')}>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="global" id="global">
-                <Label htmlFor="global" className="text-xs cursor-pointer">
-                  Use Global JQL
-                  <span className="block text-[10px] text-slate-400">
-                    {dashboardJqlQuery || 'No global filter set'}
-                  </span>
-                </Label>
-              </RadioGroupItem>
+              <RadioGroupItem value="global" id="global" />
+              <Label htmlFor="global" className="text-xs cursor-pointer flex-1">
+                Use Global JQL
+                <span className="block text-[10px] text-slate-400">
+                  {dashboardJqlQuery || 'No global filter set'}
+                </span>
+              </Label>
             </div>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="custom" id="custom">
-                <Label htmlFor="custom" className="text-xs cursor-pointer">
-                  Custom JQL
-                  <span className="block text-[10px] text-slate-400">
-                    Apply independent filter to this {widgetType}
-                  </span>
-                </Label>
-              </RadioGroupItem>
+              <RadioGroupItem value="custom" id="custom" />
+              <Label htmlFor="custom" className="text-xs cursor-pointer flex-1">
+                Custom JQL
+                <span className="block text-[10px] text-slate-400">
+                  Apply independent filter to this {widgetType}
+                </span>
+              </Label>
             </div>
           </RadioGroup>
         </div>
@@ -118,24 +123,22 @@ export function JqlFilterSettings({
               <Label className="text-xs font-medium">How to apply custom JQL</Label>
               <RadioGroup value={mode} onValueChange={(v: 'override' | 'refine') => setMode(v)}>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="override" id="override">
-                    <Label htmlFor="override" className="text-xs cursor-pointer">
-                      Override Global
-                      <span className="block text-[10px] text-slate-400">
-                        Ignore global filter, use only this JQL
-                      </span>
-                    </Label>
-                  </RadioGroupItem>
+                  <RadioGroupItem value="override" id="override" />
+                  <Label htmlFor="override" className="text-xs cursor-pointer flex-1">
+                    Override Global
+                    <span className="block text-[10px] text-slate-400">
+                      Ignore global filter, use only this JQL
+                    </span>
+                  </Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="refine" id="refine">
-                    <Label htmlFor="refine" className="text-xs cursor-pointer">
-                      Add to Global (AND)
-                      <span className="block text-[10px] text-slate-400">
-                        Combine with global filter
-                      </span>
-                    </Label>
-                  </RadioGroupItem>
+                  <RadioGroupItem value="refine" id="refine" />
+                  <Label htmlFor="refine" className="text-xs cursor-pointer flex-1">
+                    Add to Global (AND)
+                    <span className="block text-[10px] text-slate-400">
+                      Combine with global filter
+                    </span>
+                  </Label>
                 </div>
               </RadioGroup>
             </div>
