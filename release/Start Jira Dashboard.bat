@@ -3,7 +3,10 @@ setlocal enabledelayedexpansion
 title Jira ETL Dashboard
 
 :: Move to the app folder
-cd /d "%~dp0app"
+cd /d "%~dp0app" || (
+    echo [ERROR] Could not find or enter the 'app' directory: "%~dp0app"
+    exit /b 1
+)
 
 :: Set absolute DATABASE_URL for the app
 set "DB_ABS=%~dp0app\db\custom.db"

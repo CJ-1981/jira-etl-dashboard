@@ -18,7 +18,7 @@ if "%ERRORLEVEL%"=="0" (
     set /p KILL_NODE="Force-close all Node processes now to release locks? (y/n): "
     if /i "!KILL_NODE!"=="y" (
         echo       Closing processes...
-        taskkill /F /IM node.exe >nul 2>&1
+        taskkill /F /IM node.exe /FI "USERNAME eq %USERNAME%" >nul 2>&1
         :: Give Windows a moment to release file handles
         timeout /t 2 >nul
     )
@@ -109,7 +109,10 @@ echo       Creating launcher...
     echo title Jira ETL Dashboard
     echo.
     echo :: Move to the app folder
-    echo cd /d "%%~dp0app"
+    echo cd /d "%%~dp0app" ^|^| ^(
+    echo     echo [ERROR] Could not find or enter the 'app' directory: "%%~dp0app"
+    echo     exit /b 1
+    echo ^)
     echo.
     echo :: Set absolute DATABASE_URL for the app
     echo set "DB_ABS=%%~dp0app\db\custom.db"
