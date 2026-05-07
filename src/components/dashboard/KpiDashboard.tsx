@@ -444,7 +444,8 @@ export function KpiDashboard() {
           dateFrom,
           dateTo,
           region,
-          globalFilters,
+          // Only pass globalFilters if NOT using custom JQL
+          globalFilters: jqlFilter.enabled ? undefined : globalFilters,
           settings,
           storageConfig
         })
