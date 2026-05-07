@@ -22,9 +22,18 @@ export function useKpiDashboard() {
   const hasUserInitiatedCalc = useRef(false);
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // ─── Period Analysis Helpers ──────────────────────────────────────────────
   const periodAnalysis = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    // @MX:WARN: Date comparison must use local calendar strings to avoid UTC shifts
+    // @MX:REASON: formatDate(new Date()) produces YYYY-MM-DD in local time, matching input type="date"
+    const todayStr = formatDate(new Date());
     const isToday = dateTo === todayStr;
     const fromDate = dateFrom ? new Date(dateFrom) : null;
     const toDate = dateTo ? new Date(dateTo) : null;
@@ -315,6 +324,12 @@ export function useKpiDashboard() {
         if (e.key === 'Escape') {
           (e.target as HTMLElement).blur();
         }
+        return;
+      }
+
+      // @MX:WARN: Global key handler handleKeyDown intercepts 'r' and '/'
+      // @MX:REASON: Modifier check ensures 'r' only triggers recalculation when no modifiers are active, preventing blockage of browser refresh (Ctrl+R)
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
         return;
       }
 

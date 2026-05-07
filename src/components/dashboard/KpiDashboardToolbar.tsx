@@ -62,7 +62,7 @@ interface KpiDashboardToolbarProps {
   presetPopoverOpen: boolean;
   setPresetPopoverOpen: (open: boolean) => void;
   pendingFilters: Record<string, string[]>;
-  handleUpdatePendingFilter: (key: string, value: string) => void;
+  handleUpdatePendingFilter: (key: string, value: string, newValue?: string | null) => void;
   handleApplyFilters: () => void;
   jqlQuery: string;
   setJqlQuery: (query: string) => void;

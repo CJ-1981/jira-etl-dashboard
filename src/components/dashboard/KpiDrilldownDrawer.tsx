@@ -30,6 +30,11 @@ export function KpiDrilldownDrawer({ drillDownKeys, setDrillDownKeys, drillDownT
 
   const activeConnection = connections.find(c => c.id === activeConnectionId);
 
+  const normalizeBaseUrl = (url: string) => {
+    const trimmed = url.trim().replace(/\/+$/, '');
+    return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+  };
+
   return (
     <Sheet open={!!drillDownKeys} onOpenChange={(open) => !open && setDrillDownKeys(null)}>
       <SheetContent side="right" className="w-[90%] sm:w-[540px] border-l-slate-200 dark:border-l-slate-800 p-0 overflow-hidden flex flex-col z-[70]">
@@ -54,8 +59,7 @@ export function KpiDrilldownDrawer({ drillDownKeys, setDrillDownKeys, drillDownT
             {activeConnection && (
               <Button variant="link" size="sm" className="h-auto p-0 text-[10px] text-blue-500 hover:text-blue-600 gap-1" asChild>
                 {(() => {
-                  const baseUrl = activeConnection.baseUrl.trim().replace(/\/+$/, '');
-                  const normalizedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+                  const normalizedBaseUrl = normalizeBaseUrl(activeConnection.baseUrl);
                   const jql = `key in (${drillDownKeys?.join(',') || ''})`;
                   const jiraUrl = `${normalizedBaseUrl}/issues/?jql=${encodeURIComponent(jql)}`;
                   return (
@@ -74,9 +78,8 @@ export function KpiDrilldownDrawer({ drillDownKeys, setDrillDownKeys, drillDownT
                 totalCount={drillDownIssues.length}
                 itemContent={(index) => {
                   const issue = drillDownIssues[index];
-                  const baseUrl = activeConnection?.baseUrl || '';
-                  const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-                  const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+                  const normalizedBaseUrl = activeConnection ? normalizeBaseUrl(activeConnection.baseUrl) : '';
+                  const jiraUrl = activeConnection ? `${normalizedBaseUrl}/browse/${issue.key}` : '#';
 
                   return (
                     <div className="px-4 pb-3">

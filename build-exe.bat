@@ -14,8 +14,14 @@ echo [1/4] Checking dependencies...
 tasklist /FI "IMAGENAME eq node.exe" 2>NUL | find /I /N "node.exe">NUL
 if "%ERRORLEVEL%"=="0" (
     echo [WARNING] Multiple 'node.exe' processes are running. 
-    echo           This may cause EPERM errors during Prisma generation.
-    echo           If the build fails, please close all other terminals/IDE.
+    echo           This will likely cause EPERM errors during Prisma generation.
+    set /p KILL_NODE="Force-close all Node processes now to release locks? (y/n): "
+    if /i "!KILL_NODE!"=="y" (
+        echo       Closing processes...
+        taskkill /F /IM node.exe >nul 2>&1
+        :: Give Windows a moment to release file handles
+        timeout /t 2 >nul
+    )
     echo.
 )
 

@@ -12,20 +12,32 @@ const envFile = path.join(rootDir, '.env');
 console.log('--- Prisma Setup Script ---');
 
 // Helper for cleaning directories with retry (handles Windows file locks)
-function cleanDirectorySync(dir) {
+function cleanDirectorySync(dir, retries = 3) {
   if (!fs.existsSync(dir)) return true;
   
-  try {
-    fs.rmSync(dir, { recursive: true, force: true });
-    return true;
-  } catch (error) {
-    if (error.code === 'EPERM' || error.code === 'EBUSY') {
-      console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);
-      console.warn('  Common causes: A running dev server, VS Code Prisma extension, or an open terminal.');
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return true;
+    } catch (error) {
+      if (error.code === 'EPERM' || error.code === 'EBUSY') {
+        if (i < retries - 1) {
+          console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked. Retrying (${i + 1}/${retries})...`);
+          // Use a blocking delay (safe for setup script)
+          const waitTill = new Date(new Date().getTime() + 1000);
+          while (waitTill > new Date()) {}
+          continue;
+        }
+        console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);
+        console.warn('  Common causes: A running dev server, VS Code Prisma extension, or an open terminal.');
+        return false;
+      }
+      // If it's a permission error but not EPERM/EBUSY, still try to report it
+      console.error(`! Fatal Error: Could not clean directory ${dir}: ${error.message}`);
       return false;
     }
-    throw error;
   }
+  return false;
 }
 
 // 1. Ensure required directories exist
@@ -79,11 +91,17 @@ try {
   const pgGenDir = path.join(prismaDir, 'generated', 'postgresql');
 
   console.log('> Generating SQLite Prisma client...');
-  cleanDirectorySync(sqliteGenDir);
+  if (!cleanDirectorySync(sqliteGenDir)) {
+    console.error('! Aborting SQLite generation due to file lock.');
+    throw new Error('FILE_LOCKED_SQLITE');
+  }
   execSync('npx prisma generate --schema=prisma/schema.sqlite.prisma', { stdio: 'inherit', cwd: rootDir });
   
   console.log('> Generating PostgreSQL Prisma client...');
-  cleanDirectorySync(pgGenDir);
+  if (!cleanDirectorySync(pgGenDir)) {
+    console.error('! Aborting PostgreSQL generation due to file lock.');
+    throw new Error('FILE_LOCKED_POSTGRES');
+  }
   execSync('npx prisma generate --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit', cwd: rootDir });
   
   // Also sync the main schema.prisma for general tools (Studio, etc)
@@ -103,13 +121,20 @@ try {
   
   console.log('✓ All Prisma clients generated');
 } catch (error) {
-  if (error.message && (error.message.includes('EPERM') || error.message.includes('operation not permitted'))) {
+  if (error.message === 'FILE_LOCKED_SQLITE' || error.message === 'FILE_LOCKED_POSTGRES' || 
+      (error.message && (error.message.includes('EPERM') || error.message.includes('operation not permitted')))) {
     console.error('\n--- CRITICAL: FILE LOCK DETECTED ---');
     console.error('Prisma cannot update its engine because it is currently in use.');
-    console.error('Please CLOSE all running "node" processes, dev servers, and VS Code, then try again.');
+    console.error('This usually happens when a dev server or VS Code is running.');
+    console.error('\nHOW TO FIX:');
+    console.error('1. Close all running terminals (except this one).');
+    console.error('2. Close VS Code (or restart the Prisma extension).');
+    console.error('3. Run "taskkill /F /IM node.exe" in a Command Prompt to force clear all processes.');
+    console.error('4. Try the build again.');
     console.error('-------------------------------------\n');
+  } else {
+    console.error('✗ Failed to generate Prisma clients', error);
   }
-  console.error('✗ Failed to generate Prisma clients', error);
   process.exit(1);
 }
 
