@@ -53,7 +53,6 @@ export default function Home() {
     dashboardCharts, setDashboardCharts,
     dashboardJqlQuery, setDashboardJqlQuery,
     filterPanelOpen, setFilterPanelOpen,
-    showFloatingBar, setShowFloatingBar,
     kpiSubTab, setKpiSubTab,
   } = useAppStore();
 
@@ -140,13 +139,7 @@ export default function Home() {
     return () => controller.abort();
   }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowFloatingBar(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+
 
   useEffect(() => {
     if (!mounted) return;
