@@ -893,41 +893,42 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 </Button>
               )}
             </div>
-            <Popover open={jqlSettingsOpen} onOpenChange={(open) => {
-              console.log('[ChartCard] Popover onOpenChange:', open, 'for widget:', config.id);
-              setJqlSettingsOpen(open);
-            }}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-export-ignore="true"
-                  className="text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 h-8 w-8 p-0 border border-indigo-200 dark:border-indigo-500/30"
-                  aria-label="JQL filter settings"
-                  title="Configure JQL filter for this chart"
-                >
-                  {isCalculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="p-0 z-[100]" onPointerDownOutside={(e) => {
-                e.preventDefault();
-                console.log('[ChartCard] Popover onPointerDownOutside');
-              }} onEscapeKeyDown={(e) => {
-                e.preventDefault();
-                console.log('[ChartCard] Popover onEscapeKeyDown');
-              }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              data-export-ignore="true"
+              className="text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 h-8 w-8 p-0 border border-indigo-200 dark:border-indigo-500/30"
+              aria-label="JQL filter settings"
+              title="Configure JQL filter for this chart"
+              onClick={() => setJqlSettingsOpen(!jqlSettingsOpen)}
+            >
+              {isCalculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
+            </Button>
+            {jqlSettingsOpen && (
+              <div className="fixed top-20 right-20 z-[100] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg rounded-lg p-4 w-[400px]">
+                <div className="flex items-center justify-between border-b pb-2 mb-4">
+                  <h3 className="text-sm font-bold">JQL Filter Settings</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setJqlSettingsOpen(false)}
+                    className="h-6 px-2 text-[10px]"
+                  >
+                    Close
+                  </Button>
+                </div>
+                <div className="text-xs text-slate-500">
+                  Testing popover visibility...
+                </div>
                 <JqlFilterSettings
                   widgetId={config.id}
                   widgetType="chart"
                   currentFilter={config.jqlFilter || { enabled: false, query: '', mode: 'refine' }}
                   onSave={handleJqlFilterSave}
-                  onCancel={() => {
-                    console.log('[ChartCard] JqlFilterSettings onCancel');
-                    setJqlSettingsOpen(false);
-                  }}
+                  onCancel={() => setJqlSettingsOpen(false)}
                 />
-              </PopoverContent>
-            </Popover>
+              </div>
+            )}
             <Button
               variant="ghost"
               size="sm"
