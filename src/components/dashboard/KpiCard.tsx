@@ -896,9 +896,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   variant="ghost"
                   size="sm"
                   data-export-ignore="true"
-                  className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                  className="text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 h-8 w-8 p-0 border border-indigo-200 dark:border-indigo-500/30"
                   aria-label="JQL filter settings"
-                  title="JQL filter settings"
+                  title="Configure JQL filter for this chart"
                 >
                   {isCalculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
                 </Button>
