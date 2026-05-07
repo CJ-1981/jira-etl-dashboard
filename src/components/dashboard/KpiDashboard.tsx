@@ -28,7 +28,8 @@ export default function KpiDashboard() {
     showFloatingBar, setShowFloatingBar,
     masterDatasetInfo,
     hiddenDimensions, setHiddenDimensions,
-    dashboardJqlQuery, setDashboardJqlQuery
+    dashboardJqlQuery, setDashboardJqlQuery,
+    setActiveTab, setKpiSubTab
   } = useAppStore();
 
   const hook = useKpiDashboard();
@@ -168,77 +169,129 @@ export default function KpiDashboard() {
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] no-print"
           >
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-2xl rounded-full px-4 py-2 flex items-center gap-3">
-              <TooltipProvider>
+              <TooltipProvider delayDuration={300}>
+                {/* Plugins Tooltip */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800 cursor-help">
-                      <div className="bg-emerald-500/10 p-1.5 rounded-full">
-                        <BarChart3 className="h-4 w-4 text-emerald-500" />
+                    <div 
+                      className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-800 cursor-pointer group/nav"
+                      onClick={() => {
+                        setActiveTab('kpi');
+                        setKpiSubTab('plugins');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >
+                      <div className="bg-emerald-500/10 p-1.5 rounded-full group-hover/nav:bg-emerald-500 group-hover/nav:text-white transition-all duration-300">
+                        <BarChart3 className="h-4 w-4 text-emerald-500 group-hover/nav:text-white" />
                       </div>
-                      <span className="text-xs font-bold whitespace-nowrap">Dashboard</span>
+                      <span className="text-xs font-bold whitespace-nowrap group-hover/nav:text-emerald-500 transition-colors">Dashboard</span>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-slate-900 text-white border-slate-800 text-[10px] p-2">
+                  <TooltipContent side="top" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 text-[10px] p-3 shadow-xl">
                     <div className="space-y-1">
-                      <p className="font-bold border-b border-slate-700 pb-1 mb-1">Active Plugins ({hook.activePluginsState.length})</p>
+                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-1 mb-2">
+                        <p className="font-bold uppercase tracking-wider text-[9px] text-slate-500 dark:text-slate-400">Active Plugins ({hook.activePluginsState.length})</p>
+                        <span className="text-[8px] text-slate-400 dark:text-slate-500">Click to configure</span>
+                      </div>
                       <div className="max-h-[150px] overflow-y-auto pr-1">
                         {hook.activePluginsState.length > 0 ? (
-                          hook.activePluginsState.map(p => (
-                            <div key={p} className="flex items-center gap-2">
-                              <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                              <span>{p.replace(/_/g, ' ')}</span>
-                            </div>
-                          ))
+                          <div className="flex flex-wrap gap-1.5">
+                            {hook.activePluginsState.map(p => (
+                              <div key={p} className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded text-[9px] border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-300">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                <span>{p.replace(/_/g, ' ')}</span>
+                              </div>
+                            ))}
+                          </div>
                         ) : (
-                          <p className="text-slate-500 italic">No plugins active</p>
+                          <p className="text-slate-400 dark:text-slate-500 italic">No plugins active</p>
                         )}
                       </div>
                     </div>
                   </TooltipContent>
                 </Tooltip>
-              </TooltipProvider>
-              
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => hook.runCalculation()}
-                  disabled={hook.calculating}
-                  className="h-8 px-3 text-xs gap-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-500/10 text-slate-600 dark:text-slate-400 hover:text-blue-500"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${hook.calculating ? 'animate-spin' : ''}`} />
-                  Recalculate
-                </Button>
+                
+                <div className="flex items-center gap-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => hook.runCalculation()}
+                        disabled={hook.calculating}
+                        className="h-8 px-3 text-xs gap-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-500/10 text-slate-600 dark:text-slate-400 hover:text-blue-500"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${hook.calculating ? 'animate-spin' : ''}`} />
+                        Recalculate
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 text-[10px] p-2 shadow-lg">
+                      <p className="text-slate-600 dark:text-slate-400">Run KPI calculation engine (Shortcut: R)</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setFilterPanelOpen(true);
-                    document.getElementById('dashboard-toolbar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                  className={`h-8 px-3 text-xs gap-2 rounded-full transition-all ${filterPanelOpen ? 'bg-emerald-500/10 text-emerald-500' : 'text-slate-600 dark:text-slate-400 hover:text-emerald-500'}`}
-                >
-                  <Sliders className="h-3.5 w-3.5" />
-                  Filters
-                  {Object.keys(globalFilters).length > 0 && (
-                    <Badge className="bg-emerald-500 h-4 min-w-[16px] p-0 flex items-center justify-center text-[8px]">
-                      {Object.values(globalFilters).flat().length}
-                    </Badge>
-                  )}
-                </Button>
+                  {/* Filters Tooltip */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setFilterPanelOpen(true);
+                          document.getElementById('dashboard-toolbar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        className={`h-8 px-3 text-xs gap-2 rounded-full transition-all ${filterPanelOpen ? 'bg-emerald-500/10 text-emerald-500' : 'text-slate-600 dark:text-slate-400 hover:text-emerald-500'}`}
+                      >
+                        <Sliders className="h-3.5 w-3.5" />
+                        Filters
+                        {Object.keys(globalFilters).length > 0 && (
+                          <Badge className="bg-emerald-500 h-4 min-w-[16px] p-0 flex items-center justify-center text-[8px]">
+                            {Object.values(globalFilters).flat().length}
+                          </Badge>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 text-[10px] p-3 shadow-xl">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-1 mb-2">
+                          <p className="font-bold uppercase tracking-wider text-[9px] text-slate-500 dark:text-slate-400">Active Filters</p>
+                          <span className="text-[8px] text-slate-400 dark:text-slate-500">Click to edit</span>
+                        </div>
+                        <div className="max-h-[150px] overflow-y-auto pr-1">
+                          {Object.entries(globalFilters).some(([_, vals]) => vals.length > 0) ? (
+                            <div className="space-y-2">
+                              {Object.entries(globalFilters).map(([key, vals]) => vals.length > 0 && (
+                                <div key={key} className="flex flex-col gap-1">
+                                  <span className="text-slate-400 dark:text-slate-600 uppercase text-[7px] font-bold tracking-widest">{key}</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {vals.map(v => (
+                                      <span key={v} className="bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[9px] border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 font-medium">{v}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-slate-400 dark:text-slate-500 italic">No filters applied</p>
+                          )}
+                        </div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
 
-                <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+                  <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
 
-                <div className="flex items-center gap-2 px-2 text-[10px] text-slate-500 font-medium">
-                  <Calendar className="h-3 w-3" />
-                  <span>{new Date(dateFrom).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} — {new Date(dateTo).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                  <div className="flex items-center gap-2 px-2 text-[10px] text-slate-500 font-medium">
+                    <Calendar className="h-3 w-3" />
+                    <span>{new Date(dateFrom).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} — {new Date(dateTo).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                  </div>
                 </div>
-              </div>
+              </TooltipProvider>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }
