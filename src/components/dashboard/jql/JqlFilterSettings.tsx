@@ -74,12 +74,18 @@ export function JqlFilterSettings({
 
   const savedJqls = localConfig.getDashboardJqls();
 
+  console.log('[JqlFilterSettings] Rendering for widget:', widgetId, 'currentFilter:', currentFilter);
+
   return (
-    <PopoverContent className="w-96 p-4" align="end">
+    <PopoverContent
+      className="w-[400px] p-4 z-[100] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700"
+      align="end"
+      sideOffset={5}
+    >
       <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold">JQL Filter Settings</h3>
+        <div className="flex items-center justify-between border-b pb-2 border-slate-200 dark:border-slate-700">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">JQL Filter Settings</h3>
           <Button
             variant="ghost"
             size="sm"
@@ -92,22 +98,22 @@ export function JqlFilterSettings({
 
         {/* Enable Toggle */}
         <div className="space-y-2">
-          <Label className="text-xs font-medium">Filter Mode</Label>
+          <Label className="text-xs font-medium text-slate-900 dark:text-slate-100">Filter Mode</Label>
           <RadioGroup value={enabled ? 'custom' : 'global'} onValueChange={(v) => setEnabled(v === 'custom')}>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="global" id="global" />
-              <Label htmlFor="global" className="text-xs cursor-pointer flex-1">
+              <Label htmlFor="global" className="text-xs cursor-pointer flex-1 text-slate-900 dark:text-slate-100">
                 Use Global JQL
-                <span className="block text-[10px] text-slate-400">
+                <span className="block text-[10px] text-slate-500 dark:text-slate-400">
                   {dashboardJqlQuery || 'No global filter set'}
                 </span>
               </Label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="custom" id="custom" />
-              <Label htmlFor="custom" className="text-xs cursor-pointer flex-1">
+              <Label htmlFor="custom" className="text-xs cursor-pointer flex-1 text-slate-900 dark:text-slate-100">
                 Custom JQL
-                <span className="block text-[10px] text-slate-400">
+                <span className="block text-[10px] text-slate-500 dark:text-slate-400">
                   Apply independent filter to this {widgetType}
                 </span>
               </Label>
@@ -120,22 +126,22 @@ export function JqlFilterSettings({
           <>
             {/* Mode Selection */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium">How to apply custom JQL</Label>
+              <Label className="text-xs font-medium text-slate-900 dark:text-slate-100">How to apply custom JQL</Label>
               <RadioGroup value={mode} onValueChange={(v: 'override' | 'refine') => setMode(v)}>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="override" id="override" />
-                  <Label htmlFor="override" className="text-xs cursor-pointer flex-1">
+                  <Label htmlFor="override" className="text-xs cursor-pointer flex-1 text-slate-900 dark:text-slate-100">
                     Override Global
-                    <span className="block text-[10px] text-slate-400">
+                    <span className="block text-[10px] text-slate-500 dark:text-slate-400">
                       Ignore global filter, use only this JQL
                     </span>
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="refine" id="refine" />
-                  <Label htmlFor="refine" className="text-xs cursor-pointer flex-1">
+                  <Label htmlFor="refine" className="text-xs cursor-pointer flex-1 text-slate-900 dark:text-slate-100">
                     Add to Global (AND)
-                    <span className="block text-[10px] text-slate-400">
+                    <span className="block text-[10px] text-slate-500 dark:text-slate-400">
                       Combine with global filter
                     </span>
                   </Label>
@@ -145,7 +151,7 @@ export function JqlFilterSettings({
 
             {/* JQL Input */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium">JQL Query</Label>
+              <Label className="text-xs font-medium text-slate-900 dark:text-slate-100">JQL Query</Label>
               <JqlAutocomplete
                 value={query}
                 onChange={setQuery}
@@ -158,7 +164,7 @@ export function JqlFilterSettings({
             {/* Presets */}
             {savedJqls.length > 0 && (
               <div className="space-y-2">
-                <Label className="text-xs font-medium">Or select a saved JQL</Label>
+                <Label className="text-xs font-medium text-slate-900 dark:text-slate-100">Or select a saved JQL</Label>
                 <div className="max-h-32 overflow-y-auto space-y-1">
                   {savedJqls.map((jql) => (
                     <button
