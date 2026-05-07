@@ -91,7 +91,8 @@ export function KpiDashboard() {
     dashboardCharts: charts, setDashboardCharts: setCharts,
     dashboardJqlQuery: jqlQuery, setDashboardJqlQuery: setJqlQuery,
     filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar,
-    setActiveTab, kpiSubTab, setKpiSubTab
+    setActiveTab, kpiSubTab, setKpiSubTab,
+    customWidgetResults, setCustomWidgetResults, calculatingWidgets, setCalculatingWidgets
   } = useAppStore();
 
   const onPrint = () => window.print();
@@ -262,7 +263,7 @@ export function KpiDashboard() {
 
   const handleAddChart = () => {
     const id = `chart-${Date.now()}`;
-    setCharts([...charts, { id, kpiId: '', type: 'bar', width: 'md' }]);
+    setCharts([...charts, { id, kpiId: '', type: 'bar', width: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
   };
 
   const handleRemoveChart = (id: string) => {
@@ -327,6 +328,63 @@ export function KpiDashboard() {
       setKpiResults(calculationData);
     }
   }, [calculationData, setKpiResults]);
+
+  // @MX:NOTE: Calculate KPI results for a specific widget with custom JQL
+  // @MX:REASON: Independent widget calculations allow side-by-side data comparison
+  const calculateWidgetJql = useCallback(async (widgetId: string, jqlFilter: any) => {
+    if (!activeConnectionId || !masterDatasetInfo?.issues) return;
+
+    // Track loading state
+    setCalculatingWidgets(new Set([...calculatingWidgets, widgetId]));
+
+    try {
+      // Determine effective JQL based on mode
+      let effectiveJql = jqlFilter.query;
+      if (jqlFilter.mode === 'refine' && jqlQuery) {
+        // Combine with global JQL using AND
+        effectiveJql = jqlQuery ? `(${jqlQuery}) AND (${jqlFilter.query})` : jqlFilter.query;
+      }
+
+      const res = await fetch('/api/kpi/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connectionId: activeConnectionId,
+          issues: masterDatasetInfo.issues,
+          dateFrom,
+          dateTo,
+          region,
+          globalFilters,
+          settings,
+          storageConfig,
+          customJql: effectiveJql // Send custom JQL to API
+        })
+      });
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Widget calculation failed');
+
+      // Store results in custom widget results map
+      const results = data.results.map((r: KpiCalcResult) => ({
+        ...r,
+        results: r.results.map((res: any) => ({
+          ...res,
+          unit: res.unit || '',
+          value: typeof res.value === 'number' ? res.value : 0
+        }))
+      }));
+
+      setCustomWidgetResults(new Map(customWidgetResults).set(widgetId, results));
+    } catch (error) {
+      console.error(`Failed to calculate widget ${widgetId}:`, error);
+      toast.error(`Failed to apply custom JQL filter`);
+    } finally {
+      // Remove from loading state
+      const newLoading = new Set(calculatingWidgets);
+      newLoading.delete(widgetId);
+      setCalculatingWidgets(newLoading);
+    }
+  }, [activeConnectionId, masterDatasetInfo, calculatingWidgets, customWidgetResults, jqlQuery, dateFrom, dateTo, region, globalFilters, settings, storageConfig, setCalculatingWidgets, setCustomWidgetResults]);
 
   // Filter KPI results and dashboard charts based on active plugins
   const lastFilteredPlugins = useRef<Set<string>>(new Set());
@@ -1443,6 +1501,7 @@ export function KpiDashboard() {
                       onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
                       onClick={handleDrillDown}
                       theme={theme as any}
+                      calculateWidgetJql={calculateWidgetJql}
                     />
                   </div>
                 );

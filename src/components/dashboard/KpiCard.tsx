@@ -5,12 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area
 } from 'recharts';
-import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings } from 'lucide-react';
 import {
   Tooltip as UITooltip,
   TooltipContent,
@@ -20,6 +21,7 @@ import {
 import { AppSettings } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 import { KpiCalcResult, ChartConfig } from '@/types/dashboard';
+import { JqlFilterSettings } from './jql/JqlFilterSettings';
 import {
   transformForBarChart,
   transformForPieChart,
@@ -212,32 +214,45 @@ interface ChartCardProps {
   theme: 'light' | 'dark';
   onMoveUp?: (id: string) => void;
   onMoveDown?: (id: string) => void;
+  calculateWidgetJql?: (widgetId: string, jqlFilter: any) => void;
 }
 
-export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme, onMoveUp, onMoveDown }: ChartCardProps) {
+export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme, onMoveUp, onMoveDown, calculateWidgetJql }: ChartCardProps) {
   const kpiOptions = useMemo(() => getKpiOptions(kpiResults), [kpiResults]);
   const chartRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [jqlSettingsOpen, setJqlSettingsOpen] = useState(false);
+
+  // Get custom widget results and calculating state from store
+  const { customWidgetResults, calculatingWidgets } = useAppStore();
 
   // Check if selected KPI is a time-series plugin
   const isTimeSeries = config.kpiId ? isTimeSeriesPlugin(config.kpiId) : false;
+
+  // Determine which results to use (custom or global)
+  const effectiveResults = useMemo(() => {
+    if (config.jqlFilter?.enabled && customWidgetResults.has(config.id)) {
+      return customWidgetResults.get(config.id) || [];
+    }
+    return kpiResults;
+  }, [config.jqlFilter?.enabled, customWidgetResults, config.id, kpiResults]);
 
   const selectedKpiData = useMemo(() => {
     if (!config.kpiId) return null;
 
     switch (config.type) {
       case 'bar':
-        return transformForBarChart(kpiResults, config.kpiId);
+        return transformForBarChart(effectiveResults, config.kpiId);
       case 'pie':
-        return transformForPieChart(kpiResults, config.kpiId);
+        return transformForPieChart(effectiveResults, config.kpiId);
       case 'line':
-        return transformForLineChart(kpiResults, config.kpiId);
+        return transformForLineChart(effectiveResults, config.kpiId);
       case 'area':
-        return transformForLineChart(kpiResults, config.kpiId);
+        return transformForLineChart(effectiveResults, config.kpiId);
       default:
         return [];
     }
-  }, [config.kpiId, config.type, kpiResults]);
+  }, [config.kpiId, config.type, effectiveResults]);
 
   const handleLegendClick = (e: any) => {
     const dimensionName = e.id || e.value;
@@ -250,6 +265,18 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     const recommendedType = getRecommendedChartType(kpiResults, kpiId);
     onChange(config.id, { ...config, kpiId, type: recommendedType });
   };
+
+  const handleJqlFilterSave = async (filter: any) => {
+    onChange(config.id, { ...config, jqlFilter: filter });
+
+    // Trigger calculation if custom JQL is enabled
+    if (filter.enabled && filter.query && calculateWidgetJql) {
+      await calculateWidgetJql(config.id, filter);
+    }
+  };
+
+  const isCalculating = calculatingWidgets.has(config.id);
+  const hasCustomFilter = config.jqlFilter?.enabled;
 
   const handleExportChart = async () => {
     if (!chartRef.current) return;
@@ -786,7 +813,11 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
   };
 
   return (
-    <Card id={`chart-card-${config.id}`} ref={chartRef} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+    <Card
+      id={`chart-card-${config.id}`}
+      ref={chartRef}
+      className={`${hasCustomFilter ? 'border-blue-400 dark:border-blue-500 ring-2 ring-blue-100 dark:ring-blue-500/20' : 'border-slate-200 dark:border-slate-800'} bg-white dark:bg-slate-900/50`}
+    >
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -799,6 +830,20 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/30">
                   📈 Trend
                 </Badge>
+              )}
+              {hasCustomFilter && (
+                <TooltipProvider>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="text-xs bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
+                        🔍 Custom Filter
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs max-w-xs">{config.jqlFilter.query || 'No filter set'}</p>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               )}
             </div>
           </div>
@@ -845,6 +890,29 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 </Button>
               )}
             </div>
+            <Popover open={jqlSettingsOpen} onOpenChange={setJqlSettingsOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-export-ignore="true"
+                  className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                  aria-label="JQL filter settings"
+                  title="JQL filter settings"
+                >
+                  {isCalculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="p-0">
+                <JqlFilterSettings
+                  widgetId={config.id}
+                  widgetType="chart"
+                  currentFilter={config.jqlFilter || { enabled: false, query: '', mode: 'refine' }}
+                  onSave={handleJqlFilterSave}
+                  onCancel={() => setJqlSettingsOpen(false)}
+                />
+              </PopoverContent>
+            </Popover>
             <Button
               variant="ghost"
               size="sm"
