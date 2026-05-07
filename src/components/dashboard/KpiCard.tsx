@@ -231,9 +231,19 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
   // Determine which results to use (custom or global)
   const effectiveResults = useMemo(() => {
+    console.log('[ChartCard] Data selection for widget:', config.id, {
+      hasCustomFilter: config.jqlFilter?.enabled,
+      hasCustomResults: customWidgetResults.has(config.id),
+      customResultsCount: customWidgetResults.get(config.id)?.length || 0,
+      globalResultsCount: kpiResults.length
+    });
+
     if (config.jqlFilter?.enabled && customWidgetResults.has(config.id)) {
-      return customWidgetResults.get(config.id) || [];
+      const customResults = customWidgetResults.get(config.id) || [];
+      console.log('[ChartCard] Using custom results:', customResults.length, 'results');
+      return customResults;
     }
+    console.log('[ChartCard] Using global results:', kpiResults.length, 'results');
     return kpiResults;
   }, [config.jqlFilter?.enabled, customWidgetResults, config.id, kpiResults]);
 

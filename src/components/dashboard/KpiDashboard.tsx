@@ -334,6 +334,8 @@ export function KpiDashboard() {
   const calculateWidgetJql = useCallback(async (widgetId: string, jqlFilter: any) => {
     if (!activeConnectionId || !masterDatasetInfo?.issues) return;
 
+    console.log('[calculateWidgetJql] Starting for widget:', widgetId, 'filter:', jqlFilter);
+
     // Track loading state
     setCalculatingWidgets(new Set([...calculatingWidgets, widgetId]));
 
@@ -344,6 +346,8 @@ export function KpiDashboard() {
         // Combine with global JQL using AND
         effectiveJql = jqlQuery ? `(${jqlQuery}) AND (${jqlFilter.query})` : jqlFilter.query;
       }
+
+      console.log('[calculateWidgetJql] Effective JQL:', effectiveJql);
 
       const res = await fetch('/api/kpi/calculate', {
         method: 'POST',
@@ -362,6 +366,8 @@ export function KpiDashboard() {
       });
 
       const data = await res.json();
+      console.log('[calculateWidgetJql] API response:', data);
+
       if (!data.success) throw new Error(data.error || 'Widget calculation failed');
 
       // Store results in custom widget results map
@@ -374,6 +380,7 @@ export function KpiDashboard() {
         }))
       }));
 
+      console.log('[calculateWidgetJql] Storing results for widget:', widgetId, 'results count:', results.length);
       setCustomWidgetResults(new Map(customWidgetResults).set(widgetId, results));
     } catch (error) {
       console.error(`Failed to calculate widget ${widgetId}:`, error);
