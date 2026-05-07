@@ -231,43 +231,27 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
   // Determine which results to use (custom or global)
   const effectiveResults = useMemo(() => {
-    console.log('[ChartCard] Data selection for widget:', config.id, {
-      hasCustomFilter: config.jqlFilter?.enabled,
-      hasCustomResults: customWidgetResults.has(config.id),
-      customResultsCount: customWidgetResults.get(config.id)?.length || 0,
-      globalResultsCount: kpiResults.length
-    });
-
     if (config.jqlFilter?.enabled && customWidgetResults.has(config.id)) {
-      const customResults = customWidgetResults.get(config.id) || [];
-      console.log('[ChartCard] Using custom results:', customResults.length, 'results');
-      return customResults;
+      return customWidgetResults.get(config.id) || [];
     }
-    console.log('[ChartCard] Using global results:', kpiResults.length, 'results');
     return kpiResults;
   }, [
     config.jqlFilter?.enabled,
     config.jqlFilter?.mode,
     config.jqlFilter?.query,
-    customWidgetResults.get(config.id),
+    customWidgetResults, // full Map reference — re-runs when a new Map is set in the store
     config.id,
     kpiResults
   ]);
 
   const selectedKpiData = useMemo(() => {
     if (!config.kpiId) return null;
-
     switch (config.type) {
-      case 'bar':
-        return transformForBarChart(effectiveResults, config.kpiId);
-      case 'pie':
-        return transformForPieChart(effectiveResults, config.kpiId);
+      case 'bar':  return transformForBarChart(effectiveResults, config.kpiId);
+      case 'pie':  return transformForPieChart(effectiveResults, config.kpiId);
       case 'line':
-        return transformForLineChart(effectiveResults, config.kpiId);
-      case 'area':
-        return transformForLineChart(effectiveResults, config.kpiId);
-      default:
-        return [];
+      case 'area': return transformForLineChart(effectiveResults, config.kpiId);
+      default:     return [];
     }
   }, [config.kpiId, config.type, effectiveResults]);
 
@@ -355,7 +339,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
       full: 400, // Full
     }[config.width] || 300;
 
-    const kpi = kpiResults.find((k) => k.pluginId === config.kpiId);
+    // @MX:NOTE: Use effectiveResults (not kpiResults) so multi-series paths also reflect the custom JQL filter
+    const kpi = effectiveResults.find((k) => k.pluginId === config.kpiId);
     const unit = kpi?.results?.[0]?.unit || '';
 
     const tooltipStyle = {

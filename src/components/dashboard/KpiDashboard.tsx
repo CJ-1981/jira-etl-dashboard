@@ -334,34 +334,30 @@ export function KpiDashboard() {
   const calculateWidgetJql = useCallback(async (widgetId: string, jqlFilter: any) => {
     if (!activeConnectionId || !masterDatasetInfo?.issues) return;
 
-    console.log('[calculateWidgetJql] Starting for widget:', widgetId, 'filter:', jqlFilter);
-
     // Track loading state
     setCalculatingWidgets(new Set([...calculatingWidgets, widgetId]));
 
     try {
       // @MX:NOTE: Implement basic client-side JQL filtering
       // @MX:REASON: API doesn't support customJql, so we filter issues client-side
-      // This handles basic JQL: field = value, field != value, field CONTAINS, field NOT CONTAINS
+      // Supports: field = "v", field != "v", field CONTAINS "v", field NOT CONTAINS "v",
+      //           field IN (v1,v2), field NOT IN (v1,v2)
+      // Fields are resolved from both flat (issue.field) and nested (issue.fields.field) shapes.
       let filteredIssues = masterDatasetInfo.issues;
 
       if (jqlFilter.enabled && jqlFilter.query) {
-        console.log('[calculateWidgetJql] Filtering issues with JQL:', jqlFilter.query);
-
-        // Basic JQL parser for common patterns
         const query = jqlFilter.query.trim();
         let field = '';
         let operator = '';
         let value = '';
 
-        // Parse field operator value patterns
         // IMPORTANT: More specific patterns must come first!
         const patterns = [
           { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
           { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
-          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' }, // Before CONTAINS
+          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
           { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
-          { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' }, // Before IN
+          { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' },
           { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' }
         ];
 
@@ -370,70 +366,41 @@ export function KpiDashboard() {
           if (match) {
             field = match[1];
             operator = pattern.op;
-            // For IN/NOT IN, keep the comma-separated values as-is
-            // For others, extract the value
-            if (operator === 'IN' || operator === 'NOT IN') {
-              value = match[2]; // Keep original case for values
-            } else {
-              value = match[2].toLowerCase();
-            }
+            value = (operator === 'IN' || operator === 'NOT IN') ? match[2] : match[2].toLowerCase();
             break;
           }
         }
 
-        console.log('[calculateWidgetJql] Original query:', query);
-        console.log('[calculateWidgetJql] Parsed JQL:', { field, operator, value });
-        console.log('[calculateWidgetJql] Pattern matches:', patterns.map(p => ({
-          op: p.op,
-          match: query.match(p.regex)
-        })));
-
         if (field && operator && value) {
           filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
-            const issueValue = String(issue[field] || '');
+            // Support both flat (issue.summary) and nested (issue.fields.summary) issue shapes
+            const rawValue = issue[field] ?? issue.fields?.[field];
+            const issueValue = String(rawValue || '');
 
             switch (operator) {
-              case '=':
-                return issueValue.toLowerCase() === value;
-              case '!=':
-                return issueValue.toLowerCase() !== value;
-              case 'CONTAINS':
-                return issueValue.toLowerCase().includes(value);
-              case 'NOT CONTAINS':
-                return !issueValue.toLowerCase().includes(value);
+              case '=':            return issueValue.toLowerCase() === value;
+              case '!=':           return issueValue.toLowerCase() !== value;
+              case 'CONTAINS':     return issueValue.toLowerCase().includes(value);
+              case 'NOT CONTAINS': return !issueValue.toLowerCase().includes(value);
               case 'IN': {
-                // Parse comma-separated values: Close, Done, "Ready to close"
-                const values = value.split(',').map(v => {
-                  const trimmed = v.trim();
-                  // Remove quotes if present
-                  return trimmed.replace(/^"|"$/g, '').replace(/^'\\|'$/g, '');
-                });
+                const values = value.split(',').map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
                 return values.some(v => v.toLowerCase() === issueValue.toLowerCase());
               }
               case 'NOT IN': {
-                // Parse comma-separated values
-                const values = value.split(',').map(v => {
-                  const trimmed = v.trim();
-                  // Remove quotes if present
-                  return trimmed.replace(/^"|"$/g, '').replace(/^'\\|'$/g, '');
-                });
+                const values = value.split(',').map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
                 return !values.some(v => v.toLowerCase() === issueValue.toLowerCase());
               }
-              default:
-                return true;
+              default: return true;
             }
           });
         } else {
-          // Fallback: simple text search if JQL can't be parsed
-          console.log('[calculateWidgetJql] Using simple text search');
+          // Fallback: full-text search across summary, key, description
           const queryLower = query.toLowerCase();
           filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
-            const issueText = `${issue.summary} ${issue.key} ${(issue.description || '')}`.toLowerCase();
-            return issueText.includes(queryLower);
+            const text = `${issue.summary ?? issue.fields?.summary ?? ''} ${issue.key} ${issue.description ?? issue.fields?.description ?? ''}`.toLowerCase();
+            return text.includes(queryLower);
           });
         }
-
-        console.log('[calculateWidgetJql] Filtered to', filteredIssues.length, 'issues from', masterDatasetInfo.issues.length);
       }
 
       const res = await fetch('/api/kpi/calculate', {
@@ -441,7 +408,7 @@ export function KpiDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           connectionId: activeConnectionId,
-          issues: filteredIssues, // Send filtered issues instead
+          issues: filteredIssues,
           dateFrom,
           dateTo,
           region,
@@ -453,11 +420,8 @@ export function KpiDashboard() {
       });
 
       const data = await res.json();
-      console.log('[calculateWidgetJql] API response:', data);
-
       if (!data.success) throw new Error(data.error || 'Widget calculation failed');
 
-      // Store results in custom widget results map
       const results = data.results.map((r: KpiCalcResult) => ({
         ...r,
         results: r.results.map((res: any) => ({
@@ -467,18 +431,19 @@ export function KpiDashboard() {
         }))
       }));
 
-      console.log('[calculateWidgetJql] Storing results for widget:', widgetId, 'results count:', results.length);
-      setCustomWidgetResults(new Map(customWidgetResults).set(widgetId, results));
+      // @MX:NOTE: Use getState() to read the latest map — avoids stale closure from useCallback snapshot
+      const latestMap = new Map(useAppStore.getState().customWidgetResults);
+      latestMap.set(widgetId, results);
+      setCustomWidgetResults(latestMap);
     } catch (error) {
       console.error(`Failed to calculate widget ${widgetId}:`, error);
       toast.error(`Failed to apply custom JQL filter`);
     } finally {
-      // Remove from loading state
       const newLoading = new Set(calculatingWidgets);
       newLoading.delete(widgetId);
       setCalculatingWidgets(newLoading);
     }
-  }, [activeConnectionId, masterDatasetInfo, calculatingWidgets, customWidgetResults, jqlQuery, dateFrom, dateTo, region, globalFilters, settings, storageConfig, setCalculatingWidgets, setCustomWidgetResults]);
+  }, [activeConnectionId, masterDatasetInfo, calculatingWidgets, jqlQuery, dateFrom, dateTo, region, globalFilters, settings, storageConfig, setCalculatingWidgets, setCustomWidgetResults]);
 
   // Filter KPI results and dashboard charts based on active plugins
   const lastFilteredPlugins = useRef<Set<string>>(new Set());
