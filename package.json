@@ -26,6 +26,9 @@
     "clean": "shx rm -rf .next node_modules/.cache",
     "clean:full": "shx rm -rf .next node_modules/.cache && shx rm -rf node_modules/.prisma",
     "dev:clean": "npm run clean && npm run dev",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "db:deploy": "prisma migrate deploy",
     "postinstall": "node scripts/prisma-setup.mjs"
   },
@@ -104,16 +107,25 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "^25.6.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "4.1.5",
     "caxa": "^3.0.1",
     "cross-env": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "^16.1.7",
+    "jsdom": "29.1.1",
     "shx": "^0.3.4",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.5",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^8.0.10",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.5"
   }
 }

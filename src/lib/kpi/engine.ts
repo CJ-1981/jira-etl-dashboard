@@ -68,10 +68,11 @@ export interface KpiResult {
   dimensions?: Record<string, string>;
   details?: Array<{
     label: string;
-    value: number;
+    value: number | string;
     unit?: string;
   }>;
   ticketKeys?: string[]; // New: List of tickets that make up this metric
+  timeSeries?: Array<{ period: string; value: number; isComplete?: boolean }>; // Added for time-series support
   comparison?: {         // New: Comparison data for deltas
     value: number;
     change: number;

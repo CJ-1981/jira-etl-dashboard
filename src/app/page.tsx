@@ -11,7 +11,7 @@ import { localConfig, type AppSettings } from '@/lib/config/local-store';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
 import { ExtractPanel } from '@/components/dashboard/ExtractPanel';
-import { KpiDashboard } from '@/components/dashboard/KpiDashboard';
+import KpiDashboard from '@/components/dashboard/KpiDashboard';
 import { PluginsPanel } from '@/components/dashboard/PluginsPanel';
 import { HolidaysPanel } from '@/components/dashboard/HolidaysPanel';
 import { ExportPanel } from '@/components/dashboard/ExportPanel';
