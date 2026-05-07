@@ -245,7 +245,14 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     }
     console.log('[ChartCard] Using global results:', kpiResults.length, 'results');
     return kpiResults;
-  }, [config.jqlFilter?.enabled, customWidgetResults, config.id, kpiResults]);
+  }, [
+    config.jqlFilter?.enabled,
+    config.jqlFilter?.mode,
+    config.jqlFilter?.query,
+    customWidgetResults.get(config.id),
+    config.id,
+    kpiResults
+  ]);
 
   const selectedKpiData = useMemo(() => {
     if (!config.kpiId) return null;
