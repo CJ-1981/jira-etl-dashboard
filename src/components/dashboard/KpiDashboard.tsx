@@ -340,28 +340,38 @@ export function KpiDashboard() {
     setCalculatingWidgets(new Set([...calculatingWidgets, widgetId]));
 
     try {
-      // Determine effective JQL based on mode
-      let effectiveJql = jqlFilter.query;
-      if (jqlFilter.mode === 'refine' && jqlQuery) {
-        // Combine with global JQL using AND
-        effectiveJql = jqlQuery ? `(${jqlQuery}) AND (${jqlFilter.query})` : jqlFilter.query;
-      }
+      // @MX:TODO: Implement proper JQL filtering on client side
+      // @MX:REASON: Current API doesn't support customJql parameter
+      // For now, we'll use a simple text-based filter as proof of concept
+      let filteredIssues = masterDatasetInfo.issues;
 
-      console.log('[calculateWidgetJql] Effective JQL:', effectiveJql);
+      if (jqlFilter.enabled && jqlFilter.query) {
+        console.log('[calculateWidgetJql] Filtering issues with JQL:', jqlFilter.query);
+
+        // Simple text-based filtering (proof of concept)
+        // This is NOT a full JQL parser, just a basic implementation
+        const queryLower = jqlFilter.query.toLowerCase();
+
+        filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
+          const issueText = `${issue.summary} ${issue.key} ${(issue.description || '')}`.toLowerCase();
+          return issueText.includes(queryLower.replace(/"/g, ''));
+        });
+
+        console.log('[calculateWidgetJql] Filtered to', filteredIssues.length, 'issues from', masterDatasetInfo.issues.length);
+      }
 
       const res = await fetch('/api/kpi/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           connectionId: activeConnectionId,
-          issues: masterDatasetInfo.issues,
+          issues: filteredIssues, // Send filtered issues instead
           dateFrom,
           dateTo,
           region,
           globalFilters,
           settings,
-          storageConfig,
-          customJql: effectiveJql // Send custom JQL to API
+          storageConfig
         })
       });
 
