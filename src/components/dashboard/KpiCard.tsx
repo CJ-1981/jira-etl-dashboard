@@ -894,7 +894,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               )}
             </div>
             <Popover open={jqlSettingsOpen} onOpenChange={(open) => {
-              console.log('[ChartCard] Popover state changing:', open, 'for widget:', config.id);
+              console.log('[ChartCard] Popover onOpenChange:', open, 'for widget:', config.id);
               setJqlSettingsOpen(open);
             }}>
               <PopoverTrigger asChild>
@@ -905,18 +905,26 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   className="text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 h-8 w-8 p-0 border border-indigo-200 dark:border-indigo-500/30"
                   aria-label="JQL filter settings"
                   title="Configure JQL filter for this chart"
-                  onClick={() => console.log('[ChartCard] Gear icon button clicked! Widget:', config.id)}
                 >
                   {isCalculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="p-0">
+              <PopoverContent align="end" className="p-0 z-[100]" onPointerDownOutside={(e) => {
+                e.preventDefault();
+                console.log('[ChartCard] Popover onPointerDownOutside');
+              }} onEscapeKeyDown={(e) => {
+                e.preventDefault();
+                console.log('[ChartCard] Popover onEscapeKeyDown');
+              }}>
                 <JqlFilterSettings
                   widgetId={config.id}
                   widgetType="chart"
                   currentFilter={config.jqlFilter || { enabled: false, query: '', mode: 'refine' }}
                   onSave={handleJqlFilterSave}
-                  onCancel={() => setJqlSettingsOpen(false)}
+                  onCancel={() => {
+                    console.log('[ChartCard] JqlFilterSettings onCancel');
+                    setJqlSettingsOpen(false);
+                  }}
                 />
               </PopoverContent>
             </Popover>
