@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PopoverContent } from '@/components/ui/popover';
 import { RotateCcw, Check, Loader2 } from 'lucide-react';
 import { JqlAutocomplete } from '../JqlAutocomplete';
 import { JqlFilter } from '@/types/dashboard';
@@ -77,11 +76,7 @@ export function JqlFilterSettings({
   console.log('[JqlFilterSettings] Rendering for widget:', widgetId, 'currentFilter:', currentFilter);
 
   return (
-    <PopoverContent
-      className="w-[400px] p-4 z-[100] bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700"
-      align="end"
-      sideOffset={5}
-    >
+    <div className="w-[400px] p-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-lg rounded-lg">
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between border-b pb-2 border-slate-200 dark:border-slate-700">
@@ -217,6 +212,6 @@ export function JqlFilterSettings({
           </Button>
         </div>
       </div>
-    </PopoverContent>
+    </div>
   );
 }
