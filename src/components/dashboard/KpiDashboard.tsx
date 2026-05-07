@@ -359,7 +359,9 @@ export function KpiDashboard() {
           { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
           { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
           { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
-          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' }
+          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
+          { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' },
+          { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' }
         ];
 
         for (const pattern of patterns) {
@@ -367,7 +369,13 @@ export function KpiDashboard() {
           if (match) {
             field = match[1];
             operator = pattern.op;
-            value = match[2].toLowerCase();
+            // For IN/NOT IN, keep the comma-separated values as-is
+            // For others, extract the value
+            if (operator === 'IN' || operator === 'NOT IN') {
+              value = match[2]; // Keep original case for values
+            } else {
+              value = match[2].toLowerCase();
+            }
             break;
           }
         }
@@ -381,18 +389,35 @@ export function KpiDashboard() {
 
         if (field && operator && value) {
           filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
-            const issueValue = String(issue[field] || '').toLowerCase();
-            console.log('[calculateWidgetJql] Checking issue:', issue.key, 'field:', field, 'value:', issueValue);
+            const issueValue = String(issue[field] || '');
 
             switch (operator) {
               case '=':
-                return issueValue === value;
+                return issueValue.toLowerCase() === value;
               case '!=':
-                return issueValue !== value;
+                return issueValue.toLowerCase() !== value;
               case 'CONTAINS':
-                return issueValue.includes(value);
+                return issueValue.toLowerCase().includes(value);
               case 'NOT CONTAINS':
-                return !issueValue.includes(value);
+                return !issueValue.toLowerCase().includes(value);
+              case 'IN': {
+                // Parse comma-separated values: Close, Done, "Ready to close"
+                const values = value.split(',').map(v => {
+                  const trimmed = v.trim();
+                  // Remove quotes if present
+                  return trimmed.replace(/^"|"$/g, '').replace(/^'\\|'$/g, '');
+                });
+                return values.some(v => v.toLowerCase() === issueValue.toLowerCase());
+              }
+              case 'NOT IN': {
+                // Parse comma-separated values
+                const values = value.split(',').map(v => {
+                  const trimmed = v.trim();
+                  // Remove quotes if present
+                  return trimmed.replace(/^"|"$/g, '').replace(/^'\\|'$/g, '');
+                });
+                return !values.some(v => v.toLowerCase() === issueValue.toLowerCase());
+              }
               default:
                 return true;
             }
