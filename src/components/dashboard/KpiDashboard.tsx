@@ -340,22 +340,67 @@ export function KpiDashboard() {
     setCalculatingWidgets(new Set([...calculatingWidgets, widgetId]));
 
     try {
-      // @MX:TODO: Implement proper JQL filtering on client side
-      // @MX:REASON: Current API doesn't support customJql parameter
-      // For now, we'll use a simple text-based filter as proof of concept
+      // @MX:NOTE: Implement basic client-side JQL filtering
+      // @MX:REASON: API doesn't support customJql, so we filter issues client-side
+      // This handles basic JQL: field = value, field != value, field CONTAINS, field NOT CONTAINS
       let filteredIssues = masterDatasetInfo.issues;
 
       if (jqlFilter.enabled && jqlFilter.query) {
         console.log('[calculateWidgetJql] Filtering issues with JQL:', jqlFilter.query);
 
-        // Simple text-based filtering (proof of concept)
-        // This is NOT a full JQL parser, just a basic implementation
-        const queryLower = jqlFilter.query.toLowerCase();
+        // Basic JQL parser for common patterns
+        const query = jqlFilter.query.trim();
+        let field = '';
+        let operator = '';
+        let value = '';
 
-        filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
-          const issueText = `${issue.summary} ${issue.key} ${(issue.description || '')}`.toLowerCase();
-          return issueText.includes(queryLower.replace(/"/g, ''));
-        });
+        // Parse field operator value patterns
+        const patterns = [
+          { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
+          { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
+          { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
+          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' }
+        ];
+
+        for (const pattern of patterns) {
+          const match = query.match(pattern.regex);
+          if (match) {
+            field = match[1];
+            operator = pattern.op;
+            value = match[2].toLowerCase();
+            break;
+          }
+        }
+
+        console.log('[calculateWidgetJql] Parsed JQL:', { field, operator, value });
+
+        if (field && operator && value) {
+          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
+            const issueValue = String(issue[field] || '').toLowerCase();
+            console.log('[calculateWidgetJql] Checking issue:', issue.key, 'field:', field, 'value:', issueValue);
+
+            switch (operator) {
+              case '=':
+                return issueValue === value;
+              case '!=':
+                return issueValue !== value;
+              case 'CONTAINS':
+                return issueValue.includes(value);
+              case 'NOT CONTAINS':
+                return !issueValue.includes(value);
+              default:
+                return true;
+            }
+          });
+        } else {
+          // Fallback: simple text search if JQL can't be parsed
+          console.log('[calculateWidgetJql] Using simple text search');
+          const queryLower = query.toLowerCase();
+          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
+            const issueText = `${issue.summary} ${issue.key} ${(issue.description || '')}`.toLowerCase();
+            return issueText.includes(queryLower);
+          });
+        }
 
         console.log('[calculateWidgetJql] Filtered to', filteredIssues.length, 'issues from', masterDatasetInfo.issues.length);
       }
