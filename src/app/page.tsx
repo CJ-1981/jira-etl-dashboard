@@ -11,7 +11,7 @@ import { localConfig, type AppSettings } from '@/lib/config/local-store';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
 import { ExtractPanel } from '@/components/dashboard/ExtractPanel';
-import KpiDashboard from '@/components/dashboard/KpiDashboard';
+import { KpiDashboard } from '@/components/dashboard/KpiDashboard';
 import { PluginsPanel } from '@/components/dashboard/PluginsPanel';
 import { HolidaysPanel } from '@/components/dashboard/HolidaysPanel';
 import { ExportPanel } from '@/components/dashboard/ExportPanel';
@@ -53,6 +53,7 @@ export default function Home() {
     dashboardCharts, setDashboardCharts,
     dashboardJqlQuery, setDashboardJqlQuery,
     filterPanelOpen, setFilterPanelOpen,
+    showFloatingBar, setShowFloatingBar,
     kpiSubTab, setKpiSubTab,
   } = useAppStore();
 
@@ -139,7 +140,13 @@ export default function Home() {
     return () => controller.abort();
   }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
 
-
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowFloatingBar(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     if (!mounted) return;
