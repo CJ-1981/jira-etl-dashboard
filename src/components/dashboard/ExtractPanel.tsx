@@ -100,13 +100,19 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     const loadPolling = () => {
       if (extracting) return;
       
-      fetch('/api/jira/poll').then((r) => r.json()).then((d) => {
-        if (isMounted && d.success) {
-          setPolling(prev => JSON.stringify(prev) === JSON.stringify(d.polling) ? prev : d.polling);
-          setPollEnabled(d.polling.enabled);
-          setPollInterval(String(d.polling.intervalMinutes));
-        }
-      });
+      fetch('/api/jira/poll')
+        .then((r) => r.json())
+        .then((d) => {
+          if (isMounted && d.success) {
+            setPolling(prev => JSON.stringify(prev) === JSON.stringify(d.polling) ? prev : d.polling);
+            setPollEnabled(d.polling.enabled);
+            setPollInterval(String(d.polling.intervalMinutes));
+          }
+        })
+        .catch(() => {
+          // Silent catch to prevent unhandled rejection during dev/reloads
+          // Failures are expected when the server is restarting/compiling
+        });
     };
     loadPolling();
     const timer = setInterval(loadPolling, 5000);
