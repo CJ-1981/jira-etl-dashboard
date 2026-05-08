@@ -348,6 +348,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     }
     return kpiResults;
   }, [
+    config.jqlFilter,
     config.jqlFilter?.enabled,
     config.jqlFilter?.mode,
     config.jqlFilter?.query,
@@ -387,12 +388,19 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
   const handleJqlFilterSave = async (filter: any) => {
     console.log('[ChartCard] Saving JQL filter for widget:', config.id, filter);
-    onChange(config.id, { ...config, jqlFilter: filter });
 
     // Trigger calculation if custom JQL is enabled
     if (filter.enabled && filter.query && calculateWidgetJql) {
       console.log('[ChartCard] Triggering calculation for widget:', config.id);
-      await calculateWidgetJql(config.id, filter);
+      try {
+        await calculateWidgetJql(config.id, filter);
+        onChange(config.id, { ...config, jqlFilter: filter });
+      } catch (err) {
+        console.error('[ChartCard] Failed to calculate custom JQL:', err);
+        onChange(config.id, { ...config, jqlFilter: { enabled: false, query: '', mode: 'refine' } });
+      }
+    } else {
+      onChange(config.id, { ...config, jqlFilter: filter });
     }
     setJqlSettingsOpen(false);
   };

@@ -92,6 +92,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
   // List filtering state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortOption, setSortOption] = useState('default');
 
   // Load polling status
   useEffect(() => {
@@ -686,7 +687,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 text-center">
                 <p className="text-2xl font-bold text-emerald-400">{extractionResult.total}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Extracted</p>
@@ -725,6 +726,20 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                   })()}
                 </p>
               </div>
+              <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 text-center">
+                <p className="text-sm font-mono text-slate-700 dark:text-slate-300">Newest</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {(() => {
+                    const issues = extractionResult.issues || [];
+                    const dates = issues
+                      .map((i: any) => i.fields?.created || i.created)
+                      .filter((d: any) => d)
+                      .map((d: any) => new Date(d).getTime());
+                    const newestDate = dates.length > 0 ? new Date(Math.max(...dates)) : null;
+                    return newestDate ? newestDate.toLocaleDateString() : 'N/A';
+                  })()}
+                </p>
+              </div>
             </div>
             <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row gap-3">
@@ -746,8 +761,20 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                     </button>
                   )}
                 </div>
+                <Select value={sortOption} onValueChange={setSortOption}>
+                  <SelectTrigger className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0">
+                    <SelectValue placeholder="Sort by..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default Order</SelectItem>
+                    <SelectItem value="key-asc">Key (A-Z)</SelectItem>
+                    <SelectItem value="key-desc">Key (Z-A)</SelectItem>
+                    <SelectItem value="updated-desc">Newest Update</SelectItem>
+                    <SelectItem value="updated-asc">Oldest Update</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-[180px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9">
+                  <SelectTrigger className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0">
                     <SelectValue placeholder="All Statuses" />
                   </SelectTrigger>
                   <SelectContent>
@@ -770,6 +797,21 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                   const matchesSearch = key.includes(searchQuery.toLowerCase()) || summary.includes(searchQuery.toLowerCase());
                   const matchesStatus = statusFilter === 'all' || status === statusFilter;
                   return matchesSearch && matchesStatus;
+                }).sort((a: any, b: any) => {
+                  if (sortOption === 'key-asc') {
+                    return (a.key || '').localeCompare(b.key || '', undefined, { numeric: true });
+                  } else if (sortOption === 'key-desc') {
+                    return (b.key || '').localeCompare(a.key || '', undefined, { numeric: true });
+                  } else if (sortOption === 'updated-desc') {
+                    const dateA = new Date(a.fields?.updated || a.updated || a.fields?.created || a.created || 0).getTime();
+                    const dateB = new Date(b.fields?.updated || b.updated || b.fields?.created || b.created || 0).getTime();
+                    return dateB - dateA;
+                  } else if (sortOption === 'updated-asc') {
+                    const dateA = new Date(a.fields?.updated || a.updated || a.fields?.created || a.created || 0).getTime();
+                    const dateB = new Date(b.fields?.updated || b.updated || b.fields?.created || b.created || 0).getTime();
+                    return dateA - dateB;
+                  }
+                  return 0;
                 }).map((issue: any) => {
                   const activeConnection = connections.find(c => c.id === activeConnectionId);
                   const baseUrl = activeConnection?.baseUrl || '';

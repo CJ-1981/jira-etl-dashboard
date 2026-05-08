@@ -494,6 +494,35 @@ export function KpiDashboard() {
     }
   }, [activeConnectionId, masterDatasetInfo, calculatingWidgets, jqlQuery, dateFrom, dateTo, region, globalFilters, settings, storageConfig, setCalculatingWidgets, setCustomWidgetResults]);
 
+  // @MX:NOTE: Auto-recalculate custom widgets when dashboard inputs change
+  useEffect(() => {
+    if (!calculateWidgetJql || !masterDatasetInfo?.issues?.length) return;
+
+    customWidgetResults.forEach((entry: any, widgetId: string) => {
+      const ctx = entry?.context;
+      if (!ctx) return;
+
+      const isGlobalFiltersMismatched = ctx.mode === 'override' 
+        ? false // When overriding, global filter changes don't matter
+        : JSON.stringify(ctx.globalFilters) !== JSON.stringify(globalFilters);
+
+      const needsRecalc = 
+        ctx.dateFrom !== dateFrom ||
+        ctx.dateTo !== dateTo ||
+        ctx.region !== region ||
+        ctx.activeConnectionId !== activeConnectionId ||
+        ctx.issuesLength !== masterDatasetInfo?.issues?.length ||
+        isGlobalFiltersMismatched;
+
+      if (needsRecalc) {
+        calculateWidgetJql(widgetId, { enabled: true, query: ctx.query, mode: ctx.mode });
+      }
+    });
+  }, [
+    dateFrom, dateTo, region, globalFilters, settings, storageConfig, masterDatasetInfo, 
+    customWidgetResults, calculateWidgetJql, activeConnectionId
+  ]);
+
   // Filter KPI results and dashboard charts based on active plugins
   const lastFilteredPlugins = useRef<Set<string>>(new Set());
 
