@@ -110,21 +110,21 @@ echo       Creating launcher...
     echo @echo off
     echo setlocal enabledelayedexpansion
     echo title Jira ETL Dashboard
-    echo :: Find Node.js (system or local)
+    echo :: Find Node.js (system or local^)
     echo set "NODE_BIN=node"
-    echo where node >nul 2>&1
-    echo if %%errorlevel%% neq 0 (
-    echo     if exist "%%~dp0node.exe" (
+    echo where node ^>nul 2^>^&1
+    echo if %%errorlevel%% neq 0 ^(
+    echo     if exist "%%~dp0node.exe" ^(
     echo         set "NODE_BIN=%%~dp0node.exe"
-    echo     ) else if exist "%%~dp0bin\node.exe" (
+    echo     ^) else if exist "%%~dp0bin\node.exe" ^(
     echo         set "NODE_BIN=%%~dp0bin\node.exe"
-    echo     ) else (
+    echo     ^) else ^(
     echo         echo [ERROR] Node.js is not installed and no local node.exe found.
     echo         echo Please copy 'node.exe' to "%%~dp0" or install Node.js.
     echo         pause
     echo         exit /b 1
-    echo     )
-    echo )
+    echo     ^)
+    echo ^)
     echo.
     echo :: Move to the app folder
     echo cd /d "%%~dp0app"
@@ -142,7 +142,7 @@ echo       Creating launcher...
     echo echo  Press Ctrl+C to stop.
     echo echo.
     echo set NODE_ENV=production
-    echo "!NODE_BIN!" server.js
+    echo "^!NODE_BIN^!" server.js
     echo pause
 )
 

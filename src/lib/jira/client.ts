@@ -468,17 +468,21 @@ export class JiraClient {
     }
 
     if (options.dateFrom) {
-      clauses.push(`created >= "${options.dateFrom}"`);
+      // @MX:NOTE: Use both created and updated to catch all activity in the period.
+      // This ensures that both new tickets and status changes on existing tickets are captured.
+      clauses.push(`(created >= "${options.dateFrom}" OR updated >= "${options.dateFrom}")`);
     }
     if (options.dateTo) {
       // @MX:NOTE Jira JQL treats a bare date as midnight (00:00:00) at the START of that day,
       // so `created <= "2026-05-08"` excludes tickets created during 2026-05-08.
       // We advance dateTo by +1 day and use a strict-less-than (`<`) to form an inclusive
       // upper bound that captures the full selected day.
-      const dateToExclusive = new Date(options.dateTo);
-      dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
+      const dateToObj = new Date(options.dateTo);
+      // Ensure we treat the date as UTC midnight before adding a day
+      const dateToExclusive = new Date(Date.UTC(dateToObj.getUTCFullYear(), dateToObj.getUTCMonth(), dateToObj.getUTCDate() + 1));
       const dateToStr = dateToExclusive.toISOString().slice(0, 10); // "YYYY-MM-DD"
-      clauses.push(`created < "${dateToStr}"`);
+      
+      clauses.push(`(created < "${dateToStr}" OR updated < "${dateToStr}")`);
     }
     if (options.issueTypes?.length) {
       const typeClause = options.issueTypes.map((t) => `issuetype = "${t}"`).join(' OR ');

@@ -1,10 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 title Jira ETL Dashboard
-
 :: Find Node.js (system or local)
 set "NODE_BIN=node"
-where !NODE_BIN! >nul 2>&1
+where node >nul 2>&1
 if %errorlevel% neq 0 (
     if exist "%~dp0node.exe" (
         set "NODE_BIN=%~dp0node.exe"

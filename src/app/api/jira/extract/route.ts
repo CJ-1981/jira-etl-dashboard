@@ -78,7 +78,14 @@ export async function POST(request: Request) {
         if (daysBack) {
           finalJql = `${projectClause}updated > -${daysBack}d ORDER BY updated DESC`;
         } else if (effectiveDateFrom) {
-          finalJql = `${projectClause}updated >= "${effectiveDateFrom}"${effectiveDateTo ? ` AND updated <= "${effectiveDateTo}"` : ''} ORDER BY updated DESC`;
+          // @MX:NOTE: For JQL date strings, we use the "next day and <" pattern to ensure inclusivity.
+          let dateToStr = effectiveDateTo;
+          if (effectiveDateTo) {
+             const d = new Date(effectiveDateTo);
+             const nextDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+             dateToStr = nextDay.toISOString().slice(0, 10);
+          }
+          finalJql = `${projectClause}updated >= "${effectiveDateFrom}"${dateToStr ? ` AND updated < "${dateToStr}"` : ''} ORDER BY updated DESC`;
         } else {
           // Fallback to default if no dates provided
           finalJql = client.buildDefaultJql({ dateFrom: effectiveDateFrom, dateTo: effectiveDateTo });
@@ -366,7 +373,8 @@ export async function POST(request: Request) {
 
       const period = {
         start: effectiveDateFrom ? new Date(effectiveDateFrom) : new Date(0),
-        end: effectiveDateTo ? new Date(effectiveDateTo) : new Date()
+        // @MX:NOTE: Ensure end date is inclusive by setting it to the very end of the day (23:59:59)
+        end: effectiveDateTo ? new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999)) : new Date()
       };
 
       const holidayConfig = {
