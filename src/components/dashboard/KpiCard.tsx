@@ -11,7 +11,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area
 } from 'recharts';
-import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings } from 'lucide-react';
+import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings, Pencil, Check, X as XIcon } from 'lucide-react';
 import {
   Tooltip as UITooltip,
   TooltipContent,
@@ -47,7 +47,7 @@ import {
 } from '@/components/ui/select';
 
 // ─── KPI Card (Single Widget) ────────────────────────────────────────────────
-export function KpiCard({ result, pluginId, onHide, onClick }: { 
+export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitleChange }: { 
   result: { 
     name: string; 
     value: number; 
@@ -60,9 +60,42 @@ export function KpiCard({ result, pluginId, onHide, onClick }: {
   pluginId: string; 
   onHide?: () => void;
   onClick?: () => void;
+  // @MX:NOTE: Per-view custom widget title support
+  customTitle?: string;
+  onTitleChange?: (newTitle: string) => void;
 }) {
   const { settings } = useAppStore();
   const alertConfig = settings?.alerts?.thresholds?.[pluginId];
+
+  // @MX:NOTE: Inline title editing state
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  const displayTitle = customTitle || result.name;
+
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTitleDraft(displayTitle);
+    setEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.focus(), 50);
+  };
+
+  const handleCommitTitle = () => {
+    const trimmed = titleDraft.trim();
+    if (trimmed && trimmed !== result.name) {
+      onTitleChange?.(trimmed);
+    } else if (!trimmed) {
+      // Empty => revert to plugin default
+      onTitleChange?.('');
+    }
+    setEditingTitle(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTitle(false);
+  };
+
   
   const getAlertStatus = () => {
     if (!alertConfig) return null;
@@ -109,9 +142,43 @@ export function KpiCard({ result, pluginId, onHide, onClick }: {
     >
       <CardContent className="p-5">
         <div className="flex items-center justify-between mb-4">
-          <p className={`text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${isClickable ? 'group-hover:text-blue-500 group-hover:underline' : ''}`}>
-            {result.name}
-          </p>
+          {editingTitle ? (
+            <div className="flex items-center gap-1 flex-1 mr-2" onClick={(e) => e.stopPropagation()}>
+              <input
+                ref={titleInputRef}
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCommitTitle();
+                  if (e.key === 'Escape') handleCancelEdit();
+                }}
+                className="text-xs font-bold uppercase tracking-wider bg-transparent border-b border-blue-400 outline-none text-slate-700 dark:text-slate-200 w-full min-w-0"
+                placeholder={result.name}
+              />
+              <button onClick={handleCommitTitle} className="text-emerald-500 hover:text-emerald-600 p-0.5 shrink-0" title="Confirm">
+                <Check className="h-3 w-3" />
+              </button>
+              <button onClick={handleCancelEdit} className="text-slate-400 hover:text-red-400 p-0.5 shrink-0" title="Cancel">
+                <XIcon className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0 group/title">
+              <p className={`text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate ${isClickable ? 'group-hover:text-blue-500 group-hover:underline' : ''}`}>
+                {displayTitle}
+              </p>
+              {onTitleChange && (
+                <button
+                  onClick={handleStartEdit}
+                  className="opacity-0 group-hover/title:opacity-100 text-slate-300 hover:text-blue-400 transition-opacity p-0.5 shrink-0"
+                  title="Rename widget"
+                  aria-label="Rename widget"
+                >
+                  <Pencil className="h-2.5 w-2.5" />
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {alertStatus && (
               <TooltipProvider delayDuration={0}>
@@ -223,8 +290,33 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
   const [exporting, setExporting] = useState(false);
   const [jqlSettingsOpen, setJqlSettingsOpen] = useState(false);
 
+  // @MX:NOTE: Inline chart title editing state
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  const displayTitle = config.customTitle || 'Chart Visualization';
+
+  const handleStartTitleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTitleDraft(displayTitle);
+    setEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.focus(), 50);
+  };
+
+  const handleCommitTitle = () => {
+    const trimmed = titleDraft.trim();
+    onChange(config.id, { ...config, customTitle: trimmed || undefined });
+    setEditingTitle(false);
+  };
+
+  const handleCancelTitleEdit = () => {
+    setEditingTitle(false);
+  };
+
+
   // Get custom widget results and calculating state from store
-  const { customWidgetResults, calculatingWidgets } = useAppStore();
+  const { customWidgetResults, calculatingWidgets, dateFrom, dateTo, region, globalFilters, activeConnectionId, masterDatasetInfo } = useAppStore();
 
   // Check if selected KPI is a time-series plugin
   const isTimeSeries = config.kpiId ? isTimeSeriesPlugin(config.kpiId) : false;
@@ -232,7 +324,27 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
   // Determine which results to use (custom or global)
   const effectiveResults = useMemo(() => {
     if (config.jqlFilter?.enabled && customWidgetResults.has(config.id)) {
-      return customWidgetResults.get(config.id) || [];
+      const entry = customWidgetResults.get(config.id) as any;
+      if (entry && entry.context) {
+        const ctx = entry.context;
+        // Verify calculation context matches exactly
+        const isValid = 
+          ctx.query === config.jqlFilter.query &&
+          ctx.mode === config.jqlFilter.mode &&
+          ctx.dateFrom === dateFrom &&
+          ctx.dateTo === dateTo &&
+          ctx.region === region &&
+          ctx.activeConnectionId === activeConnectionId &&
+          ctx.issuesLength === masterDatasetInfo?.issues?.length &&
+          JSON.stringify(ctx.globalFilters) === JSON.stringify((config.jqlFilter.enabled && config.jqlFilter.mode === 'override') ? undefined : globalFilters);
+        
+        if (isValid) {
+          return entry.results;
+        }
+      } else if (Array.isArray(entry)) {
+        // Fallback for transition phase if it's still an array
+        return entry;
+      }
     }
     return kpiResults;
   }, [
@@ -241,7 +353,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     config.jqlFilter?.query,
     customWidgetResults, // full Map reference — re-runs when a new Map is set in the store
     config.id,
-    kpiResults
+    kpiResults,
+    dateFrom,
+    dateTo,
+    region,
+    globalFilters,
+    activeConnectionId,
+    masterDatasetInfo?.issues?.length
   ]);
 
   const selectedKpiData = useMemo(() => {
@@ -830,7 +948,41 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <BarChart3 className={`h-5 w-5 ${isTimeSeries ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
             </div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-lg">Chart Visualization</CardTitle>
+              {editingTitle ? (
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    ref={titleInputRef}
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCommitTitle();
+                      if (e.key === 'Escape') handleCancelTitleEdit();
+                    }}
+                    className="text-lg font-semibold bg-transparent border-b border-blue-400 outline-none text-slate-800 dark:text-slate-100 min-w-[120px]"
+                    placeholder="Chart Visualization"
+                    data-export-ignore="true"
+                  />
+                  <button onClick={handleCommitTitle} className="text-emerald-500 hover:text-emerald-600 p-0.5" title="Confirm" data-export-ignore="true">
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={handleCancelTitleEdit} className="text-slate-400 hover:text-red-400 p-0.5" title="Cancel" data-export-ignore="true">
+                    <XIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 group/charttitle">
+                  <CardTitle className="text-lg">{displayTitle}</CardTitle>
+                  <button
+                    onClick={handleStartTitleEdit}
+                    className="opacity-0 group-hover/charttitle:opacity-100 text-slate-300 hover:text-blue-400 transition-opacity p-0.5"
+                    title="Rename chart"
+                    aria-label="Rename chart"
+                    data-export-ignore="true"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
               {isTimeSeries && (
                 <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/30">
                   📈 Trend

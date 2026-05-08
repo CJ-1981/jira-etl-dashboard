@@ -64,11 +64,11 @@ interface AppState {
   setKpiSubTab: (tab: string) => void;
 
   // Custom JQL filters per widget
-  customWidgetResults: Map<string, KpiCalcResult[]>;
-  setCustomWidgetResults: (results: Map<string, KpiCalcResult[]>) => void;
+  customWidgetResults: Map<string, { context: any; results: KpiCalcResult[] }>;
+  setCustomWidgetResults: (results: Map<string, { context: any; results: KpiCalcResult[] }>) => void;
 
   calculatingWidgets: Set<string>;
-  setCalculatingWidgets: (widgets: Set<string>) => void;
+  setCalculatingWidgets: (widgets: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
 
   kpiCardConfigs: KpiCardConfig[];
   setKpiCardConfigs: (configs: KpiCardConfig[]) => void;
@@ -147,7 +147,9 @@ export const useAppStore = create<AppState>((set) => ({
   setCustomWidgetResults: (results) => set({ customWidgetResults: results }),
 
   calculatingWidgets: new Set(),
-  setCalculatingWidgets: (widgets) => set({ calculatingWidgets: widgets }),
+  setCalculatingWidgets: (widgets) => set((state) => ({
+    calculatingWidgets: typeof widgets === 'function' ? widgets(state.calculatingWidgets) : widgets
+  })),
 
   kpiCardConfigs: [],
   setKpiCardConfigs: (configs) => set({ kpiCardConfigs: configs }),

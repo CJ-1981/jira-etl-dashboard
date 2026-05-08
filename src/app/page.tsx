@@ -167,7 +167,7 @@ export default function Home() {
     } else {
       setGlobalFilters({});
       setHiddenDimensions(new Set());
-      setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }]);
+      setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
       setDashboardJqlQuery('');
     }
   }, [activeConnectionId, mounted]);

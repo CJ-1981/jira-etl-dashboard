@@ -33,13 +33,13 @@ export function JqlFilterSettings({
 
   // Get filter options for autocomplete
   const filterOptions = {
-    project: masterDatasetInfo?.issues?.map((i: any) => i.project || i.key?.split('-')[0]).filter(Boolean) ?? [],
-    assignee: masterDatasetInfo?.issues?.map((i: any) => i.assignee).filter(Boolean) ?? [],
-    priority: masterDatasetInfo?.issues?.map((i: any) => i.priority).filter(Boolean) ?? [],
-    issueType: masterDatasetInfo?.issues?.map((i: any) => i.issueType).filter(Boolean) ?? [],
-    status: masterDatasetInfo?.issues?.map((i: any) => i.status).filter(Boolean) ?? [],
-    component: masterDatasetInfo?.issues?.flatMap((i: any) => i.components).filter(Boolean) ?? [],
-    label: masterDatasetInfo?.issues?.flatMap((i: any) => i.labels).filter(Boolean) ?? [],
+    project: masterDatasetInfo?.issues?.map((i: any) => i.fields?.project?.name || i.fields?.project?.key || i.project || i.key?.split('-')[0]).filter(Boolean) ?? [],
+    assignee: masterDatasetInfo?.issues?.map((i: any) => i.fields?.assignee?.displayName || i.fields?.assignee?.name || i.assignee).filter(Boolean) ?? [],
+    priority: masterDatasetInfo?.issues?.map((i: any) => i.fields?.priority?.name || i.priority).filter(Boolean) ?? [],
+    issueType: masterDatasetInfo?.issues?.map((i: any) => i.fields?.issuetype?.name || i.issueType).filter(Boolean) ?? [],
+    status: masterDatasetInfo?.issues?.map((i: any) => i.fields?.status?.name || i.status).filter(Boolean) ?? [],
+    component: masterDatasetInfo?.issues?.flatMap((i: any) => i.fields?.components?.map((c: any) => c.name) || i.components).filter(Boolean) ?? [],
+    label: masterDatasetInfo?.issues?.flatMap((i: any) => i.fields?.labels || i.labels).filter(Boolean) ?? [],
   };
 
   const handleApply = async () => {

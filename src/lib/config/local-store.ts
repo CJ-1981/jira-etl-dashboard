@@ -101,6 +101,8 @@ export interface DashboardPreset {
   charts: any[];
   dashboardJql: string;
   hiddenDimensions: string[];
+  // @MX:NOTE: Custom widget title overrides — key format: "pluginId|resultName" for KpiCards, chart ID for ChartCards (stored in chart.customTitle)
+  widgetTitles?: Record<string, string>;
 }
 
 const KEYS = {

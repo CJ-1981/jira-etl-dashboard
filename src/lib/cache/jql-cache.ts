@@ -19,9 +19,30 @@ const DEFAULT_CONFIG: JqlCacheConfig = {
   ttlMs: 5 * 60 * 1000, // 5 minutes
 };
 
+export interface CalculationContext {
+  jql: string;
+  mode: 'override' | 'refine';
+  connectionId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  region?: string;
+  globalFilters?: Record<string, string[]>;
+  settings?: any;
+  issueSetId?: string | number;
+}
+
 // Simple hash function for cache keys
-function hashJql(jql: string, mode: 'override' | 'refine'): string {
-  const str = `${mode}:${jql}`;
+function hashJql(context: CalculationContext): string {
+  const serializeObject = (obj: any): any => {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(serializeObject);
+    return Object.keys(obj).sort().reduce((result: any, key) => {
+      result[key] = serializeObject(obj[key]);
+      return result;
+    }, {});
+  };
+
+  const str = JSON.stringify(serializeObject(context));
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
@@ -40,8 +61,8 @@ class JqlCache {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  get(jql: string, mode: 'override' | 'refine'): KpiCalcResult[] | null {
-    const key = hashJql(jql, mode);
+  get(context: CalculationContext): KpiCalcResult[] | null {
+    const key = hashJql(context);
     const entry = this.cache.get(key);
 
     if (!entry) {
@@ -63,8 +84,8 @@ class JqlCache {
     return entry.results;
   }
 
-  set(jql: string, mode: 'override' | 'refine', results: KpiCalcResult[]): void {
-    const key = hashJql(jql, mode);
+  set(context: CalculationContext, results: KpiCalcResult[]): void {
+    const key = hashJql(context);
     const now = Date.now();
 
     // If already exists, update and move to end

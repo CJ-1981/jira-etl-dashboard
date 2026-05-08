@@ -139,6 +139,9 @@ export function KpiDashboard() {
   const [newPresetName, setNewPresetName] = useState('');
   const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
 
+  // @MX:NOTE: Per-view custom widget title overrides; key = "pluginId|resultName"
+  const [widgetTitles, setWidgetTitles] = useState<Record<string, string>>({});
+
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -160,7 +163,8 @@ export function KpiDashboard() {
       globalFilters,
       charts,
       dashboardJql: jqlQuery,
-      hiddenDimensions: Array.from(hiddenDimensions)
+      hiddenDimensions: Array.from(hiddenDimensions),
+      widgetTitles,
     };
     const updated = [...presets, newPreset];
     setPresets(updated);
@@ -181,7 +185,8 @@ export function KpiDashboard() {
           globalFilters,
           charts,
           dashboardJql: jqlQuery,
-          hiddenDimensions: Array.from(hiddenDimensions)
+          hiddenDimensions: Array.from(hiddenDimensions),
+          widgetTitles,
         };
       }
       return p;
@@ -201,6 +206,8 @@ export function KpiDashboard() {
     // Don't load JQL into input field - only apply it via globalFilters
     // User can click edit icon on saved filters to edit them
     setHiddenDimensions(new Set(preset.hiddenDimensions));
+    // @MX:NOTE: Restore per-view widget title overrides
+    setWidgetTitles(preset.widgetTitles || {});
     setPresetPopoverOpen(false);
     toast.success(`Loaded view: ${preset.name}`);
   };
@@ -335,7 +342,7 @@ export function KpiDashboard() {
     if (!activeConnectionId || !masterDatasetInfo?.issues) return;
 
     // Track loading state
-    setCalculatingWidgets(new Set([...calculatingWidgets, widgetId]));
+    setCalculatingWidgets(prev => { const s = new Set(prev); s.add(widgetId); return s; });
 
     try {
       // @MX:NOTE: Implement basic client-side JQL filtering
@@ -344,6 +351,30 @@ export function KpiDashboard() {
       //           field IN (v1,v2), field NOT IN (v1,v2)
       // Fields are resolved from both flat (issue.field) and nested (issue.fields.field) shapes.
       let filteredIssues = masterDatasetInfo.issues;
+
+      if (jqlFilter.enabled && jqlFilter.mode !== 'override' && globalFilters) {
+        Object.entries(globalFilters).forEach(([key, values]) => {
+          if (values && values.length > 0) {
+            filteredIssues = filteredIssues.filter((issue: any) => {
+              const rawValue = issue[key] ?? issue.fields?.[key];
+              let normalizedValue = rawValue;
+              if (rawValue && typeof rawValue === 'object') {
+                if (Array.isArray(rawValue)) {
+                  normalizedValue = rawValue.map((v: any) => v.displayName || v.name || v.value || String(v)).join(',');
+                } else {
+                  normalizedValue = rawValue.displayName || rawValue.name || rawValue.value || rawValue.key || String(rawValue);
+                }
+              }
+              const issueValue = String(normalizedValue || '').trim().toLowerCase();
+              // Array dimensions like components/labels might need partial match, but globalFilters uses exact match
+              return values.some(v => {
+                const lowerV = v.toLowerCase();
+                return issueValue === lowerV || issueValue.split(',').includes(lowerV);
+              });
+            });
+          }
+        });
+      }
 
       if (jqlFilter.enabled && jqlFilter.query) {
         const query = jqlFilter.query.trim();
@@ -375,7 +406,15 @@ export function KpiDashboard() {
           filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
             // Support both flat (issue.summary) and nested (issue.fields.summary) issue shapes
             const rawValue = issue[field] ?? issue.fields?.[field];
-            const issueValue = String(rawValue || '');
+            let normalizedValue = rawValue;
+            if (rawValue && typeof rawValue === 'object') {
+              if (Array.isArray(rawValue)) {
+                normalizedValue = rawValue.map((v: any) => v.displayName || v.name || v.value || String(v)).join(',');
+              } else {
+                normalizedValue = rawValue.displayName || rawValue.name || rawValue.value || rawValue.key || String(rawValue);
+              }
+            }
+            const issueValue = String(normalizedValue || '').trim().toLowerCase();
 
             switch (operator) {
               case '=':            return issueValue.toLowerCase() === value;
@@ -412,8 +451,8 @@ export function KpiDashboard() {
           dateFrom,
           dateTo,
           region,
-          // Only pass globalFilters if NOT using custom JQL
-          globalFilters: jqlFilter.enabled ? undefined : globalFilters,
+          // Only pass globalFilters if NOT using custom JQL override
+          globalFilters: (jqlFilter.enabled && jqlFilter.mode === 'override') ? undefined : globalFilters,
           settings,
           storageConfig
         })
@@ -433,15 +472,25 @@ export function KpiDashboard() {
 
       // @MX:NOTE: Use getState() to read the latest map — avoids stale closure from useCallback snapshot
       const latestMap = new Map(useAppStore.getState().customWidgetResults);
-      latestMap.set(widgetId, results);
+      latestMap.set(widgetId, {
+        results,
+        context: {
+          query: jqlFilter.query,
+          mode: jqlFilter.mode,
+          dateFrom,
+          dateTo,
+          region,
+          globalFilters: (jqlFilter.enabled && jqlFilter.mode === 'override') ? undefined : globalFilters,
+          activeConnectionId,
+          issuesLength: masterDatasetInfo.issues.length
+        }
+      });
       setCustomWidgetResults(latestMap);
     } catch (error) {
       console.error(`Failed to calculate widget ${widgetId}:`, error);
       toast.error(`Failed to apply custom JQL filter`);
     } finally {
-      const newLoading = new Set(calculatingWidgets);
-      newLoading.delete(widgetId);
-      setCalculatingWidgets(newLoading);
+      setCalculatingWidgets(prev => { const s = new Set(prev); s.delete(widgetId); return s; });
     }
   }, [activeConnectionId, masterDatasetInfo, calculatingWidgets, jqlQuery, dateFrom, dateTo, region, globalFilters, settings, storageConfig, setCalculatingWidgets, setCustomWidgetResults]);
 
@@ -1214,6 +1263,7 @@ export function KpiDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
               {mainKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
+                const titleKey = `${kpi.pluginId}|${result.name}`;
                 return (
                   <KpiErrorBoundary key={`${kpi.pluginId}-${idx}`} name={result.name}>
                     <KpiCard
@@ -1223,6 +1273,15 @@ export function KpiDashboard() {
                       onClick={result.ticketKeys ? () => {
                         handleDrillDown(result.ticketKeys || [], result.name);
                       } : undefined}
+                      customTitle={widgetTitles[titleKey]}
+                      onTitleChange={(newTitle) => {
+                        setWidgetTitles(prev => {
+                          const next = { ...prev };
+                          if (newTitle) next[titleKey] = newTitle;
+                          else delete next[titleKey];
+                          return next;
+                        });
+                      }}
                     />
                   </KpiErrorBoundary>
                 );

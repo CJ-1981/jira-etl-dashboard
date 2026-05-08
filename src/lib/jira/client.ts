@@ -471,7 +471,14 @@ export class JiraClient {
       clauses.push(`created >= "${options.dateFrom}"`);
     }
     if (options.dateTo) {
-      clauses.push(`created <= "${options.dateTo}"`);
+      // @MX:NOTE Jira JQL treats a bare date as midnight (00:00:00) at the START of that day,
+      // so `created <= "2026-05-08"` excludes tickets created during 2026-05-08.
+      // We advance dateTo by +1 day and use a strict-less-than (`<`) to form an inclusive
+      // upper bound that captures the full selected day.
+      const dateToExclusive = new Date(options.dateTo);
+      dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
+      const dateToStr = dateToExclusive.toISOString().slice(0, 10); // "YYYY-MM-DD"
+      clauses.push(`created < "${dateToStr}"`);
     }
     if (options.issueTypes?.length) {
       const typeClause = options.issueTypes.map((t) => `issuetype = "${t}"`).join(' OR ');

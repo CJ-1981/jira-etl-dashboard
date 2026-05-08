@@ -43,6 +43,8 @@ export interface ChartConfig {
   type: 'bar' | 'line' | 'pie' | 'area';
   width: 'sm' | 'md' | 'lg' | 'full';
   jqlFilter: JqlFilter;
+  // @MX:NOTE: User-editable title persisted per saved view
+  customTitle?: string;
 }
 
 export interface JqlFilter {
