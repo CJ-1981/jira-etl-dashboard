@@ -8,7 +8,13 @@ echo ============================================================
 echo.
 
 :: ── Step 1: Check dependencies ────────────────────────────────
-echo [1/5] Checking dependencies...
+echo [1/5] Checking dependencies and cleaning up...
+
+:: Pre-clean release folder to avoid recursive copying in standalone build
+if exist "release" (
+    echo       Cleaning old release folder...
+    rd /s /q "release" >nul 2>&1
+)
 
 :: Check for running node processes that might lock Prisma files (excluding this script's host)
 tasklist /FI "IMAGENAME eq node.exe" 2>NUL | find /I /N "node.exe">NUL
@@ -60,6 +66,11 @@ if exist ".next\standalone\server.js" (
     echo       Delete .next\ and re-run if you need a fresh build.
 ) else (
     echo [3/5] Preparing production build...
+    
+    :: Clean up to ensure a fresh trace and no stale files (like old release folders)
+    if exist ".next" rd /s /q ".next" >nul 2>&1
+    if exist "release" rd /s /q "release" >nul 2>&1
+    
     set NODE_ENV=production
     call npm run build
     if %errorlevel% neq 0 (
@@ -72,12 +83,24 @@ if exist ".next\standalone\server.js" (
 :: ── Step 4: Assemble portable release folder ─────────────────
 echo [4/5] Assembling portable release folder...
 
-if not exist "release" mkdir "release"
-if not exist "release\app" mkdir "release\app"
+:: Assemble release folder (ensure it's clean)
+if exist "release" rd /s /q "release" >nul 2>&1
+mkdir "release\app"
 
 :: Copy standalone server + node_modules
 echo       Copying server files...
 xcopy /s /e /y ".next\standalone" "release\app\" >nul
+
+:: Fix "dumb" behavior: remove any recursive release folder or dev files
+if exist "release\app\release" rd /s /q "release\app\release" >nul 2>&1
+if exist "release\app\.git" rd /s /q "release\app\.git" >nul 2>&1
+del /f /q "release\app\*.md" >nul 2>&1
+del /f /q "release\app\.gitignore" >nul 2>&1
+del /f /q "release\app\build-exe.bat" >nul 2>&1
+del /f /q "release\app\install.bat" >nul 2>&1
+del /f /q "release\app\install.sh" >nul 2>&1
+del /f /q "release\app\tsconfig*.json" >nul 2>&1
+del /f /q "release\app\tsconfig*.tsbuildinfo" >nul 2>&1
 
 :: Copy static assets
 echo       Copying static assets...
