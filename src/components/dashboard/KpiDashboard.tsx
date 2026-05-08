@@ -528,13 +528,28 @@ export function KpiDashboard() {
 
   useEffect(() => {
     const filterByActivePlugins = () => {
-      const activePlugins = JSON.parse(typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') || '[]' : '[]') as string[];
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
+      
+      // If never configured (null), show all plugins by default
+      if (raw === null) {
+        lastFilteredPlugins.current = new Set(['__DEFAULT_ALL__']);
+        return;
+      }
+
+      const activePlugins = JSON.parse(raw) as string[];
       const activePluginsSet = new Set<string>(activePlugins);
 
-      // Skip if active plugins haven't changed
-      if (activePluginsSet.size === lastFilteredPlugins.current.size &&
-          Array.from(activePluginsSet).every(p => lastFilteredPlugins.current.has(p))) {
-        return;
+      // Skip ONLY if both active plugins haven't changed AND kpiResults/charts are already likely filtered
+      // But we must allow filtering if kpiResults just got updated with full data
+      const isPluginsSame = activePluginsSet.size === lastFilteredPlugins.current.size &&
+          Array.from(activePluginsSet).every(p => lastFilteredPlugins.current.has(p));
+      
+      // If plugins are same, we still check if we need to filter kpiResults
+      // (e.g. if kpiResults contains items not in activePluginsSet)
+      if (isPluginsSame) {
+        const needsKpiFilter = kpiResults.some(kpi => !activePluginsSet.has(kpi.pluginId));
+        const needsChartFilter = charts.some(chart => chart.kpiId && !activePluginsSet.has(chart.kpiId));
+        if (!needsKpiFilter && !needsChartFilter) return;
       }
 
       lastFilteredPlugins.current = activePluginsSet;
@@ -640,8 +655,11 @@ export function KpiDashboard() {
   }, [runCalculation, setFilterPanelOpen]);
 
   const sortedKpiResults = useMemo(() => {
-    const activeOrder = JSON.parse(typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') || '[]' : '[]');
-    if (activeOrder.length === 0) return kpiResults;
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
+    if (raw === null) return kpiResults; // Default: show all if never configured
+    
+    const activeOrder = JSON.parse(raw) as string[];
+    if (activeOrder.length === 0) return []; // Explicitly none if user unchecked all
 
     return [...kpiResults].sort((a, b) => {
       const idxA = activeOrder.indexOf(a.pluginId);

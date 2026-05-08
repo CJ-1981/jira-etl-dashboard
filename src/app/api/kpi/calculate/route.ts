@@ -5,7 +5,12 @@ import type { JiraIssue } from '@/lib/jira/client';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { issues, pluginIds, holidays, period, dateFrom, dateTo, slaTargets, activePluginIds, customPlugins, globalFilters } = body;
+    const { 
+      issues, pluginIds, holidays, period, 
+      dateFrom, dateTo, slaTargets, 
+      activePluginIds, customPlugins, globalFilters,
+      settings, region 
+    } = body;
 
     if (!issues || !Array.isArray(issues)) {
       return NextResponse.json(
@@ -29,10 +34,16 @@ export async function POST(request: Request) {
 
     const start = dateFrom ? new Date(dateFrom) : new Date('2024-01-01');
     const end = dateTo ? new Date(dateTo) : new Date();
-    const regions = holidays?.regions || [];
-    const workStart = holidays?.workStartHour || 9;
-    const workEnd = holidays?.workEndHour || 17;
-    const slaTargetHours = holidays?.slaTargetHours || 40;
+    
+    // Resolve regions: prioritize direct passed regions, then region string, then settings
+    const regions = (holidays?.regions && holidays.regions.length > 0) 
+      ? holidays.regions 
+      : (region ? [region] : (settings?.general?.defaultHolidayState ? [settings.general.defaultHolidayState] : []));
+    
+    const workStart = holidays?.workStartHour ?? settings?.general?.workStartHour ?? 9;
+    const workEnd = holidays?.workEndHour ?? settings?.general?.workEndHour ?? 17;
+    const slaTargetHours = holidays?.slaTargetHours ?? settings?.general?.defaultSlaTargetHours ?? 40;
+    const effectiveSlaTargets = slaTargets ?? settings?.sla?.statusTargets ?? {};
 
     // Cast raw issues to JiraIssue format
     const typedIssues = issues as JiraIssue[];
@@ -60,7 +71,7 @@ export async function POST(request: Request) {
     results = {};
     for (const id of pluginsToCalculate) {
       try {
-        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, slaTargets, globalFilters);
+        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, effectiveSlaTargets, globalFilters);
       } catch (err) {
         results[id] = [{
           name: `Error: ${id}`,
