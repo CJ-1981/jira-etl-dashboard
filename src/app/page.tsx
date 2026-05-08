@@ -117,13 +117,8 @@ export default function Home() {
     const savedSettings = localConfig.getSettings();
     if (savedSettings) setSettings(savedSettings);
     
-    // Set default dates
-    const now = new Date();
-    const lastMonth = new Date(now);
-    lastMonth.setMonth(now.getMonth() - 1);
-    setDateFrom(lastMonth.toISOString().split('T')[0]);
-    setDateTo(now.toISOString().split('T')[0]);
-  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setDateFrom, setDateTo]);
+    // Initially dates are empty strings from the store
+  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId]);
 
   // Consolidate data loading into a single effect with AbortController
   useEffect(() => {
@@ -139,6 +134,17 @@ export default function Home() {
     
     return () => controller.abort();
   }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
+
+  // @MX:NOTE: Auto-populate default "Max" date range from master dataset if not already set
+  useEffect(() => {
+    if (!mounted || !masterDatasetInfo?.dateRange) return;
+    
+    // Only set if both are empty (meaning no saved state or user choice yet)
+    if (!dateFrom && !dateTo) {
+      setDateFrom(masterDatasetInfo.dateRange.from.split('T')[0]);
+      setDateTo(masterDatasetInfo.dateRange.to.split('T')[0]);
+    }
+  }, [mounted, masterDatasetInfo, dateFrom, dateTo, setDateFrom, setDateTo]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -164,13 +170,16 @@ export default function Home() {
       if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
       if (savedState.charts) setDashboardCharts(savedState.charts);
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
+      if (savedState.dateFrom) setDateFrom(savedState.dateFrom);
+      if (savedState.dateTo) setDateTo(savedState.dateTo);
     } else {
       setGlobalFilters({});
       setHiddenDimensions(new Set());
       setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
       setDashboardJqlQuery('');
+      // Don't set dates here, let the master data load effect handle "max" if missing
     }
-  }, [activeConnectionId, mounted]);
+  }, [activeConnectionId, mounted, setDateFrom, setDateTo, setGlobalFilters, setHiddenDimensions, setDashboardCharts, setDashboardJqlQuery]);
 
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
@@ -179,10 +188,12 @@ export default function Home() {
       globalFilters,
       hiddenDimensions: Array.from(hiddenDimensions),
       charts: dashboardCharts,
-      dashboardJql: dashboardJqlQuery
+      dashboardJql: dashboardJqlQuery,
+      dateFrom,
+      dateTo
     };
     localConfig.saveDashboardState(activeConnectionId, state);
-  }, [activeConnectionId, globalFilters, hiddenDimensions, dashboardCharts, dashboardJqlQuery, mounted]);
+  }, [activeConnectionId, globalFilters, hiddenDimensions, dashboardCharts, dashboardJqlQuery, dateFrom, dateTo, mounted]);
 
   const handlePrint = () => {
     window.print();

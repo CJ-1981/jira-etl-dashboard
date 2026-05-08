@@ -90,6 +90,8 @@ export interface DashboardState {
   hiddenDimensions?: string[];
   charts?: any[];
   dashboardJql?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface DashboardPreset {
