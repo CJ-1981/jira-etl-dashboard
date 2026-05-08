@@ -237,3 +237,4 @@ release/*.zip
 *.sqlite3
 /db/*
 /prisma/db/*
+next-env.d.ts

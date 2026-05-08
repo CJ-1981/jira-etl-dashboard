@@ -42,6 +42,21 @@ export interface ChartConfig {
   kpiId: string;
   type: 'bar' | 'line' | 'pie' | 'area';
   width: 'sm' | 'md' | 'lg' | 'full';
+  jqlFilter: JqlFilter;
+  // @MX:NOTE: User-editable title persisted per saved view
+  customTitle?: string;
+}
+
+export interface JqlFilter {
+  enabled: boolean;
+  query: string;
+  mode: 'override' | 'refine';
+}
+
+export interface KpiCardConfig {
+  pluginId: string;
+  resultName: string;
+  jqlFilter: JqlFilter;
 }
 
 export interface PollingStatus {

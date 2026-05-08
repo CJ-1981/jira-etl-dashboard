@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ChartConfig, ExtractedIssue, JiraConnection, KpiCalcResult } from '@/types/dashboard';
+import { ChartConfig, ExtractedIssue, JiraConnection, KpiCalcResult, JqlFilter, KpiCardConfig } from '@/types/dashboard';
 import { AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 
 // @MX:ANCHOR: Central Application Store (useAppStore)
@@ -62,6 +62,19 @@ interface AppState {
 
   kpiSubTab: string;
   setKpiSubTab: (tab: string) => void;
+
+  // Custom JQL filters per widget
+  customWidgetResults: Map<string, { context: any; results: KpiCalcResult[] }>;
+  setCustomWidgetResults: (results: Map<string, { context: any; results: KpiCalcResult[] }>) => void;
+
+  calculatingWidgets: Set<string>;
+  setCalculatingWidgets: (widgets: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+
+  kpiCardConfigs: KpiCardConfig[];
+  setKpiCardConfigs: (configs: KpiCardConfig[]) => void;
+
+  jqlResultCache: Map<string, { results: KpiCalcResult[]; timestamp: number }>;
+  setJqlResultCache: (cache: Map<string, { results: KpiCalcResult[]; timestamp: number }>) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -112,7 +125,7 @@ export const useAppStore = create<AppState>((set) => ({
   })),
 
   // @MX:NOTE: Initial dashboard charts configuration
-  dashboardCharts: [{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full' }],
+  dashboardCharts: [{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', jqlFilter: { enabled: false, query: '', mode: 'refine' } }],
   setDashboardCharts: (charts) => set({ dashboardCharts: charts }),
 
   dashboardJqlQuery: '',
@@ -129,4 +142,18 @@ export const useAppStore = create<AppState>((set) => ({
 
   kpiSubTab: 'dashboard',
   setKpiSubTab: (tab) => set({ kpiSubTab: tab }),
+
+  customWidgetResults: new Map(),
+  setCustomWidgetResults: (results) => set({ customWidgetResults: results }),
+
+  calculatingWidgets: new Set(),
+  setCalculatingWidgets: (widgets) => set((state) => ({
+    calculatingWidgets: typeof widgets === 'function' ? widgets(state.calculatingWidgets) : widgets
+  })),
+
+  kpiCardConfigs: [],
+  setKpiCardConfigs: (configs) => set({ kpiCardConfigs: configs }),
+
+  jqlResultCache: new Map(),
+  setJqlResultCache: (cache) => set({ jqlResultCache: cache }),
 }));
