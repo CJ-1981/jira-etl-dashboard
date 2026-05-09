@@ -57,9 +57,14 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 | Aging WIP Analysis | Efficiency | Open tickets exceeding business hour thresholds |
 | Avg. Processing Hours | Processing Time | Avg business hours from creation to resolution |
 | Time in Status | Turnaround | Avg business hours per workflow status |
-| SLA Compliance Rate | SLA | % tickets resolved within SLA target |
+| SLA by Status | SLA | % of status durations meeting per-status targets with configurable comment-based clock reset |
 
 All time-based KPIs **exclude weekends and German holidays** (all 16 states supported), with configurable work hours.
+
+**SLA Comment Rule Configuration** — Choose how SLA clock resets work for SLA by Status calculations:
+- **Assignee Only** (default): Only comments from the ticket's assignee reset the SLA clock
+- **Anyone**: Any comment on the ticket resets the SLA clock
+Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targets by Status**
 
 ---
 
