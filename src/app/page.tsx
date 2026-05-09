@@ -171,21 +171,26 @@ export default function Home() {
   // Persistence for Dashboard State (Filters, Charts, etc.)
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
-    
+
     const savedState = localConfig.getDashboardState(activeConnectionId);
     if (savedState) {
       if (savedState.globalFilters) setGlobalFilters(savedState.globalFilters);
       if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
       if (savedState.charts) setDashboardCharts(savedState.charts);
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
-      if (savedState.dateFrom) setDateFrom(savedState.dateFrom);
-      if (savedState.dateTo) setDateTo(savedState.dateTo);
+      // Only load saved dates if they were explicitly set by user (both from and to exist)
+      if (savedState.dateFrom && savedState.dateTo) {
+        setDateFrom(savedState.dateFrom);
+        setDateTo(savedState.dateTo);
+      }
     } else {
       setGlobalFilters({});
       setHiddenDimensions(new Set());
       setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
       setDashboardJqlQuery('');
-      // Don't set dates here, let the master data load effect handle "max" if missing
+      // Set to max period by default - will be overridden by masterDatasetInfo effect
+      setDateFrom('');
+      setDateTo('');
     }
   }, [activeConnectionId, mounted, setDateFrom, setDateTo, setGlobalFilters, setHiddenDimensions, setDashboardCharts, setDashboardJqlQuery]);
 
