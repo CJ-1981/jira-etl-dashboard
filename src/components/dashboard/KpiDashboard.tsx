@@ -274,7 +274,7 @@ export function KpiDashboard() {
 
   const handleAddChart = () => {
     const id = `chart-${Date.now()}`;
-    setCharts([...charts, { id, kpiId: '', type: 'bar', width: 'md', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
+    setCharts([...charts, { id, kpiId: '', type: 'bar', width: 'md', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
   };
 
   const handleRemoveChart = (id: string) => {

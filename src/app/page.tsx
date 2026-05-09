@@ -183,7 +183,7 @@ export default function Home() {
     } else {
       setGlobalFilters({});
       setHiddenDimensions(new Set());
-      setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
+      setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
       setDashboardJqlQuery('');
       // Don't set dates here, let the master data load effect handle "max" if missing
     }

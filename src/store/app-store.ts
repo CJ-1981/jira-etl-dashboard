@@ -142,7 +142,7 @@ export const useAppStore = create<AppState>((set) => ({
   })),
 
   // @MX:NOTE: Initial dashboard charts configuration
-  dashboardCharts: [{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' }, expanded: true }],
+  dashboardCharts: [{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' }, expanded: true }],
   setDashboardCharts: (charts) => set({ dashboardCharts: charts }),
   toggleWidgetExpanded: (widgetId) => set((state) => ({
     dashboardCharts: state.dashboardCharts.map(chart =>
