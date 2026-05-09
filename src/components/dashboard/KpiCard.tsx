@@ -488,6 +488,40 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     const kpi = effectiveResults.find((k) => k.pluginId === config.kpiId);
     const unit = kpi?.results?.[0]?.unit || '';
 
+    // Custom tooltip content for line/area charts
+    const CustomLineAreaTooltip = ({ active, payload }: any) => {
+      if (!active || !payload || !payload.length) return null;
+
+      return (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{payload[0].payload.name}</p>
+          {payload.map((entry: any, index: number) => {
+            // Skip zero values
+            if (entry.value === 0 || entry.value === undefined || entry.value === null) return null;
+
+            let color = '#3b82f6'; // default blue for single series
+
+            // Get series index from dataKey (series0, series1, etc.) for multi-series charts
+            if (entry.dataKey.startsWith('series')) {
+              const seriesMatch = entry.dataKey.match(/series(\d+)/);
+              const seriesIndex = seriesMatch ? parseInt(seriesMatch[1]) : 0;
+              color = CHART_COLORS[seriesIndex % CHART_COLORS.length];
+            }
+
+            return (
+              <div key={index} className="flex items-center justify-between gap-4 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                  <span className="text-slate-600 dark:text-slate-400">{entry.name}</span>
+                </div>
+                <span className="font-mono text-slate-700 dark:text-slate-300">{formatChartValue(entry.value, unit)}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
     const tooltipStyle = {
       contentStyle: {
         backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
@@ -548,7 +582,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <YAxis className="text-xs" />
                 <Tooltip
                   {...tooltipStyle}
-                  formatter={(value: number) => formatChartValue(value, unit)}
+                  content={<CustomLineAreaTooltip />}
                 />
                 <Legend 
                   onClick={handleLegendClick} 
@@ -709,7 +743,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <YAxis className="text-xs" />
                 <Tooltip
                   {...tooltipStyle}
-                  formatter={(value: number) => formatChartValue(value, unit)}
+                  content={<CustomLineAreaTooltip />}
                 />
                 <Legend 
                   onClick={handleLegendClick} 
@@ -771,7 +805,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <YAxis className="text-xs" />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(value: number) => formatChartValue(value, unit)}
+                content={<CustomLineAreaTooltip />}
               />
               {/* @MX:ANCHOR: Line Chart (Standard) */}
               <Line 
@@ -841,7 +875,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <YAxis className="text-xs" />
                 <Tooltip
                   {...tooltipStyle}
-                  formatter={(value: number) => formatChartValue(value, unit)}
+                  content={<CustomLineAreaTooltip />}
                 />
                 <Legend 
                   onClick={handleLegendClick} 
@@ -886,7 +920,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <YAxis className="text-xs" />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(value: number) => formatChartValue(value, unit)}
+                content={<CustomLineAreaTooltip />}
               />
               {/* @MX:ANCHOR: Area Chart (Standard) */}
               <Area 
