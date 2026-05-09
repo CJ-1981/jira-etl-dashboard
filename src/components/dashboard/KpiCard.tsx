@@ -533,6 +533,58 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
       );
     };
 
+    // Custom tooltip content for bar charts
+    const CustomBarTooltip = ({ active, payload }: any) => {
+      if (!active || !payload || !payload.length) return null;
+
+      return (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{payload[0].payload.name}</p>
+          {payload.map((entry: any, index: number) => {
+            // Skip zero values
+            if (entry.value === 0 || entry.value === undefined || entry.value === null) return null;
+
+            // Get color from payload or use default
+            let color = entry.color || '#3b82f6';
+
+            return (
+              <div key={index} className="flex items-center justify-between gap-4 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                  <span className="text-slate-600 dark:text-slate-400">{entry.name}</span>
+                </div>
+                <span className="font-mono text-slate-700 dark:text-slate-300">{formatChartValue(entry.value, entry.payload?.unit || unit)}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
+    // Custom tooltip content for pie charts
+    const CustomPieTooltip = ({ active, payload }: any) => {
+      if (!active || !payload) return null;
+
+      const entry = payload[0];
+      if (!entry) return null;
+
+      // Skip zero values
+      if (entry.value === 0 || entry.value === undefined || entry.value === null) return null;
+
+      return (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{entry.name}</p>
+          <div className="flex items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.payload?.fill || '#3b82f6' }} />
+              <span className="text-slate-600 dark:text-slate-400">Value</span>
+            </div>
+            <span className="font-mono text-slate-700 dark:text-slate-300">{formatChartValue(entry.value, entry.payload?.unit || unit)}</span>
+          </div>
+        </div>
+      );
+    };
+
     const tooltipStyle = {
       contentStyle: {
         backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
@@ -644,7 +696,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <YAxis className="text-xs" />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(value: number) => formatChartValue(value, unit)}
+                content={<CustomBarTooltip />}
               />
               {(hasWeeklyLayers || selectedKpiData.length > 1) && (
                 <Legend 
@@ -994,7 +1046,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(value: number, name: string, props: any) => [formatChartValue(value, props.payload.unit), name]}
+                content={<CustomPieTooltip />}
               />
             </PieChart>
           </ResponsiveContainer>
