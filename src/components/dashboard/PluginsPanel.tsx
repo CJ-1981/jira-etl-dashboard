@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -465,34 +465,61 @@ export function PluginsPanel() {
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status.{' '} {settings.sla?.useAnyoneCommentsForSla ? 'Any comment resets the SLA clock.' : 'Assignee comments reset the SLA clock.'}</CardDescription>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Configure whose comments can reset the SLA clock.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
-            <p className="text-xs text-amber-800 dark:text-amber-400"><Info className="inline h-3 w-3 mr-1" />{settings.sla?.useAnyoneCommentsForSla ? 'When anyone comments on a ticket during a status, the SLA clock resets to that comment.' : 'When the assignee comments on a ticket during a status, the SLA clock resets to that comment.'}</p>
+            <p className="text-xs text-amber-800 dark:text-amber-400">
+              <Info className="inline h-3 w-3 mr-1" />
+              {settings.sla?.useAnyoneCommentsForSla
+                ? 'When anyone comments on a ticket during a status, the SLA clock resets to that comment. This includes comments from the assignee, team members, or other stakeholders.'
+                : 'When the assignee comments on a ticket during a status, the SLA clock resets to that comment. Comments from others are ignored.'}
+            </p>
           </div>
-          <div className="flex items-center justify-between py-3 border-b border-slate-200 dark:border-slate-700">
-            <div className="flex flex-col gap-0.5">
-              <Label htmlFor="sla-comment-rule" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Comment Rule for SLA
+          <div className="py-3 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col gap-2">
+              <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Comment Rule for SLA Clock Reset
               </Label>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {settings.sla?.useAnyoneCommentsForSla
-                  ? 'Anyone\'s comments can reset SLA clock'
-                  : 'Only assignee comments reset SLA clock'}
+                Choose which comments can reset the SLA clock during a status period
               </p>
+              <RadioGroup
+                value={settings.sla?.useAnyoneCommentsForSla ? 'anyone' : 'assignee'}
+                onValueChange={(value) => {
+                  const sla = settings.sla ?? {};
+                  setSettings({
+                    ...settings,
+                    sla: { ...sla, useAnyoneCommentsForSla: value === 'anyone' }
+                  });
+                }}
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="assignee" id="sla-assignee">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === false ? "checked" : "unchecked"}></div>
+                        <Label htmlFor="sla-assignee" className="text-sm cursor-pointer">
+                          Assignee only
+                        </Label>
+                      </div>
+                    </RadioGroupItem>
+                    <p className="text-xs text-slate-400">Only assignee comments</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="anyone" id="sla-anyone">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === true ? "checked" : "unchecked"}></div>
+                        <Label htmlFor="sla-anyone" className="text-sm cursor-pointer">
+                          Anyone
+                        </Label>
+                      </div>
+                    </RadioGroupItem>
+                    <p className="text-xs text-slate-400">Any comment</p>
+                  </div>
+                </div>
+              </RadioGroup>
             </div>
-            <Switch
-              id="sla-comment-rule"
-              checked={settings.sla?.useAnyoneCommentsForSla ?? false}
-              onCheckedChange={(checked) => {
-                const sla = settings.sla ?? {};
-                setSettings({
-                  ...settings,
-                  sla: { ...sla, useAnyoneCommentsForSla: checked }
-                });
-              }}
-            />
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" onClick={async () => {
