@@ -304,6 +304,13 @@ export default function Home() {
               </Select>
             )}
 
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+            >
+              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </button>
+
             {/* Submenu Toggle Button - Context-aware based on active tab */}
             {activeTab === 'extract' && (
               <button
@@ -364,13 +371,6 @@ export default function Home() {
                 )}
               </button>
             )}
-
-            <button
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
-            >
-              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-            </button>
           </div>
         </div>
       </header>
