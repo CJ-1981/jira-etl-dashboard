@@ -34,6 +34,10 @@ export async function POST(request: Request) {
 
     const start = dateFrom ? new Date(dateFrom) : new Date('2024-01-01');
     const end = dateTo ? new Date(dateTo) : new Date();
+
+    // Debug logging to verify settings are received
+    console.log('[KPI API] Settings received:', JSON.stringify(settings?.sla, null, 2));
+    console.log('[KPI API] useAnyoneCommentsForSla:', settings?.sla?.useAnyoneCommentsForSla);
     
     // Resolve regions: prioritize direct passed regions, then region string, then settings
     const regions = (holidays?.regions && holidays.regions.length > 0) 

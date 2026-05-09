@@ -1092,6 +1092,9 @@ export class KpiEngine {
       globalFilters,
     };
 
+    // Debug logging to verify context is built correctly
+    console.log(`[KPI Engine] Calculating ${pluginId} with useAnyoneCommentsForSla:`, useAnyoneCommentsForSla);
+
     const currentResults = plugin.calculate(context);
 
     // 3. Weekly breakdown for all cards
