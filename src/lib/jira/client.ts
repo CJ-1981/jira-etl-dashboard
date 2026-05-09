@@ -369,7 +369,7 @@ export class JiraClient {
         maxResults,
         fields: ['summary', 'issuetype', 'priority', 'status', 'assignee', 'reporter',
                  'created', 'updated', 'resolutiondate', 'duedate',
-                 this.fieldMapping.storyPointsField, 'labels', 'components'],
+                 this.fieldMapping.storyPointsField, 'labels', 'components', 'comment'],
       };
 
       if (safeExpand.length > 0) {
