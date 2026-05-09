@@ -492,8 +492,16 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     const CustomLineAreaTooltip = ({ active, payload }: any) => {
       if (!active || !payload || !payload.length) return null;
 
+      let orderedPayload = payload;
+
       // For area charts, reverse the payload to match visual stacking (top to bottom)
-      const orderedPayload = config.type === 'area' ? [...payload].reverse() : payload;
+      if (config.type === 'area') {
+        orderedPayload = [...payload].reverse();
+      }
+      // For line charts, sort by Y value to match visual position (top to bottom)
+      else if (config.type === 'line') {
+        orderedPayload = [...payload].sort((a: any, b: any) => b.value - a.value);
+      }
 
       return (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2">
