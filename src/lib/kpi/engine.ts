@@ -713,11 +713,19 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
         );
 
         // Debug logging for first few issues to see the difference
-        if (withinSla < 5 && relevantComments.length > 0) {
+        if (totalOccurrences <= 10) {
           console.log(`[SLA Debug] Issue: ${issue.key}, Status: ${status}`);
           console.log(`[SLA Debug] useAnyoneCommentsForSla: ${context.useAnyoneCommentsForSla}`);
+          console.log(`[SLA Debug] All comments in period: ${issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit).length}`);
           console.log(`[SLA Debug] Relevant comments found: ${relevantComments.length}`);
-          console.log(`[SLA Debug] Comments: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+          if (relevantComments.length > 0) {
+            console.log(`[SLA Debug] Relevant: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+          } else {
+            const allComments = issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit);
+            if (allComments.length > 0) {
+              console.log(`[SLA Debug] Excluded comments: ${allComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+            }
+          }
         }
 
         // SLA clock resets to the last relevant comment
@@ -748,11 +756,19 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
           );
 
           // Debug logging for first few issues to see the difference
-          if (withinSla < 5 && relevantComments.length > 0) {
+          if (totalOccurrences <= 10) {
             console.log(`[SLA Debug] Issue: ${issue.key}, Initial Status: ${status}`);
             console.log(`[SLA Debug] useAnyoneCommentsForSla: ${context.useAnyoneCommentsForSla}`);
+            console.log(`[SLA Debug] All comments in period: ${issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit).length}`);
             console.log(`[SLA Debug] Relevant comments found: ${relevantComments.length}`);
-            console.log(`[SLA Debug] Comments: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+            if (relevantComments.length > 0) {
+              console.log(`[SLA Debug] Relevant: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+            } else {
+              const allComments = issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit);
+              if (allComments.length > 0) {
+                console.log(`[SLA Debug] Excluded comments: ${allComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+              }
+            }
           }
 
           const slaStart = relevantComments.length > 0
