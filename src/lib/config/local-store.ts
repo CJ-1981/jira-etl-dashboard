@@ -119,6 +119,10 @@ const KEYS = {
   etlUpdateOnly: 'cfg_etl_update_only',
   dashboardState: 'cfg_dashboard_state',
   presets: 'cfg_dashboard_presets',
+  // Submenu visibility states
+  showDataCenterSubmenu: 'cfg_show_data_center_submenu',
+  showKpiAnalyticsSubmenu: 'cfg_show_kpi_analytics_submenu',
+  showSettingsSubmenu: 'cfg_show_settings_submenu',
 };
 
 // @MX:ANCHOR: DEFAULT_SETTINGS
@@ -271,7 +275,17 @@ export const localConfig = {
   clear: () => {
     if (!isBrowser) return;
     Object.values(KEYS).forEach(k => localStorage.removeItem(k));
-  }
+  },
+
+  // Submenu visibility getters and setters
+  getShowDataCenterSubmenu: () => get<boolean>(KEYS.showDataCenterSubmenu, true),
+  setShowDataCenterSubmenu: (val: boolean) => set(KEYS.showDataCenterSubmenu, val),
+
+  getShowKpiAnalyticsSubmenu: () => get<boolean>(KEYS.showKpiAnalyticsSubmenu, true),
+  setShowKpiAnalyticsSubmenu: (val: boolean) => set(KEYS.showKpiAnalyticsSubmenu, val),
+
+  getShowSettingsSubmenu: () => get<boolean>(KEYS.showSettingsSubmenu, true),
+  setShowSettingsSubmenu: (val: boolean) => set(KEYS.showSettingsSubmenu, val),
 };
 
 /** Builds a postgresql:// URL from a PgConnection (host-based form). */

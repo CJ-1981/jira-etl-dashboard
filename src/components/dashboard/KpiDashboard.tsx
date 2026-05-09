@@ -73,7 +73,7 @@ import {
   Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
   Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
-  ArrowUp, Search, ChevronDown, Database, Filter, RefreshCw,
+  ArrowUp, Search, ChevronDown, ChevronUp, Database, Filter, RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
@@ -98,6 +98,10 @@ export function KpiDashboard() {
   const onPrint = () => window.print();
   const isFirstRender = useRef(true);
   const hasUserInitiatedCalc = useRef(false);
+
+  // State for assignee panel expansion
+  const [assigneePanelExpanded, setAssigneePanelExpanded] = useState(true);
+
 
   // ─── Period Analysis Helpers ──────────────────────────────────────────────
   const { isAnyPresetActive, isDataTruncated, availableStartDate } = useMemo(() => {
@@ -270,7 +274,7 @@ export function KpiDashboard() {
 
   const handleAddChart = () => {
     const id = `chart-${Date.now()}`;
-    setCharts([...charts, { id, kpiId: '', type: 'bar', width: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
+    setCharts([...charts, { id, kpiId: '', type: 'bar', width: 'md', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
   };
 
   const handleRemoveChart = (id: string) => {
@@ -1563,8 +1567,21 @@ export function KpiDashboard() {
         {assigneeKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-indigo-400" />Tickets by Assignee</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <UserCheck className="h-5 w-5 text-indigo-400" />
+                    Tickets by Assignee
+                  </CardTitle>
+                  <button
+                    onClick={() => setAssigneePanelExpanded(!assigneePanelExpanded)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    title={assigneePanelExpanded ? "Collapse" : "Expand"}
+                    aria-label={assigneePanelExpanded ? "Collapse section" : "Expand section"}
+                  >
+                    {assigneePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
                 {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_assignee|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
@@ -1578,48 +1595,50 @@ export function KpiDashboard() {
                 )}
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">{assigneeKpis.map((kpi) => {
-                const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`));
-                const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
+            {assigneePanelExpanded && (
+              <CardContent>
+                <div className="space-y-4">{assigneeKpis.map((kpi) => {
+                  const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`));
+                  const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
 
-                return (
-                  <div key={kpi.pluginId} className="space-y-3">
-                    {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                      <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
-                              onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
-                            >
-                              {result.dimensions?.assignee || result.name}
-                            </span>
-                            <button
-                              onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
-                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                              title="Hide bar"
-                            >
-                              <EyeOff className="h-3 w-3" />
-                            </button>
+                  return (
+                    <div key={kpi.pluginId} className="space-y-3">
+                      {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
+                        <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
+                                onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
+                              >
+                                {result.dimensions?.assignee || result.name}
+                              </span>
+                              <button
+                                onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
+                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                title="Hide bar"
+                              >
+                                <EyeOff className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
                           </div>
-                          <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
-                        </div>
-                        <div
-                          className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-indigo-400 transition-all"
-                          onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
-                        >
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700"
-                            style={{ width: `${(result.value / maxVal) * 100}%` }}
-                          />
+                            className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-indigo-400 transition-all"
+                            onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
+                          >
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700"
+                              style={{ width: `${(result.value / maxVal) * 100}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}</div>
-            </CardContent>
+                      ))}
+                    </div>
+                  );
+                })}</div>
+              </CardContent>
+            )}
           </Card>
         )}
 

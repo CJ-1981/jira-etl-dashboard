@@ -47,17 +47,17 @@ import {
 } from '@/components/ui/select';
 
 // ─── KPI Card (Single Widget) ────────────────────────────────────────────────
-export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitleChange }: { 
-  result: { 
-    name: string; 
-    value: number; 
-    unit: string; 
-    dimensions?: any; 
+export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitleChange }: {
+  result: {
+    name: string;
+    value: number;
+    unit: string;
+    dimensions?: any;
     details?: any[];
     ticketKeys?: string[];
     comparison?: { value: number; change: number; label: string };
-  }; 
-  pluginId: string; 
+  };
+  pluginId: string;
   onHide?: () => void;
   onClick?: () => void;
   // @MX:NOTE: Per-view custom widget title support
@@ -66,6 +66,9 @@ export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitl
 }) {
   const { settings } = useAppStore();
   const alertConfig = settings?.alerts?.thresholds?.[pluginId];
+
+  // @MX:NOTE: Expanded state for widget collapse/expand
+  const [expanded, setExpanded] = useState(true);
 
   // @MX:NOTE: Inline title editing state
   const [editingTitle, setEditingTitle] = useState(false);
@@ -163,10 +166,18 @@ export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitl
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 min-w-0 group/title">
+            <div className="flex items-center gap-1.5 min-w-0 group/title flex-1">
               <p className={`text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate ${isClickable ? 'group-hover:text-blue-500 group-hover:underline' : ''}`}>
                 {displayTitle}
               </p>
+              <button
+                onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5 shrink-0"
+                title={expanded ? "Collapse" : "Expand"}
+                aria-label={expanded ? "Collapse widget" : "Expand widget"}
+              >
+                {expanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+              </button>
               {onTitleChange && (
                 <button
                   onClick={handleStartEdit}
@@ -213,56 +224,60 @@ export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitl
           </div>
         </div>
 
-        <div className="flex items-center gap-3 mb-3">
-          <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800/50">
-            <div className={getColor()}>{getIcon()}</div>
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <p className={`text-3xl font-bold font-mono tracking-tight ${getColor()}`}>
-              {result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}
-            </p>
-            {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{result.unit}</p>}
-          </div>
-        </div>
+        {expanded && (
+          <>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-lg p-2 bg-gray-100 dark:bg-slate-800/50">
+                <div className={getColor()}>{getIcon()}</div>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className={`text-3xl font-bold font-mono tracking-tight ${getColor()}`}>
+                  {result.value % 1 !== 0 ? result.value.toFixed(2) : result.value}
+                </p>
+                {result.unit && <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{result.unit}</p>}
+              </div>
+            </div>
 
-        <div className="flex items-center justify-between mb-1">
-          {result.ticketKeys && result.ticketKeys.length > 0 && (
-            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-400 border-none">
-              {result.ticketKeys.length} tickets
-            </Badge>
-          )}
-        </div>
-        {/* Weekly Breakdown Section */}
-        {result.details && result.details.some((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => ['This Week', 'Previous Week'].includes(d.label)) && (
-          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
-            {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'This Week') && (
-              <div className="space-y-0.5">
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">This Week</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
-                  {(() => {
-                    const d = result.details.find((det: any) => det.label === 'This Week');
-                    return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
-                  })()}
-                  <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
-                </p>
+            <div className="flex items-center justify-between mb-1">
+              {result.ticketKeys && result.ticketKeys.length > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-400 border-none">
+                  {result.ticketKeys.length} tickets
+                </Badge>
+              )}
+            </div>
+            {/* Weekly Breakdown Section */}
+            {result.details && result.details.some((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => ['This Week', 'Previous Week'].includes(d.label)) && (
+              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
+                {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'This Week') && (
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">This Week</p>
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                      {(() => {
+                        const d = result.details.find((det: any) => det.label === 'This Week');
+                        return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
+                      })()}
+                      <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
+                    </p>
+                  </div>
+                )}
+                {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Previous Week') && (
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Prev. Week</p>
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                      {(() => {
+                        const d = result.details.find((det: any) => det.label === 'Previous Week');
+                        return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
+                      })()}
+                      <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
+                    </p>
+                  </div>
+                )}
               </div>
             )}
-            {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Previous Week') && (
-              <div className="space-y-0.5">
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Prev. Week</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
-                  {(() => {
-                    const d = result.details.find((det: any) => det.label === 'Previous Week');
-                    return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
-                  })()}
-                  <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
-                </p>
-              </div>
-            )}
-          </div>
+
+            {result.details && <><Separator className="my-3 bg-gray-100 dark:bg-slate-800" /><div className="space-y-1.5">{result.details.map((d: any, i: number) => (<div key={i} className="flex items-center justify-between text-xs"><span className="text-slate-400 dark:text-slate-500">{d.label}</span><span className="font-mono text-slate-700 dark:text-slate-300">{d.value}{d.unit ? ` ${d.unit}` : ''}</span></div>))}</div></>}
+          </>
         )}
-
-        {result.details && <><Separator className="my-3 bg-gray-100 dark:bg-slate-800" /><div className="space-y-1.5">{result.details.map((d: any, i: number) => (<div key={i} className="flex items-center justify-between text-xs"><span className="text-slate-400 dark:text-slate-500">{d.label}</span><span className="font-mono text-slate-700 dark:text-slate-300">{d.value}{d.unit ? ` ${d.unit}` : ''}</span></div>))}</div></>}
       </CardContent>
     </Card>
   );
@@ -289,6 +304,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
   const chartRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
   const [jqlSettingsOpen, setJqlSettingsOpen] = useState(false);
+
+  // @MX:NOTE: Expanded state from store (default to true if not set)
+  const expanded = config.expanded !== false;
+  const { toggleWidgetExpanded } = useAppStore();
 
   // @MX:NOTE: Inline chart title editing state
   const [editingTitle, setEditingTitle] = useState(false);
@@ -457,13 +476,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
       );
     }
 
-    // Dynamic height based on width
+    // Dynamic height based on height setting
     const chartHeight = {
-      sm: 250,   // Narrow
-      md: 300,   // Medium
-      lg: 350,   // Wide
-      full: 400, // Full
-    }[config.width] || 300;
+      short: 150,  // 0.5x
+      md: 300,     // 1x (default)
+      tall: 600,   // 2x
+      xtall: 1200, // 4x
+    }[config.height] || 300;
 
     // @MX:NOTE: Use effectiveResults (not kpiResults) so multi-series paths also reflect the custom JQL filter
     const kpi = effectiveResults.find((k) => k.pluginId === config.kpiId);
@@ -978,8 +997,17 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 group/charttitle">
-                  <CardTitle className="text-lg">{displayTitle}</CardTitle>
+                <div className="flex items-center gap-1.5 min-w-0 group/charttitle">
+                  <CardTitle className="text-lg truncate">{displayTitle}</CardTitle>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleWidgetExpanded(config.id); }}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5 shrink-0"
+                    title={expanded ? "Collapse" : "Expand"}
+                    aria-label={expanded ? "Collapse chart" : "Expand chart"}
+                    data-export-ignore="true"
+                  >
+                    {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
                   <button
                     onClick={handleStartTitleEdit}
                     className="opacity-0 group-hover/charttitle:opacity-100 text-slate-300 hover:text-blue-400 transition-opacity p-0.5"
@@ -1101,10 +1129,11 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Inline Controls */}
-        <div className="flex flex-wrap gap-3" data-export-ignore="true">
-          <div className="flex-1 min-w-[200px]">
+      {expanded ? (
+        <CardContent className="space-y-4">
+          {/* Inline Controls */}
+          <div className="flex flex-wrap gap-3" data-export-ignore="true">
+          <div className="w-[280px]">
             <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">KPI Metric</Label>
             <Select value={config.kpiId} onValueChange={handleKpiChange}>
               <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
@@ -1161,28 +1190,49 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             </Select>
           </div>
 
-          <div className="w-[120px]">
-            <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Width</Label>
-            <Select
-              value={config.width}
-              onValueChange={(width: 'sm' | 'md' | 'lg' | 'full') => onChange(config.id, { ...config, width })}
-            >
-              <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sm">Small</SelectItem>
-                <SelectItem value="md">Medium</SelectItem>
-                <SelectItem value="lg">Large</SelectItem>
-                <SelectItem value="full">Full</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="ml-auto flex gap-3">
+            <div className="w-[120px]">
+              <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Width</Label>
+              <Select
+                value={config.width}
+                onValueChange={(width: 'sm' | 'md' | 'lg' | 'full') => onChange(config.id, { ...config, width })}
+              >
+                <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sm">Small</SelectItem>
+                  <SelectItem value="md">Medium</SelectItem>
+                  <SelectItem value="lg">Large</SelectItem>
+                  <SelectItem value="full">Full</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-[120px]">
+              <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Height</Label>
+              <Select
+                value={config.height || 'md'}
+                onValueChange={(height: 'short' | 'md' | 'tall' | 'xtall') => onChange(config.id, { ...config, height })}
+              >
+                <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="short">Short</SelectItem>
+                  <SelectItem value="md">Medium</SelectItem>
+                  <SelectItem value="tall">Tall</SelectItem>
+                  <SelectItem value="xtall">Extra Tall</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
         {/* Chart Area */}
         <div className="mt-4">{renderChart()}</div>
-      </CardContent>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

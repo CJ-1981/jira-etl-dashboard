@@ -12,6 +12,14 @@ interface AppState {
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
 
+  // Submenu visibility state
+  showDataCenterSubmenu: boolean;
+  setShowDataCenterSubmenu: (show: boolean) => void;
+  showKpiAnalyticsSubmenu: boolean;
+  setShowKpiAnalyticsSubmenu: (show: boolean) => void;
+  showSettingsSubmenu: boolean;
+  setShowSettingsSubmenu: (show: boolean) => void;
+
   // Data & Connections
   connections: JiraConnection[];
   setConnections: (conns: JiraConnection[]) => void;
@@ -47,6 +55,7 @@ interface AppState {
   
   dashboardCharts: ChartConfig[];
   setDashboardCharts: (charts: ChartConfig[]) => void;
+  toggleWidgetExpanded: (widgetId: string) => void;
   
   dashboardJqlQuery: string;
   setDashboardJqlQuery: (query: string) => void;
@@ -80,9 +89,17 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   activeTab: 'extract',
   setActiveTab: (tab) => set({ activeTab: tab }),
-  
+
   theme: 'dark',
   setTheme: (theme) => set({ theme }),
+
+  // Submenu visibility defaults
+  showDataCenterSubmenu: true,
+  setShowDataCenterSubmenu: (show) => set({ showDataCenterSubmenu: show }),
+  showKpiAnalyticsSubmenu: true,
+  setShowKpiAnalyticsSubmenu: (show) => set({ showKpiAnalyticsSubmenu: show }),
+  showSettingsSubmenu: true,
+  setShowSettingsSubmenu: (show) => set({ showSettingsSubmenu: show }),
 
   connections: [],
   setConnections: (connections) => set({ connections }),
@@ -125,8 +142,13 @@ export const useAppStore = create<AppState>((set) => ({
   })),
 
   // @MX:NOTE: Initial dashboard charts configuration
-  dashboardCharts: [{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', jqlFilter: { enabled: false, query: '', mode: 'refine' } }],
+  dashboardCharts: [{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' }, expanded: true }],
   setDashboardCharts: (charts) => set({ dashboardCharts: charts }),
+  toggleWidgetExpanded: (widgetId) => set((state) => ({
+    dashboardCharts: state.dashboardCharts.map(chart =>
+      chart.id === widgetId ? { ...chart, expanded: chart.expanded === false ? true : false } : chart
+    )
+  })),
 
   dashboardJqlQuery: '',
   setDashboardJqlQuery: (query) => set({ dashboardJqlQuery: query }),

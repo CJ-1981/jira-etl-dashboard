@@ -42,9 +42,12 @@ export interface ChartConfig {
   kpiId: string;
   type: 'bar' | 'line' | 'pie' | 'area';
   width: 'sm' | 'md' | 'lg' | 'full';
+  height: 'short' | 'md' | 'tall' | 'xtall';
   jqlFilter: JqlFilter;
   // @MX:NOTE: User-editable title persisted per saved view
   customTitle?: string;
+  // @MX:NOTE: Expanded state persisted per widget
+  expanded?: boolean;
 }
 
 export interface JqlFilter {

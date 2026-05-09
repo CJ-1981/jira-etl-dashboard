@@ -2,8 +2,8 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon, Loader2 
+import {
+  Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon, Loader2, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -55,6 +55,9 @@ export default function Home() {
     filterPanelOpen, setFilterPanelOpen,
     showFloatingBar, setShowFloatingBar,
     kpiSubTab, setKpiSubTab,
+    showDataCenterSubmenu, setShowDataCenterSubmenu,
+    showKpiAnalyticsSubmenu, setShowKpiAnalyticsSubmenu,
+    showSettingsSubmenu, setShowSettingsSubmenu,
   } = useAppStore();
 
   useEffect(() => {
@@ -101,7 +104,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!mounted) return;
-    
+
     // 1. Load config from local storage
     const conns = localConfig.getJiraConnections();
     setConnections(conns);
@@ -116,9 +119,14 @@ export default function Home() {
 
     const savedSettings = localConfig.getSettings();
     if (savedSettings) setSettings(savedSettings);
-    
+
+    // Load submenu visibility states
+    setShowDataCenterSubmenu(localConfig.getShowDataCenterSubmenu());
+    setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
+    setShowSettingsSubmenu(localConfig.getShowSettingsSubmenu());
+
     // Initially dates are empty strings from the store
-  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId]);
+  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);
 
   // Consolidate data loading into a single effect with AbortController
   useEffect(() => {
@@ -175,7 +183,7 @@ export default function Home() {
     } else {
       setGlobalFilters({});
       setHiddenDimensions(new Set());
-      setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
+      setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'refine' } }]);
       setDashboardJqlQuery('');
       // Don't set dates here, let the master data load effect handle "max" if missing
     }
@@ -183,7 +191,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
-    
+
     const state = {
       globalFilters,
       hiddenDimensions: Array.from(hiddenDimensions),
@@ -194,6 +202,22 @@ export default function Home() {
     };
     localConfig.saveDashboardState(activeConnectionId, state);
   }, [activeConnectionId, globalFilters, hiddenDimensions, dashboardCharts, dashboardJqlQuery, dateFrom, dateTo, mounted]);
+
+  // Persist submenu visibility states
+  useEffect(() => {
+    if (!mounted) return;
+    localConfig.setShowDataCenterSubmenu(showDataCenterSubmenu);
+  }, [showDataCenterSubmenu, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    localConfig.setShowKpiAnalyticsSubmenu(showKpiAnalyticsSubmenu);
+  }, [showKpiAnalyticsSubmenu, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    localConfig.setShowSettingsSubmenu(showSettingsSubmenu);
+  }, [showSettingsSubmenu, mounted]);
 
   const handlePrint = () => {
     window.print();
@@ -279,6 +303,68 @@ export default function Home() {
                 </SelectContent>
               </Select>
             )}
+
+            {/* Submenu Toggle Button - Context-aware based on active tab */}
+            {activeTab === 'extract' && (
+              <button
+                onClick={() => setShowDataCenterSubmenu(!showDataCenterSubmenu)}
+                className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 font-medium"
+                title={showDataCenterSubmenu ? "Hide submenu" : "Show submenu"}
+              >
+                {showDataCenterSubmenu ? (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Hide</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Show</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {activeTab === 'kpi' && (
+              <button
+                onClick={() => setShowKpiAnalyticsSubmenu(!showKpiAnalyticsSubmenu)}
+                className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 font-medium"
+                title={showKpiAnalyticsSubmenu ? "Hide submenu" : "Show submenu"}
+              >
+                {showKpiAnalyticsSubmenu ? (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Hide</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Show</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {activeTab === 'settings' && (
+              <button
+                onClick={() => setShowSettingsSubmenu(!showSettingsSubmenu)}
+                className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 font-medium"
+                title={showSettingsSubmenu ? "Hide submenu" : "Show submenu"}
+              >
+                {showSettingsSubmenu ? (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Hide</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Show</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
@@ -294,18 +380,20 @@ export default function Home() {
 
           <TabsContent value="extract" className="space-y-6 overflow-hidden">
             <Tabs defaultValue="jira-etl" className="space-y-6">
-              <div className="flex justify-center no-print">
-                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                  <TabsTrigger value="jira-etl" className="gap-2 px-6">
-                    <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
-                    Jira Extraction
-                  </TabsTrigger>
-                  <TabsTrigger value="db-export" className="gap-2 px-6">
-                    <Database className="h-4 w-4" />
-                    Data Export
-                  </TabsTrigger>
-                </TabsList>
-              </div>
+              {showDataCenterSubmenu && (
+                <div className="flex justify-center no-print">
+                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                    <TabsTrigger value="jira-etl" className="gap-2 px-6">
+                      <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
+                      Jira Extraction
+                    </TabsTrigger>
+                    <TabsTrigger value="db-export" className="gap-2 px-6">
+                      <Database className="h-4 w-4" />
+                      Data Export
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+              )}
 
               <TabsContent value="jira-etl" className="mt-0">
                 <ExtractPanel />
@@ -319,22 +407,24 @@ export default function Home() {
 
           <TabsContent value="kpi" className="space-y-6 overflow-hidden">
             <Tabs value={kpiSubTab} onValueChange={setKpiSubTab} className="space-y-6">
-              <div className="flex justify-center no-print">
-                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
-                  <TabsTrigger value="dashboard" className="gap-2 w-48 text-xs">
-                    <BarChart3 className="h-4 w-4" />
-                    Dashboard
-                  </TabsTrigger>
-                  <TabsTrigger value="plugins" className="gap-2 w-48 text-xs">
-                    <Plug className="h-4 w-4" />
-                    Plugins Configuration
-                  </TabsTrigger>
-                  <TabsTrigger value="holidays" className="gap-2 w-48 text-xs">
-                    <Calendar className="h-4 w-4" />
-                    Holidays Calendar
-                  </TabsTrigger>
-                </TabsList>
-              </div>
+              {showKpiAnalyticsSubmenu && (
+                <div className="flex justify-center no-print">
+                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
+                    <TabsTrigger value="dashboard" className="gap-2 w-48 text-xs">
+                      <BarChart3 className="h-4 w-4" />
+                      Dashboard
+                    </TabsTrigger>
+                    <TabsTrigger value="plugins" className="gap-2 w-48 text-xs">
+                      <Plug className="h-4 w-4" />
+                      Plugins Configuration
+                    </TabsTrigger>
+                    <TabsTrigger value="holidays" className="gap-2 w-48 text-xs">
+                      <Calendar className="h-4 w-4" />
+                      Holidays Calendar
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+              )}
 
               <TabsContent value="dashboard" className="mt-0">
                 <KpiDashboard />
@@ -354,22 +444,24 @@ export default function Home() {
 
           <TabsContent value="settings" className="space-y-6 overflow-hidden">
             <Tabs defaultValue="connections" className="space-y-6">
-              <div className="flex justify-center">
-                <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                  <TabsTrigger value="connections" className="gap-2 px-6">
-                    <Server className="h-4 w-4" />
-                    Connections
-                  </TabsTrigger>
-                  <TabsTrigger value="storage" className="gap-2 px-6">
-                    <HardDrive className="h-4 w-4" />
-                    Storage
-                  </TabsTrigger>
-                  <TabsTrigger value="config" className="gap-2 px-6">
-                    <Settings className="h-4 w-4" />
-                    Configuration
-                  </TabsTrigger>
-                </TabsList>
-              </div>
+              {showSettingsSubmenu && (
+                <div className="flex justify-center">
+                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                    <TabsTrigger value="connections" className="gap-2 px-6">
+                      <Server className="h-4 w-4" />
+                      Connections
+                    </TabsTrigger>
+                    <TabsTrigger value="storage" className="gap-2 px-6">
+                      <HardDrive className="h-4 w-4" />
+                      Storage
+                    </TabsTrigger>
+                    <TabsTrigger value="config" className="gap-2 px-6">
+                      <Settings className="h-4 w-4" />
+                      Configuration
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+              )}
 
               <TabsContent value="connections" className="mt-0">
                 <ConnectionsPanel />
