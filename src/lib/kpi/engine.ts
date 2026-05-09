@@ -712,6 +712,14 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
           }
         );
 
+        // Debug logging for first few issues to see the difference
+        if (withinSla < 5 && relevantComments.length > 0) {
+          console.log(`[SLA Debug] Issue: ${issue.key}, Status: ${status}`);
+          console.log(`[SLA Debug] useAnyoneCommentsForSla: ${context.useAnyoneCommentsForSla}`);
+          console.log(`[SLA Debug] Relevant comments found: ${relevantComments.length}`);
+          console.log(`[SLA Debug] Comments: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+        }
+
         // SLA clock resets to the last relevant comment
         const slaStart = relevantComments.length > 0
           ? relevantComments[relevantComments.length - 1].created
@@ -738,6 +746,14 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
               return authorMatch && c.created >= statusEntry && c.created <= statusExit;
             }
           );
+
+          // Debug logging for first few issues to see the difference
+          if (withinSla < 5 && relevantComments.length > 0) {
+            console.log(`[SLA Debug] Issue: ${issue.key}, Initial Status: ${status}`);
+            console.log(`[SLA Debug] useAnyoneCommentsForSla: ${context.useAnyoneCommentsForSla}`);
+            console.log(`[SLA Debug] Relevant comments found: ${relevantComments.length}`);
+            console.log(`[SLA Debug] Comments: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
+          }
 
           const slaStart = relevantComments.length > 0
             ? relevantComments[relevantComments.length - 1].created
