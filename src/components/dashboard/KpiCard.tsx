@@ -492,10 +492,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     const CustomLineAreaTooltip = ({ active, payload }: any) => {
       if (!active || !payload || !payload.length) return null;
 
+      // For area charts, reverse the payload to match visual stacking (top to bottom)
+      const orderedPayload = config.type === 'area' ? [...payload].reverse() : payload;
+
       return (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2">
           <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{payload[0].payload.name}</p>
-          {payload.map((entry: any, index: number) => {
+          {orderedPayload.map((entry: any, index: number) => {
             // Skip zero values
             if (entry.value === 0 || entry.value === undefined || entry.value === null) return null;
 
