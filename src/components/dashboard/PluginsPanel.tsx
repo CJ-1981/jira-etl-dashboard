@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -464,11 +465,34 @@ export function PluginsPanel() {
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Assignee comments reset the SLA clock.</CardDescription>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status.{' '} {settings.sla?.useAnyoneCommentsForSla ? 'Any comment resets the SLA clock.' : 'Assignee comments reset the SLA clock.'}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
-            <p className="text-xs text-amber-800 dark:text-amber-400"><Info className="inline h-3 w-3 mr-1" />When the assignee comments on a ticket during a status, the SLA clock resets to that comment.</p>
+            <p className="text-xs text-amber-800 dark:text-amber-400"><Info className="inline h-3 w-3 mr-1" />{settings.sla?.useAnyoneCommentsForSla ? 'When anyone comments on a ticket during a status, the SLA clock resets to that comment.' : 'When the assignee comments on a ticket during a status, the SLA clock resets to that comment.'}</p>
+          </div>
+          <div className="flex items-center justify-between py-3 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="sla-comment-rule" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Comment Rule for SLA
+              </Label>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {settings.sla?.useAnyoneCommentsForSla
+                  ? 'Anyone\'s comments can reset SLA clock'
+                  : 'Only assignee comments reset SLA clock'}
+              </p>
+            </div>
+            <Switch
+              id="sla-comment-rule"
+              checked={settings.sla?.useAnyoneCommentsForSla ?? false}
+              onCheckedChange={(checked) => {
+                const sla = settings.sla ?? {};
+                setSettings({
+                  ...settings,
+                  sla: { ...sla, useAnyoneCommentsForSla: checked }
+                });
+              }}
+            />
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" onClick={async () => {

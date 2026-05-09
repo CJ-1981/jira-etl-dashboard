@@ -16,6 +16,7 @@ export interface KpiContext {
   holidays: { regions: GermanState[]; workStartHour: number; workEndHour: number; slaTargetHours?: number };
   period: { start: Date; end: Date };
   slaTargets?: Record<string, number>;
+  useAnyoneCommentsForSla?: boolean;
   dimensions?: Record<string, string>;
   globalFilters?: Record<string, string[]>; // New: Active filters from UI
 }
@@ -703,16 +704,17 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
 
         totalOccurrences++;
 
-        // Find assignee comments during this status period
-        const assigneeComments = issue.comments.filter(
-          (c) => c.author === issue.assignee
-            && c.created >= statusEntry
-            && c.created <= statusExit
+        // Find relevant comments during this status period (assignee only or anyone based on config)
+        const relevantComments = issue.comments.filter(
+          (c) => {
+            const authorMatch = context.useAnyoneCommentsForSla || c.author === issue.assignee;
+            return authorMatch && c.created >= statusEntry && c.created <= statusExit;
+          }
         );
 
-        // SLA clock resets to the last assignee comment
-        const slaStart = assigneeComments.length > 0
-          ? assigneeComments[assigneeComments.length - 1].created
+        // SLA clock resets to the last relevant comment
+        const slaStart = relevantComments.length > 0
+          ? relevantComments[relevantComments.length - 1].created
           : statusEntry;
 
         const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
@@ -729,14 +731,16 @@ function calculateSlaByStatus(context: KpiContext): KpiResult[] {
 
           totalOccurrences++;
 
-          const assigneeComments = issue.comments.filter(
-            (c) => c.author === issue.assignee
-              && c.created >= statusEntry
-              && c.created <= statusExit
+          // Find relevant comments during this status period (assignee only or anyone based on config)
+          const relevantComments = issue.comments.filter(
+            (c) => {
+              const authorMatch = context.useAnyoneCommentsForSla || c.author === issue.assignee;
+              return authorMatch && c.created >= statusEntry && c.created <= statusExit;
+            }
           );
 
-          const slaStart = assigneeComments.length > 0
-            ? assigneeComments[assigneeComments.length - 1].created
+          const slaStart = relevantComments.length > 0
+            ? relevantComments[relevantComments.length - 1].created
             : statusEntry;
 
           const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
@@ -1021,7 +1025,8 @@ export class KpiEngine {
     holidays: { regions: GermanState[]; workStartHour?: number; workEndHour?: number; slaTargetHours?: number },
     period: { start: Date; end: Date },
     slaTargets?: Record<string, number>,
-    globalFilters?: Record<string, string[]>
+    globalFilters?: Record<string, string[]>,
+    useAnyoneCommentsForSla?: boolean
   ): KpiResult[] {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) throw new Error(`KPI plugin not found: ${pluginId}`);
@@ -1083,6 +1088,7 @@ export class KpiEngine {
       },
       period,
       slaTargets,
+      useAnyoneCommentsForSla,
       globalFilters,
     };
 
@@ -1214,11 +1220,12 @@ export class KpiEngine {
     holidays: { regions: GermanState[]; workStartHour?: number; workEndHour?: number; slaTargetHours?: number },
     period: { start: Date; end: Date },
     slaTargets?: Record<string, number>,
-    globalFilters?: Record<string, string[]>
+    globalFilters?: Record<string, string[]>,
+    useAnyoneCommentsForSla?: boolean
   ): Record<string, KpiResult[]> {
     const results: Record<string, KpiResult[]> = {};
     for (const [id, plugin] of this.plugins) {
-      results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters);
+      results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla);
     }
     return results;
   }

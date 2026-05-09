@@ -8,7 +8,7 @@ import { KpiEngine } from './engine';
 
 // Use a simplified version of the API route logic
 self.onmessage = (e) => {
-  const { pluginId, issues, holidays, period, slaTargets, globalFilters, calculateAll } = e.data;
+  const { pluginId, issues, holidays, period, slaTargets, globalFilters, calculateAll, useAnyoneCommentsForSla } = e.data;
 
   try {
     const engine = new KpiEngine();
@@ -26,9 +26,9 @@ self.onmessage = (e) => {
 
     let result;
     if (calculateAll) {
-      result = engine.calculateAll(issues, parsedHolidays, parsedPeriod, slaTargets, globalFilters);
+      result = engine.calculateAll(issues, parsedHolidays, parsedPeriod, slaTargets, globalFilters, useAnyoneCommentsForSla);
     } else if (pluginId) {
-      result = engine.calculate(pluginId, issues, parsedHolidays, parsedPeriod, slaTargets, globalFilters);
+      result = engine.calculate(pluginId, issues, parsedHolidays, parsedPeriod, slaTargets, globalFilters, useAnyoneCommentsForSla);
     }
 
     self.postMessage({ success: true, result });

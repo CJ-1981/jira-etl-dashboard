@@ -5,11 +5,11 @@ import type { JiraIssue } from '@/lib/jira/client';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { 
-      issues, pluginIds, holidays, period, 
-      dateFrom, dateTo, slaTargets, 
+    const {
+      issues, pluginIds, holidays, period,
+      dateFrom, dateTo, slaTargets,
       activePluginIds, customPlugins, globalFilters,
-      settings, region 
+      settings, region
     } = body;
 
     if (!issues || !Array.isArray(issues)) {
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     results = {};
     for (const id of pluginsToCalculate) {
       try {
-        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, effectiveSlaTargets, globalFilters);
+        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, effectiveSlaTargets, globalFilters, settings?.sla?.useAnyoneCommentsForSla);
       } catch (err) {
         results[id] = [{
           name: `Error: ${id}`,

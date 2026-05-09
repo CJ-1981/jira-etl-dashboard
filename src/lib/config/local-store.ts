@@ -58,6 +58,7 @@ export interface AppSettings {
   };
   sla: {
     statusTargets: Record<string, number>;
+    useAnyoneCommentsForSla: boolean;
   };
   alerts: {
     thresholds: Record<string, { warning: number; critical: number; operator: '>' | '<' }>;
@@ -148,6 +149,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   sla: {
     statusTargets: {},
+    useAnyoneCommentsForSla: false,
   },
   alerts: {
     thresholds: {
