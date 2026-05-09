@@ -188,9 +188,8 @@ export default function Home() {
       setHiddenDimensions(new Set());
       setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
       setDashboardJqlQuery('');
-      // Set to max period by default - will be overridden by masterDatasetInfo effect
-      setDateFrom('');
-      setDateTo('');
+      // Don't set dates here - let auto-populate effect set them to max range
+      // The store already initializes them as empty strings, and auto-populate will fill them
     }
   }, [activeConnectionId, mounted, setDateFrom, setDateTo, setGlobalFilters, setHiddenDimensions, setDashboardCharts, setDashboardJqlQuery]);
 
