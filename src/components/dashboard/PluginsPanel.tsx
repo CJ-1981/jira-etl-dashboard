@@ -499,23 +499,23 @@ export function PluginsPanel() {
                     <RadioGroupItem value="assignee" id="sla-assignee">
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === false ? "checked" : "unchecked"}></div>
-                        <Label htmlFor="sla-assignee" className="text-sm cursor-pointer">
+                        <Label htmlFor="sla-assignee" className={`text-sm cursor-pointer ${settings.sla?.useAnyoneCommentsForSla === false ? 'text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
                           Assignee only
                         </Label>
                       </div>
                     </RadioGroupItem>
-                    <p className="text-xs text-slate-400">Only assignee comments</p>
+                    <p className={`text-xs ${settings.sla?.useAnyoneCommentsForSla === false ? 'text-slate-700 dark:text-slate-300 font-medium' : 'text-slate-400'}`}>Only assignee comments</p>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="anyone" id="sla-anyone">
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === true ? "checked" : "unchecked"}></div>
-                        <Label htmlFor="sla-anyone" className="text-sm cursor-pointer">
+                        <Label htmlFor="sla-anyone" className={`text-sm cursor-pointer ${settings.sla?.useAnyoneCommentsForSla === true ? 'text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
                           Anyone
                         </Label>
                       </div>
                     </RadioGroupItem>
-                    <p className="text-xs text-slate-400">Any comment</p>
+                    <p className={`text-xs ${settings.sla?.useAnyoneCommentsForSla === true ? 'text-slate-700 dark:text-slate-300 font-medium' : 'text-slate-400'}`}>Any comment</p>
                   </div>
                 </div>
               </RadioGroup>
