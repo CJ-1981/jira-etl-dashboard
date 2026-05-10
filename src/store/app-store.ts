@@ -197,4 +197,9 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveView: (activeView) => set({ activeView }),
   isViewModified: false,
   setIsViewModified: (isViewModified) => set({ isViewModified }),
+
+  widgetTitles: {},
+  setWidgetTitles: (titles) => set((state) => ({
+    widgetTitles: typeof titles === 'function' ? titles(state.widgetTitles) : titles
+  })),
 }));
