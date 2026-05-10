@@ -2,6 +2,7 @@
  * SLA Compliance by Status Trend - Weekly
  *
  * SLA compliance rate for each workflow status per week
+ * Tracks every status transition against its specific SLA target
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
@@ -9,29 +10,6 @@ import { type KpiPlugin, type KpiContext, type TransformedIssue } from '../../..
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
 
 // ─── Utility Functions ─────────────────────────────────────────────────────────
-
-/**
- * Group issues by time interval
- */
-function groupByTimeInterval(
-  issues: TransformedIssue[],
-  interval: TimeInterval,
-  dateExtractor: (issue: TransformedIssue) => Date
-): Record<string, TransformedIssue[]> {
-  const grouped: Record<string, TransformedIssue[]> = {};
-
-  for (const issue of issues) {
-    const date = dateExtractor(issue);
-    const key = getPeriodKey(date, interval);
-
-    if (!grouped[key]) {
-      grouped[key] = [];
-    }
-    grouped[key].push(issue);
-  }
-
-  return grouped;
-}
 
 /**
  * Get period key for a date based on interval
@@ -125,77 +103,84 @@ function calculateSlaByStatusTrend(
   context: KpiContext,
   interval: TimeInterval
 ): TimeSeriesResult[] {
-  const resolvedIssues = context.issues.filter((i) => i.resolved);
-
-  if (resolvedIssues.length === 0) {
+  // Get SLA targets for each status from context
+  const targets = (context.slaTargets || {}) as Record<string, number>;
+  const targetEntries = (Object.entries(targets) as [string, number][]).filter(([, h]) => h > 0);
+  
+  if (targetEntries.length === 0 || context.issues.length === 0) {
     return [{
-      name: 'SLA Compliance by Status',
+      name: 'SLA Compliance by Status Trend',
       value: 0,
       unit: '%',
       timeSeries: [],
     }];
   }
 
-  // Get SLA targets for each status from context
-  const slaTargets = context.slaTargets || {};
-  const defaultSlaHours = context.holidays.slaTargetHours || 40;
+  const targetStatuses = new Set(targetEntries.map(([s]) => s));
 
-  // Group issues by time interval (based on resolution date)
-  const groupedByPeriod = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved!);
-
-  // For each period, calculate SLA compliance for each status
+  // Period -> Status -> { withinSla, total }
   const periodStatusData: Record<string, Record<string, { withinSla: number; total: number }>> = {};
 
-  for (const [periodKey, periodIssues] of Object.entries(groupedByPeriod)) {
-    periodStatusData[periodKey] = {};
+  for (const issue of context.issues) {
+    // Process each transition to check SLA for each status it passed through
+    for (let i = 0; i < issue.transitions.length; i++) {
+      const transition = issue.transitions[i];
+      const status = transition.toStatus;
 
-    for (const issue of periodIssues) {
-      // Determine which status to measure SLA against
-      // Use the final status before resolution
-      const finalStatus = issue.transitions.length > 0
-        ? issue.transitions[issue.transitions.length - 1].toStatus
-        : issue.status;
+      // Only track statuses that have an SLA target
+      if (!targetStatuses.has(status)) continue;
 
-      // Get SLA target for this status
-      const slaTargetHours = slaTargets[finalStatus] || defaultSlaHours;
+      const slaStart = transition.occurredAt;
+      const nextTransition = issue.transitions[i + 1];
+      
+      // The status "ends" at the next transition or when the issue is resolved
+      let statusExit = nextTransition ? nextTransition.occurredAt : issue.resolved;
 
-      // Calculate if this issue met SLA
-      const hours = calculateBusinessHours(issue.created, issue.resolved!, {
+      // If not resolved and no next transition, it's still in this status (aging)
+      // For Trend charts, we usually only count COMPLETED status durations to avoid partial data bias
+      if (!statusExit) continue;
+
+      const targetHours = targets[status];
+
+      // Calculate business hours spent in this status
+      const hours = calculateBusinessHours(slaStart, statusExit, {
         regions: context.holidays.regions,
         workStartHour: context.holidays.workStartHour,
         workEndHour: context.holidays.workEndHour,
         workDaysPerWeek: context.holidays.workDaysPerWeek,
       });
-      const withinSla = hours <= slaTargetHours;
 
-      if (!periodStatusData[periodKey][finalStatus]) {
-        periodStatusData[periodKey][finalStatus] = { withinSla: 0, total: 0 };
+      const metSla = hours <= targetHours;
+      const periodKey = getPeriodKey(statusExit, interval);
+
+      if (!periodStatusData[periodKey]) {
+        periodStatusData[periodKey] = {};
+      }
+      if (!periodStatusData[periodKey][status]) {
+        periodStatusData[periodKey][status] = { withinSla: 0, total: 0 };
       }
 
-      periodStatusData[periodKey][finalStatus].total++;
-      if (withinSla) {
-        periodStatusData[periodKey][finalStatus].withinSla++;
+      periodStatusData[periodKey][status].total++;
+      if (metSla) {
+        periodStatusData[periodKey][status].withinSla++;
       }
     }
   }
 
-  // Build time-series data - multiple results (one per status) for multi-line chart
+  // Build time-series data - multiple results (one per status)
   const statusResults: TimeSeriesResult[] = [];
   let hasIncompletePeriod = false;
 
-  // Get all unique statuses across all periods
-  const allStatuses = new Set<string>();
-  for (const periodData of Object.values(periodStatusData)) {
-    Object.keys(periodData).forEach(status => allStatuses.add(status));
-  }
-
-  // For each status, create a time-series result
-  for (const status of allStatuses) {
+  // For each status that has a target
+  for (const [status, targetHours] of targetEntries) {
     const timeSeries: TimeSeriesResult['timeSeries'] = [];
+    
+    // Sort period keys to ensure chronological order
+    const sortedPeriods = Object.keys(periodStatusData).sort();
 
-    for (const [periodKey, periodData] of Object.entries(periodStatusData)) {
-      const statusData = periodData[status];
-      if (!statusData) continue; // This status didn't appear in this period
+    for (const periodKey of sortedPeriods) {
+      const statusData = periodStatusData[periodKey][status];
+      if (!statusData) continue;
 
       const periodEnd = getPeriodEnd(periodKey, interval);
       const isComplete = isPeriodComplete(periodEnd);
@@ -204,9 +189,7 @@ function calculateSlaByStatusTrend(
         hasIncompletePeriod = true;
       }
 
-      const complianceRate = statusData.total > 0
-        ? (statusData.withinSla / statusData.total) * 100
-        : 0;
+      const complianceRate = (statusData.withinSla / statusData.total) * 100;
 
       timeSeries.push({
         period: periodKey,
@@ -217,8 +200,7 @@ function calculateSlaByStatusTrend(
       });
     }
 
-    // Sort by date
-    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    if (timeSeries.length === 0) continue;
 
     // Calculate overall compliance for this status from complete periods only
     const completePoints = timeSeries.filter(p => p.isComplete);
@@ -233,18 +215,20 @@ function calculateSlaByStatusTrend(
       unit: '%',
       dimensions: { status },
       timeSeries,
+      details: [
+        { label: 'Target', value: targetHours, unit: 'hours' },
+        { label: 'Total Occurrences', value: timeSeries.reduce((sum, p) => sum + p.count, 0) }
+      ]
     });
   }
 
-  const details: TimeSeriesResult['details'] = [
-    { label: 'Statuses Analyzed', value: statusResults.length },
-  ];
+  // Sort results by status name for consistent UI
+  statusResults.sort((a, b) => a.name.localeCompare(b.name));
 
-  if (hasIncompletePeriod) {
-    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
+  if (hasIncompletePeriod && statusResults.length > 0) {
+    statusResults[0].details?.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
   }
 
-  // Return multiple results (one per status) for multi-line chart
   return statusResults;
 }
 
@@ -253,7 +237,7 @@ function calculateSlaByStatusTrend(
 const slaByStatusWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   id: 'sla_by_status_trend',
   name: 'SLA Compliance by Status Trend',
-  description: 'SLA compliance rate for each workflow status, grouped by week',
+  description: 'SLA compliance rate for each workflow status, grouped by week. Only counts completed status durations.',
   category: 'time-series',
   domain: 'sla',
   version: '1.0.0',
