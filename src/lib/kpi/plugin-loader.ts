@@ -5,6 +5,8 @@
  * @MX:REASON: Enables dynamic plugin registration without manual imports
  */
 
+import fs from 'fs';
+import path from 'path';
 import type { KpiPlugin } from './types';
 
 // Import all built-in plugins directly
@@ -81,10 +83,105 @@ export class PluginLoader {
   /**
    * Load custom plugins from user-defined directory
    * @returns Array of custom plugins
+   * @MX:ANCHOR: Custom plugin loader
+   * @MX:REASON: Enables users to add custom plugins without code changes
    */
   loadCustomPlugins(): KpiPlugin[] {
-    // Custom plugins would be loaded here in the future
-    return [];
+    const customPlugins: KpiPlugin[] = [];
+    const customDir = path.join(__dirname, 'plugins', 'custom');
+
+    // Check if custom directory exists
+    if (!fs.existsSync(customDir)) {
+      console.log('[PluginLoader] Custom plugins directory not found, creating it...');
+      fs.mkdirSync(customDir, { recursive: true });
+      return customPlugins;
+    }
+
+    // Recursively scan for plugin files
+    const scanDirectory = (dir: string) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          // Recursively scan subdirectories (domain folders)
+          scanDirectory(fullPath);
+        } else if (entry.isFile() && this.isPluginFile(entry.name)) {
+          // Try to load the plugin file
+          try {
+            const pluginModule = require(fullPath);
+            const plugin = pluginModule.default || pluginModule;
+
+            // Validate plugin structure
+            if (this.isValidPlugin(plugin)) {
+              // Ensure category and domain are set correctly for custom plugins
+              plugin.category = 'custom';
+              if (!plugin.domain) {
+                // Infer domain from directory structure
+                const relativePath = path.relative(path.join(__dirname, 'plugins', 'custom'), fullPath);
+                const domainFolder = relativePath.split(path.sep)[0];
+                plugin.domain = this.normalizeDomainName(domainFolder) as any;
+              }
+              customPlugins.push(plugin);
+              console.log(`[PluginLoader] Loaded custom plugin: ${plugin.id}`);
+            } else {
+              console.warn(`[PluginLoader] Invalid plugin structure in ${fullPath}`);
+            }
+          } catch (error) {
+            console.error(`[PluginLoader] Failed to load plugin from ${fullPath}:`, error);
+          }
+        }
+      }
+    };
+
+    scanDirectory(customDir);
+    return customPlugins;
+  }
+
+  /**
+   * Check if a file is a plugin file based on extension
+   * @param filename - Name of the file to check
+   * @returns True if the file appears to be a plugin file
+   */
+  private isPluginFile(filename: string): boolean {
+    // Accept .ts, .js, .tsx, .jsx files
+    // Exclude test files and type definition files
+    return /\.(ts|js|tsx|jsx)$/.test(filename) &&
+           !/\.test\./.test(filename) &&
+           !/\.spec\./.test(filename) &&
+           !/\.d\.ts$/.test(filename) &&
+           filename !== 'index.ts' &&
+           filename !== 'index.js';
+  }
+
+  /**
+   * Validate that an object implements the KpiPlugin interface
+   * @param plugin - Object to validate
+   * @returns True if the object is a valid plugin
+   */
+  private isValidPlugin(plugin: unknown): plugin is KpiPlugin {
+    if (typeof plugin !== 'object' || plugin === null) {
+      return false;
+    }
+
+    const p = plugin as Record<string, unknown>;
+    return (
+      typeof p.id === 'string' &&
+      typeof p.name === 'string' &&
+      typeof p.calculate === 'function' &&
+      typeof p.unit === 'string'
+    );
+  }
+
+  /**
+   * Normalize domain name from folder name to KpiDomain format
+   * @param folderName - Folder name to normalize
+   * @returns Normalized domain name
+   */
+  private normalizeDomainName(folderName: string): string {
+    // Convert folder names like "processing time" to "processing-time"
+    return folderName.toLowerCase().replace(/\s+/g, '-');
   }
 
   /**

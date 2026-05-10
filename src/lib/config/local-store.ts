@@ -30,6 +30,7 @@ export interface KpiPlugin {
   name: string;
   description: string;
   category: string;
+  domain?: string;
   unit: string;
   formula: string | any;
   pluginType: 'custom' | 'builtin';

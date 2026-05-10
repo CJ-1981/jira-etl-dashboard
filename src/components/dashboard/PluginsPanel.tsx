@@ -185,6 +185,26 @@ export function PluginsPanel() {
 
   useEffect(() => { loadPlugins(); }, [loadPlugins]);
 
+  // Poll for plugin changes and auto-reload
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch('/api/kpi/plugins/events');
+        const data = await response.json();
+
+        if (data.success && data.hasChanges) {
+          console.log('[PluginsPanel] Plugin changes detected, reloading...');
+          await loadPlugins();
+          toast.info('Plugins updated due to file changes');
+        }
+      } catch (error) {
+        console.error('[PluginsPanel] Failed to poll for plugin changes:', error);
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [loadPlugins]);
+
   const saveActivePlugins = useCallback((pluginIds: string[]) => {
     localStorage.setItem('cfg_active_plugins', JSON.stringify(pluginIds));
   }, []);
@@ -224,6 +244,36 @@ export function PluginsPanel() {
         saveActivePlugins(next);
         return next;
       });
+    }
+  };
+
+  const handleDeleteCustomPlugin = async (pluginId: string) => {
+    try {
+      const response = await fetch(`/api/kpi/plugins/custom?pluginId=${pluginId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        toast.error(data.error || 'Failed to delete plugin');
+        return;
+      }
+
+      toast.success('Plugin deleted successfully');
+
+      // Remove from active plugins if present
+      if (activePlugins.includes(pluginId)) {
+        const newActivePlugins = activePlugins.filter(id => id !== pluginId);
+        setActivePlugins(newActivePlugins);
+        saveActivePlugins(newActivePlugins);
+      }
+
+      // Reload plugins
+      await loadPlugins();
+    } catch (error) {
+      console.error('Failed to delete custom plugin:', error);
+      toast.error('Failed to delete plugin');
     }
   };
 
@@ -461,6 +511,81 @@ export function PluginsPanel() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-purple-400" /> Custom Plugins</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Manage custom KPI plugins. Upload your own plugins to extend functionality.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {Object.values(plugins).flat().filter(p => p.category === 'custom').length} custom plugins loaded
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBuilderOpen(true)}
+              className="text-xs"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Custom Plugin
+            </Button>
+          </div>
+
+          {Object.values(plugins).flat().filter(p => p.category === 'custom').length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-8 text-center">
+              <Plug className="h-10 w-10 mx-auto mb-2 text-slate-400 dark:text-slate-600" />
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">No custom plugins yet</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">Create your first plugin to get started</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {Object.values(plugins).flat().filter(p => p.category === 'custom').map((plugin) => (
+                <div
+                  key={plugin.id}
+                  className={`rounded-lg border transition-colors ${
+                    activePlugins.includes(plugin.id)
+                      ? 'border-purple-500/30 bg-purple-50/50 dark:bg-purple-500/5'
+                      : 'border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30'
+                  } p-3`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1">
+                      <Checkbox
+                        id={`custom-plugin-${plugin.id}`}
+                        checked={activePlugins.includes(plugin.id)}
+                        onCheckedChange={() => togglePlugin(plugin.id)}
+                        className="flex-shrink-0"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-sm">{plugin.name}</h4>
+                          <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">
+                            {plugin.domain}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{plugin.description}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{plugin.unit}</Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteCustomPlugin(plugin.id)}
+                        className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>

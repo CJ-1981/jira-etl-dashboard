@@ -103,6 +103,16 @@ export class KpiEngine {
     // Auto-load time-series plugins
     const timeSeriesPlugins = loader.loadTimeSeriesPlugins();
     timeSeriesPlugins.forEach((plugin) => this.register(plugin));
+
+    // Auto-load custom plugins (if any)
+    try {
+      const customPlugins = loader.loadCustomPlugins();
+      customPlugins.forEach((plugin) => this.register(plugin));
+      console.log(`[KPI Engine] Loaded ${customPlugins.length} custom plugins`);
+    } catch (error) {
+      console.error('[KPI Engine] Failed to load custom plugins:', error);
+      // Continue without custom plugins rather than failing completely
+    }
   }
 
   register(plugin: KpiPlugin) {
