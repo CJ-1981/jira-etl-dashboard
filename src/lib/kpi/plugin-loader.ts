@@ -25,6 +25,16 @@ import resolutionRatePlugin from './plugins/builtin/quality/resolution-rate';
 import reassignmentPlugin from './plugins/builtin/quality/reassignment';
 import openTicketsByAssigneePlugin from './plugins/builtin/assignee/open-tickets-by-assignee';
 
+// Import all time-series plugins directly
+import avgProcessingHoursWeeklyPlugin from './plugins/time-series/processing-time/avg-processing-hours-weekly';
+import throughputWeeklyPlugin from './plugins/time-series/throughput/throughput-weekly';
+import cumulativeFlowDailyPlugin from './plugins/time-series/throughput/cumulative-flow-daily';
+import slaComplianceWeeklyPlugin from './plugins/time-series/sla/sla-compliance-daily';
+import slaByStatusWeeklyPlugin from './plugins/time-series/sla/sla-by-status-weekly';
+import slaByStatusExclCloneWeeklyPlugin from './plugins/time-series/sla/sla-by-status-excl-clone-weekly';
+import timeInStatusWeeklyPlugin from './plugins/time-series/turnaround/time-in-status-daily';
+import openTicketsByAssigneeWeeklyPlugin from './plugins/time-series/assignee/open-tickets-by-assignee-weekly';
+
 /**
  * Plugin Loader for auto-discovering built-in plugins
  * Loads all plugins from domain directories
@@ -75,5 +85,33 @@ export class PluginLoader {
   loadCustomPlugins(): KpiPlugin[] {
     // Custom plugins would be loaded here in the future
     return [];
+  }
+
+  /**
+   * Load all time-series plugins from the time-series directory
+   * @returns Array of discovered time-series plugins
+   * @MX:ANCHOR: Time-series plugin loader
+   * @MX:REASON: Centralizes time-series plugin registration
+   */
+  public loadTimeSeriesPlugins(): KpiPlugin[] {
+    return [
+      // Processing time time-series plugins
+      avgProcessingHoursWeeklyPlugin,
+
+      // Throughput time-series plugins
+      throughputWeeklyPlugin,
+      cumulativeFlowDailyPlugin,
+
+      // SLA time-series plugins
+      slaComplianceWeeklyPlugin,
+      slaByStatusWeeklyPlugin,
+      slaByStatusExclCloneWeeklyPlugin,
+
+      // Turnaround time-series plugins
+      timeInStatusWeeklyPlugin,
+
+      // Assignee time-series plugins
+      openTicketsByAssigneeWeeklyPlugin,
+    ];
   }
 }

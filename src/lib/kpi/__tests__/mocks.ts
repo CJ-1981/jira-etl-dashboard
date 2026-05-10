@@ -15,7 +15,6 @@ export const constPlugin: KpiPlugin = {
   domain: 'custom' as KpiDomain,
   version: '1.0.0',
   unit: 'count',
-  unit: 'count',
   calculate: (context: KpiContext): KpiResult => ({
     name: 'Constant',
     value: 42,
@@ -38,7 +37,6 @@ export const countPlugin: KpiPlugin = {
   category: 'builtin' as KpiCategory,
   domain: 'throughput' as KpiDomain,
   version: '1.0.0',
-  unit: 'count',
   unit: 'count',
   calculate: (context: KpiContext): KpiResult => ({
     name: 'Total Issues',
@@ -86,8 +84,8 @@ export const multiValuePlugin: KpiPlugin = {
   version: '1.0.0',
   unit: 'count',
   calculate: (context: KpiContext): KpiResult[] => {
-    const resolved = context.issues.filter((i) => i.resolved);
-    const unresolved = context.issues.filter((i) => !i.resolved);
+    const resolved = context.issues.filter((i) => i.resolved !== null);
+    const unresolved = context.issues.filter((i) => i.resolved === null);
 
     return [
       {
@@ -181,7 +179,7 @@ export function createMockPlugin(
     category: 'builtin' as KpiCategory,
     domain: 'custom' as KpiDomain,
     version: '1.0.0',
-  unit: 'count',
+    unit: 'count',
     calculate: () => ({ name: 'Mock', value: 0, unit: 'count' }),
     ...overrides,
   };
@@ -198,7 +196,7 @@ export function createDependentPluginSet(): KpiPlugin[] {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
-  unit: 'count',
+      unit: 'count',
       calculate: () => ({ name: 'A', value: 1, unit: 'count' }),
     },
     {
@@ -207,7 +205,7 @@ export function createDependentPluginSet(): KpiPlugin[] {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
-  unit: 'count',
+      unit: 'count',
       dependencies: ['plugin-a'],
       calculate: () => ({ name: 'B', value: 2, unit: 'count' }),
     },
@@ -217,7 +215,7 @@ export function createDependentPluginSet(): KpiPlugin[] {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
-  unit: 'count',
+      unit: 'count',
       dependencies: ['plugin-a', 'plugin-b'],
       calculate: () => ({ name: 'C', value: 3, unit: 'count' }),
     },
@@ -240,8 +238,8 @@ export function createMockIssues(count: number, overrides?: Partial<any>) {
     reporter: 'test@example.com',
     created: new Date(`2024-01-${(i % 30) + 1}`),
     updated: new Date(`2024-01-${(i % 30) + 1}`),
-    resolved: i % 2 === 0 ? undefined : new Date(`2024-01-${(i % 30) + 2}`),
-    dueDate: undefined,
+    resolved: i % 2 === 0 ? null : new Date(`2024-01-${(i % 30) + 2}`),
+    dueDate: null,
     storyPoints: null,
     labels: [],
     components: [],
