@@ -54,36 +54,37 @@ const timeInStatusPlugin: KpiPlugin = {
         }
       }
 
-      for (const transition of issue.transitions) {
+      for (let i = 0; i < issue.transitions.length; i++) {
+        const transition = issue.transitions[i];
         const status = transition.toStatus;
-        if (!seen.has(status) || true) {
-          // include all transitions
-          const nextTime =
-            issue.transitions[issue.transitions.indexOf(transition) + 1]
-              ? issue.transitions[issue.transitions.indexOf(transition) + 1].occurredAt
-              : issue.resolved || new Date();
+        
+        // Include all transitions to track total time in status accurately
+        const nextTransition = issue.transitions[i + 1];
+        const nextTime = nextTransition 
+          ? nextTransition.occurredAt 
+          : (issue.resolved || new Date());
 
-          const hours = calculateBusinessHours(transition.occurredAt, nextTime, {
-            regions: context.holidays.regions,
-            workStartHour: context.holidays.workStartHour,
-            workEndHour: context.holidays.workEndHour,
-            workDaysPerWeek: context.holidays.workDaysPerWeek,
-          });
-          if (!statusHours[status]) {
-            statusHours[status] = { total: 0, count: 0, issueCount: 0 };
-          }
-          if (!issuesPerStatus[status]) {
-            issuesPerStatus[status] = new Set();
-          }
+        const hours = calculateBusinessHours(transition.occurredAt, nextTime, {
+          regions: context.holidays.regions,
+          workStartHour: context.holidays.workStartHour,
+          workEndHour: context.holidays.workEndHour,
+          workDaysPerWeek: context.holidays.workDaysPerWeek,
+        });
 
-          statusHours[status].total += hours;
-          statusHours[status].count++;
-          if (!seen.has(status)) {
-            statusHours[status].issueCount++;
-            issuesPerStatus[status].add(issue.key);
-          }
-          seen.add(status);
+        if (!statusHours[status]) {
+          statusHours[status] = { total: 0, count: 0, issueCount: 0 };
         }
+        if (!issuesPerStatus[status]) {
+          issuesPerStatus[status] = new Set();
+        }
+
+        statusHours[status].total += hours;
+        statusHours[status].count++;
+        if (!seen.has(status)) {
+          statusHours[status].issueCount++;
+          issuesPerStatus[status].add(issue.key);
+        }
+        seen.add(status);
       }
     }
 

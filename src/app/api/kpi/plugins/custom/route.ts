@@ -64,12 +64,25 @@ export async function POST(request: Request) {
       );
     }
 
+    // Sanitize domain and id to prevent path traversal
+    let safeDomain: string;
+    let safeId: string;
+    try {
+      safeDomain = sanitizeSegment(domain);
+      safeId = sanitizeSegment(id);
+    } catch (err: any) {
+      return NextResponse.json(
+        { success: false, error: err.message },
+        { status: 400 }
+      );
+    }
+
     // Create custom plugin file
-    const customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom', domain);
+    const customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom', safeDomain);
     fs.mkdirSync(customDir, { recursive: true });
 
-    const pluginFilePath = path.join(customDir, `${id}.ts`);
-    const pluginCode = generatePluginFile(id, name, domain, unit, calculate, description, version);
+    const pluginFilePath = path.join(customDir, `${safeId}.ts`);
+    const pluginCode = generatePluginFile(safeId, name, safeDomain, unit, calculate, description, version);
 
     fs.writeFileSync(pluginFilePath, pluginCode, 'utf-8');
 
@@ -174,8 +187,19 @@ export async function DELETE(request: Request) {
       );
     }
 
+    // Sanitize pluginId to prevent path traversal
+    let safeId: string;
+    try {
+      safeId = sanitizeSegment(pluginId);
+    } catch (err: any) {
+      return NextResponse.json(
+        { success: false, error: err.message },
+        { status: 400 }
+      );
+    }
+
     const engine = getKpiEngine();
-    const plugin = engine.getPlugin(pluginId);
+    const plugin = engine.getPlugin(safeId);
 
     if (!plugin) {
       return NextResponse.json(
@@ -191,16 +215,19 @@ export async function DELETE(request: Request) {
       );
     }
 
+    // Sanitize domain from plugin info for extra safety
+    const safeDomain = sanitizeSegment(plugin.domain);
+
     // Delete plugin file
-    const customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom', plugin.domain);
-    const pluginFilePath = path.join(customDir, `${pluginId}.ts`);
+    const customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom', safeDomain);
+    const pluginFilePath = path.join(customDir, `${safeId}.ts`);
 
     if (fs.existsSync(pluginFilePath)) {
       fs.unlinkSync(pluginFilePath);
     }
 
     // Unregister from engine
-    engine.unregister(pluginId);
+    engine.unregister(safeId);
 
     return NextResponse.json({
       success: true,
@@ -250,3 +277,18 @@ const ${id}Plugin: KpiPlugin = {
 export default ${id}Plugin;
 `;
 }
+
+/**
+ * Sanitize a path segment to prevent traversal attacks
+ */
+function sanitizeSegment(segment: string): string {
+  if (!segment || typeof segment !== 'string') {
+    throw new Error('Invalid segment: must be a non-empty string');
+  }
+  // Allow only alphanumeric, underscore, and hyphen
+  if (!/^[a-z0-9_-]+$/i.test(segment)) {
+    throw new Error(`Invalid segment: "${segment}" contains unsafe characters`);
+  }
+  return segment;
+}
+

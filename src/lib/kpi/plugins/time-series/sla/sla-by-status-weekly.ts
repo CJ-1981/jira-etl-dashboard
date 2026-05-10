@@ -6,96 +6,14 @@
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
-import { type KpiPlugin, type KpiContext, type TransformedIssue } from '../../../types';
+import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-
-// ─── Utility Functions ─────────────────────────────────────────────────────────
-
-/**
- * Get period key for a date based on interval
- */
-function getPeriodKey(date: Date, interval: TimeInterval): string {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const week = getWeekNumber(date);
-
-  switch (interval) {
-    case 'daily':
-      return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-    case 'weekly':
-      return `${year}-W${week.toString().padStart(2, '0')}`;
-    case 'monthly':
-      return `${year}-${month.toString().padStart(2, '0')}`;
-    default:
-      return `${year}-${month}`;
-  }
-}
-
-/**
- * Get the end date of a time period
- */
-function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
-  const parts = periodKey.split('-');
-  const year = parseInt(parts[0], 10);
-
-  switch (interval) {
-    case 'daily': {
-      const d = new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-      d.setHours(23, 59, 59, 999);
-      return d;
-    }
-    case 'weekly': {
-      const week = parseInt(parts[1].replace('W', ''), 10);
-      return getWeekEndDate(year, week);
-    }
-    case 'monthly': {
-      const month = parseInt(parts[1], 10);
-      const d = new Date(year, month, 0); // Last day of month
-      d.setHours(23, 59, 59, 999);
-      return d;
-    }
-    default: {
-      return new Date();
-    }
-  }
-}
-
-/**
- * Get the end date of an ISO week
- */
-function getWeekEndDate(year: number, week: number): Date {
-  const jan1 = new Date(year, 0, 1);
-  const days = (week - 1) * 7 + 4 - jan1.getDay();
-  const endDate = new Date(year, 0, 1 + days);
-  // Set to Sunday (end of ISO week)
-  endDate.setDate(endDate.getDate() + (7 - endDate.getDay()) % 7);
-  endDate.setHours(23, 59, 59, 999);
-  return endDate;
-}
-
-/**
- * Check if a period is complete (not the current partial period)
- */
-function isPeriodComplete(periodEnd: Date, currentDate: Date = new Date()): boolean {
-  // Add 1 day buffer to ensure period is fully complete
-  const bufferDays = 1;
-  const completeThreshold = new Date(periodEnd);
-  completeThreshold.setDate(completeThreshold.getDate() + bufferDays);
-
-  return currentDate > completeThreshold;
-}
-
-/**
- * Get ISO week number
- */
-function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-}
+import { 
+  getPeriodKey, 
+  getPeriodEnd, 
+  isPeriodComplete, 
+  enumeratePeriodKeys 
+} from '../../../utils/time-series-utils';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -120,6 +38,7 @@ function calculateSlaByStatusTrend(
 
   // Period -> Status -> { withinSla, total }
   const periodStatusData: Record<string, Record<string, { withinSla: number; total: number }>> = {};
+  const allExitDates: Date[] = [];
 
   for (const issue of context.issues) {
     // Process each transition to check SLA for each status it passed through
@@ -139,6 +58,8 @@ function calculateSlaByStatusTrend(
       // If not resolved and no next transition, it's still in this status (aging)
       // For Trend charts, we usually only count COMPLETED status durations to avoid partial data bias
       if (!statusExit) continue;
+
+      allExitDates.push(statusExit);
 
       const targetHours = targets[status];
 
@@ -167,6 +88,24 @@ function calculateSlaByStatusTrend(
     }
   }
 
+  // 2. Ensure all periods in range are represented
+  if (allExitDates.length > 0) {
+    const minDate = new Date(Math.min(...allExitDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...allExitDates.map(d => d.getTime()), context.period.end.getTime()));
+    const allPeriodKeys = enumeratePeriodKeys(minDate, maxDate, interval);
+
+    for (const key of allPeriodKeys) {
+      if (!periodStatusData[key]) {
+        periodStatusData[key] = {};
+      }
+      for (const status of targetStatuses) {
+        if (!periodStatusData[key][status]) {
+          periodStatusData[key][status] = { withinSla: 0, total: 0 };
+        }
+      }
+    }
+  }
+
   // Build time-series data - multiple results (one per status)
   const statusResults: TimeSeriesResult[] = [];
   let hasIncompletePeriod = false;
@@ -189,7 +128,9 @@ function calculateSlaByStatusTrend(
         hasIncompletePeriod = true;
       }
 
-      const complianceRate = (statusData.withinSla / statusData.total) * 100;
+      const complianceRate = statusData.total > 0 
+        ? (statusData.withinSla / statusData.total) * 100 
+        : 0;
 
       timeSeries.push({
         period: periodKey,
@@ -204,9 +145,9 @@ function calculateSlaByStatusTrend(
 
     // Calculate overall compliance for this status from complete periods only
     const completePoints = timeSeries.filter(p => p.isComplete);
-    const overallCompliance = completePoints.length > 0
-      ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) /
-        completePoints.reduce((sum, point) => sum + point.count, 0)
+    const totalCountInComplete = completePoints.reduce((sum, point) => sum + point.count, 0);
+    const overallCompliance = totalCountInComplete > 0
+      ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) / totalCountInComplete
       : 0;
 
     statusResults.push({

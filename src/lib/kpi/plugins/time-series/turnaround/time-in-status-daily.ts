@@ -1,123 +1,24 @@
 /**
- * Turnaround Time by Status Trend - Weekly
+ * Turnaround Time by Status Trend - Daily
  *
- * Average business hours tickets spend in each workflow status, grouped by week
+ * Average business hours tickets spend in each workflow status, grouped by day
+ * 
+ * @MX:NOTE: Tracks turnaround time trends by status.
+ * @MX:WARN: Only counts completed status durations to avoid partial data bias.
+ * @MX:ANCHOR: Turnaround Trend - visualize bottleneck evolution.
+ * @MX:TODO: Add monthly interval support.
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
-import { type KpiPlugin, type KpiContext, type TransformedIssue } from '../../../types';
+import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-
-// ─── Utility Functions ─────────────────────────────────────────────────────────
-
-/**
- * Group issues by time interval
- */
-function groupByTimeInterval(
-  issues: TransformedIssue[],
-  interval: TimeInterval,
-  dateExtractor: (issue: TransformedIssue) => Date
-): Record<string, TransformedIssue[]> {
-  const grouped: Record<string, TransformedIssue[]> = {};
-
-  for (const issue of issues) {
-    const date = dateExtractor(issue);
-    const key = getPeriodKey(date, interval);
-
-    if (!grouped[key]) {
-      grouped[key] = [];
-    }
-    grouped[key].push(issue);
-  }
-
-  return grouped;
-}
-
-/**
- * Get period key for a date based on interval
- */
-function getPeriodKey(date: Date, interval: TimeInterval): string {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const week = getWeekNumber(date);
-
-  switch (interval) {
-    case 'daily':
-      return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-    case 'weekly':
-      return `${year}-W${week.toString().padStart(2, '0')}`;
-    case 'monthly':
-      return `${year}-${month.toString().padStart(2, '0')}`;
-    default:
-      return `${year}-${month}`;
-  }
-}
-
-/**
- * Get the end date of a time period
- */
-function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
-  const parts = periodKey.split('-');
-  const year = parseInt(parts[0], 10);
-
-  switch (interval) {
-    case 'daily': {
-      const d = new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-      d.setHours(23, 59, 59, 999);
-      return d;
-    }
-    case 'weekly': {
-      const week = parseInt(parts[1].replace('W', ''), 10);
-      return getWeekEndDate(year, week);
-    }
-    case 'monthly': {
-      const month = parseInt(parts[1], 10);
-      const d = new Date(year, month, 0); // Last day of month
-      d.setHours(23, 59, 59, 999);
-      return d;
-    }
-    default: {
-      return new Date();
-    }
-  }
-}
-
-/**
- * Get the end date of an ISO week
- */
-function getWeekEndDate(year: number, week: number): Date {
-  const jan1 = new Date(year, 0, 1);
-  const days = (week - 1) * 7 + 4 - jan1.getDay();
-  const endDate = new Date(year, 0, 1 + days);
-  // Set to Sunday (end of ISO week)
-  endDate.setDate(endDate.getDate() + (7 - endDate.getDay()) % 7);
-  endDate.setHours(23, 59, 59, 999);
-  return endDate;
-}
-
-/**
- * Check if a period is complete (not the current partial period)
- */
-function isPeriodComplete(periodEnd: Date, currentDate: Date = new Date()): boolean {
-  // Add 1 day buffer to ensure period is fully complete
-  const bufferDays = 1;
-  const completeThreshold = new Date(periodEnd);
-  completeThreshold.setDate(completeThreshold.getDate() + bufferDays);
-
-  return currentDate > completeThreshold;
-}
-
-/**
- * Get ISO week number
- */
-function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-}
+import { 
+  getPeriodKey, 
+  getPeriodEnd, 
+  isPeriodComplete, 
+  groupByTimeInterval, 
+  enumeratePeriodKeys 
+} from '../../../utils/time-series-utils';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -136,10 +37,22 @@ function calculateTimeInStatusTrend(
     }];
   }
 
-  // Group issues by time interval (based on resolution date)
-  const groupedByPeriod = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved!);
+  // 1. Group issues by time interval (based on resolution date)
+  const groupedByPeriod = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved);
 
-  // For each period, calculate time in each status
+  // 2. Ensure all periods in range are represented
+  const resolvedDates = resolvedIssues.map(i => i.resolved!.getTime());
+  const minDate = new Date(Math.min(...resolvedDates));
+  const maxDate = new Date(Math.max(...resolvedDates, context.period.end.getTime()));
+  
+  const allPeriodKeys = enumeratePeriodKeys(minDate, maxDate, interval);
+  for (const key of allPeriodKeys) {
+    if (!groupedByPeriod[key]) {
+      groupedByPeriod[key] = [];
+    }
+  }
+
+  // 3. For each period, calculate time in each status
   const periodStatusData: Record<string, Record<string, { totalHours: number; count: number }>> = {};
 
   for (const [periodKey, periodIssues] of Object.entries(groupedByPeriod)) {
@@ -174,18 +87,20 @@ function calculateTimeInStatusTrend(
   let hasIncompletePeriod = false;
 
   // Get all unique statuses across all periods
-  const allStatuses = new Set<string>();
+  const allStatusesSet = new Set<string>();
   for (const periodData of Object.values(periodStatusData)) {
-    Object.keys(periodData).forEach(status => allStatuses.add(status));
+    Object.keys(periodData).forEach(status => allStatusesSet.add(status));
   }
+  const allStatuses = Array.from(allStatusesSet);
 
   // For each status, create a time-series result
   for (const status of allStatuses) {
     const timeSeries: TimeSeriesResult['timeSeries'] = [];
+    const sortedPeriodKeys = Object.keys(periodStatusData).sort();
 
-    for (const [periodKey, periodData] of Object.entries(periodStatusData)) {
-      const statusData = periodData[status];
-      if (!statusData) continue; // This status didn't appear in this period
+    for (const periodKey of sortedPeriodKeys) {
+      const periodData = periodStatusData[periodKey];
+      const statusData = periodData[status] || { totalHours: 0, count: 0 };
 
       const periodEnd = getPeriodEnd(periodKey, interval);
       const isComplete = isPeriodComplete(periodEnd);
@@ -205,13 +120,14 @@ function calculateTimeInStatusTrend(
       });
     }
 
-    // Sort by date
-    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // Sort by date (already sorted by keys, but safe)
+    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
     // Calculate overall average for this status from complete periods only
-    const completePoints = timeSeries.filter(p => p.isComplete);
+    const completePoints = timeSeries.filter(p => p.isComplete && p.count > 0);
     const overallAvg = completePoints.length > 0
-      ? completePoints.reduce((sum, point) => sum + point.value, 0) / completePoints.length
+      ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) / 
+        completePoints.reduce((sum, point) => sum + point.count, 0)
       : 0;
 
     statusResults.push({
@@ -225,10 +141,12 @@ function calculateTimeInStatusTrend(
 
   const details: TimeSeriesResult['details'] = [
     { label: 'Statuses Analyzed', value: statusResults.length },
+    { label: 'Total Resolved', value: resolvedIssues.length },
   ];
 
-  if (hasIncompletePeriod) {
-    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
+  if (hasIncompletePeriod && statusResults.length > 0) {
+    statusResults[0].details = statusResults[0].details || [];
+    statusResults[0].details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
   }
 
   // Return multiple results (one per status) for multi-line chart
@@ -237,18 +155,18 @@ function calculateTimeInStatusTrend(
 
 // ─── Plugin Definition ───────────────────────────────────────────────────────────
 
-const timeInStatusWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
-  id: 'time_in_status_trend',
-  name: 'Time In Status Trend',
-  description: 'Average business hours tickets spend in each workflow status, grouped by week',
+const timeInStatusDailyPlugin: KpiPlugin<TimeSeriesResult[]> = {
+  id: 'time_in_status_trend_daily',
+  name: 'Time In Status Trend (Daily)',
+  description: 'Average business hours tickets spend in each workflow status, grouped by day',
   category: 'time-series',
   domain: 'turnaround',
   version: '1.0.0',
   unit: 'hours',
-  timeInterval: 'weekly',
+  timeInterval: 'daily',
   calculate(context) {
-    return calculateTimeInStatusTrend(context, 'weekly');
+    return calculateTimeInStatusTrend(context, 'daily');
   },
 };
 
-export default timeInStatusWeeklyPlugin;
+export default timeInStatusDailyPlugin;

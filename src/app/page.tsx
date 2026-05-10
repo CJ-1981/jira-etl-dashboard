@@ -137,6 +137,11 @@ export default function Home() {
     }
 
     // Initially dates are empty strings from the store
+    // 
+    // @MX:NOTE: Mount-only initialization. loadMasterDataset and storageConfig 
+    // are intentionally omitted as we want to trigger initial data load 
+    // ONLY once using the fresh values read directly from localConfig.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);
 
   // Secondary effect: Handle connection changes after initial load

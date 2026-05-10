@@ -39,7 +39,9 @@ export function resolveDependencies(plugins: KpiPlugin[]): DependencyResolution 
     if (plugin.dependencies) {
       for (const dep of plugin.dependencies) {
         if (pluginMap.has(dep)) {
-          adjacencyList.get(plugin.id)?.push(dep);
+          // Edge goes from dependency to dependent: dep -> plugin
+          adjacencyList.get(dep)?.push(plugin.id);
+          // In-degree of the dependent plugin increases
           inDegree.set(plugin.id, (inDegree.get(plugin.id) || 0) + 1);
         } else {
           errors.push({

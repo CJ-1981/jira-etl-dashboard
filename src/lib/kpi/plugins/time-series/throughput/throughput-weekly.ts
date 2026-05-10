@@ -4,119 +4,14 @@
  * Number of tickets resolved per week
  */
 
-import { type KpiPlugin, type KpiContext, type TransformedIssue } from '../../../types';
+import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-
-// ─── Utility Functions ─────────────────────────────────────────────────────────
-
-/**
- * Group issues by time interval
- */
-function groupByTimeInterval(
-  issues: TransformedIssue[],
-  interval: TimeInterval,
-  dateExtractor: (issue: TransformedIssue) => Date
-): Record<string, TransformedIssue[]> {
-  const grouped: Record<string, TransformedIssue[]> = {};
-
-  for (const issue of issues) {
-    const date = dateExtractor(issue);
-    const key = getPeriodKey(date, interval);
-
-    if (!grouped[key]) {
-      grouped[key] = [];
-    }
-    grouped[key].push(issue);
-  }
-
-  return grouped;
-}
-
-/**
- * Get period key for a date based on interval
- */
-function getPeriodKey(date: Date, interval: TimeInterval): string {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const week = getWeekNumber(date);
-
-  switch (interval) {
-    case 'daily':
-      return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-    case 'weekly':
-      return `${year}-W${week.toString().padStart(2, '0')}`;
-    case 'monthly':
-      return `${year}-${month.toString().padStart(2, '0')}`;
-    default:
-      return `${year}-${month}`;
-  }
-}
-
-/**
- * Get the end date of a time period
- */
-function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
-  const parts = periodKey.split('-');
-  const year = parseInt(parts[0], 10);
-
-  switch (interval) {
-    case 'daily': {
-      const d = new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-      d.setHours(23, 59, 59, 999);
-      return d;
-    }
-    case 'weekly': {
-      const week = parseInt(parts[1].replace('W', ''), 10);
-      return getWeekEndDate(year, week);
-    }
-    case 'monthly': {
-      const month = parseInt(parts[1], 10);
-      const d = new Date(year, month, 0); // Last day of month
-      d.setHours(23, 59, 59, 999);
-      return d;
-    }
-    default: {
-      return new Date();
-    }
-  }
-}
-
-/**
- * Get the end date of an ISO week
- */
-function getWeekEndDate(year: number, week: number): Date {
-  const jan1 = new Date(year, 0, 1);
-  const days = (week - 1) * 7 + 4 - jan1.getDay();
-  const endDate = new Date(year, 0, 1 + days);
-  // Set to Sunday (end of ISO week)
-  endDate.setDate(endDate.getDate() + (7 - endDate.getDay()) % 7);
-  endDate.setHours(23, 59, 59, 999);
-  return endDate;
-}
-
-/**
- * Check if a period is complete (not the current partial period)
- */
-function isPeriodComplete(periodEnd: Date, currentDate: Date = new Date()): boolean {
-  // Add 1 day buffer to ensure period is fully complete
-  const bufferDays = 1;
-  const completeThreshold = new Date(periodEnd);
-  completeThreshold.setDate(completeThreshold.getDate() + bufferDays);
-
-  return currentDate > completeThreshold;
-}
-
-/**
- * Get ISO week number
- */
-function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-}
+import { 
+  getPeriodEnd, 
+  isPeriodComplete, 
+  groupByTimeInterval, 
+  enumeratePeriodKeys 
+} from '../../../utils/time-series-utils';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -135,10 +30,23 @@ function calculateThroughputTrend(
     }];
   }
 
-  // Group issues by time interval
-  const grouped = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved!);
+  // 1. Group issues by time interval
+  const grouped = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved);
 
-  // Calculate throughput per period, filtering incomplete periods
+  // 2. Ensure all periods in range are represented (even with zero throughput)
+  // Compute date range from issues or context period
+  const resolvedDates = resolvedIssues.map(i => new Date(i.resolved!).getTime());
+  const minDate = new Date(Math.min(...resolvedDates));
+  const maxDate = new Date(Math.max(...resolvedDates, context.period.end.getTime()));
+  
+  const allPeriodKeys = enumeratePeriodKeys(minDate, maxDate, interval);
+  for (const key of allPeriodKeys) {
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+  }
+
+  // 3. Build time-series data
   const timeSeries: TimeSeriesResult['timeSeries'] = [];
   let hasIncompletePeriod = false;
 
@@ -159,11 +67,13 @@ function calculateThroughputTrend(
     });
   }
 
-  // Sort by date
-  timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Sort by date (chronological)
+  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const completePoints = timeSeries.filter(p => p.isComplete);
   const totalResolvedInComplete = completePoints.reduce((sum, p) => sum + p.value, 0);
+  
+  // Average throughput now includes zero-value periods because we enumerated them
   const avgThroughput = completePoints.length > 0 ? totalResolvedInComplete / completePoints.length : 0;
 
   const details: TimeSeriesResult['details'] = [
@@ -194,7 +104,7 @@ function calculateThroughputTrend(
 const throughputWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   id: 'throughput_trend',
   name: 'Throughput Trend',
-  description: 'Number of tickets resolved per week',
+  description: 'Number of tickets resolved per week. Includes periods with zero throughput.',
   category: 'time-series',
   domain: 'throughput',
   version: '1.0.0',

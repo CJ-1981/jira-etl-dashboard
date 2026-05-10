@@ -396,7 +396,7 @@ export class KpiEngine {
     useAnyoneCommentsForSla?: boolean
   ): Record<string, KpiResult[]> {
     const results: Record<string, KpiResult[]> = {};
-    for (const [id] of Array.from(this.plugins.keys())) {
+    for (const id of Array.from(this.plugins.keys())) {
       results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla);
     }
     return results;

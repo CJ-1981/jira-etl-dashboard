@@ -23,7 +23,7 @@ describe('KPI Types', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
-    unit: 'count',
+        unit: 'count',
         calculate: () => ({ name: 'test', value: 0, unit: 'count' }),
       };
 
@@ -39,7 +39,7 @@ describe('KPI Types', () => {
         category: 'custom' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
-    unit: 'count',
+        unit: 'count',
         calculate: () => ({ name: 'test', value: 0, unit: 'count' }),
         dependencies: ['plugin-a', 'plugin-b'],
         metadata: {
@@ -58,16 +58,31 @@ describe('KPI Types', () => {
     it('should accept valid context object', () => {
       const mockIssue: TransformedIssue = {
         key: 'TEST-1',
+        project: 'TEST',
         summary: 'Test issue',
-        status: 'Open',
+        issueType: 'Story',
         priority: 'High',
+        status: 'Open',
+        statusCategory: 'To Do',
         assignee: 'user@example.com',
+        reporter: 'reporter@example.com',
         created: new Date('2024-01-01'),
         updated: new Date('2024-01-02'),
+        resolved: null,
+        dueDate: null,
+        storyPoints: 5,
+        labels: [],
+        components: [],
+        transitions: [],
+        timeInStatus: {},
+        comments: [],
       };
 
       const mockHolidayContext: HolidayContext = {
         dates: new Set(['2024-01-01']),
+        regions: ['national'],
+        workStartHour: 9,
+        workEndHour: 17,
         isHoliday: (_date: Date) => false,
         isWorkingDay: (_date: Date) => true,
       };
@@ -90,6 +105,9 @@ describe('KPI Types', () => {
         issues: [],
         holidays: {
           dates: new Set(),
+          regions: ['national'],
+          workStartHour: 9,
+          workEndHour: 17,
           isHoliday: () => false,
           isWorkingDay: () => true,
         },

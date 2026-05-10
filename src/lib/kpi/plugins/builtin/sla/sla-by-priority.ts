@@ -32,6 +32,8 @@ const slaByPriorityPlugin: KpiPlugin = {
       { total: number; withinSla: number; ticketKeys: Set<string> }
     > = {};
 
+    const adminTargets = (context.slaTargets || {}) as Record<string, number>;
+
     for (const issue of context.issues) {
       if (!issue.resolved) continue;
       const priority = issue.priority || 'Unassigned';
@@ -47,7 +49,9 @@ const slaByPriorityPlugin: KpiPlugin = {
         workEndHour: context.holidays.workEndHour,
         workDaysPerWeek: context.holidays.workDaysPerWeek,
       });
-      const target = slaTargets[priority] || 40;
+      
+      // Resolve target: admin override -> priority default -> generic default (40)
+      const target = adminTargets[priority] || slaTargets[priority] || 40;
       if (hours <= target) {
         resolvedByPriority[priority].withinSla++;
       }
@@ -55,18 +59,21 @@ const slaByPriorityPlugin: KpiPlugin = {
 
     return Object.entries(resolvedByPriority)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([priority, data]) => ({
-        name: `SLA: ${priority}`,
-        value: Math.round((data.withinSla / data.total) * 10000) / 100,
-        unit: '%',
-        dimensions: { priority },
-        ticketKeys: Array.from(data.ticketKeys),
-        details: [
-          { label: 'Target', value: slaTargets[priority] || 40, unit: 'hours' },
-          { label: 'Within SLA', value: data.withinSla },
-          { label: 'Total', value: data.total },
-        ],
-      }));
+      .map(([priority, data]) => {
+        const target = adminTargets[priority] || slaTargets[priority] || 40;
+        return {
+          name: `SLA: ${priority}`,
+          value: Math.round((data.withinSla / data.total) * 10000) / 100,
+          unit: '%',
+          dimensions: { priority },
+          ticketKeys: Array.from(data.ticketKeys),
+          details: [
+            { label: 'Target', value: target, unit: 'hours' },
+            { label: 'Within SLA', value: data.withinSla },
+            { label: 'Total', value: data.total },
+          ],
+        };
+      });
   },
 };
 
