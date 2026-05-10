@@ -5,7 +5,7 @@
  * Supports custom plugins via the KpiPlugin interface.
  */
 
-import { calculateBusinessHours, calculateWorkingDays, type GermanState } from '../holidays/german-holidays';
+import type { GermanState } from '../holidays/german-holidays';
 import type { JiraIssue } from '../jira/client';
 import { PluginLoader } from './plugin-loader';
 import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
@@ -234,10 +234,12 @@ export class KpiEngine {
     const context: KpiContext = {
       issues: filteredIssues.map(transformIssueForKpi),
       holidays: {
+        dates: new Set(),
         regions: holidays.regions,
         workStartHour: holidays.workStartHour || 9,
         workEndHour: holidays.workEndHour || 17,
-        slaTargetHours: holidays.slaTargetHours || 40,
+        isHoliday: () => false,
+        isWorkingDay: () => true,
       },
       period,
       slaTargets,
@@ -249,6 +251,7 @@ export class KpiEngine {
     console.log(`[KPI Engine] Calculating ${pluginId} with useAnyoneCommentsForSla:`, useAnyoneCommentsForSla);
 
     const currentResults = plugin.calculate(context);
+    const currentResultsArray = Array.isArray(currentResults) ? currentResults : [currentResults];
 
     // 3. Weekly breakdown for all cards
     const now = new Date();
@@ -292,8 +295,10 @@ export class KpiEngine {
     try {
       const thisWeekResults = plugin.calculate(thisWeekContext);
       const lastWeekResults = plugin.calculate(lastWeekContext);
+      const thisWeekResultsArray = Array.isArray(thisWeekResults) ? thisWeekResults : [thisWeekResults];
+      const lastWeekResultsArray = Array.isArray(lastWeekResults) ? lastWeekResults : [lastWeekResults];
 
-      currentResults.forEach(res => {
+      currentResultsArray.forEach(res => {
         // Find matching result in weekly sets (match by dimensions first, then name)
         const matchResult = (resultSet: KpiResult[]) => {
           return resultSet.find(r => {
@@ -307,9 +312,9 @@ export class KpiEngine {
           });
         };
 
-        const tw = matchResult(thisWeekResults);
-        const lw = matchResult(lastWeekResults);
-        
+        const tw = matchResult(thisWeekResultsArray);
+        const lw = matchResult(lastWeekResultsArray);
+
         if (tw || lw) {
           res.details = res.details || [];
           if (tw) res.details.push({ label: 'This Week', value: tw.value, unit: tw.unit });
@@ -345,11 +350,12 @@ export class KpiEngine {
 
     try {
       const previousResults = plugin.calculate(prevContext);
-      return currentResults.map(res => {
+      const previousResultsArray = Array.isArray(previousResults) ? previousResults : [previousResults];
+      return currentResultsArray.map(res => {
         // If we already have a comparison (e.g. from weekly breakdown), keep it
         if (res.comparison) return res;
 
-        const prevRes = previousResults.find(p => p.name === res.name);
+        const prevRes = previousResultsArray.find(p => p.name === res.name);
         if (prevRes && typeof prevRes.value === 'number') {
           const change = res.value - prevRes.value;
           return {
@@ -364,7 +370,7 @@ export class KpiEngine {
         return res;
       });
     } catch (e) {
-      return currentResults;
+      return Array.isArray(currentResults) ? currentResults : [currentResults];
     }
   }
 
@@ -380,7 +386,7 @@ export class KpiEngine {
     useAnyoneCommentsForSla?: boolean
   ): Record<string, KpiResult[]> {
     const results: Record<string, KpiResult[]> = {};
-    for (const [id, plugin] of this.plugins) {
+    for (const [id] of Array.from(this.plugins.keys())) {
       results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla);
     }
     return results;
@@ -401,6 +407,8 @@ export class KpiEngine {
   }) {
     const customPlugin: KpiPlugin = {
       ...definition,
+      domain: 'custom',
+      version: '1.0.0',
       pluginType: 'custom',
       isActive: true,
       calculate(context) {

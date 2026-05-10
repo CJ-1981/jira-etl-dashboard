@@ -157,9 +157,9 @@ export function PluginsPanel() {
       }
 
       const grouped = allPlugins.reduce((acc, p: any) => {
-        const cat = p.category || 'custom';
-        if (!acc[cat]) acc[cat] = [];
-        acc[cat].push(p as KpiPlugin);
+        const domain = p.domain || 'custom';
+        if (!acc[domain]) acc[domain] = [];
+        acc[domain].push(p as KpiPlugin);
         return acc;
       }, {} as Record<string, KpiPlugin[]>);
 
