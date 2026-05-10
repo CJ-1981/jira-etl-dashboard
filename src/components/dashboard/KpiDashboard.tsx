@@ -1543,7 +1543,7 @@ export function KpiDashboard() {
             </CardHeader>
             {prioritySlaPanelExpanded && (
               <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaPriorityKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaPriorityKpis.map((kpi) => [...kpi.results].sort((a, b) => (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true })).map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
                 const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
                 return (
@@ -1604,7 +1604,13 @@ export function KpiDashboard() {
             {otherPriorityPanelExpanded && (
               <CardContent>
                 <div className="space-y-4">{otherPriorityKpis.map((kpi) => {
-                  const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`));
+                  const visibleResults = kpi.results
+                    .filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`))
+                    .sort((a, b) => {
+                      const pA = a.dimensions?.priority || a.name;
+                      const pB = b.dimensions?.priority || b.name;
+                      return pA.localeCompare(pB, undefined, { numeric: true, sensitivity: 'base' });
+                    });
                   const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
 
                   return (
