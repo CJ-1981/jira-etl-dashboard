@@ -54,6 +54,17 @@ function calculateOpenTicketsByAssigneeTrend(
   const assigneeResults: TimeSeriesResult[] = [];
   let hasIncompletePeriod = false;
 
+  const isOpenAtEnd = (issue: any, periodEnd: Date) => {
+    const createdDate = issue.created;
+    const resolvedDate = issue.resolved;
+
+    const wasCreated = createdDate <= periodEnd;
+    const isActuallyDone = isIssueDone(issue);
+    const wasNotYetResolved = (!resolvedDate && !isActuallyDone) || (resolvedDate && resolvedDate > periodEnd);
+
+    return wasCreated && wasNotYetResolved;
+  };
+
   for (const assignee of allAssignees) {
     const timeSeries: TimeSeriesResult['timeSeries'] = [];
     const assigneeIssues = allIssues.filter(i => (i.assignee || 'Unassigned') === assignee);
@@ -65,16 +76,7 @@ function calculateOpenTicketsByAssigneeTrend(
       }
 
       // Count issues that were created before/at period end AND (not resolved OR resolved after period end)
-      const openAtEnd = assigneeIssues.filter(i => {
-        const createdDate = i.created;
-        const resolvedDate = i.resolved;
-
-        const wasCreated = createdDate <= period.end;
-        const isActuallyDone = isIssueDone(i);
-        const wasNotYetResolved = (!resolvedDate && !isActuallyDone) || (resolvedDate && resolvedDate > period.end);
-
-        return wasCreated && wasNotYetResolved;
-      }).length;
+      const openAtEnd = assigneeIssues.filter(i => isOpenAtEnd(i, period.end)).length;
 
       timeSeries.push({
         period: period.key,
@@ -92,11 +94,7 @@ function calculateOpenTicketsByAssigneeTrend(
     const completePoints = timeSeries.filter(p => p.isComplete);
     const lastCompletePeriod = periods.filter(p => isPeriodComplete(p.end)).pop();
     const currentTicketKeys = lastCompletePeriod
-      ? assigneeIssues.filter(i => {
-          const isActuallyDone = isIssueDone(i);
-          const wasNotYetResolved = (!i.resolved && !isActuallyDone) || (i.resolved && i.resolved > lastCompletePeriod.end);
-          return i.created <= lastCompletePeriod.end && wasNotYetResolved;
-        }).map(i => i.key)
+      ? assigneeIssues.filter(i => isOpenAtEnd(i, lastCompletePeriod.end)).map(i => i.key)
       : [];
 
     // Current value (at last complete period end)

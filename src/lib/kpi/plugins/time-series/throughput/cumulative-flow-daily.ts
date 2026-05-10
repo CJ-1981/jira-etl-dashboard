@@ -57,7 +57,7 @@ function calculateCumulativeFlow(
 
       // Initial status interval
       intervals.push({
-        status: sorted[0].fromStatus || INITIAL_STATUS_DEFAULT,
+        status: sorted[0].fromStatus ?? 'Created',
         start: createdTime,
         end: sorted[0].occurredAt.getTime()
       });

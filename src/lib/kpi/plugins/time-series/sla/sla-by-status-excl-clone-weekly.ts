@@ -188,7 +188,7 @@ const slaByStatusExclCloneWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
     // Filter out tickets with "CLONE" in summary (case-sensitive as requested)
     const filteredContext = {
       ...context,
-      issues: context.issues.filter(issue => !issue.summary.includes('CLONE'))
+      issues: context.issues.filter(issue => !(issue.summary || '').includes('CLONE'))
     };
     return calculateSlaByStatusTrend(filteredContext, 'weekly');
   },

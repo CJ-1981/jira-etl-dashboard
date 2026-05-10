@@ -138,6 +138,7 @@ export function enumeratePeriodKeys(
   interval: TimeInterval
 ): string[] {
   const keys: string[] = [];
+  const keySet = new Set<string>();
   const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
   current.setUTCHours(0, 0, 0, 0);
   
@@ -151,8 +152,9 @@ export function enumeratePeriodKeys(
   while (currentKey !== endKey && current <= end && iterations < maxIterations) {
     iterations++;
     currentKey = getPeriodKey(current, interval);
-    if (!keys.includes(currentKey)) {
+    if (!keySet.has(currentKey)) {
       keys.push(currentKey);
+      keySet.add(currentKey);
     }
     
     // Advance current date
@@ -168,8 +170,9 @@ export function enumeratePeriodKeys(
   
   // Ensure the end key is included
   const finalEndKey = getPeriodKey(end, interval);
-  if (!keys.includes(finalEndKey)) {
+  if (!keySet.has(finalEndKey)) {
      keys.push(finalEndKey);
+     keySet.add(finalEndKey);
   }
 
   return keys;

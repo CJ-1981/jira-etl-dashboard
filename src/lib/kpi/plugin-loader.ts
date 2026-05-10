@@ -31,7 +31,7 @@ import openTicketsByAssigneePlugin from './plugins/builtin/assignee/open-tickets
 import avgProcessingHoursWeeklyPlugin from './plugins/time-series/processing-time/avg-processing-hours-weekly';
 import throughputWeeklyPlugin from './plugins/time-series/throughput/throughput-weekly';
 import cumulativeFlowDailyPlugin from './plugins/time-series/throughput/cumulative-flow-daily';
-import slaComplianceWeeklyPlugin from './plugins/time-series/sla/sla-compliance-daily';
+import slaComplianceWeeklyPlugin from './plugins/time-series/sla/sla-compliance-weekly';
 import slaByStatusWeeklyPlugin from './plugins/time-series/sla/sla-by-status-weekly';
 import slaByStatusExclCloneWeeklyPlugin from './plugins/time-series/sla/sla-by-status-excl-clone-weekly';
 import timeInStatusWeeklyPlugin from './plugins/time-series/turnaround/time-in-status-daily';

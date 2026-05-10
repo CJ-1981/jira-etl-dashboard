@@ -59,11 +59,11 @@ function calculateTimeInStatusTrend(
     periodStatusData[periodKey] = {};
 
     for (const issue of periodIssues) {
-      for (const transition of issue.transitions) {
+      for (let i = 0; i < issue.transitions.length; i++) {
+        const transition = issue.transitions[i];
         const status = transition.toStatus;
-        const nextTime = issue.transitions[issue.transitions.indexOf(transition) + 1]
-          ? issue.transitions[issue.transitions.indexOf(transition) + 1].occurredAt
-          : issue.resolved!;
+        const nextTransition = issue.transitions[i + 1];
+        const nextTime = nextTransition ? nextTransition.occurredAt : issue.resolved!;
 
         const hours = calculateBusinessHours(transition.occurredAt, nextTime, {
           regions: context.holidays.regions,

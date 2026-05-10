@@ -102,6 +102,8 @@ export default function Home() {
     }
   }, []);
 
+  const initialMountRef = useRef(false);
+
   useEffect(() => {
     if (!mounted) return;
 
@@ -124,6 +126,7 @@ export default function Home() {
     // Start loading DB immediately if we have a saved connection
     // Don't wait for activeConnectionId state to update
     if (savedActive) {
+      initialMountRef.current = true;
       const controller = new AbortController();
 
       // Update state for UI consistency (non-blocking)
@@ -151,8 +154,13 @@ export default function Home() {
     // (activeConnectionId will be empty string initially)
     if (!activeConnectionId || !mounted) return;
 
+    // Skip if this is the initial load path (handled by effect above)
+    if (initialMountRef.current) {
+      initialMountRef.current = false;
+      return;
+    }
+
     // Skip if this looks like the initial load (storageConfig not set yet)
-    // The initial load is handled by the effect above
     if (!storageConfig.provider) return;
 
     const controller = new AbortController();
@@ -185,18 +193,19 @@ export default function Home() {
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
 
-    console.log('[App] Loading saved dashboard state for connection:', activeConnectionId);
+    const isDev = process.env.NODE_ENV === 'development';
+    if (isDev) console.log('[App] Loading saved dashboard state for connection');
 
     const savedState = localConfig.getDashboardState(activeConnectionId);
 
     if (savedState) {
-      console.log('[App] Found saved dashboard state');
+      if (isDev) console.log('[App] Found saved dashboard state');
       if (savedState.globalFilters) setGlobalFilters(savedState.globalFilters);
       if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
       if (savedState.charts) setDashboardCharts(savedState.charts);
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
     } else {
-      console.log('[App] No saved dashboard state, using defaults');
+      if (isDev) console.log('[App] No saved dashboard state, using defaults');
       setGlobalFilters({});
       setHiddenDimensions(new Set());
       setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
@@ -210,24 +219,23 @@ export default function Home() {
       const maxFromStr = masterDatasetInfo.dateRange.from.split('T')[0];
       const maxToStr = masterDatasetInfo.dateRange.to.split('T')[0];
 
-      console.log('[App] Master dataset date range (MAX):', { from: maxFromStr, to: maxToStr });
-      console.log('[App] Saved dates from state:', savedState?.dateFrom, savedState?.dateTo);
+      if (isDev) console.log('[App] Master dataset date range available');
 
       // Check if saved dates are different from MAX (user explicitly changed them)
       const savedDatesDifferFromMax = savedState?.dateFrom && savedState?.dateTo &&
         (savedState.dateFrom !== maxFromStr || savedState.dateTo !== maxToStr);
 
       if (savedDatesDifferFromMax) {
-        console.log('[App] Using saved dates (user preference):', { from: savedState.dateFrom, to: savedState.dateTo });
+        if (isDev) console.log('[App] Using saved dates (user preference)');
         setDateFrom(savedState.dateFrom!);
         setDateTo(savedState.dateTo!);
       } else {
-        console.log('[App] Defaulting to MAX range:', { from: maxFromStr, to: maxToStr });
+        if (isDev) console.log('[App] Defaulting to MAX range');
         setDateFrom(maxFromStr);
         setDateTo(maxToStr);
       }
     } else {
-      console.log('[App] Master dataset date range not available yet');
+      if (isDev) console.log('[App] Master dataset date range not available yet');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConnectionId, mounted, masterDatasetInfo]);
