@@ -897,7 +897,7 @@ export function PluginsPanel() {
                     <Label className="text-xs text-amber-500 w-14">Warning</Label>
                     <Input 
                       type="number" 
-                      value={isNaN(config.warning) ? '' : config.warning} 
+                      value={isNaN(config.warning) || config.warning === null ? '' : config.warning} 
                       onChange={(e) => {
                         const alerts = settings.alerts ?? {};
                         const updated = { ...(alerts.thresholds || {}) };
@@ -912,7 +912,7 @@ export function PluginsPanel() {
                     <Label className="text-xs text-red-500 w-12">Critical</Label>
                     <Input 
                       type="number" 
-                      value={isNaN(config.critical) ? '' : config.critical} 
+                      value={isNaN(config.critical) || config.critical === null ? '' : config.critical} 
                       onChange={(e) => {
                         const alerts = settings.alerts ?? {};
                         const updated = { ...(alerts.thresholds || {}) };

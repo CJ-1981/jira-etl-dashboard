@@ -171,7 +171,7 @@ export function SettingsPanel() {
               <div className="flex gap-2">
                 <Input 
                   type="password"
-                  value={settings.webhooks?.secret}
+                  value={settings.webhooks?.secret || ''}
                   onChange={(e) => setSettings({ ...settings, webhooks: { ...settings.webhooks, secret: e.target.value } })}
                   className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-xs"
                 />

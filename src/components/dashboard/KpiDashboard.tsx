@@ -919,7 +919,7 @@ export function KpiDashboard() {
                       </div>
                       <Input
                         type="date"
-                        value={dateFrom}
+                        value={dateFrom || ''}
                         onChange={(e) => setDateFrom(e.target.value)}
                         className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
                       />
@@ -931,7 +931,7 @@ export function KpiDashboard() {
                       </div>
                       <Input
                         type="date"
-                        value={dateTo}
+                        value={dateTo || ''}
                         onChange={(e) => setDateTo(e.target.value)}
                         className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
                       />
