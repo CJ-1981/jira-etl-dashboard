@@ -143,31 +143,6 @@ export default function Home() {
     return () => controller.abort();
   }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
 
-  // @MX:NOTE: Auto-populate default "Max" date range from master dataset if not already set
-  // @MX:REASON: Ensures users always see the full available data range instead of empty or 1-day defaults
-  useEffect(() => {
-    if (!mounted) return;
-
-    // Wait for master dataset to be loaded
-    if (!masterDatasetInfo?.dateRange?.from || !masterDatasetInfo?.dateRange?.to) {
-      console.log('[App] Waiting for master dataset date range...');
-      return;
-    }
-
-    // Only set if both dates are currently empty (no saved state or user choice)
-    // This ensures we don't override user's explicit date selections or saved presets
-    if (!dateFrom && !dateTo) {
-      const fromStr = masterDatasetInfo.dateRange.from.split('T')[0];
-      const toStr = masterDatasetInfo.dateRange.to.split('T')[0];
-
-      console.log('[App] Auto-populating date range to MAX:', { from: fromStr, to: toStr });
-      setDateFrom(fromStr);
-      setDateTo(toStr);
-    } else {
-      console.log('[App] Dates already set, skipping auto-populate:', { from: dateFrom, to: dateTo });
-    }
-  }, [mounted, masterDatasetInfo, dateFrom, dateTo, setDateFrom, setDateTo]);
-
   useEffect(() => {
     const handleScroll = () => {
       setShowFloatingBar(window.scrollY > 400);
@@ -187,21 +162,26 @@ export default function Home() {
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
 
+    console.log('[App] Loading saved dashboard state for connection:', activeConnectionId);
+
     const savedState = localConfig.getDashboardState(activeConnectionId);
     let hasSavedDates = false;
 
     if (savedState) {
+      console.log('[App] Found saved dashboard state');
       if (savedState.globalFilters) setGlobalFilters(savedState.globalFilters);
       if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
       if (savedState.charts) setDashboardCharts(savedState.charts);
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
       // Only load saved dates if they were explicitly set by user (both from and to exist)
       if (savedState.dateFrom && savedState.dateTo) {
+        console.log('[App] Loading saved dates:', { from: savedState.dateFrom, to: savedState.dateTo });
         setDateFrom(savedState.dateFrom);
         setDateTo(savedState.dateTo);
         hasSavedDates = true;
       }
     } else {
+      console.log('[App] No saved dashboard state, using defaults');
       setGlobalFilters({});
       setHiddenDimensions(new Set());
       setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
@@ -216,12 +196,15 @@ export default function Home() {
 
       // Only set if current dates are still empty (user hasn't manually set them)
       if (!dateFrom && !dateTo) {
-        console.log('[App] Auto-populating date range to MAX (after saved state load):', { from: fromStr, to: toStr });
+        console.log('[App] Auto-populating date range to MAX:', { from: fromStr, to: toStr });
         setDateFrom(fromStr);
         setDateTo(toStr);
+      } else {
+        console.log('[App] Dates already populated, skipping auto-populate');
       }
     }
-  }, [activeConnectionId, mounted, masterDatasetInfo, dateFrom, dateTo, setDateFrom, setDateTo, setGlobalFilters, setHiddenDimensions, setDashboardCharts, setDashboardJqlQuery]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConnectionId, mounted, masterDatasetInfo]);
 
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
