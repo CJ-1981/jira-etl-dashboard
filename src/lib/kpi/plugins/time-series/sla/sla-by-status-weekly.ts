@@ -160,7 +160,12 @@ function calculateSlaByStatusTrend(
       const slaTargetHours = slaTargets[finalStatus] || defaultSlaHours;
 
       // Calculate if this issue met SLA
-      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
+      const hours = calculateBusinessHours(issue.created, issue.resolved!, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      });
       const withinSla = hours <= slaTargetHours;
 
       if (!periodStatusData[periodKey][finalStatus]) {
@@ -246,11 +251,12 @@ function calculateSlaByStatusTrend(
 // ─── Plugin Definition ───────────────────────────────────────────────────────────
 
 const slaByStatusWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
-  name: 'SLA Compliance by Status Trend',
   id: 'sla_by_status_trend',
+  name: 'SLA Compliance by Status Trend',
   description: 'SLA compliance rate for each workflow status, grouped by week',
   category: 'time-series',
   domain: 'sla',
+  version: '1.0.0',
   unit: '%',
   timeInterval: 'weekly',
   calculate(context) {

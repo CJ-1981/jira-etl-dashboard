@@ -36,7 +36,12 @@ const agingWipPlugin: KpiPlugin = {
     buckets.forEach((b) => (results[b.label] = { count: 0, keys: [] }));
 
     for (const issue of openIssues) {
-      const hours = calculateBusinessHours(issue.created, new Date(), context.holidays);
+      const hours = calculateBusinessHours(issue.created, new Date(), {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      });
       const bucket = buckets.find((b) => hours >= b.min && hours < b.max);
       if (bucket) {
         results[bucket.label].count++;

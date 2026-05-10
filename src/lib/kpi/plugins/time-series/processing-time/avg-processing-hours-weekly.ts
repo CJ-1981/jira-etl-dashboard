@@ -152,7 +152,12 @@ function calculateProcessingTimeTrend(
     }
 
     const processingTimes = issues.map((issue) =>
-      calculateBusinessHours(issue.created, issue.resolved!, context.holidays)
+      calculateBusinessHours(issue.created, issue.resolved!, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      })
     );
 
     const avgTime = processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length;
@@ -209,6 +214,7 @@ const avgProcessingHoursWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   description: 'Average business hours to resolve tickets, grouped by week',
   category: 'time-series',
   domain: 'processing-time',
+  version: '1.0.0',
   unit: 'hours',
   timeInterval: 'weekly',
   calculate(context) {

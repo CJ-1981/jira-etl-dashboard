@@ -160,7 +160,12 @@ function calculateSlaByStatusTrend(
       const slaTargetHours = slaTargets[finalStatus] || defaultSlaHours;
 
       // Calculate if this issue met SLA
-      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
+      const hours = calculateBusinessHours(issue.created, issue.resolved!, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      });
       const withinSla = hours <= slaTargetHours;
 
       if (!periodStatusData[periodKey][finalStatus]) {
@@ -251,6 +256,7 @@ const slaByStatusExclCloneWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   description: 'SLA compliance rate for each workflow status, excluding tickets with "CLONE" in the title, grouped by week',
   category: 'time-series',
   domain: 'sla',
+  version: '1.0.0',
   unit: '%',
   timeInterval: 'weekly',
   calculate(context) {

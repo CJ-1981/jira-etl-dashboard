@@ -4,6 +4,8 @@
  * @MX:REASON: Defines the plugin interface that all KPI plugins must implement
  */
 
+import type { GermanState } from '../holidays/german-holidays';
+
 /**
  * Domain categories for KPI plugins
  * Hierarchical organization matching business metrics taxonomy
@@ -26,11 +28,67 @@ export type KpiDomain =
 export type KpiCategory = 'builtin' | 'custom' | 'time-series';
 
 /**
+ * Result structure returned by plugin calculate functions
+ * Standardized format for UI consumption and API responses
+ * @MX:ANCHOR: Result contract - defines plugin output structure
+ * @MX:REASON: Ensures consistent downstream processing and display
+ */
+export interface KpiResult {
+  /** Display name for this metric value */
+  name: string;
+
+  /** Numeric value of the metric */
+  value: number;
+
+  /** Unit of measurement (hours, days, count, percentage, etc.) */
+  unit: string;
+
+  /** Optional dimension values for multi-dimensional metrics */
+  dimensions?: Record<string, string>;
+
+  /** Optional breakdown of contributing factors */
+  details?: Array<{
+    label: string;
+    value: number;
+    unit?: string;
+  }>;
+
+  /** Optional list of ticket keys contributing to this result */
+  ticketKeys?: string[];
+
+  /** Optional time series data for trend analysis */
+  timeSeries?: TimeSeriesDataPoint[];
+
+  /** Optional comparison with previous period */
+  comparison?: {
+    value: number;
+    change: number;
+    label: string;
+  };
+}
+
+/**
+ * Data point for time-series visualizations
+ */
+export interface TimeSeriesDataPoint {
+  period: string;
+  date: Date;
+  value: number;
+  count: number;
+  isComplete?: boolean;
+}
+
+/**
+ * Supported time intervals for aggregation
+ */
+export type TimeInterval = 'daily' | 'weekly' | 'monthly';
+
+/**
  * Core plugin interface that all KPI calculators must implement
  * @MX:ANCHOR: Plugin contract - all plugins must implement this interface
  * @MX:REASON: Ensures type safety and consistent API across all plugins
  */
-export interface KpiPlugin {
+export interface KpiPlugin<T = KpiResult | KpiResult[]> {
   /** Unique identifier for the plugin (e.g., 'avg-processing-hours') */
   id: string;
 
@@ -58,6 +116,9 @@ export interface KpiPlugin {
   /** Unit of measurement for the calculated value */
   unit: string;
 
+  /** Optional time interval for time-series plugins */
+  timeInterval?: TimeInterval;
+
   /** Detailed description of what the plugin calculates */
   description?: string;
 
@@ -66,7 +127,7 @@ export interface KpiPlugin {
    * @param context - Execution context with issues, holidays, and configuration
    * @returns Single KPI result or array of results (for multi-value metrics)
    */
-  calculate: (context: KpiContext) => KpiResult | KpiResult[];
+  calculate: (context: KpiContext) => T;
 
   /**
    * Optional list of plugin IDs this plugin depends on
@@ -128,43 +189,6 @@ export interface KpiContext {
 }
 
 /**
- * Result structure returned by plugin calculate functions
- * Standardized format for UI consumption and API responses
- * @MX:ANCHOR: Result contract - defines plugin output structure
- * @MX:REASON: Ensures consistent downstream processing and display
- */
-export interface KpiResult {
-  /** Display name for this metric value */
-  name: string;
-
-  /** Numeric value of the metric */
-  value: number;
-
-  /** Unit of measurement (hours, days, count, percentage, etc.) */
-  unit: string;
-
-  /** Optional dimension values for multi-dimensional metrics */
-  dimensions?: Record<string, string>;
-
-  /** Optional breakdown of contributing factors */
-  details?: Array<{
-    label: string;
-    value: number;
-    unit?: string;
-  }>;
-
-  /** Optional list of ticket keys contributing to this result */
-  ticketKeys?: string[];
-
-  /** Optional comparison with previous period */
-  comparison?: {
-    value: number;
-    change: number;
-    label: string;
-  };
-}
-
-/**
  * Transformed issue structure from Jira API
  * Existing type maintained for backward compatibility
  */
@@ -206,9 +230,10 @@ export interface StatusTransition {
  */
 export interface HolidayContext {
   dates: Set<string>;
-  regions: string[];
+  regions: GermanState[];
   workStartHour: number;
   workEndHour: number;
+  workDaysPerWeek?: number[];
   slaTargetHours?: number;
   isHoliday: (date: Date) => boolean;
   isWorkingDay: (date: Date) => boolean;

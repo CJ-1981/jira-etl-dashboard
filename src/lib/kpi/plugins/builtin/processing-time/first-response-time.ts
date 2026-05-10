@@ -42,7 +42,12 @@ const firstResponseTimePlugin: KpiPlugin = {
 
       if (responseTimeMs !== Infinity) {
         const responseDate = new Date(responseTimeMs);
-        const hours = calculateBusinessHours(issue.created, responseDate, context.holidays);
+        const hours = calculateBusinessHours(issue.created, responseDate, {
+          regions: context.holidays.regions,
+          workStartHour: context.holidays.workStartHour,
+          workEndHour: context.holidays.workEndHour,
+          workDaysPerWeek: context.holidays.workDaysPerWeek,
+        });
         totalHours += hours;
         respondedCount++;
         ticketKeys.push(issue.key);

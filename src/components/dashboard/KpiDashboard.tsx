@@ -99,8 +99,13 @@ export function KpiDashboard() {
   const isFirstRender = useRef(true);
   const hasUserInitiatedCalc = useRef(false);
 
-  // State for assignee panel expansion
+  // State for panel expansion
   const [assigneePanelExpanded, setAssigneePanelExpanded] = useState(true);
+  const [statusTimePanelExpanded, setStatusTimePanelExpanded] = useState(true);
+  const [distributionPanelExpanded, setDistributionPanelExpanded] = useState(true);
+  const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
+  const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
+  const [activePluginsOrder, setActivePluginsOrder] = useState<string[]>([]);
 
 
   // ─── Period Analysis Helpers ──────────────────────────────────────────────
@@ -154,6 +159,12 @@ export function KpiDashboard() {
     setDashboardJqls(localConfig.getDashboardJqls());
     if (activeConnectionId) {
       setPresets(localConfig.getDashboardPresets(activeConnectionId));
+    }
+
+    // Load active plugins order for initial sorting
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
+    if (raw) {
+      setActivePluginsOrder(JSON.parse(raw));
     }
   }, [activeConnectionId]);
 
@@ -585,6 +596,11 @@ export function KpiDashboard() {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'cfg_active_plugins') {
         filterByActivePlugins();
+        // Force re-render of sorted KPIs
+        const raw = localStorage.getItem('cfg_active_plugins');
+        if (raw) {
+          setActivePluginsOrder(JSON.parse(raw));
+        }
       }
     };
 
@@ -661,7 +677,7 @@ export function KpiDashboard() {
   const sortedKpiResults = useMemo(() => {
     const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
     if (raw === null) return kpiResults; // Default: show all if never configured
-    
+
     const activeOrder = JSON.parse(raw) as string[];
     if (activeOrder.length === 0) return []; // Explicitly none if user unchecked all
 
@@ -673,7 +689,7 @@ export function KpiDashboard() {
       if (idxB === -1) return -1;
       return idxA - idxB;
     });
-  }, [kpiResults]);
+  }, [kpiResults, activePluginsOrder]);
 
   const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
@@ -1349,8 +1365,18 @@ export function KpiDashboard() {
         {statusKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
+                  <button
+                    onClick={() => setStatusTimePanelExpanded(!statusTimePanelExpanded)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    title={statusTimePanelExpanded ? "Collapse" : "Expand"}
+                    aria-label={statusTimePanelExpanded ? "Collapse section" : "Expand section"}
+                  >
+                    {statusTimePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
                 {Array.from(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
@@ -1364,7 +1390,8 @@ export function KpiDashboard() {
                 )}
               </div>
             </CardHeader>
-            <CardContent>
+            {statusTimePanelExpanded && (
+              <CardContent>
               <div className="space-y-3">{statusKpis.map((kpi) => {
                 const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`));
                 const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
@@ -1402,16 +1429,28 @@ export function KpiDashboard() {
                 ));
               })}</div>
             </CardContent>
+            )}
           </Card>
         )}
 
         {distributionKpis.length > 0 && (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-purple-400" />
-              Distribution Analysis
-            </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-purple-400" />
+                Distribution Analysis
+              </h3>
+              <button
+                onClick={() => setDistributionPanelExpanded(!distributionPanelExpanded)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                title={distributionPanelExpanded ? "Collapse" : "Expand"}
+                aria-label={distributionPanelExpanded ? "Collapse section" : "Expand section"}
+              >
+                {distributionPanelExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+            </div>
+            {distributionPanelExpanded && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {distributionKpis.map((kpi) => (
                 <Card key={kpi.pluginId} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
                   <CardHeader>
@@ -1468,14 +1507,25 @@ export function KpiDashboard() {
                 </Card>
               ))}
             </div>
+            )}
           </div>
         )}
 
         {priorityKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
+                  <button
+                    onClick={() => setPrioritySlaPanelExpanded(!prioritySlaPanelExpanded)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    title={prioritySlaPanelExpanded ? "Collapse" : "Expand"}
+                    aria-label={prioritySlaPanelExpanded ? "Collapse section" : "Expand section"}
+                  >
+                    {prioritySlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
                 {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_priority|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
@@ -1489,7 +1539,8 @@ export function KpiDashboard() {
                 )}
               </div>
             </CardHeader>
-            <CardContent>
+            {prioritySlaPanelExpanded && (
+              <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{priorityKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
                 const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
@@ -1511,14 +1562,25 @@ export function KpiDashboard() {
                 );
               }))}</div>
             </CardContent>
+            )}
           </Card>
         )}
 
         {slaStatusKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
+                  <button
+                    onClick={() => setStatusSlaPanelExpanded(!statusSlaPanelExpanded)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    title={statusSlaPanelExpanded ? "Collapse" : "Expand"}
+                    aria-label={statusSlaPanelExpanded ? "Collapse section" : "Expand section"}
+                  >
+                    {statusSlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
                 {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) && (
                   <Button variant="ghost" size="sm" onClick={() => {
                     setHiddenDimensions((prev: Set<string>) => {
@@ -1533,7 +1595,8 @@ export function KpiDashboard() {
               </div>
               <CardDescription className="text-slate-600 dark:text-slate-400">Compliance with per-status SLA targets. Assignee comments reset the clock.</CardDescription>
             </CardHeader>
-            <CardContent>
+            {statusSlaPanelExpanded && (
+              <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaStatusKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
                 const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
@@ -1561,6 +1624,7 @@ export function KpiDashboard() {
                 );
               }))}</div>
             </CardContent>
+            )}
           </Card>
         )}
 
@@ -1752,10 +1816,10 @@ export function KpiDashboard() {
       <AnimatePresence>
         {showFloatingBar && !drillDownKeys && (
           <motion.div
-            initial={{ y: -100, opacity: 0 }}
+            initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -100, opacity: 0 }}
-            className="fixed top-[61px] left-1/2 -translate-x-1/2 z-[60] w-full max-w-xl px-4"
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-0 left-1/2 -translate-x-1/2 z-[60] w-full max-w-xl px-4 pb-4"
           >
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-full shadow-2xl p-1.5 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 px-3">

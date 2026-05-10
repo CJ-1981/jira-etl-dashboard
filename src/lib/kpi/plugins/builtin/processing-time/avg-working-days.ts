@@ -26,7 +26,7 @@ const avgWorkingDaysPlugin: KpiPlugin = {
     }
 
     const totalDays = resolvedIssues.reduce((sum, issue) => {
-      return sum + calculateWorkingDays(issue.created, issue.resolved!, context.holidays);
+      return sum + calculateWorkingDays(issue.created, issue.resolved!, context.holidays.regions);
     }, 0);
 
     const avg = totalDays / resolvedIssues.length;

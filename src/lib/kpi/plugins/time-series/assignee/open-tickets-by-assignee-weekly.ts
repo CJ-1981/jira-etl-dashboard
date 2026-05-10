@@ -218,6 +218,7 @@ const openTicketsByAssigneeWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   description: 'Number of open (non-resolved) tickets per assignee over time, grouped by week',
   category: 'time-series',
   domain: 'assignee',
+  version: '1.0.0',
   unit: 'tickets',
   timeInterval: 'weekly',
   calculate(context) {

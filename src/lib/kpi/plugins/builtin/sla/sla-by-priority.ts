@@ -41,7 +41,12 @@ const slaByPriorityPlugin: KpiPlugin = {
       resolvedByPriority[priority].total++;
       resolvedByPriority[priority].ticketKeys.add(issue.key);
 
-      const hours = calculateBusinessHours(issue.created, issue.resolved, context.holidays);
+      const hours = calculateBusinessHours(issue.created, issue.resolved, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      });
       const target = slaTargets[priority] || 40;
       if (hours <= target) {
         resolvedByPriority[priority].withinSla++;

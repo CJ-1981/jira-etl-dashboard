@@ -152,7 +152,12 @@ function calculateTimeInStatusTrend(
           ? issue.transitions[issue.transitions.indexOf(transition) + 1].occurredAt
           : issue.resolved!;
 
-        const hours = calculateBusinessHours(transition.occurredAt, nextTime, context.holidays);
+        const hours = calculateBusinessHours(transition.occurredAt, nextTime, {
+          regions: context.holidays.regions,
+          workStartHour: context.holidays.workStartHour,
+          workEndHour: context.holidays.workEndHour,
+          workDaysPerWeek: context.holidays.workDaysPerWeek,
+        });
 
         if (!periodStatusData[periodKey][status]) {
           periodStatusData[periodKey][status] = { totalHours: 0, count: 0 };
@@ -238,6 +243,7 @@ const timeInStatusWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   description: 'Average business hours tickets spend in each workflow status, grouped by week',
   category: 'time-series',
   domain: 'turnaround',
+  version: '1.0.0',
   unit: 'hours',
   timeInterval: 'weekly',
   calculate(context) {

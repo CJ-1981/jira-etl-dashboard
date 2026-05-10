@@ -4,28 +4,11 @@
  * Shared types for time-series plugins
  */
 
-import type { KpiContext } from './types';
+import type { KpiResult, TimeSeriesDataPoint, TimeInterval } from './types';
 
-export interface TimeSeriesResult {
-  name: string;
-  value: number;
-  unit: string;
-  timeSeries?: TimeSeriesDataPoint[];
-  dimensions?: Record<string, string>;
-  details?: Array<{
-    label: string;
-    value: number;
-    unit?: string;
-  }>;
-  ticketKeys?: string[];
+export type { TimeSeriesDataPoint, TimeInterval };
+
+export interface TimeSeriesResult extends KpiResult {
+  // Inherits all properties from KpiResult
+  // We can keep this interface if we want to specifically mark it as a time-series result
 }
-
-export interface TimeSeriesDataPoint {
-  period: string;
-  date: Date;
-  value: number;
-  count: number;
-  isComplete?: boolean;
-}
-
-export type TimeInterval = 'daily' | 'weekly' | 'monthly';

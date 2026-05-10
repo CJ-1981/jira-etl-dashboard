@@ -34,7 +34,12 @@ const timeInStatusPlugin: KpiPlugin = {
         const firstTransition = issue.transitions[0];
         const initialStatus = firstTransition.fromStatus;
         if (initialStatus) {
-          const hours = calculateBusinessHours(issue.created, firstTransition.occurredAt, context.holidays);
+          const hours = calculateBusinessHours(issue.created, firstTransition.occurredAt, {
+            regions: context.holidays.regions,
+            workStartHour: context.holidays.workStartHour,
+            workEndHour: context.holidays.workEndHour,
+            workDaysPerWeek: context.holidays.workDaysPerWeek,
+          });
           if (!statusHours[initialStatus]) {
             statusHours[initialStatus] = { total: 0, count: 0, issueCount: 0 };
           }
@@ -58,7 +63,12 @@ const timeInStatusPlugin: KpiPlugin = {
               ? issue.transitions[issue.transitions.indexOf(transition) + 1].occurredAt
               : issue.resolved || new Date();
 
-          const hours = calculateBusinessHours(transition.occurredAt, nextTime, context.holidays);
+          const hours = calculateBusinessHours(transition.occurredAt, nextTime, {
+            regions: context.holidays.regions,
+            workStartHour: context.holidays.workStartHour,
+            workEndHour: context.holidays.workEndHour,
+            workDaysPerWeek: context.holidays.workDaysPerWeek,
+          });
           if (!statusHours[status]) {
             statusHours[status] = { total: 0, count: 0, issueCount: 0 };
           }

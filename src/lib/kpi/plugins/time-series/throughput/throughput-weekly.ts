@@ -197,6 +197,7 @@ const throughputWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   description: 'Number of tickets resolved per week',
   category: 'time-series',
   domain: 'throughput',
+  version: '1.0.0',
   unit: 'tickets',
   timeInterval: 'weekly',
   calculate(context) {

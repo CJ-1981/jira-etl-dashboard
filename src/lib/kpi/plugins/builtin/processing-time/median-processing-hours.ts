@@ -26,7 +26,12 @@ const medianProcessingHoursPlugin: KpiPlugin = {
     }
 
     const hours = resolvedIssues
-      .map((issue) => calculateBusinessHours(issue.created, issue.resolved!, context.holidays))
+      .map((issue) => calculateBusinessHours(issue.created, issue.resolved!, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      }))
       .sort((a, b) => a - b);
 
     const mid = Math.floor(hours.length / 2);

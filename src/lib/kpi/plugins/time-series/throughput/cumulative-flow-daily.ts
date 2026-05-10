@@ -222,6 +222,7 @@ const cumulativeFlowDailyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   description: 'Number of tickets in each status over time (stacked area chart)',
   category: 'time-series',
   domain: 'throughput',
+  version: '1.0.0',
   unit: 'tickets',
   timeInterval: 'daily',
   calculate(context) {

@@ -153,7 +153,12 @@ function calculateSlaTrend(
     }
 
     const withinSla = issues.filter((issue) => {
-      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
+      const hours = calculateBusinessHours(issue.created, issue.resolved!, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      });
       return hours <= slaTargetHours;
     }).length;
 
@@ -214,6 +219,7 @@ const slaComplianceWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   description: 'SLA compliance rate per week',
   category: 'time-series',
   domain: 'sla',
+  version: '1.0.0',
   unit: '%',
   timeInterval: 'weekly',
   calculate(context) {

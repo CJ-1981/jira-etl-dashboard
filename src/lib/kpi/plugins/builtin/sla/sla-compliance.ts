@@ -26,7 +26,12 @@ const slaCompliancePlugin: KpiPlugin = {
     }
 
     const withinSlaIssues = resolvedIssues.filter((issue) => {
-      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
+      const hours = calculateBusinessHours(issue.created, issue.resolved!, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      });
       return hours <= slaTargetHours;
     });
 

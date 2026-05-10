@@ -113,10 +113,6 @@ export default function Home() {
     if (savedStorage) setStorageConfig(savedStorage);
 
     const savedActive = localConfig.getActiveConnectionId();
-    if (savedActive) {
-      setActiveConnectionId(savedActive);
-    }
-
     const savedSettings = localConfig.getSettings();
     if (savedSettings) setSettings(savedSettings);
 
@@ -125,21 +121,43 @@ export default function Home() {
     setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
     setShowSettingsSubmenu(localConfig.getShowSettingsSubmenu());
 
+    // Start loading DB immediately if we have a saved connection
+    // Don't wait for activeConnectionId state to update
+    if (savedActive) {
+      const controller = new AbortController();
+
+      // Update state for UI consistency (non-blocking)
+      setActiveConnectionId(savedActive);
+
+      // Start loading immediately with saved storage config
+      loadMasterDataset(savedActive, savedStorage || storageConfig, controller.signal);
+
+      // Cleanup if component unmounts
+      return () => controller.abort();
+    }
+
     // Initially dates are empty strings from the store
   }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);
 
-  // Consolidate data loading into a single effect with AbortController
+  // Secondary effect: Handle connection changes after initial load
+  // This only runs when user manually switches connections via UI
   useEffect(() => {
-    if (!mounted || !activeConnectionId) return;
-    
+    // Skip if we haven't loaded initial config yet
+    // (activeConnectionId will be empty string initially)
+    if (!activeConnectionId || !mounted) return;
+
+    // Skip if this looks like the initial load (storageConfig not set yet)
+    // The initial load is handled by the effect above
+    if (!storageConfig.provider) return;
+
     const controller = new AbortController();
-    
+
     // Persist active connection ID
     localConfig.setActiveConnectionId(activeConnectionId);
-    
-    // Auto-load data
+
+    // Auto-load data when connection changes
     loadMasterDataset(activeConnectionId, storageConfig, controller.signal);
-    
+
     return () => controller.abort();
   }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
 
@@ -383,10 +401,10 @@ export default function Home() {
       <main className="container py-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 
-          <TabsContent value="extract" className="space-y-6 overflow-hidden">
+          <TabsContent value="extract" className="space-y-6">
             <Tabs defaultValue="jira-etl" className="space-y-6">
               {showDataCenterSubmenu && (
-                <div className="flex justify-center no-print">
+                <div className="flex justify-center no-print sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
                   <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                     <TabsTrigger value="jira-etl" className="gap-2 px-6">
                       <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
@@ -410,10 +428,10 @@ export default function Home() {
             </Tabs>
           </TabsContent>
 
-          <TabsContent value="kpi" className="space-y-6 overflow-hidden">
+          <TabsContent value="kpi" className="space-y-6">
             <Tabs value={kpiSubTab} onValueChange={setKpiSubTab} className="space-y-6">
               {showKpiAnalyticsSubmenu && (
-                <div className="flex justify-center no-print">
+                <div className="flex justify-center no-print sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
                   <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
                     <TabsTrigger value="dashboard" className="gap-2 w-48 text-xs">
                       <BarChart3 className="h-4 w-4" />
@@ -447,10 +465,10 @@ export default function Home() {
             </Tabs>
           </TabsContent>
 
-          <TabsContent value="settings" className="space-y-6 overflow-hidden">
+          <TabsContent value="settings" className="space-y-6">
             <Tabs defaultValue="connections" className="space-y-6">
               {showSettingsSubmenu && (
-                <div className="flex justify-center">
+                <div className="flex justify-center sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
                   <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                     <TabsTrigger value="connections" className="gap-2 px-6">
                       <Server className="h-4 w-4" />

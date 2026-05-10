@@ -27,7 +27,12 @@ const avgProcessingHoursPlugin: KpiPlugin = {
     }
 
     const totalHours = resolvedIssues.reduce((sum, issue) => {
-      return sum + calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
+      return sum + calculateBusinessHours(issue.created, issue.resolved!, {
+        regions: context.holidays.regions,
+        workStartHour: context.holidays.workStartHour,
+        workEndHour: context.holidays.workEndHour,
+        workDaysPerWeek: context.holidays.workDaysPerWeek,
+      });
     }, 0);
 
     const avg = totalHours / resolvedIssues.length;

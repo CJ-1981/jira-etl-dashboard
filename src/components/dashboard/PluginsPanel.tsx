@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
-  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical
+  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown
 } from 'lucide-react';
 import {
   DndContext,
@@ -101,6 +101,7 @@ export function PluginsPanel() {
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [initialSettings, setInitialSettings] = useState<AppSettings>(settings);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Sync initialSettings once the store settings are loaded from localStorage
   useEffect(() => {
@@ -207,6 +208,32 @@ export function PluginsPanel() {
 
   const saveActivePlugins = useCallback((pluginIds: string[]) => {
     localStorage.setItem('cfg_active_plugins', JSON.stringify(pluginIds));
+  }, []);
+
+  // Load collapsed groups from localStorage
+  useEffect(() => {
+    const savedCollapsed = localStorage.getItem('cfg_collapsed_plugin_groups');
+    if (savedCollapsed) {
+      try {
+        setCollapsedGroups(new Set(JSON.parse(savedCollapsed)));
+      } catch (err) {
+        console.error('Failed to load collapsed groups:', err);
+      }
+    }
+  }, []);
+
+  const toggleGroupCollapse = useCallback((category: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      // Save to localStorage
+      localStorage.setItem('cfg_collapsed_plugin_groups', JSON.stringify(Array.from(next)));
+      return next;
+    });
   }, []);
 
   const togglePlugin = useCallback((pluginId: string) => {
@@ -422,12 +449,7 @@ export function PluginsPanel() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-emerald-400" /> KPI Plugin Registry</CardTitle>
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setBuilderOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />Create
-              </Button>
-            </div>
+            <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-emerald-400" /> KPI Plugin Registry</CardTitle>
             <CardDescription>Select which KPIs to calculate and display</CardDescription>
           </CardHeader>
           <CardContent>
@@ -444,8 +466,16 @@ export function PluginsPanel() {
               <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                 {Object.entries(plugins).map(([category, pluginList]) => (
                   <div key={category}>
-                    <div className="flex items-center gap-2 mb-2"><Badge className={categoryLabels[category]?.color || categoryLabels['custom']?.color}>{categoryLabels[category]?.label || category}</Badge><span className="text-xs text-slate-400 dark:text-slate-500">{pluginList.length}</span></div>
-                    <div className="space-y-2">{pluginList.map((plugin) => (
+                    <div
+                      className="flex items-center gap-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => toggleGroupCollapse(category)}
+                    >
+                      <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${collapsedGroups.has(category) ? '-rotate-90' : ''}`} />
+                      <Badge className={categoryLabels[category]?.color || categoryLabels['custom']?.color}>{categoryLabels[category]?.label || category}</Badge>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">{pluginList.length}</span>
+                    </div>
+                    {!collapsedGroups.has(category) && (
+                      <div className="space-y-2">{pluginList.map((plugin) => (
                       <div key={plugin.id} className={`rounded-lg border transition-colors ${activePlugins.includes(plugin.id) ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30'} p-3`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3 flex-1">
@@ -463,6 +493,7 @@ export function PluginsPanel() {
                         </div>
                       </div>
                     ))}</div>
+                    )}
                   </div>
                 ))}
               </div>

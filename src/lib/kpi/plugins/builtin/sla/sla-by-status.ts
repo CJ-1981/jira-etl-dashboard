@@ -7,7 +7,7 @@
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
 import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
 
-const slaByStatusPlugin: KpiPlugin = {
+const slaByStatusPlugin: KpiPlugin<KpiResult[]> = {
   id: 'sla_by_status',
   name: 'SLA Compliance by Status',
   description: 'SLA compliance rate for each workflow status, with comment-based clock reset.',
@@ -20,8 +20,8 @@ const slaByStatusPlugin: KpiPlugin = {
   unit: '%',
 
   calculate(context: KpiContext): KpiResult[] {
-    const targets = context.slaTargets || {};
-    const targetEntries = Object.entries(targets).filter(([, h]) => h > 0);
+    const targets = (context.slaTargets || {}) as Record<string, number>;
+    const targetEntries = (Object.entries(targets) as [string, number][]).filter(([, h]) => h > 0);
     if (targetEntries.length === 0) return [];
 
     // Collect available statuses from transitions
@@ -77,7 +77,12 @@ const slaByStatusPlugin: KpiPlugin = {
           // SLA clock resets to the last relevant comment
           const slaStart = relevantComments.length > 0 ? relevantComments[relevantComments.length - 1].created : statusEntry;
 
-          const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
+          const hours = calculateBusinessHours(slaStart, statusExit, {
+            regions: context.holidays.regions,
+            workStartHour: context.holidays.workStartHour,
+            workEndHour: context.holidays.workEndHour,
+            workDaysPerWeek: context.holidays.workDaysPerWeek,
+          });
           if (hours <= targetHours) {
             withinSla++;
           }
@@ -103,7 +108,12 @@ const slaByStatusPlugin: KpiPlugin = {
             // SLA clock resets to the last relevant comment
             const slaStart = relevantComments.length > 0 ? relevantComments[relevantComments.length - 1].created : statusEntry;
 
-            const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
+            const hours = calculateBusinessHours(slaStart, statusExit, {
+              regions: context.holidays.regions,
+              workStartHour: context.holidays.workStartHour,
+              workEndHour: context.holidays.workEndHour,
+              workDaysPerWeek: context.holidays.workDaysPerWeek,
+            });
             if (hours <= targetHours) {
               withinSla++;
             }
