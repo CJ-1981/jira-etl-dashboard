@@ -1949,7 +1949,7 @@ export function KpiDashboard() {
                   disabled={calculating}
                 >
                   <RefreshCw className={`h-3 w-3 ${calculating ? 'animate-spin' : ''}`} />
-                  Update
+                  Recalculate
                 </Button>
                 <Button
                   size="sm"
