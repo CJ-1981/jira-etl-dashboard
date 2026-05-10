@@ -1559,7 +1559,13 @@ export function KpiDashboard() {
                     >
                       <EyeOff className="h-3 w-3" />
                     </button>
-                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.priority}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
+                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.priority}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
+                    {result.details && (
+                      <div className="space-y-1 mt-2">
+                        <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Target')?.value || '-'}h</span></div>
+                        <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: any) => d.label === 'Total')?.value || 0}</span></div>
+                      </div>
+                    )}
                   </div>
                 );
               }))}</div>
@@ -1701,7 +1707,7 @@ export function KpiDashboard() {
                     >
                       <EyeOff className="h-3 w-3" />
                     </button>
-                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}%</span></div>
+                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
                     {result.details && (
                       <div className="space-y-1 mt-2">
                         <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Target')?.value || '-'}h</span></div>
