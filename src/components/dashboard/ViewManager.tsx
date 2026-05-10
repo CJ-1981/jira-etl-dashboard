@@ -62,7 +62,13 @@ export function ViewManager() {
   // Fetch views on connection change
   useEffect(() => {
     if (activeConnectionId) {
+      // Clear current active view when switching connections to prevent incompatible state
+      setActiveView(null);
+      setIsViewModified(false);
       fetchViews();
+    } else {
+      setSavedViews([]);
+      setActiveView(null);
     }
   }, [activeConnectionRef]);
 
