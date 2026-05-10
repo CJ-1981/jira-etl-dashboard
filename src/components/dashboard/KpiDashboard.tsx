@@ -1940,7 +1940,7 @@ export function KpiDashboard() {
               <div className="flex items-center gap-1.5 pr-1.5">
                 <Button
                   size="sm"
-                  className="rounded-full h-8 px-4 bg-emerald-600 hover:bg-emerald-700 text-xs font-bold shadow-lg shadow-emerald-600/20 gap-2"
+                  className="rounded-full h-8 px-4 bg-blue-600 hover:bg-blue-700 text-xs font-bold shadow-lg shadow-blue-600/20 gap-2"
                   onClick={() => {
                     hasUserInitiatedCalc.current = true;
                     runCalculation();
@@ -1954,10 +1954,11 @@ export function KpiDashboard() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="rounded-full w-8 h-8 p-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  className="rounded-full h-8 px-2 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 gap-1"
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 >
-                  <ArrowUp className="h-4 w-4" />
+                  <ArrowUp className="h-3.5 w-3.5" />
+                  Top
                 </Button>
               </div>
             </div>
