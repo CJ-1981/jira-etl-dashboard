@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ChartConfig, ExtractedIssue, JiraConnection, KpiCalcResult, JqlFilter, KpiCardConfig } from '@/types/dashboard';
+import { ChartConfig, ExtractedIssue, JiraConnection, KpiCalcResult, JqlFilter, KpiCardConfig, DashboardView } from '@/types/dashboard';
 import { AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 
 // @MX:ANCHOR: Central Application Store (useAppStore)
@@ -84,6 +84,18 @@ interface AppState {
 
   jqlResultCache: Map<string, { results: KpiCalcResult[]; timestamp: number }>;
   setJqlResultCache: (cache: Map<string, { results: KpiCalcResult[]; timestamp: number }>) => void;
+
+  // Saved Views
+  savedViews: DashboardView[];
+  setSavedViews: (views: DashboardView[]) => void;
+  activeView: DashboardView | null;
+  setActiveView: (view: DashboardView | null) => void;
+  isViewModified: boolean;
+  setIsViewModified: (modified: boolean) => void;
+
+  // Widget Titles
+  widgetTitles: Record<string, string>;
+  setWidgetTitles: (titles: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -178,4 +190,11 @@ export const useAppStore = create<AppState>((set) => ({
 
   jqlResultCache: new Map(),
   setJqlResultCache: (cache) => set({ jqlResultCache: cache }),
+
+  savedViews: [],
+  setSavedViews: (savedViews) => set({ savedViews }),
+  activeView: null,
+  setActiveView: (activeView) => set({ activeView }),
+  isViewModified: false,
+  setIsViewModified: (isViewModified) => set({ isViewModified }),
 }));

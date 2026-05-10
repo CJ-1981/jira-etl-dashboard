@@ -72,3 +72,26 @@ export interface PollingStatus {
   status: string;
   lastError: string | null;
 }
+
+export interface DashboardView {
+  id: string;
+  name: string;
+  connectionRef: string;
+  data: string; // JSON string
+  isDefault: boolean;
+  autoSaveEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DashboardViewState {
+  dateFrom: string;
+  dateTo: string;
+  globalFilters: Record<string, string[]>;
+  charts: ChartConfig[];
+  dashboardJqlQuery: string;
+  kpiCardConfigs: KpiCardConfig[];
+  region: string;
+  hiddenDimensions: string[];
+  widgetTitles: Record<string, string>;
+}

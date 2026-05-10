@@ -120,3 +120,20 @@ model MasterTicket {
   @@index([status])
   @@index([created])
 }
+
+model DashboardView {
+  id                String   @id @default(cuid())
+  name              String
+  connectionRef     String   // Associate with a connection
+  
+  // Dashboard state (JSON serialized)
+  data              String   // JSON: { dateFrom, dateTo, globalFilters, charts, dashboardJqlQuery, kpiCardConfigs, region, hiddenDimensions, widgetTitles }
+  
+  isDefault         Boolean  @default(false)
+  autoSaveEnabled   Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([connectionRef])
+}
