@@ -157,11 +157,11 @@ export function ConnectionsPanel() {
 
   const handleEdit = (conn: JiraConnection) => {
     setForm({
-      name: conn.name,
-      baseUrl: conn.baseUrl,
-      apiToken: conn.apiToken,
-      email: conn.email,
-      projectKeys: conn.projectKeys,
+      name: conn.name || '',
+      baseUrl: conn.baseUrl || '',
+      apiToken: conn.apiToken || '',
+      email: conn.email || '',
+      projectKeys: conn.projectKeys || '',
     });
     setEditingId(conn.id);
   };

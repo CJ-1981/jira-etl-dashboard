@@ -102,6 +102,8 @@ export default function Home() {
     }
   }, []);
 
+  const initialMountRef = useRef(false);
+
   useEffect(() => {
     if (!mounted) return;
 
@@ -113,10 +115,6 @@ export default function Home() {
     if (savedStorage) setStorageConfig(savedStorage);
 
     const savedActive = localConfig.getActiveConnectionId();
-    if (savedActive) {
-      setActiveConnectionId(savedActive);
-    }
-
     const savedSettings = localConfig.getSettings();
     if (savedSettings) setSettings(savedSettings);
 
@@ -125,34 +123,56 @@ export default function Home() {
     setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
     setShowSettingsSubmenu(localConfig.getShowSettingsSubmenu());
 
+    // Start loading DB immediately if we have a saved connection
+    // Don't wait for activeConnectionId state to update
+    if (savedActive) {
+      initialMountRef.current = true;
+      const controller = new AbortController();
+
+      // Update state for UI consistency (non-blocking)
+      setActiveConnectionId(savedActive);
+
+      // Start loading immediately with saved storage config
+      loadMasterDataset(savedActive, savedStorage || storageConfig, controller.signal);
+
+      // Cleanup if component unmounts
+      return () => controller.abort();
+    }
+
     // Initially dates are empty strings from the store
+    // 
+    // @MX:NOTE: Mount-only initialization. loadMasterDataset and storageConfig 
+    // are intentionally omitted as we want to trigger initial data load 
+    // ONLY once using the fresh values read directly from localConfig.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);
 
-  // Consolidate data loading into a single effect with AbortController
+  // Secondary effect: Handle connection changes after initial load
+  // This only runs when user manually switches connections via UI
   useEffect(() => {
-    if (!mounted || !activeConnectionId) return;
-    
+    // Skip if we haven't loaded initial config yet
+    // (activeConnectionId will be empty string initially)
+    if (!activeConnectionId || !mounted) return;
+
+    // Skip if this is the initial load path (handled by effect above)
+    if (initialMountRef.current) {
+      initialMountRef.current = false;
+      return;
+    }
+
+    // Skip if this looks like the initial load (storageConfig not set yet)
+    if (!storageConfig.provider) return;
+
     const controller = new AbortController();
-    
+
     // Persist active connection ID
     localConfig.setActiveConnectionId(activeConnectionId);
-    
-    // Auto-load data
+
+    // Auto-load data when connection changes
     loadMasterDataset(activeConnectionId, storageConfig, controller.signal);
-    
+
     return () => controller.abort();
   }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
-
-  // @MX:NOTE: Auto-populate default "Max" date range from master dataset if not already set
-  useEffect(() => {
-    if (!mounted || !masterDatasetInfo?.dateRange) return;
-    
-    // Only set if both are empty (meaning no saved state or user choice yet)
-    if (!dateFrom && !dateTo) {
-      setDateFrom(masterDatasetInfo.dateRange.from.split('T')[0]);
-      setDateTo(masterDatasetInfo.dateRange.to.split('T')[0]);
-    }
-  }, [mounted, masterDatasetInfo, dateFrom, dateTo, setDateFrom, setDateTo]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -169,29 +189,56 @@ export default function Home() {
   }, [theme, mounted]);
 
   // Persistence for Dashboard State (Filters, Charts, etc.)
+  // Combined with auto-populate to ensure proper execution order
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
 
+    const isDev = process.env.NODE_ENV === 'development';
+    if (isDev) console.log('[App] Loading saved dashboard state for connection');
+
     const savedState = localConfig.getDashboardState(activeConnectionId);
+
     if (savedState) {
+      if (isDev) console.log('[App] Found saved dashboard state');
       if (savedState.globalFilters) setGlobalFilters(savedState.globalFilters);
       if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
       if (savedState.charts) setDashboardCharts(savedState.charts);
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
-      // Only load saved dates if they were explicitly set by user (both from and to exist)
-      if (savedState.dateFrom && savedState.dateTo) {
-        setDateFrom(savedState.dateFrom);
-        setDateTo(savedState.dateTo);
-      }
     } else {
+      if (isDev) console.log('[App] No saved dashboard state, using defaults');
       setGlobalFilters({});
       setHiddenDimensions(new Set());
       setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
       setDashboardJqlQuery('');
-      // Don't set dates here - let auto-populate effect set them to max range
-      // The store already initializes them as empty strings, and auto-populate will fill them
     }
-  }, [activeConnectionId, mounted, setDateFrom, setDateTo, setGlobalFilters, setHiddenDimensions, setDashboardCharts, setDashboardJqlQuery]);
+
+    // Always default to MAX range from master dataset if available
+    // This ensures MAX is always the default, regardless of saved state
+    // Saved dates will only be preserved if explicitly different from MAX
+    if (masterDatasetInfo?.dateRange?.from && masterDatasetInfo?.dateRange?.to) {
+      const maxFromStr = masterDatasetInfo.dateRange.from.split('T')[0];
+      const maxToStr = masterDatasetInfo.dateRange.to.split('T')[0];
+
+      if (isDev) console.log('[App] Master dataset date range available');
+
+      // Check if saved dates are different from MAX (user explicitly changed them)
+      const savedDatesDifferFromMax = savedState?.dateFrom && savedState?.dateTo &&
+        (savedState.dateFrom !== maxFromStr || savedState.dateTo !== maxToStr);
+
+      if (savedDatesDifferFromMax) {
+        if (isDev) console.log('[App] Using saved dates (user preference)');
+        setDateFrom(savedState.dateFrom!);
+        setDateTo(savedState.dateTo!);
+      } else {
+        if (isDev) console.log('[App] Defaulting to MAX range');
+        setDateFrom(maxFromStr);
+        setDateTo(maxToStr);
+      }
+    } else {
+      if (isDev) console.log('[App] Master dataset date range not available yet');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConnectionId, mounted, masterDatasetInfo]);
 
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
@@ -367,10 +414,10 @@ export default function Home() {
       <main className="container py-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 
-          <TabsContent value="extract" className="space-y-6 overflow-hidden">
+          <TabsContent value="extract" className="space-y-6">
             <Tabs defaultValue="jira-etl" className="space-y-6">
               {showDataCenterSubmenu && (
-                <div className="flex justify-center no-print">
+                <div className="flex justify-center no-print sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
                   <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                     <TabsTrigger value="jira-etl" className="gap-2 px-6">
                       <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
@@ -394,10 +441,10 @@ export default function Home() {
             </Tabs>
           </TabsContent>
 
-          <TabsContent value="kpi" className="space-y-6 overflow-hidden">
+          <TabsContent value="kpi" className="space-y-6">
             <Tabs value={kpiSubTab} onValueChange={setKpiSubTab} className="space-y-6">
               {showKpiAnalyticsSubmenu && (
-                <div className="flex justify-center no-print">
+                <div className="flex justify-center no-print sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
                   <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
                     <TabsTrigger value="dashboard" className="gap-2 w-48 text-xs">
                       <BarChart3 className="h-4 w-4" />
@@ -431,10 +478,10 @@ export default function Home() {
             </Tabs>
           </TabsContent>
 
-          <TabsContent value="settings" className="space-y-6 overflow-hidden">
+          <TabsContent value="settings" className="space-y-6">
             <Tabs defaultValue="connections" className="space-y-6">
               {showSettingsSubmenu && (
-                <div className="flex justify-center">
+                <div className="flex justify-center sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
                   <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                     <TabsTrigger value="connections" className="gap-2 px-6">
                       <Server className="h-4 w-4" />

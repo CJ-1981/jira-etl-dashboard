@@ -458,13 +458,13 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
               <div className="flex items-center h-6">
                 <Label className="text-slate-700 dark:text-slate-300">Date From</Label>
               </div>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
+              <Input type="date" value={dateFrom || ''} onChange={(e) => setDateFrom(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center h-6">
                 <Label className="text-slate-700 dark:text-slate-300">Date To</Label>
               </div>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
+              <Input type="date" value={dateTo || ''} onChange={(e) => setDateTo(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
             </div>
           </div>
 

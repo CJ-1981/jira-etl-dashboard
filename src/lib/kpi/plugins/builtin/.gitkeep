@@ -1,0 +1,26 @@
+# Built-in Plugins Directory
+
+This directory contains all built-in KPI plugins organized by domain.
+
+## Directory Structure
+
+- `processing-time/` - Plugins measuring time to first response, processing duration
+- `turnaround/` - Plugins measuring full cycle time and turnaround metrics
+- `throughput/` - Plugins measuring work completion rates and velocity
+- `sla/` - Plugins measuring SLA compliance and target adherence
+- `quality/` - Plugins measuring code quality, bug rates, rework
+- `assignee/` - Plugins measuring individual and team performance
+
+## Adding Built-in Plugins
+
+1. Create plugin file in appropriate domain directory
+2. Export default KpiPlugin object
+3. Follow naming convention: `{metric}-plugin.ts`
+4. Include metadata with description and examples
+
+## Plugin Requirements
+
+- Must implement KpiPlugin interface from `../../types.ts`
+- Must have unique ID (kebab-case)
+- Must specify domain and category
+- Should include comprehensive metadata

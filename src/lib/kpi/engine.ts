@@ -5,80 +5,15 @@
  * Supports custom plugins via the KpiPlugin interface.
  */
 
-import { calculateBusinessHours, calculateWorkingDays, type GermanState } from '../holidays/german-holidays';
+import type { GermanState } from '../holidays/german-holidays';
 import type { JiraIssue } from '../jira/client';
-import { registerTimeSeriesPlugins } from './time-series-plugin';
+import { PluginLoader } from './plugin-loader';
+import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Legacy Type Aliases for Backward Compatibility ────────────────────────────
 
-export interface KpiContext {
-  issues: TransformedIssue[];
-  holidays: { regions: GermanState[]; workStartHour: number; workEndHour: number; slaTargetHours?: number };
-  period: { start: Date; end: Date };
-  slaTargets?: Record<string, number>;
-  useAnyoneCommentsForSla?: boolean;
-  dimensions?: Record<string, string>;
-  globalFilters?: Record<string, string[]>; // New: Active filters from UI
-}
-
-export interface TransformedIssue {
-  key: string;
-  project: string;
-  summary: string;
-  issueType: string;
-  priority: string | null;
-  status: string;
-  statusCategory: string;
-  assignee: string;
-  reporter: string;
-  created: Date;
-  updated: Date;
-  resolved: Date | null;
-  dueDate: Date | null;
-  storyPoints: number | null;
-  labels: string[];
-  components: string[];
-  transitions: StatusTransition[];
-  timeInStatus: Record<string, number>;
-  comments: Array<{ author: string; created: Date }>;
-}
-
-export interface StatusTransition {
-  fromStatus: string | null;
-  toStatus: string;
-  author: string;
-  occurredAt: Date;
-}
-
-export interface KpiPlugin {
-  id: string;
-  name: string;
-  description: string;
-  category: 'processing_time' | 'turnaround' | 'throughput' | 'sla' | 'quality' | 'assignee' | 'custom';
-  unit: string;
-  pluginType?: 'builtin' | 'custom';
-  isActive?: boolean;
-  visualization?: 'card' | 'horizontal_bar' | 'pie' | 'line';
-  calculate(context: KpiContext): KpiResult[];
-}
-
-export interface KpiResult {
-  name: string;
-  value: number;
-  unit: string;
-  dimensions?: Record<string, string>;
-  details?: Array<{
-    label: string;
-    value: number;
-    unit?: string;
-  }>;
-  ticketKeys?: string[]; // New: List of tickets that make up this metric
-  comparison?: {         // New: Comparison data for deltas
-    value: number;
-    change: number;
-    label: string;
-  };
-}
+// Re-export types from types.ts for backward compatibility
+export type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition };
 
 // ─── Transform ───────────────────────────────────────────────────────────────
 
@@ -153,835 +88,36 @@ export function isIssueDone(issue: TransformedIssue): boolean {
   return category === 'done' || ['done', 'closed', 'resolved', 'completed', 'close', 'ready to close'].includes(status);
 }
 
-// ─── Built-in KPI Plugins ────────────────────────────────────────────────────
-
-/**
- * Average Processing Hours (excluding German holidays and non-working hours)
- */
-const avgProcessingHoursPlugin: KpiPlugin = {
-  id: 'avg_processing_hours',
-  name: 'Avg. Processing Hours',
-  description: 'Average business hours from creation to resolution, excluding weekends and German holidays.',
-  category: 'processing_time',
-  unit: 'hours',
-  calculate(context) {
-    const resolvedIssues = context.issues.filter((i) => i.resolved);
-    if (resolvedIssues.length === 0) return [{ name: 'Avg. Processing Hours', value: 0, unit: 'hours' }];
-
-    const totalHours = resolvedIssues.reduce((sum, issue) => {
-      return sum + calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
-    }, 0);
-
-    const avg = totalHours / resolvedIssues.length;
-
-    return [{
-      name: 'Avg. Processing Hours',
-      value: Math.round(avg * 100) / 100,
-      unit: 'hours',
-      ticketKeys: resolvedIssues.map(i => i.key),
-      details: [
-        { label: 'Resolved Tickets', value: resolvedIssues.length, unit: 'tickets' },
-        { label: 'Total Business Hours', value: Math.round(totalHours * 100) / 100, unit: 'hours' },
-      ],
-    }];
-  },
-};
-
-/**
- * Median Processing Hours
- */
-const medianProcessingHoursPlugin: KpiPlugin = {
-  id: 'median_processing_hours',
-  name: 'Median Processing Hours',
-  description: 'Median business hours from creation to resolution, excluding holidays.',
-  category: 'processing_time',
-  unit: 'hours',
-  calculate(context) {
-    const resolvedIssues = context.issues.filter((i) => i.resolved);
-    if (resolvedIssues.length === 0) return [{ name: 'Median Processing Hours', value: 0, unit: 'hours' }];
-
-    const hours = resolvedIssues.map((issue) =>
-      calculateBusinessHours(issue.created, issue.resolved!, context.holidays)
-    ).sort((a, b) => a - b);
-
-    const mid = Math.floor(hours.length / 2);
-    const median = hours.length % 2 !== 0 ? hours[mid] : (hours[mid - 1] + hours[mid]) / 2;
-
-    return [{
-      name: 'Median Processing Hours',
-      value: Math.round(median * 100) / 100,
-      unit: 'hours',
-      ticketKeys: resolvedIssues.map(i => i.key),
-    }];
-  },
-};
-
-/**
- * Time in Status KPI - Business hours spent in each workflow status
- */
-const timeInStatusPlugin: KpiPlugin = {
-  id: 'time_in_status',
-  name: 'Time In Status',
-  description: 'Average business hours tickets spend in each workflow status.',
-  category: 'turnaround',
-  unit: 'hours',
-  calculate(context) {
-    const statusHours: Record<string, { total: number; count: number; issueCount: number }> = {};
-    const issuesPerStatus: Record<string, Set<string>> = {};
-
-    for (const issue of context.issues) {
-      const seen = new Set<string>();
-
-      // Account for the initial status before any changelog entry.
-      // Jira doesn't record the creation-to-first-transition as a changelog item,
-      // so the ticket's initial status (e.g. "Distribution") is missed unless we
-      // measure from issue.created to the first transition's occurredAt.
-      if (issue.transitions.length > 0) {
-        const firstTransition = issue.transitions[0];
-        const initialStatus = firstTransition.fromStatus;
-        if (initialStatus) {
-          const hours = calculateBusinessHours(issue.created, firstTransition.occurredAt, context.holidays);
-          if (!statusHours[initialStatus]) statusHours[initialStatus] = { total: 0, count: 0, issueCount: 0 };
-          if (!issuesPerStatus[initialStatus]) issuesPerStatus[initialStatus] = new Set();
-          statusHours[initialStatus].total += hours;
-          statusHours[initialStatus].count++;
-          statusHours[initialStatus].issueCount++;
-          issuesPerStatus[initialStatus].add(issue.key);
-          seen.add(initialStatus);
-        }
-      }
-
-      for (const transition of issue.transitions) {
-        const status = transition.toStatus;
-        if (!seen.has(status) || true) { // include all transitions
-          const nextTime = issue.transitions[issue.transitions.indexOf(transition) + 1]
-            ? issue.transitions[issue.transitions.indexOf(transition) + 1].occurredAt
-            : issue.resolved || new Date();
-
-          const hours = calculateBusinessHours(transition.occurredAt, nextTime, context.holidays);
-          if (!statusHours[status]) statusHours[status] = { total: 0, count: 0, issueCount: 0 };
-          if (!issuesPerStatus[status]) issuesPerStatus[status] = new Set();
-
-          statusHours[status].total += hours;
-          statusHours[status].count++;
-          if (!seen.has(status)) {
-            statusHours[status].issueCount++;
-            issuesPerStatus[status].add(issue.key);
-          }
-          seen.add(status);
-        }
-      }
-    }
-
-    // Filter out transient statuses (average under 1 minute)
-    const MIN_STATUS_HOURS = 1 / 60; // 1 minute in hours
-
-    return Object.entries(statusHours)
-      .filter(([, data]) => (data.total / Math.max(data.count, 1)) >= MIN_STATUS_HOURS)
-      .map(([status, data]) => ({
-        name: `Time in ${status}`,
-        value: Math.round((data.total / Math.max(data.count, 1)) * 100) / 100,
-        unit: 'hours',
-        dimensions: { status },
-        ticketKeys: Array.from(issuesPerStatus[status] || []),
-        details: [
-          { label: 'Total Occurrences', value: data.count },
-          { label: 'Unique Issues', value: data.issueCount },
-          { label: 'Total Hours', value: Math.round(data.total * 100) / 100 },
-          { label: 'Avg Hours per Occurrence', value: Math.round((data.total / Math.max(data.count, 1)) * 100) / 100 },
-        ],
-      }));
-  },
-};
-
-/**
- * SLA Compliance - % of tickets resolved within target
- */
-const slaCompliancePlugin: KpiPlugin = {
-  id: 'sla_compliance',
-  name: 'SLA Compliance Rate',
-  description: 'Percentage of tickets resolved within the configured SLA target (business hours).',
-  category: 'sla',
-  unit: '%',
-  calculate(context) {
-    const slaTargetHours = context.holidays.slaTargetHours || 40; // Use configured target, default to 40
-    const resolvedIssues = context.issues.filter((i) => i.resolved);
-    if (resolvedIssues.length === 0) return [{ name: 'SLA Compliance Rate', value: 0, unit: '%' }];
-
-    const withinSlaIssues = resolvedIssues.filter((issue) => {
-      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
-      return hours <= slaTargetHours;
-    });
-
-    const rate = (withinSlaIssues.length / resolvedIssues.length) * 100;
-
-    return [{
-      name: 'SLA Compliance Rate',
-      value: Math.round(rate * 100) / 100,
-      unit: '%',
-      ticketKeys: withinSlaIssues.map(i => i.key),
-      details: [
-        { label: 'Within SLA', value: withinSlaIssues.length, unit: 'tickets' },
-        { label: 'Breached SLA', value: resolvedIssues.length - withinSlaIssues.length, unit: 'tickets' },
-        { label: 'SLA Target', value: slaTargetHours, unit: 'hours' },
-      ],
-    }];
-  },
-};
-
-/**
- * Throughput - Tickets created and resolved per period
- */
-const throughputPlugin: KpiPlugin = {
-  id: 'throughput',
-  name: 'Throughput',
-  description: 'Overview of ticket activity: Created, Resolved, and currently Open.',
-  category: 'throughput',
-  unit: 'tickets',
-  calculate(context) {
-    const createdIssues = context.issues.filter((i) =>
-      i.created >= context.period.start && i.created <= context.period.end
-    );
-
-    const resolvedIssues = context.issues.filter((i) =>
-      i.resolved && i.resolved >= context.period.start && i.resolved <= context.period.end
-    );
-
-    const openIssues = context.issues.filter((i) => {
-      const createdBeforeEnd = i.created <= context.period.end;
-      // An issue is NOT open if it was resolved before the period end OR if it's currently Done (fallback for missing resolution date)
-      const isActuallyDone = isIssueDone(i);
-      const notYetResolved = (!i.resolved && !isActuallyDone) || (i.resolved && i.resolved > context.period.end);
-      return createdBeforeEnd && notYetResolved;
-    });
-
-    const periodDays = Math.max(
-      Math.ceil((context.period.end.getTime() - context.period.start.getTime()) / (1000 * 60 * 60 * 24)),
-      1
-    );
-
-    return [
-      {
-        name: 'Resolved Tickets',
-        value: resolvedIssues.length,
-        unit: 'tickets',
-        ticketKeys: resolvedIssues.map(i => i.key),
-        details: [
-          { label: 'Avg. Resolved/Day', value: Math.round((resolvedIssues.length / periodDays) * 100) / 100, unit: 'tickets/day' },
-        ],
-      },
-      {
-        name: 'Created Tickets',
-        value: createdIssues.length,
-        unit: 'tickets',
-        ticketKeys: createdIssues.map(i => i.key),
-      },
-      {
-        name: 'Open Tickets',
-        value: openIssues.length,
-        unit: 'tickets',
-        ticketKeys: openIssues.map(i => i.key),
-      }
-    ];
-  },
-};
-
-/**
- * Resolution Rate
- */
-const resolutionRatePlugin: KpiPlugin = {
-  id: 'resolution_rate',
-  name: 'Resolution Rate',
-  description: 'Percentage of created tickets that have been resolved.',
-  category: 'quality',
-  unit: '%',
-  calculate(context) {
-    const total = context.issues.length;
-    if (total === 0) return [{ name: 'Resolution Rate', value: 0, unit: '%' }];
-
-    const resolvedIssues = context.issues.filter((i) => isIssueDone(i));
-    const resolved = resolvedIssues.length;
-    const rate = (resolved / total) * 100;
-
-    return [{
-      name: 'Resolution Rate',
-      value: Math.round(rate * 100) / 100,
-      unit: '%',
-      ticketKeys: resolvedIssues.map(i => i.key),
-      details: [
-        { label: 'Resolved', value: resolved },
-        { label: 'Open', value: total - resolved },
-      ],
-    }];
-  },
-};
-
-/**
- * Avg Working Days to Resolution
- */
-const avgWorkingDaysPlugin: KpiPlugin = {
-  id: 'avg_working_days',
-  name: 'Avg. Working Days to Resolution',
-  description: 'Average working days from creation to resolution, excluding weekends and German holidays.',
-  category: 'processing_time',
-  unit: 'days',
-  calculate(context) {
-    const resolvedIssues = context.issues.filter((i) => i.resolved);
-    if (resolvedIssues.length === 0) return [{ name: 'Avg. Working Days', value: 0, unit: 'days' }];
-
-    const totalDays = resolvedIssues.reduce((sum, issue) => {
-      return sum + calculateWorkingDays(issue.created, issue.resolved!, context.holidays.regions);
-    }, 0);
-
-    return [{
-      name: 'Avg. Working Days to Resolution',
-      value: Math.round((totalDays / resolvedIssues.length) * 100) / 100,
-      unit: 'days',
-      ticketKeys: resolvedIssues.map(i => i.key),
-      details: [
-        { label: 'Resolved Tickets', value: resolvedIssues.length },
-      ],
-    }];
-  },
-};
-
-/**
- * SLA by Priority - SLA compliance broken down by ticket priority
- */
-const slaByPriorityPlugin: KpiPlugin = {
-  id: 'sla_by_priority',
-  name: 'SLA Compliance by Priority',
-  description: 'SLA compliance rate for each priority level.',
-  category: 'sla',
-  unit: '%',
-  calculate(context) {
-    const slaTargets: Record<string, number> = {
-      'Highest': 8,
-      'High': 24,
-      'Medium': 40,
-      'Low': 80,
-      'Lowest': 120,
-    };
-
-    const resolvedByPriority: Record<string, { total: number; withinSla: number; ticketKeys: Set<string> }> = {};
-
-    for (const issue of context.issues) {
-      if (!issue.resolved) continue;
-      const priority = issue.priority || 'Unassigned';
-      if (!resolvedByPriority[priority]) resolvedByPriority[priority] = { total: 0, withinSla: 0, ticketKeys: new Set() };
-      resolvedByPriority[priority].total++;
-      resolvedByPriority[priority].ticketKeys.add(issue.key);
-
-      const hours = calculateBusinessHours(issue.created, issue.resolved, context.holidays);
-      const target = slaTargets[priority] || 40;
-      if (hours <= target) resolvedByPriority[priority].withinSla++;
-    }
-
-    return Object.entries(resolvedByPriority)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([priority, data]) => ({
-      name: `SLA: ${priority}`,
-      value: Math.round((data.withinSla / data.total) * 10000) / 100,
-      unit: '%',
-      dimensions: { priority },
-      ticketKeys: Array.from(data.ticketKeys),
-      details: [
-        { label: 'Target', value: slaTargets[priority] || 40, unit: 'hours' },
-        { label: 'Within SLA', value: data.withinSla },
-        { label: 'Total', value: data.total },
-      ],
-    }));
-  },
-};
-
-/**
- * Reassignment Count - Average number of times a ticket is reassigned
- */
-const reassignmentPlugin: KpiPlugin = {
-  id: 'reassignment_count',
-  name: 'Avg. Reassignments',
-  description: 'Average number of times tickets are reassigned (assignee changes).',
-  category: 'quality',
-  unit: 'reassignments',
-  calculate(context) {
-    let totalReassignments = 0;
-    let issuesWithReassignments = 0;
-    const ticketKeys: string[] = [];
-
-    for (const issue of context.issues) {
-      const rawIssue = issue as unknown as JiraIssue;
-      if (!rawIssue.changelog?.histories) continue;
-
-      let reassignments = 0;
-      for (const history of rawIssue.changelog.histories) {
-        for (const item of history.items) {
-          if (item.field === 'assignee' && item.from && item.to) {
-            reassignments++;
-          }
-        }
-      }
-      if (reassignments > 0) {
-        issuesWithReassignments++;
-        ticketKeys.push(issue.key);
-      }
-      totalReassignments += reassignments;
-    }
-
-    return [{
-      name: 'Avg. Reassignments',
-      value: context.issues.length > 0
-        ? Math.round((totalReassignments / context.issues.length) * 100) / 100
-        : 0,
-      unit: 'reassignments',
-      ticketKeys,
-      details: [
-        { label: 'Total Reassignments', value: totalReassignments },
-        { label: 'Issues with Reassignments', value: issuesWithReassignments },
-      ],
-    }];
-  },
-};
-
-/**
- * Open Tickets by Assignee - Count non-resolved tickets per unique assignee
- */
-const openTicketsByAssigneePlugin: KpiPlugin = {
-  id: 'open_tickets_by_assignee',
-  name: 'Open Tickets by Assignee',
-  description: 'Number of non-resolved tickets currently assigned to each user.',
-  category: 'assignee',
-  unit: 'tickets',
-  visualization: 'horizontal_bar',
-  calculate(context) {
-    const counts: Record<string, number> = {};
-    const openIssues = context.issues.filter(i => !isIssueDone(i));
-
-    for (const issue of openIssues) {
-      const assignee = issue.assignee || 'Unassigned';
-      counts[assignee] = (counts[assignee] || 0) + 1;
-    }
-
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1]) // Sort by count descending
-      .map(([assignee, count]) => {
-        const issuesForAssignee = openIssues.filter(i => (i.assignee || 'Unassigned') === assignee);
-        return {
-          name: `Open: ${assignee}`,
-          value: count,
-          unit: 'tickets',
-          dimensions: { assignee },
-          ticketKeys: issuesForAssignee.map(i => i.key),
-          details: [
-            { label: 'Assignee', value: 0, unit: assignee }, // Value 0 but label shows name
-          ],
-        };
-      });
-  },
-};
-
-/**
- * @MX:NOTE: Open Tickets by Priority
- * Count non-resolved tickets per unique priority to visualize distribution.
- */
-const openTicketsByPriorityPlugin: KpiPlugin = {
-  id: 'open_tickets_by_priority',
-  name: 'Open Tickets by Priority',
-  description: 'Number of non-resolved tickets for each priority level.',
-  category: 'throughput',
-  unit: 'tickets',
-  visualization: 'pie',
-  calculate(context) {
-    const counts: Record<string, number> = {};
-    const openIssues = context.issues.filter(i => !isIssueDone(i));
-
-    for (const issue of openIssues) {
-      const priority = issue.priority || 'Unassigned';
-      counts[priority] = (counts[priority] || 0) + 1;
-    }
-
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1]) // Sort by count descending
-      .map(([priority, count]) => {
-        const issuesForPriority = openIssues.filter(i => (i.priority || 'Unassigned') === priority);
-        return {
-          name: `Priority: ${priority}`,
-          value: count,
-          unit: 'tickets',
-          dimensions: { priority },
-          ticketKeys: issuesForPriority.map(i => i.key),
-          details: [
-            { label: 'Priority', value: 0, unit: priority },
-          ],
-        };
-      });
-  },
-};
-
-/**
- * SLA by Status - Compliance per workflow status with comment-based clock reset.
- * When the assignee comments while a ticket is in a status, the SLA clock resets
- * to that comment timestamp (the last assignee comment becomes the new SLA start).
- */
-const slaByStatusPlugin: KpiPlugin = {
-  id: 'sla_by_status',
-  name: 'SLA Compliance by Status',
-  description: 'Percentage of status durations meeting per-status SLA targets. Assignee comments reset the SLA clock.',
-  category: 'sla',
-  unit: '%',
-  calculate(context) {
-    return calculateSlaByStatus(context);
-  },
-};
-
-/**
- * SLA by Status (Excl. Clones) - Same as above but excludes tickets with "CLONE" in summary.
- */
-const slaByStatusExclClonePlugin: KpiPlugin = {
-  id: 'sla_by_status_excl_clone',
-  name: 'SLA Compliance by Status (Excl. Clones)',
-  description: 'SLA compliance by status, excluding tickets with "CLONE" in the title/summary. Assignee comments reset the SLA clock.',
-  category: 'sla',
-  unit: '%',
-  calculate(context) {
-    // Filter out tickets with "CLONE" in summary (case-sensitive as requested)
-    const filteredContext = {
-      ...context,
-      issues: context.issues.filter(issue => !issue.summary.includes('CLONE'))
-    };
-    return calculateSlaByStatus(filteredContext);
-  },
-};
-
-/**
- * Core calculation logic for SLA by Status
- */
-function calculateSlaByStatus(context: KpiContext): KpiResult[] {
-  const targets = context.slaTargets || {};
-  const targetEntries = Object.entries(targets).filter(([, h]) => h > 0);
-  if (targetEntries.length === 0) return [];
-
-  // Debug: Log available statuses from transitions
-  const availableStatuses = new Set<string>();
-  for (const issue of context.issues) {
-    for (const t of issue.transitions) {
-      if (t.toStatus) availableStatuses.add(t.toStatus);
-      if (t.fromStatus) availableStatuses.add(t.fromStatus);
-    }
-  }
-
-  const results: KpiResult[] = [];
-
-  for (const [configuredStatus, targetHours] of targetEntries) {
-    let totalOccurrences = 0;
-    let withinSla = 0;
-    const ticketKeys = new Set<string>();
-
-    // Try exact match first, then case-insensitive match
-    const matchingStatuses = Array.from(availableStatuses).filter(s =>
-      s === configuredStatus || s.toLowerCase() === configuredStatus.toLowerCase()
-    );
-
-    if (matchingStatuses.length === 0) {
-      continue;
-    }
-
-    // Use the first matching status (prefer exact match)
-    const status = matchingStatuses.find(s => s === configuredStatus) || matchingStatuses[0];
-
-    for (const issue of context.issues) {
-      let issueMatchedStatus = false;
-
-      // Find periods where the ticket was in this status
-      for (let i = 0; i < issue.transitions.length; i++) {
-        const t = issue.transitions[i];
-        if (t.toStatus !== status) continue;
-
-        issueMatchedStatus = true;
-        const statusEntry = t.occurredAt;
-        const statusExit = issue.transitions[i + 1]
-          ? issue.transitions[i + 1].occurredAt
-          : issue.resolved || new Date();
-
-        totalOccurrences++;
-
-        // Find relevant comments during this status period (assignee only or anyone based on config)
-        const relevantComments = issue.comments.filter(
-          (c) => {
-            const authorMatch = context.useAnyoneCommentsForSla || c.author === issue.assignee;
-            return authorMatch && c.created >= statusEntry && c.created <= statusExit;
-          }
-        );
-
-        // Debug logging for first few issues to see the difference
-        if (totalOccurrences <= 10) {
-          console.log(`[SLA Debug] Issue: ${issue.key}, Status: ${status}`);
-          console.log(`[SLA Debug] useAnyoneCommentsForSla: ${context.useAnyoneCommentsForSla}`);
-          console.log(`[SLA Debug] All comments in period: ${issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit).length}`);
-          console.log(`[SLA Debug] Relevant comments found: ${relevantComments.length}`);
-          if (relevantComments.length > 0) {
-            console.log(`[SLA Debug] Relevant: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
-          } else {
-            const allComments = issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit);
-            if (allComments.length > 0) {
-              console.log(`[SLA Debug] Excluded comments: ${allComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
-            }
-          }
-        }
-
-        // SLA clock resets to the last relevant comment
-        const slaStart = relevantComments.length > 0
-          ? relevantComments[relevantComments.length - 1].created
-          : statusEntry;
-
-        const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
-        if (hours <= targetHours) withinSla++;
-      }
-
-      // Also check initial status (before first transition)
-      if (issue.transitions.length > 0) {
-        const firstTransition = issue.transitions[0];
-        if (firstTransition.fromStatus === status) {
-          issueMatchedStatus = true;
-          const statusEntry = issue.created;
-          const statusExit = firstTransition.occurredAt;
-
-          totalOccurrences++;
-
-          // Find relevant comments during this status period (assignee only or anyone based on config)
-          const relevantComments = issue.comments.filter(
-            (c) => {
-              const authorMatch = context.useAnyoneCommentsForSla || c.author === issue.assignee;
-              return authorMatch && c.created >= statusEntry && c.created <= statusExit;
-            }
-          );
-
-          // Debug logging for first few issues to see the difference
-          if (totalOccurrences <= 10) {
-            console.log(`[SLA Debug] Issue: ${issue.key}, Initial Status: ${status}`);
-            console.log(`[SLA Debug] useAnyoneCommentsForSla: ${context.useAnyoneCommentsForSla}`);
-            console.log(`[SLA Debug] All comments in period: ${issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit).length}`);
-            console.log(`[SLA Debug] Relevant comments found: ${relevantComments.length}`);
-            if (relevantComments.length > 0) {
-              console.log(`[SLA Debug] Relevant: ${relevantComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
-            } else {
-              const allComments = issue.comments.filter(c => c.created >= statusEntry && c.created <= statusExit);
-              if (allComments.length > 0) {
-                console.log(`[SLA Debug] Excluded comments: ${allComments.map(c => `${c.author} (${c.created.toISOString()})`).join(', ')}`);
-              }
-            }
-          }
-
-          const slaStart = relevantComments.length > 0
-            ? relevantComments[relevantComments.length - 1].created
-            : statusEntry;
-
-          const hours = calculateBusinessHours(slaStart, statusExit, context.holidays);
-          if (hours <= targetHours) withinSla++;
-        }
-      }
-
-      if (issueMatchedStatus) {
-        ticketKeys.add(issue.key);
-      }
-    }
-
-    if (totalOccurrences > 0) {
-      const rate = (withinSla / totalOccurrences) * 100;
-      results.push({
-        name: `SLA: ${status}`,
-        value: Math.round(rate * 100) / 100,
-        unit: '%',
-        dimensions: { status },
-        ticketKeys: Array.from(ticketKeys),
-        details: [
-          { label: 'Target', value: targetHours, unit: 'hours' },
-          { label: 'Within SLA', value: withinSla },
-          { label: 'Total', value: totalOccurrences },
-        ],
-      });
-    }
-  }
-
-  return results;
-}
-
-/**
- * @MX:NOTE: Cycle Time Distribution Histogram
- * Buckets tickets by resolution time (business hours)
- */
-const cycleTimeHistogramPlugin: KpiPlugin = {
-  id: 'cycle_time_histogram',
-  name: 'Cycle Time Histogram',
-  description: 'Buckets resolved tickets into time ranges based on business hours from creation to resolution.',
-  category: 'processing_time',
-  unit: 'tickets',
-  visualization: 'horizontal_bar',
-  calculate(context) {
-    const resolvedIssues = context.issues.filter((i) => i.resolved);
-    
-    const buckets = [
-      { label: '< 4h', min: 0, max: 4 },
-      { label: '4-8h (1d)', min: 4, max: 8 },
-      { label: '8-16h (2d)', min: 8, max: 16 },
-      { label: '16-40h (1w)', min: 16, max: 40 },
-      { label: '40-80h (2w)', min: 40, max: 80 },
-      { label: '> 80h (2w+)', min: 80, max: Infinity },
-    ];
-
-    const results: Record<string, { count: number; keys: string[] }> = {};
-    buckets.forEach(b => results[b.label] = { count: 0, keys: [] });
-
-    for (const issue of resolvedIssues) {
-      const hours = calculateBusinessHours(issue.created, issue.resolved!, context.holidays);
-      const bucket = buckets.find(b => hours >= b.min && hours < b.max);
-      if (bucket) {
-        results[bucket.label].count++;
-        results[bucket.label].keys.push(issue.key);
-      }
-    }
-
-    return buckets.map(b => ({
-      name: b.label,
-      value: results[b.label].count,
-      unit: 'tickets',
-      dimensions: { bucket: b.label },
-      ticketKeys: results[b.label].keys,
-      details: [
-        { label: 'Range', value: 0, unit: b.label },
-        { label: 'Total Tickets', value: results[b.label].count },
-      ]
-    }));
-  }
-};
-
-/**
- * @MX:NOTE: Aging WIP Analysis
- * Buckets open tickets by time-since-creation (business hours)
- */
-const agingWipPlugin: KpiPlugin = {
-  id: 'aging_wip',
-  name: 'Aging WIP Analysis',
-  description: 'Buckets open (non-resolved) tickets by how long they have been open in business hours.',
-  category: 'processing_time',
-  unit: 'tickets',
-  visualization: 'horizontal_bar',
-  calculate(context) {
-    const openIssues = context.issues.filter((i) => !isIssueDone(i));
-    
-    const buckets = [
-      { label: '< 1 day', min: 0, max: 8 },
-      { label: '1-3 days', min: 8, max: 24 },
-      { label: '3-7 days', min: 24, max: 56 },
-      { label: '1-2 weeks', min: 56, max: 112 },
-      { label: '2-4 weeks', min: 112, max: 224 },
-      { label: '> 4 weeks', min: 224, max: Infinity },
-    ];
-
-    const results: Record<string, { count: number; keys: string[] }> = {};
-    buckets.forEach(b => results[b.label] = { count: 0, keys: [] });
-
-    for (const issue of openIssues) {
-      const hours = calculateBusinessHours(issue.created, new Date(), context.holidays);
-      const bucket = buckets.find(b => hours >= b.min && hours < b.max);
-      if (bucket) {
-        results[bucket.label].count++;
-        results[bucket.label].keys.push(issue.key);
-      }
-    }
-
-    return buckets.map(b => ({
-      name: b.label,
-      value: results[b.label].count,
-      unit: 'tickets',
-      dimensions: { bucket: b.label },
-      ticketKeys: results[b.label].keys,
-      details: [
-        { label: 'Age Range', value: 0, unit: b.label },
-        { label: 'Total Tickets', value: results[b.label].count },
-      ]
-    }));
-  }
-};
-
-/**
- * @MX:NOTE: First Response Time
- * Average business hours from creation to first human response
- */
-const firstResponseTimePlugin: KpiPlugin = {
-  id: 'first_response_time',
-  name: 'Avg. First Response Time',
-  description: 'Average business hours from ticket creation to the first transition or first non-reporter comment.',
-  category: 'processing_time',
-  unit: 'hours',
-  calculate(context) {
-    const issues = context.issues;
-    if (issues.length === 0) return [{ name: 'Avg. First Response Time', value: 0, unit: 'hours' }];
-
-    let totalHours = 0;
-    let respondedCount = 0;
-    const ticketKeys: string[] = [];
-
-    for (const issue of issues) {
-      // 1. Find first transition out of initial status
-      const firstTransition = issue.transitions.length > 0 ? issue.transitions[0] : null;
-      const firstTransitionTime = firstTransition?.occurredAt.getTime() || Infinity;
-
-      // 2. Find first comment by someone other than reporter
-      const firstComment = issue.comments.find(c => c.author !== issue.reporter);
-      const firstCommentTime = firstComment?.created.getTime() || Infinity;
-
-      const responseTimeMs = Math.min(firstTransitionTime, firstCommentTime);
-
-      if (responseTimeMs !== Infinity) {
-        const responseDate = new Date(responseTimeMs);
-        const hours = calculateBusinessHours(issue.created, responseDate, context.holidays);
-        totalHours += hours;
-        respondedCount++;
-        ticketKeys.push(issue.key);
-      }
-    }
-
-    if (respondedCount === 0) return [{ name: 'Avg. First Response Time', value: 0, unit: 'hours' }];
-
-    return [{
-      name: 'Avg. First Response Time',
-      value: Math.round((totalHours / respondedCount) * 100) / 100,
-      unit: 'hours',
-      ticketKeys,
-      details: [
-        { label: 'Responded Tickets', value: respondedCount },
-        { label: 'Total Tickets', value: issues.length },
-      ]
-    }];
-  }
-};
-
 // ─── KPI Engine ──────────────────────────────────────────────────────────────
 
 export class KpiEngine {
   private plugins: Map<string, KpiPlugin> = new Map();
 
   constructor() {
-    // Register all built-in plugins
-    this.register(avgProcessingHoursPlugin);
-    this.register(medianProcessingHoursPlugin);
-    this.register(timeInStatusPlugin);
-    this.register(slaCompliancePlugin);
-    this.register(throughputPlugin);
-    this.register(resolutionRatePlugin);
-    this.register(avgWorkingDaysPlugin);
-    this.register(slaByPriorityPlugin);
-    this.register(slaByStatusPlugin);
-    this.register(slaByStatusExclClonePlugin);
-    this.register(reassignmentPlugin);
-    this.register(openTicketsByAssigneePlugin);
-    this.register(openTicketsByPriorityPlugin);
-    this.register(cycleTimeHistogramPlugin);
-    this.register(agingWipPlugin);
-    this.register(firstResponseTimePlugin);
+    // Auto-load all built-in plugins
+    const loader = new PluginLoader();
+    const builtinPlugins = loader.loadBuiltinPlugins();
 
-    // Register time-series plugins
-    registerTimeSeriesPlugins(this);
+    builtinPlugins.forEach((plugin) => this.register(plugin));
+
+    // Auto-load time-series plugins
+    const timeSeriesPlugins = loader.loadTimeSeriesPlugins();
+    timeSeriesPlugins.forEach((plugin) => this.register(plugin));
+
+    // Auto-load custom plugins (asynchronously)
+    this.initCustomPlugins();
+  }
+
+  private async initCustomPlugins() {
+    try {
+      const loader = new PluginLoader();
+      const customPlugins = await loader.loadCustomPlugins();
+      customPlugins.forEach((plugin) => this.register(plugin));
+      console.log(`[KPI Engine] Loaded ${customPlugins.length} custom plugins`);
+    } catch (error) {
+      console.error('[KPI Engine] Failed to load custom plugins:', error);
+      // Continue without custom plugins rather than failing completely
+    }
   }
 
   register(plugin: KpiPlugin) {
@@ -1113,10 +249,12 @@ export class KpiEngine {
     const context: KpiContext = {
       issues: filteredIssues.map(transformIssueForKpi),
       holidays: {
+        dates: new Set(),
         regions: holidays.regions,
         workStartHour: holidays.workStartHour || 9,
         workEndHour: holidays.workEndHour || 17,
-        slaTargetHours: holidays.slaTargetHours || 40,
+        isHoliday: () => false,
+        isWorkingDay: () => true,
       },
       period,
       slaTargets,
@@ -1128,6 +266,7 @@ export class KpiEngine {
     console.log(`[KPI Engine] Calculating ${pluginId} with useAnyoneCommentsForSla:`, useAnyoneCommentsForSla);
 
     const currentResults = plugin.calculate(context);
+    const currentResultsArray = Array.isArray(currentResults) ? currentResults : [currentResults];
 
     // 3. Weekly breakdown for all cards
     const now = new Date();
@@ -1171,8 +310,10 @@ export class KpiEngine {
     try {
       const thisWeekResults = plugin.calculate(thisWeekContext);
       const lastWeekResults = plugin.calculate(lastWeekContext);
+      const thisWeekResultsArray = Array.isArray(thisWeekResults) ? thisWeekResults : [thisWeekResults];
+      const lastWeekResultsArray = Array.isArray(lastWeekResults) ? lastWeekResults : [lastWeekResults];
 
-      currentResults.forEach(res => {
+      currentResultsArray.forEach(res => {
         // Find matching result in weekly sets (match by dimensions first, then name)
         const matchResult = (resultSet: KpiResult[]) => {
           return resultSet.find(r => {
@@ -1186,9 +327,9 @@ export class KpiEngine {
           });
         };
 
-        const tw = matchResult(thisWeekResults);
-        const lw = matchResult(lastWeekResults);
-        
+        const tw = matchResult(thisWeekResultsArray);
+        const lw = matchResult(lastWeekResultsArray);
+
         if (tw || lw) {
           res.details = res.details || [];
           if (tw) res.details.push({ label: 'This Week', value: tw.value, unit: tw.unit });
@@ -1224,11 +365,28 @@ export class KpiEngine {
 
     try {
       const previousResults = plugin.calculate(prevContext);
-      return currentResults.map(res => {
+      const previousResultsArray = Array.isArray(previousResults) ? previousResults : [previousResults];
+      return currentResultsArray.map(res => {
         // If we already have a comparison (e.g. from weekly breakdown), keep it
         if (res.comparison) return res;
 
-        const prevRes = previousResults.find(p => p.name === res.name);
+        const prevRes = previousResultsArray.find(p => {
+          const nameMatch = p.name === res.name;
+          if (!nameMatch) return false;
+          
+          // Match dimensions if present
+          if (res.dimensions || p.dimensions) {
+            const resDims = res.dimensions || {};
+            const pDims = p.dimensions || {};
+            const resKeys = Object.keys(resDims);
+            const pKeys = Object.keys(pDims);
+            if (resKeys.length !== pKeys.length) return false;
+            return resKeys.every(k => resDims[k] === pDims[k]);
+          }
+          
+          return true;
+        });
+        
         if (prevRes && typeof prevRes.value === 'number') {
           const change = res.value - prevRes.value;
           return {
@@ -1243,7 +401,7 @@ export class KpiEngine {
         return res;
       });
     } catch (e) {
-      return currentResults;
+      return Array.isArray(currentResults) ? currentResults : [currentResults];
     }
   }
 
@@ -1259,7 +417,7 @@ export class KpiEngine {
     useAnyoneCommentsForSla?: boolean
   ): Record<string, KpiResult[]> {
     const results: Record<string, KpiResult[]> = {};
-    for (const [id, plugin] of this.plugins) {
+    for (const id of Array.from(this.plugins.keys())) {
       results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla);
     }
     return results;
@@ -1280,6 +438,8 @@ export class KpiEngine {
   }) {
     const customPlugin: KpiPlugin = {
       ...definition,
+      domain: 'custom',
+      version: '1.0.0',
       pluginType: 'custom',
       isActive: true,
       calculate(context) {
