@@ -1690,34 +1690,48 @@ export function KpiDashboard() {
               <CardDescription className="text-slate-600 dark:text-slate-400">Compliance with per-status SLA targets. Assignee comments reset the clock.</CardDescription>
             </CardHeader>
             {statusSlaPanelExpanded && (
-              <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaStatusKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
-                const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
-                return (
-                  <div
-                    key={`${kpi.pluginId}-${idx}`}
-                    className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
-                    onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.status}`) : undefined}
-                  >
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.status || ''); }}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                      title="Hide widget"
-                    >
-                      <EyeOff className="h-3 w-3" />
-                    </button>
-                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
-                    {result.details && (
-                      <div className="space-y-1 mt-2">
-                        <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Target')?.value || '-'}h</span></div>
-                        <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Total')?.value || 0}</span></div>
+              <CardContent className="space-y-8">
+                {slaStatusKpis.map((kpi) => (
+                  <div key={kpi.pluginId} className="space-y-3">
+                    {slaStatusKpis.length > 1 && (
+                      <div className="flex items-center gap-2 px-1">
+                        <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider py-0 h-4">
+                          {kpi.pluginId === 'sla_by_status_excl_clone' ? 'Excl. Clones' : 'Standard'}
+                        </Badge>
+                        <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
                       </div>
                     )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
+                      {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                        if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
+                        const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
+                        return (
+                          <div
+                            key={`${kpi.pluginId}-${idx}`}
+                            className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
+                            onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.status}`) : undefined}
+                          >
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.status || ''); }}
+                              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                              title="Hide widget"
+                            >
+                              <EyeOff className="h-3 w-3" />
+                            </button>
+                            <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
+                            {result.details && (
+                              <div className="space-y-1 mt-2">
+                                <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Target')?.value || '-'}h</span></div>
+                                <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: any) => d.label === 'Total')?.value || 0}</span></div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                );
-              }))}</div>
-            </CardContent>
+                ))}
+              </CardContent>
             )}
           </Card>
         )}
