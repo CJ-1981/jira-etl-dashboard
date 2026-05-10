@@ -56,15 +56,15 @@ export function ViewManager() {
   const [newViewName, setNewViewName] = useState('');
   const [popoverOpen, setPopoverOpen] = useState(false);
 
+  // Handle connection reference carefully - app-store uses activeConnectionId
+  const activeConnectionRef = activeConnectionId;
+
   // Fetch views on connection change
   useEffect(() => {
     if (activeConnectionId) {
       fetchViews();
     }
   }, [activeConnectionRef]);
-
-  // Handle connection reference carefully - app-store uses activeConnectionId
-  const activeConnectionRef = activeConnectionId;
 
   const fetchViews = async () => {
     if (!activeConnectionRef) return;
