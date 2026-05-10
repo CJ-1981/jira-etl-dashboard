@@ -48,18 +48,85 @@ Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **
 - **Extraction Logic** — Smart `update-only` mode that fetches only modified tickets since the last sync to minimize API load.
 
 ### KPI Calculation Engine
-**16+ built-in plugins:**
+**25+ built-in plugins** organized by business domain:
 
-| Plugin | Category | What It Measures |
-|--------|----------|-----------------|
-| Cumulative Flow (CFD) | Throughput | Ticket status distribution over time |
-| Cycle Time Distribution | Turnaround | Histogram of resolution times |
-| Aging WIP Analysis | Efficiency | Open tickets exceeding business hour thresholds |
-| Avg. Processing Hours | Processing Time | Avg business hours from creation to resolution |
-| Time in Status | Turnaround | Avg business hours per workflow status |
-| SLA by Status | SLA | % of status durations meeting per-status targets with configurable comment-based clock reset |
+**Processing Time (6 plugins)**
+- Avg Processing Hours — Average business hours from creation to resolution
+- Median Processing Hours — Median business hours for better outlier resistance
+- Avg Working Days — Average calendar days excluding weekends
+- Cycle Time Histogram — Distribution of resolution times
+- Aging WIP — Open tickets exceeding business hour thresholds
+- First Response Time — Time to first assignee comment
+
+**SLA (4 plugins)**
+- SLA Compliance — % of tickets meeting per-priority targets
+- SLA by Priority — Compliance breakdown by priority level
+- SLA by Status — % of status durations meeting per-status targets
+- SLA by Status (excl. clones) — SLA excluding cloned tickets
+
+**Turnaround (2 plugins)**
+- Time in Status — Average business hours per workflow status
+- Time in Status (Daily) — Daily time-series tracking
+
+**Throughput (4 plugins)**
+- Throughput — Count of tickets completed in period
+- Open Tickets by Priority — Current backlog breakdown
+- Throughput (Weekly) — Weekly throughput tracking
+- Cumulative Flow (CFD) — Ticket status distribution over time
+
+**Quality (2 plugins)**
+- Resolution Rate — % of tickets resolved
+- Reassignment Rate — % of tickets with assignee changes
+
+**Assignee (3 plugins)**
+- Open Tickets by Assignee — Current workload distribution
+- Open Tickets by Assignee (Weekly) — Weekly workload tracking
+
+**Time-Series Plugins (7 plugins)**
+- Daily and weekly aggregations for all major metrics
+- Automated trend analysis and historical comparisons
 
 All time-based KPIs **exclude weekends and German holidays** (all 16 states supported), with configurable work hours.
+
+### 🎯 Plugin Architecture
+**File-Based Auto-Discovery System** — Plugins are stored as independent files in domain-based directories, enabling automatic discovery and hot-reload without server restart.
+
+```
+src/lib/kpi/plugins/
+├── builtin/              # Core plugins (17 plugins)
+│   ├── processing-time/  # 6 plugins
+│   ├── sla/              # 4 plugins
+│   ├── turnaround/       # 1 plugin
+│   ├── throughput/       # 2 plugins
+│   ├── quality/          # 2 plugins
+│   └── assignee/         # 2 plugins
+├── time-series/          # Trend analysis plugins (8 plugins)
+│   ├── processing-time/
+│   ├── sla/
+│   ├── turnaround/
+│   ├── throughput/
+│   └── assignee/
+└── custom/               # User-defined plugins (hot-reload enabled)
+    ├── {domain}/         # Add your own plugins here
+    └── auto-scanned on startup
+```
+
+### 🔌 Custom Plugin Support
+**Extend without Code Changes** — Create custom KPI plugins by dropping TypeScript/JavaScript files into the `plugins/custom/` directory.
+
+**Features:**
+- **Auto-Discovery** — Plugins automatically detected and loaded on server startup
+- **Hot-Reload** — File system watcher monitors `plugins/custom/` for changes
+- **Domain Organization** — Group custom plugins by business domain
+- **Validation** — Automatic plugin structure validation before registration
+- **Error Isolation** — Custom plugin failures don't affect built-in plugins
+- **UI Management** — Enable/disable plugins, upload new plugins via dashboard
+
+**Getting Started:**
+1. Create a new file: `src/lib/kpi/plugins/custom/{domain}/my-metric.ts`
+2. Export a `KpiPlugin` object with `id`, `name`, `calculate` function
+3. Plugin auto-loads on next file scan (5-second polling)
+4. Manage via **KPI Analytics** → **Plugins Configuration** → **Custom Plugins**
 
 **SLA Comment Rule Configuration** — Choose how SLA clock resets work for SLA by Status calculations:
 - **Assignee Only** (default): Only comments from the ticket's assignee reset the SLA clock
