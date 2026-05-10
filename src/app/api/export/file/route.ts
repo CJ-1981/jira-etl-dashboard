@@ -12,6 +12,12 @@ export async function POST(request: Request) {
     const engine = getKpiEngine();
     const start = dateFrom ? new Date(dateFrom) : new Date('2024-01-01');
     const end = dateTo ? new Date(dateTo) : new Date();
+
+    // If dateTo was just a date string (YYYY-MM-DD), ensure it covers the full day
+    if (dateTo && typeof dateTo === 'string' && dateTo.length <= 10) {
+      end.setHours(23, 59, 59, 999);
+    }
+
     const regions = holidays?.regions || [];
 
     const allResults = engine.calculateAll(issues, { regions }, { start, end });
