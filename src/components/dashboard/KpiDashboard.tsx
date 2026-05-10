@@ -1796,17 +1796,6 @@ export function KpiDashboard() {
                 <BarChart3 className="h-5 w-5 text-emerald-500" />
                 Visualizations
               </h3>
-              {charts.length < 12 && (
-                <Button
-                  onClick={handleAddChart}
-                  variant="outline"
-                  size="sm"
-                  className="border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Chart
-                </Button>
-              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -1838,7 +1827,7 @@ export function KpiDashboard() {
               })}
             </div>
 
-            {charts.length > 0 && charts.length < 12 && (
+            {charts.length < 12 && (
               <div className="flex justify-center pt-6 no-print">
                 <Button
                   onClick={handleAddChart}
@@ -1847,7 +1836,7 @@ export function KpiDashboard() {
                 >
                   <div className="flex items-center gap-2">
                     <Plus className="h-5 w-5 transition-transform group-hover:scale-110" />
-                    <span className="font-semibold text-sm">Add Another Visualization</span>
+                    <span className="font-semibold text-sm">Add Visualization</span>
                   </div>
                   <span className="text-[10px] opacity-60 font-normal">Create a new bar, line, or pie chart for your metrics</span>
                 </Button>
