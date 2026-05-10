@@ -95,6 +95,7 @@ export function KpiDashboard() {
     filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar,
     setActiveTab, kpiSubTab, setKpiSubTab,
     customWidgetResults, setCustomWidgetResults, calculatingWidgets, setCalculatingWidgets,
+    kpiCardConfigs, setKpiCardConfigs,
     activeView, setIsViewModified, setActiveView,
     widgetTitles, setWidgetTitles
   } = useAppStore();
