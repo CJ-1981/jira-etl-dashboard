@@ -165,7 +165,6 @@ export default function Home() {
     console.log('[App] Loading saved dashboard state for connection:', activeConnectionId);
 
     const savedState = localConfig.getDashboardState(activeConnectionId);
-    let hasSavedDates = false;
 
     if (savedState) {
       console.log('[App] Found saved dashboard state');
@@ -173,13 +172,6 @@ export default function Home() {
       if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
       if (savedState.charts) setDashboardCharts(savedState.charts);
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
-      // Only load saved dates if they were explicitly set by user (both from and to exist)
-      if (savedState.dateFrom && savedState.dateTo) {
-        console.log('[App] Loading saved dates:', { from: savedState.dateFrom, to: savedState.dateTo });
-        setDateFrom(savedState.dateFrom);
-        setDateTo(savedState.dateTo);
-        hasSavedDates = true;
-      }
     } else {
       console.log('[App] No saved dashboard state, using defaults');
       setGlobalFilters({});
@@ -188,20 +180,31 @@ export default function Home() {
       setDashboardJqlQuery('');
     }
 
-    // After loading saved state, if no dates were saved AND we have master dataset, auto-populate to MAX
-    // This ensures MAX is always the default when there's no user preference
-    if (!hasSavedDates && masterDatasetInfo?.dateRange?.from && masterDatasetInfo?.dateRange?.to) {
-      const fromStr = masterDatasetInfo.dateRange.from.split('T')[0];
-      const toStr = masterDatasetInfo.dateRange.to.split('T')[0];
+    // Always default to MAX range from master dataset if available
+    // This ensures MAX is always the default, regardless of saved state
+    // Saved dates will only be preserved if explicitly different from MAX
+    if (masterDatasetInfo?.dateRange?.from && masterDatasetInfo?.dateRange?.to) {
+      const maxFromStr = masterDatasetInfo.dateRange.from.split('T')[0];
+      const maxToStr = masterDatasetInfo.dateRange.to.split('T')[0];
 
-      // Only set if current dates are still empty (user hasn't manually set them)
-      if (!dateFrom && !dateTo) {
-        console.log('[App] Auto-populating date range to MAX:', { from: fromStr, to: toStr });
-        setDateFrom(fromStr);
-        setDateTo(toStr);
+      console.log('[App] Master dataset date range (MAX):', { from: maxFromStr, to: maxToStr });
+      console.log('[App] Saved dates from state:', savedState?.dateFrom, savedState?.dateTo);
+
+      // Check if saved dates are different from MAX (user explicitly changed them)
+      const savedDatesDifferFromMax = savedState?.dateFrom && savedState?.dateTo &&
+        (savedState.dateFrom !== maxFromStr || savedState.dateTo !== maxToStr);
+
+      if (savedDatesDifferFromMax) {
+        console.log('[App] Using saved dates (user preference):', { from: savedState.dateFrom, to: savedState.dateTo });
+        setDateFrom(savedState.dateFrom!);
+        setDateTo(savedState.dateTo!);
       } else {
-        console.log('[App] Dates already populated, skipping auto-populate');
+        console.log('[App] Defaulting to MAX range:', { from: maxFromStr, to: maxToStr });
+        setDateFrom(maxFromStr);
+        setDateTo(maxToStr);
       }
+    } else {
+      console.log('[App] Master dataset date range not available yet');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConnectionId, mounted, masterDatasetInfo]);
