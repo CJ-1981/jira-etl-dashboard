@@ -58,6 +58,16 @@ const METRIC_TYPES = [
 
 
 
+const categoryLabels: Record<string, { label: string; color: string }> = {
+  'processing-time': { label: 'Processing Time', color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-400 border-blue-500/30' },
+  'turnaround': { label: 'Turnaround', color: 'bg-purple-50 dark:bg-purple-500/10 text-purple-400 border-purple-500/30' },
+  'throughput': { label: 'Throughput', color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
+  'sla': { label: 'SLA', color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-400 border-amber-500/30' },
+  'quality': { label: 'Quality', color: 'bg-cyan-50 dark:bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
+  'assignee': { label: 'Assignee', color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
+  'custom': { label: 'Custom', color: 'bg-rose-50 dark:bg-rose-500/10 text-rose-400 border-rose-500/30' },
+};
+
 function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin, isActive: boolean, onToggle: () => void }) {
   const {
     attributes,
@@ -74,6 +84,11 @@ function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin,
     zIndex: isDragging ? 10 : 1,
   };
 
+  const domain = plugin.domain || 'custom';
+  // Handle both underscore and hyphen variants for safety
+  const domainKey = domain.replace('_', '-');
+  const cat = categoryLabels[domainKey] || categoryLabels['custom'];
+
   return (
     <div 
       ref={setNodeRef} 
@@ -87,6 +102,9 @@ function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin,
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <h4 className="font-semibold text-sm truncate">{plugin.name}</h4>
+          <Badge className={`text-[9px] py-0 h-3.5 px-1.5 border ${cat.color} font-bold uppercase tracking-tight`}>
+            {cat.label}
+          </Badge>
           <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">{plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}</Badge>
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{plugin.description}</p>
@@ -158,7 +176,7 @@ export function PluginsPanel() {
       }
 
       const grouped = allPlugins.reduce((acc, p: any) => {
-        const domain = p.domain || 'custom';
+        const domain = (p.domain || 'custom').replace('_', '-');
         if (!acc[domain]) acc[domain] = [];
         acc[domain].push(p as KpiPlugin);
         return acc;
@@ -353,16 +371,6 @@ export function PluginsPanel() {
     } catch {
       toast.error('Failed to create plugin');
     }
-  };
-
-  const categoryLabels: Record<string, { label: string; color: string }> = {
-    processing_time: { label: 'Processing Time', color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-400 border-blue-500/30' },
-    turnaround: { label: 'Turnaround', color: 'bg-purple-50 dark:bg-purple-500/10 text-purple-400 border-purple-500/30' },
-    throughput: { label: 'Throughput', color: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
-    sla: { label: 'SLA', color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-400 border-amber-500/30' },
-    quality: { label: 'Quality', color: 'bg-cyan-50 dark:bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
-    assignee: { label: 'Assignee', color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
-    custom: { label: 'Custom', color: 'bg-rose-50 dark:bg-rose-500/10 text-rose-400 border-rose-500/30' },
   };
 
   const hasUnsavedSettings = JSON.stringify(settings) !== JSON.stringify(initialSettings);
