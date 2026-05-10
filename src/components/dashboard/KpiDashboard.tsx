@@ -104,6 +104,7 @@ export function KpiDashboard() {
   const [statusTimePanelExpanded, setStatusTimePanelExpanded] = useState(true);
   const [distributionPanelExpanded, setDistributionPanelExpanded] = useState(true);
   const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
+  const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
   const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
   const [activePluginsOrder, setActivePluginsOrder] = useState<string[]>([]);
 
@@ -695,7 +696,8 @@ export function KpiDashboard() {
   const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const statusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
   const slaStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
-  const priorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.priority && !isTimeSeriesPlugin(r.pluginId));
+  const slaPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.pluginId === 'sla_by_priority');
+  const otherPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.priority && r.pluginId !== 'sla_by_priority' && !isTimeSeriesPlugin(r.pluginId));
   const distributionKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
   const timeSeriesKpis = sortedKpiResults.filter((r: KpiCalcResult) => isTimeSeriesPlugin(r.pluginId));
 
@@ -1511,7 +1513,7 @@ export function KpiDashboard() {
           </div>
         )}
 
-        {priorityKpis.length > 0 && (
+        {slaPriorityKpis.length > 0 && (
           <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
@@ -1541,7 +1543,7 @@ export function KpiDashboard() {
             </CardHeader>
             {prioritySlaPanelExpanded && (
               <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{priorityKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaPriorityKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                 if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
                 const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
                 return (
@@ -1562,6 +1564,86 @@ export function KpiDashboard() {
                 );
               }))}</div>
             </CardContent>
+            )}
+          </Card>
+        )}
+
+        {otherPriorityKpis.length > 0 && (
+          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <Ticket className="h-5 w-5 text-amber-500" />
+                    Tickets by Priority
+                  </CardTitle>
+                  <button
+                    onClick={() => setOtherPriorityPanelExpanded(!otherPriorityPanelExpanded)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    title={otherPriorityPanelExpanded ? "Collapse" : "Expand"}
+                    aria-label={otherPriorityPanelExpanded ? "Collapse section" : "Expand section"}
+                  >
+                    {otherPriorityPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+                {otherPriorityKpis.some(kpi => Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`))) && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setHiddenDimensions((prev: Set<string>) => {
+                      const next = new Set(prev);
+                      otherPriorityKpis.forEach(kpi => {
+                        next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
+                      });
+                      return next;
+                    });
+                  }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
+                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            {otherPriorityPanelExpanded && (
+              <CardContent>
+                <div className="space-y-4">{otherPriorityKpis.map((kpi) => {
+                  const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`));
+                  const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
+
+                  return (
+                    <div key={kpi.pluginId} className="space-y-3">
+                      {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
+                        <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
+                                onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`)}
+                              >
+                                {result.dimensions?.priority || result.name}
+                              </span>
+                              <button
+                                onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
+                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                title="Hide bar"
+                              >
+                                <EyeOff className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <span className="font-mono font-bold text-amber-500">{result.value} {result.unit}</span>
+                          </div>
+                          <div
+                            className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-amber-400 transition-all"
+                            onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`)}
+                          >
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-700"
+                              style={{ width: `${(result.value / maxVal) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}</div>
+              </CardContent>
             )}
           </Card>
         )}
