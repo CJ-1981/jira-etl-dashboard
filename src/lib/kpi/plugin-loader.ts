@@ -86,19 +86,26 @@ export class PluginLoader {
    * @MX:ANCHOR: Custom plugin loader
    * @MX:REASON: Enables users to add custom plugins without code changes
    */
-  loadCustomPlugins(): KpiPlugin[] {
+  async loadCustomPlugins(): Promise<KpiPlugin[]> {
     const customPlugins: KpiPlugin[] = [];
-    const customDir = path.join(__dirname, 'plugins', 'custom');
+    
+    // Configurable writable path
+    const customDir = process.env.CUSTOM_PLUGIN_DIR || path.join(process.cwd(), 'data', 'custom-plugins');
 
-    // Check if custom directory exists
-    if (!fs.existsSync(customDir)) {
-      console.log('[PluginLoader] Custom plugins directory not found, creating it...');
-      fs.mkdirSync(customDir, { recursive: true });
+    // Check if custom directory exists and is writable
+    try {
+      if (!fs.existsSync(customDir)) {
+        console.log(`[PluginLoader] Custom plugins directory not found at ${customDir}, creating it...`);
+        fs.mkdirSync(customDir, { recursive: true });
+      }
+      fs.accessSync(customDir, fs.constants.W_OK);
+    } catch (error) {
+      console.error(`[PluginLoader] Custom plugins directory "${customDir}" is not writable or cannot be created:`, error);
       return customPlugins;
     }
 
     // Recursively scan for plugin files
-    const scanDirectory = (dir: string) => {
+    const scanDirectory = async (dir: string) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
 
       for (const entry of entries) {
@@ -106,11 +113,12 @@ export class PluginLoader {
 
         if (entry.isDirectory()) {
           // Recursively scan subdirectories (domain folders)
-          scanDirectory(fullPath);
+          await scanDirectory(fullPath);
         } else if (entry.isFile() && this.isPluginFile(entry.name)) {
-          // Try to load the plugin file
+          // Try to load the plugin file using dynamic import
           try {
-            const pluginModule = require(fullPath);
+            const fileUrl = `file://${fullPath}`;
+            const pluginModule = await import(fileUrl);
             const plugin = pluginModule.default || pluginModule;
 
             // Validate plugin structure
@@ -119,7 +127,7 @@ export class PluginLoader {
               plugin.category = 'custom';
               if (!plugin.domain) {
                 // Infer domain from directory structure
-                const relativePath = path.relative(path.join(__dirname, 'plugins', 'custom'), fullPath);
+                const relativePath = path.relative(customDir, fullPath);
                 const domainFolder = relativePath.split(path.sep)[0];
                 plugin.domain = this.normalizeDomainName(domainFolder) as any;
               }
@@ -135,7 +143,7 @@ export class PluginLoader {
       }
     };
 
-    scanDirectory(customDir);
+    await scanDirectory(customDir);
     return customPlugins;
   }
 

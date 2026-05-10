@@ -2,6 +2,11 @@
  * Open Tickets by Assignee Trend - Weekly
  *
  * Number of open (non-resolved) tickets per assignee over time, grouped by week
+ * 
+ * @MX:NOTE: Tracks individual workload distribution over time.
+ * @MX:WARN: Relies on resolution date; tickets without one are considered open.
+ * @MX:ANCHOR: Assignee Trend - monitor team capacity evolution.
+ * @MX:TODO: Support custom interval selection (daily/monthly).
  */
 
 import { isIssueDone } from '../../../engine-utils';

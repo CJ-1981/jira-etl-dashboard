@@ -20,10 +20,18 @@ class PluginWatcher extends EventEmitter {
   private watcher: FSWatcher | null = null;
   private customDir: string;
   private isWatching = false;
+  private eventCounter = 0;
 
   constructor() {
     super();
     this.customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom');
+  }
+
+  /**
+   * Get the current event counter value
+   */
+  getEventCounter(): number {
+    return this.eventCounter;
   }
 
   /**
@@ -48,9 +56,18 @@ class PluginWatcher extends EventEmitter {
     });
 
     this.watcher
-      .on('add', (filePath: string) => this.handleFileChange('add', filePath))
-      .on('change', (filePath: string) => this.handleFileChange('change', filePath))
-      .on('unlink', (filePath: string) => this.handleFileChange('unlink', filePath))
+      .on('add', (filePath: string) => {
+        this.eventCounter++;
+        this.handleFileChange('add', filePath);
+      })
+      .on('change', (filePath: string) => {
+        this.eventCounter++;
+        this.handleFileChange('change', filePath);
+      })
+      .on('unlink', (filePath: string) => {
+        this.eventCounter++;
+        this.handleFileChange('unlink', filePath);
+      })
       .on('error', (error: unknown) => console.error('[PluginWatcher] Error:', error))
       .on('ready', () => {
         this.isWatching = true;

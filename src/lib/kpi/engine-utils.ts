@@ -39,13 +39,32 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
 
   // Calculate time in each status
   const timeInStatus: Record<string, number> = {};
-  for (let i = 0; i < transitions.length; i++) {
-    const endTime = transitions[i + 1]
-      ? transitions[i + 1].occurredAt.getTime()
-      : Date.now();
-    const durationHours = (endTime - transitions[i].occurredAt.getTime()) / (1000 * 60 * 60);
-    const status = transitions[i].toStatus;
-    timeInStatus[status] = (timeInStatus[status] || 0) + durationHours;
+  if (transitions.length > 0) {
+    // 1. Initial status (creation to first transition)
+    const firstTransition = transitions[0];
+    const initialStatus = firstTransition.fromStatus;
+    if (initialStatus) {
+      const durationHours = (firstTransition.occurredAt.getTime() - issue.fields.created.getTime()) / (1000 * 60 * 60);
+      timeInStatus[initialStatus] = (timeInStatus[initialStatus] || 0) + Math.max(0, durationHours);
+    }
+
+    // 2. Transitions
+    for (let i = 0; i < transitions.length; i++) {
+      const startTime = transitions[i].occurredAt.getTime();
+      const endTime = transitions[i + 1]
+        ? transitions[i + 1].occurredAt.getTime()
+        : (issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate).getTime() : Date.now());
+      
+      const durationHours = (endTime - startTime) / (1000 * 60 * 60);
+      const status = transitions[i].toStatus;
+      timeInStatus[status] = (timeInStatus[status] || 0) + Math.max(0, durationHours);
+    }
+  } else {
+    // No transitions - all time spent in current status
+    const startTime = issue.fields.created.getTime();
+    const endTime = issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate).getTime() : Date.now();
+    const durationHours = (endTime - startTime) / (1000 * 60 * 60);
+    timeInStatus[issue.fields.status.name] = durationHours;
   }
 
   return {

@@ -3,6 +3,11 @@
  *
  * SLA compliance rate for each workflow status per week
  * Tracks every status transition against its specific SLA target
+ * 
+ * @MX:NOTE: Tracks SLA compliance trends per workflow status.
+ * @MX:ANCHOR: SLA Status Trend - pinpoint bottleneck stages.
+ * @MX:WARN: Only counts completed status durations to avoid partial data bias.
+ * @MX:TODO: Add visualization support for target hour lines.
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';

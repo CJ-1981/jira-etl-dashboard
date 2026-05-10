@@ -21,14 +21,16 @@ export async function GET(request: Request) {
       watcher.start();
     }
 
-    // For a simple implementation, return current timestamp
-    // In a production system, you'd maintain an event log and return actual events
-    const now = Date.now();
-    const hasChanges = lastEventId ? parseInt(lastEventId) < now - 2000 : false;
+    // Check for actual events from the watcher
+    const eventCounter = watcher.getEventCounter();
+    const hasChanges = lastEventId 
+      ? eventCounter > parseInt(lastEventId) 
+      : eventCounter > 0;
 
     return NextResponse.json({
       success: true,
-      timestamp: now,
+      timestamp: Date.now(),
+      eventCounter,
       hasChanges,
       message: hasChanges ? 'Plugin changes detected' : 'No changes',
     });

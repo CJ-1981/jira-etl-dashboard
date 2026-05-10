@@ -1,7 +1,12 @@
 /**
- * SLA Compliance Trend - Weekly
+ * SLA Compliance Trend - Daily
  *
- * SLA compliance rate per week
+ * SLA compliance rate per day
+ * 
+ * @MX:NOTE: Tracks SLA compliance performance over time.
+ * @MX:ANCHOR: SLA Trend - correlate speed with volume.
+ * @MX:WARN: Accuracy depends on correctly configured SLA targets.
+ * @MX:TODO: Integrate with specific priority filtering.
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';

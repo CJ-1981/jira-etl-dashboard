@@ -104,9 +104,14 @@ export class KpiEngine {
     const timeSeriesPlugins = loader.loadTimeSeriesPlugins();
     timeSeriesPlugins.forEach((plugin) => this.register(plugin));
 
-    // Auto-load custom plugins (if any)
+    // Auto-load custom plugins (asynchronously)
+    this.initCustomPlugins();
+  }
+
+  private async initCustomPlugins() {
     try {
-      const customPlugins = loader.loadCustomPlugins();
+      const loader = new PluginLoader();
+      const customPlugins = await loader.loadCustomPlugins();
       customPlugins.forEach((plugin) => this.register(plugin));
       console.log(`[KPI Engine] Loaded ${customPlugins.length} custom plugins`);
     } catch (error) {
@@ -365,7 +370,23 @@ export class KpiEngine {
         // If we already have a comparison (e.g. from weekly breakdown), keep it
         if (res.comparison) return res;
 
-        const prevRes = previousResultsArray.find(p => p.name === res.name);
+        const prevRes = previousResultsArray.find(p => {
+          const nameMatch = p.name === res.name;
+          if (!nameMatch) return false;
+          
+          // Match dimensions if present
+          if (res.dimensions || p.dimensions) {
+            const resDims = res.dimensions || {};
+            const pDims = p.dimensions || {};
+            const resKeys = Object.keys(resDims);
+            const pKeys = Object.keys(pDims);
+            if (resKeys.length !== pKeys.length) return false;
+            return resKeys.every(k => resDims[k] === pDims[k]);
+          }
+          
+          return true;
+        });
+        
         if (prevRes && typeof prevRes.value === 'number') {
           const change = res.value - prevRes.value;
           return {

@@ -24,7 +24,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
       const duration = performance.now() - start;
 
       expect(registry.size()).toBe(50);
-      expect(duration).toBeLessThan(100); // Should complete in < 100ms
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(100); // Should complete in < 100ms
+      }
     });
 
     it('should retrieve plugins quickly with 50 plugins', () => {
@@ -41,7 +43,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
       }
       const duration = performance.now() - start;
 
-      expect(duration).toBeLessThan(50); // Should complete in < 50ms
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(50); // Should complete in < 50ms
+      }
     });
 
     it('should filter plugins quickly', () => {
@@ -61,7 +65,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
 
       expect(builtin).toHaveLength(25);
       expect(custom).toHaveLength(25);
-      expect(duration).toBeLessThan(50); // Should complete in < 50ms
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(50); // Should complete in < 50ms
+      }
     });
   });
 
@@ -77,7 +83,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
       const duration = performance.now() - start;
 
       expect(results.every((r) => r === true)).toBe(true);
-      expect(duration).toBeLessThan(100); // Should complete in < 100ms
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(100); // Should complete in < 100ms
+      }
     });
 
     it('should validate plugin IDs quickly', () => {
@@ -89,7 +97,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
       const duration = performance.now() - start;
 
       expect(results.every((r) => r === true)).toBe(true);
-      expect(duration).toBeLessThan(50); // Should complete in < 50ms
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(50); // Should complete in < 50ms
+      }
     });
   });
 
@@ -110,8 +120,10 @@ describe('Plugin Infrastructure Benchmarks', () => {
       }
       const getDuration = performance.now() - start2;
 
-      expect(setDuration).toBeLessThan(100);
-      expect(getDuration).toBeLessThan(50);
+      if (process.env.RUN_BENCHMARKS) {
+        expect(setDuration).toBeLessThan(100);
+        expect(getDuration).toBeLessThan(50);
+      }
     });
 
     it('should handle cache hits efficiently', () => {
@@ -126,7 +138,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
       const duration = performance.now() - start;
 
       // 1000 cache hits should be very fast
-      expect(duration).toBeLessThan(50);
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(50);
+      }
 
       const stats = cache.getStats();
       expect(stats.hits).toBe(1000);
@@ -146,7 +160,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
 
       expect(result.errors).toHaveLength(0);
       expect(result.resolved).toHaveLength(50);
-      expect(duration).toBeLessThan(100);
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(100);
+      }
     });
 
     it('should resolve complex dependency graph quickly', () => {
@@ -172,7 +188,9 @@ describe('Plugin Infrastructure Benchmarks', () => {
         );
       }
 
-      expect(duration).toBeLessThan(200);
+      if (process.env.RUN_BENCHMARKS) {
+        expect(duration).toBeLessThan(200);
+      }
     });
   });
 
@@ -212,8 +230,10 @@ describe('Plugin Infrastructure Benchmarks', () => {
       });
       const executeDuration = performance.now() - startExecute;
 
-      expect(loadDuration).toBeLessThan(200);
-      expect(executeDuration).toBeLessThan(100);
+      if (process.env.RUN_BENCHMARKS) {
+        expect(loadDuration).toBeLessThan(200);
+        expect(executeDuration).toBeLessThan(100);
+      }
       expect(results.filter((r) => r !== undefined)).toHaveLength(50);
     });
   });

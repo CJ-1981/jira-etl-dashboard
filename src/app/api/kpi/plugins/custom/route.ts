@@ -223,7 +223,7 @@ export async function DELETE(request: Request) {
     const pluginFilePath = path.join(customDir, `${safeId}.ts`);
 
     if (fs.existsSync(pluginFilePath)) {
-      fs.unlinkSync(pluginFilePath);
+      await fs.promises.unlink(pluginFilePath);
     }
 
     // Unregister from engine
@@ -264,6 +264,35 @@ function generatePluginFile(
 import type { KpiPlugin } from '../../types';
 
 const ${id}Plugin: KpiPlugin = {
+  id: '${id}',
+  name: '${name}',
+  category: 'custom',
+  domain: '${domain}',
+  version: '${version || '1.0.0'}',
+  unit: '${unit}',
+  ${description ? `description: '${description}',` : ''}
+  calculate: ${calculate}
+};
+
+export default ${id}Plugin;
+`;
+}
+
+/**
+ * Sanitize a path segment to prevent traversal attacks
+ */
+function sanitizeSegment(segment: string): string {
+  if (!segment || typeof segment !== 'string') {
+    throw new Error('Invalid segment: must be a non-empty string');
+  }
+  // Allow only alphanumeric, underscore, and hyphen
+  if (!/^[a-z0-9_-]+$/i.test(segment)) {
+    throw new Error(`Invalid segment: "${segment}" contains unsafe characters`);
+  }
+  return segment;
+}
+
+KpiPlugin = {
   id: '${id}',
   name: '${name}',
   category: 'custom',

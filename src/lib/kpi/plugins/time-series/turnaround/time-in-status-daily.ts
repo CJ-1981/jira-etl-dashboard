@@ -125,10 +125,9 @@ function calculateTimeInStatusTrend(
 
     // Calculate overall average for this status from complete periods only
     const completePoints = timeSeries.filter(p => p.isComplete && p.count > 0);
-    const overallAvg = completePoints.length > 0
-      ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) / 
-        completePoints.reduce((sum, point) => sum + point.count, 0)
-      : 0;
+    const weightedSum = completePoints.reduce((sum, point) => sum + point.value * point.count, 0);
+    const totalCount = completePoints.reduce((sum, point) => sum + point.count, 0);
+    const overallAvg = totalCount > 0 ? weightedSum / totalCount : 0;
 
     statusResults.push({
       name: `Time in ${status}`,

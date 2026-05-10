@@ -43,6 +43,8 @@ function calculateCumulativeFlow(
   });
   const allStatuses = Array.from(allStatusesSet);
 
+  const INITIAL_STATUS_DEFAULT = 'Open';
+
   // 3. Precompute status intervals for each issue (O(Issues * Transitions))
   const issueTimelines = allIssues.map(issue => {
     const intervals: { status: string; start: number; end: number }[] = [];
@@ -55,7 +57,7 @@ function calculateCumulativeFlow(
 
       // Initial status interval
       intervals.push({
-        status: sorted[0].fromStatus || allStatuses[0] || 'Open',
+        status: sorted[0].fromStatus || INITIAL_STATUS_DEFAULT,
         start: createdTime,
         end: sorted[0].occurredAt.getTime()
       });
