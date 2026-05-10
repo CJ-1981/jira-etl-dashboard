@@ -1837,6 +1837,22 @@ export function KpiDashboard() {
                 );
               })}
             </div>
+
+            {charts.length > 0 && charts.length < 12 && (
+              <div className="flex justify-center pt-6 no-print">
+                <Button
+                  onClick={handleAddChart}
+                  variant="outline"
+                  className="group relative border-dashed border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-500 w-full max-w-sm transition-all duration-300 py-8 h-auto flex flex-col gap-2 rounded-xl"
+                >
+                  <div className="flex items-center gap-2">
+                    <Plus className="h-5 w-5 transition-transform group-hover:scale-110" />
+                    <span className="font-semibold text-sm">Add Another Visualization</span>
+                  </div>
+                  <span className="text-[10px] opacity-60 font-normal">Create a new bar, line, or pie chart for your metrics</span>
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </>)}
