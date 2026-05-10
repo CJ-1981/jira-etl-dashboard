@@ -8,77 +8,13 @@
 import { calculateBusinessHours, calculateWorkingDays, type GermanState } from '../holidays/german-holidays';
 import type { JiraIssue } from '../jira/client';
 import { registerTimeSeriesPlugins } from './time-series-plugin';
+import { PluginLoader } from './plugin-loader';
+import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Legacy Type Aliases for Backward Compatibility ────────────────────────────
 
-export interface KpiContext {
-  issues: TransformedIssue[];
-  holidays: { regions: GermanState[]; workStartHour: number; workEndHour: number; slaTargetHours?: number };
-  period: { start: Date; end: Date };
-  slaTargets?: Record<string, number>;
-  useAnyoneCommentsForSla?: boolean;
-  dimensions?: Record<string, string>;
-  globalFilters?: Record<string, string[]>; // New: Active filters from UI
-}
-
-export interface TransformedIssue {
-  key: string;
-  project: string;
-  summary: string;
-  issueType: string;
-  priority: string | null;
-  status: string;
-  statusCategory: string;
-  assignee: string;
-  reporter: string;
-  created: Date;
-  updated: Date;
-  resolved: Date | null;
-  dueDate: Date | null;
-  storyPoints: number | null;
-  labels: string[];
-  components: string[];
-  transitions: StatusTransition[];
-  timeInStatus: Record<string, number>;
-  comments: Array<{ author: string; created: Date }>;
-}
-
-export interface StatusTransition {
-  fromStatus: string | null;
-  toStatus: string;
-  author: string;
-  occurredAt: Date;
-}
-
-export interface KpiPlugin {
-  id: string;
-  name: string;
-  description: string;
-  category: 'processing_time' | 'turnaround' | 'throughput' | 'sla' | 'quality' | 'assignee' | 'custom';
-  unit: string;
-  pluginType?: 'builtin' | 'custom';
-  isActive?: boolean;
-  visualization?: 'card' | 'horizontal_bar' | 'pie' | 'line';
-  calculate(context: KpiContext): KpiResult[];
-}
-
-export interface KpiResult {
-  name: string;
-  value: number;
-  unit: string;
-  dimensions?: Record<string, string>;
-  details?: Array<{
-    label: string;
-    value: number;
-    unit?: string;
-  }>;
-  ticketKeys?: string[]; // New: List of tickets that make up this metric
-  comparison?: {         // New: Comparison data for deltas
-    value: number;
-    change: number;
-    label: string;
-  };
-}
+// Re-export types from types.ts for backward compatibility
+export type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition };
 
 // ─── Transform ───────────────────────────────────────────────────────────────
 
@@ -962,23 +898,11 @@ export class KpiEngine {
   private plugins: Map<string, KpiPlugin> = new Map();
 
   constructor() {
-    // Register all built-in plugins
-    this.register(avgProcessingHoursPlugin);
-    this.register(medianProcessingHoursPlugin);
-    this.register(timeInStatusPlugin);
-    this.register(slaCompliancePlugin);
-    this.register(throughputPlugin);
-    this.register(resolutionRatePlugin);
-    this.register(avgWorkingDaysPlugin);
-    this.register(slaByPriorityPlugin);
-    this.register(slaByStatusPlugin);
-    this.register(slaByStatusExclClonePlugin);
-    this.register(reassignmentPlugin);
-    this.register(openTicketsByAssigneePlugin);
-    this.register(openTicketsByPriorityPlugin);
-    this.register(cycleTimeHistogramPlugin);
-    this.register(agingWipPlugin);
-    this.register(firstResponseTimePlugin);
+    // Auto-load all built-in plugins
+    const loader = new PluginLoader();
+    const builtinPlugins = loader.loadBuiltinPlugins();
+
+    builtinPlugins.forEach((plugin) => this.register(plugin));
 
     // Register time-series plugins
     registerTimeSeriesPlugins(this);

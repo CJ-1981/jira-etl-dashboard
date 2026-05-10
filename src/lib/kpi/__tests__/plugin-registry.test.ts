@@ -22,6 +22,7 @@ describe('PluginRegistry', () => {
       category: 'builtin' as KpiCategory,
       domain: 'processing-time' as KpiDomain,
       version: '1.0.0',
+    unit: 'count',
       calculate: () => ({ name: 'test', value: 0, unit: 'count' }),
     };
 
@@ -31,6 +32,7 @@ describe('PluginRegistry', () => {
       category: 'custom' as KpiCategory,
       domain: 'throughput' as KpiDomain,
       version: '1.0.0',
+    unit: 'count',
       calculate: () => ({ name: 'test', value: 0, unit: 'count' }),
     };
 
@@ -40,6 +42,7 @@ describe('PluginRegistry', () => {
       category: 'builtin' as KpiCategory,
       domain: 'sla' as KpiDomain,
       version: '1.0.0',
+    unit: 'count',
       calculate: () => ({ name: 'test', value: 0, unit: 'count' }),
     };
   });

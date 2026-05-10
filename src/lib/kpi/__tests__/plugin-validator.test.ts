@@ -25,6 +25,7 @@ describe('PluginValidator', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
       };
 
@@ -37,6 +38,7 @@ describe('PluginValidator', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
       };
 
@@ -50,6 +52,7 @@ describe('PluginValidator', () => {
         category: 'invalid',
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
       };
 
@@ -63,6 +66,7 @@ describe('PluginValidator', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: 'not a function',
       };
 
@@ -76,6 +80,7 @@ describe('PluginValidator', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
         dependencies: ['plugin-a', 'plugin-b'],
         metadata: {
@@ -95,6 +100,7 @@ describe('PluginValidator', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
         dependencies: ['valid', 123], // Invalid: number in array
       };
@@ -131,6 +137,7 @@ describe('PluginValidator', () => {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
+    unit: 'count',
       calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
       dependencies: deps,
     });
@@ -174,6 +181,7 @@ describe('PluginValidator', () => {
           category: 'builtin',
           domain: 'custom',
           version: '1.0.0',
+    unit: 'count',
           calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
         },
       };
@@ -190,6 +198,7 @@ describe('PluginValidator', () => {
         category: 'builtin',
         domain: 'custom',
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
       };
 
@@ -212,6 +221,7 @@ describe('PluginValidator', () => {
           category: 'builtin',
           domain: 'custom',
           version: '1.0.0',
+    unit: 'count',
           calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
         },
       };

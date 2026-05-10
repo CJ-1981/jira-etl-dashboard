@@ -21,6 +21,7 @@ describe('PluginCache', () => {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
+    unit: 'count',
       calculate: vi.fn(),
     };
 
@@ -30,6 +31,7 @@ describe('PluginCache', () => {
       category: 'custom' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
+    unit: 'count',
       calculate: vi.fn(),
     };
   });

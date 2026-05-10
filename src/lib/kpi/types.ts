@@ -46,6 +46,21 @@ export interface KpiPlugin {
   /** Semantic version for plugin evolution tracking */
   version: string;
 
+  /** Plugin type: builtin, custom, or time-series */
+  pluginType?: 'builtin' | 'custom' | 'time-series';
+
+  /** Whether the plugin is currently active */
+  isActive?: boolean;
+
+  /** Visualization type hint for UI rendering */
+  visualization?: 'card' | 'horizontal_bar' | 'pie' | 'line';
+
+  /** Unit of measurement for the calculated value */
+  unit: string;
+
+  /** Detailed description of what the plugin calculates */
+  description?: string;
+
   /**
    * Calculation function that transforms issue data into KPI metrics
    * @param context - Execution context with issues, holidays, and configuration
@@ -155,14 +170,34 @@ export interface KpiResult {
  */
 export interface TransformedIssue {
   key: string;
+  project: string;
   summary: string;
+  issueType: string;
+  priority: string | null;
   status: string;
-  priority: string;
-  assignee: string | null;
+  statusCategory: string;
+  assignee: string;
+  reporter: string;
   created: Date;
   updated: Date;
-  resolutionDate?: Date;
-  [key: string]: unknown;
+  resolved: Date | null;
+  dueDate: Date | null;
+  storyPoints: number | null;
+  labels: string[];
+  components: string[];
+  transitions: StatusTransition[];
+  timeInStatus: Record<string, number>;
+  comments: Array<{ author: string; created: Date }>;
+}
+
+/**
+ * Status transition record from Jira changelog
+ */
+export interface StatusTransition {
+  fromStatus: string | null;
+  toStatus: string;
+  author: string;
+  occurredAt: Date;
 }
 
 /**
@@ -171,6 +206,10 @@ export interface TransformedIssue {
  */
 export interface HolidayContext {
   dates: Set<string>;
+  regions: string[];
+  workStartHour: number;
+  workEndHour: number;
+  slaTargetHours?: number;
   isHoliday: (date: Date) => boolean;
   isWorkingDay: (date: Date) => boolean;
 }

@@ -174,6 +174,7 @@ describe('Plugin Infrastructure Integration', () => {
           category: 'builtin' as KpiCategory,
           domain: 'custom' as KpiDomain,
           version: '1.0.0',
+    unit: 'count',
           dependencies: ['b'],
           calculate: () => ({ name: 'A', value: 1, unit: 'count' }),
         },
@@ -183,6 +184,7 @@ describe('Plugin Infrastructure Integration', () => {
           category: 'builtin' as KpiCategory,
           domain: 'custom' as KpiDomain,
           version: '1.0.0',
+    unit: 'count',
           dependencies: ['a'],
           calculate: () => ({ name: 'B', value: 2, unit: 'count' }),
         },
@@ -203,6 +205,7 @@ describe('Plugin Infrastructure Integration', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         dependencies: ['non-existent'],
         calculate: () => ({ name: 'Test', value: 1, unit: 'count' }),
       };
@@ -230,6 +233,7 @@ describe('Plugin Infrastructure Integration', () => {
         category: 'custom' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'Custom', value: 1, unit: 'count' }),
       };
 

@@ -23,6 +23,7 @@ describe('KPI Types', () => {
         category: 'builtin' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 0, unit: 'count' }),
       };
 
@@ -38,6 +39,7 @@ describe('KPI Types', () => {
         category: 'custom' as KpiCategory,
         domain: 'custom' as KpiDomain,
         version: '1.0.0',
+    unit: 'count',
         calculate: () => ({ name: 'test', value: 0, unit: 'count' }),
         dependencies: ['plugin-a', 'plugin-b'],
         metadata: {

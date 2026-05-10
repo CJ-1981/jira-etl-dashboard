@@ -14,6 +14,8 @@ export const constPlugin: KpiPlugin = {
   category: 'builtin' as KpiCategory,
   domain: 'custom' as KpiDomain,
   version: '1.0.0',
+  unit: 'count',
+  unit: 'count',
   calculate: (context: KpiContext): KpiResult => ({
     name: 'Constant',
     value: 42,
@@ -36,6 +38,8 @@ export const countPlugin: KpiPlugin = {
   category: 'builtin' as KpiCategory,
   domain: 'throughput' as KpiDomain,
   version: '1.0.0',
+  unit: 'count',
+  unit: 'count',
   calculate: (context: KpiContext): KpiResult => ({
     name: 'Total Issues',
     value: context.issues.length,
@@ -57,6 +61,7 @@ export const dependentPlugin: KpiPlugin = {
   category: 'builtin' as KpiCategory,
   domain: 'custom' as KpiDomain,
   version: '1.0.0',
+  unit: 'count',
   dependencies: ['issue-count'],
   calculate: (context: KpiContext): KpiResult => ({
     name: 'Double Count',
@@ -79,9 +84,10 @@ export const multiValuePlugin: KpiPlugin = {
   category: 'builtin' as KpiCategory,
   domain: 'quality' as KpiDomain,
   version: '1.0.0',
+  unit: 'count',
   calculate: (context: KpiContext): KpiResult[] => {
-    const resolved = context.issues.filter((i) => i.resolutionDate);
-    const unresolved = context.issues.filter((i) => !i.resolutionDate);
+    const resolved = context.issues.filter((i) => i.resolved);
+    const unresolved = context.issues.filter((i) => !i.resolved);
 
     return [
       {
@@ -113,6 +119,7 @@ export const dimensionPlugin: KpiPlugin = {
   category: 'custom' as KpiCategory,
   domain: 'custom' as KpiDomain,
   version: '1.0.0',
+  unit: 'count',
   calculate: (context: KpiContext): KpiResult => ({
     name: 'Count by Dimension',
     value: context.issues.length,
@@ -135,6 +142,7 @@ export const detailsPlugin: KpiPlugin = {
   category: 'builtin' as KpiCategory,
   domain: 'throughput' as KpiDomain,
   version: '1.0.0',
+  unit: 'count',
   calculate: (context: KpiContext): KpiResult => {
     const byPriority = context.issues.reduce((acc, issue) => {
       const priority = issue.priority || 'Unknown';
@@ -173,6 +181,7 @@ export function createMockPlugin(
     category: 'builtin' as KpiCategory,
     domain: 'custom' as KpiDomain,
     version: '1.0.0',
+  unit: 'count',
     calculate: () => ({ name: 'Mock', value: 0, unit: 'count' }),
     ...overrides,
   };
@@ -189,6 +198,7 @@ export function createDependentPluginSet(): KpiPlugin[] {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
+  unit: 'count',
       calculate: () => ({ name: 'A', value: 1, unit: 'count' }),
     },
     {
@@ -197,6 +207,7 @@ export function createDependentPluginSet(): KpiPlugin[] {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
+  unit: 'count',
       dependencies: ['plugin-a'],
       calculate: () => ({ name: 'B', value: 2, unit: 'count' }),
     },
@@ -206,6 +217,7 @@ export function createDependentPluginSet(): KpiPlugin[] {
       category: 'builtin' as KpiCategory,
       domain: 'custom' as KpiDomain,
       version: '1.0.0',
+  unit: 'count',
       dependencies: ['plugin-a', 'plugin-b'],
       calculate: () => ({ name: 'C', value: 3, unit: 'count' }),
     },
@@ -218,13 +230,24 @@ export function createDependentPluginSet(): KpiPlugin[] {
 export function createMockIssues(count: number, overrides?: Partial<any>) {
   return Array.from({ length: count }, (_, i) => ({
     key: `TEST-${i + 1}`,
+    project: 'TEST',
     summary: `Test issue ${i + 1}`,
-    status: i % 2 === 0 ? 'Open' : 'Closed',
+    issueType: 'Task',
     priority: ['High', 'Medium', 'Low'][i % 3],
-    assignee: i % 2 === 0 ? 'user@example.com' : null,
+    status: i % 2 === 0 ? 'Open' : 'Closed',
+    statusCategory: i % 2 === 0 ? 'In Progress' : 'Done',
+    assignee: i % 2 === 0 ? 'user@example.com' : 'Unassigned',
+    reporter: 'test@example.com',
     created: new Date(`2024-01-${(i % 30) + 1}`),
     updated: new Date(`2024-01-${(i % 30) + 1}`),
-    resolutionDate: i % 2 === 0 ? undefined : new Date(`2024-01-${(i % 30) + 2}`),
+    resolved: i % 2 === 0 ? undefined : new Date(`2024-01-${(i % 30) + 2}`),
+    dueDate: undefined,
+    storyPoints: null,
+    labels: [],
+    components: [],
+    transitions: [],
+    timeInStatus: {},
+    comments: [],
     ...overrides,
   }));
 }
@@ -240,6 +263,9 @@ export function createMockContext(
     issues: createMockIssues(issueCount),
     holidays: {
       dates: new Set(['2024-01-01', '2024-12-25']),
+      regions: [],
+      workStartHour: 9,
+      workEndHour: 17,
       isHoliday: (_date: Date) => false,
       isWorkingDay: (_date: Date) => true,
     },

@@ -22,6 +22,7 @@ describe('Dependency Resolver', () => {
     category: 'builtin' as KpiCategory,
     domain: 'custom' as KpiDomain,
     version: '1.0.0',
+    unit: 'count',
     calculate: () => ({ name: 'test', value: 42, unit: 'count' }),
     dependencies,
   });
