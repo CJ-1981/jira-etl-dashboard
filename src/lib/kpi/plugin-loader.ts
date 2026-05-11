@@ -7,6 +7,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import type { KpiPlugin } from './types';
 
 // Import all built-in plugins directly
@@ -117,7 +118,7 @@ export class PluginLoader {
         } else if (entry.isFile() && this.isPluginFile(entry.name)) {
           // Try to load the plugin file using dynamic import
           try {
-            const fileUrl = `file://${fullPath}`;
+            const fileUrl = pathToFileURL(fullPath).href;
             const pluginModule = await import(/* webpackIgnore: true */ fileUrl);
             const plugin = pluginModule.default || pluginModule;
 

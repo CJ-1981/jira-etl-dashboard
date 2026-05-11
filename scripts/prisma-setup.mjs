@@ -113,21 +113,18 @@ try {
   process.exit(1);
 }
 
-// 5. Database push for SQLite if file missing
+// 5. Unconditionally synchronize Prisma schema (prisma db push)
 if (!isPostgres) {
   const sqlitePathMatch = databaseUrl.match(/file:(.+)/);
   if (sqlitePathMatch) {
-    const relPath = sqlitePathMatch[1];
-    const absPath = path.resolve(rootDir, relPath);
-    const prismaAbsPath = path.resolve(prismaDir, relPath);
-    
     // Always push schema changes for SQLite to ensure database is in sync
     console.log('> Synchronizing SQLite database schema...');
     try {
       execSync('npx prisma db push --skip-generate', { stdio: 'inherit', cwd: rootDir });
       console.log('✓ Database schema synchronized');
     } catch (error) {
-      console.error('✗ Failed to synchronize database schema');
+      console.error('✗ Failed to synchronize database schema', error);
+      process.exit(1);
     }
   }
 }
