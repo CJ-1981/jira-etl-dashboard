@@ -84,6 +84,10 @@ import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { JqlAutocomplete } from './JqlAutocomplete';
 import { useAppStore } from '@/store/app-store';
 import { useDrillDown } from '@/hooks/useDrillDown';
+import { usePeriodAnalysis } from '@/hooks/usePeriodAnalysis';
+import { usePluginVisibility } from '@/hooks/usePluginVisibility';
+import { useJqlFilters } from '@/hooks/useJqlFilters';
+import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 
 export function KpiDashboard() {
   const {
@@ -115,51 +119,40 @@ export function KpiDashboard() {
   const [activePluginsOrder, setActivePluginsOrder] = useState<string[]>([]);
 
 
-  // ─── Period Analysis Helpers ──────────────────────────────────────────────
-  const { isAnyPresetActive, isDataTruncated, availableStartDate } = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const isToday = dateTo === todayStr;
-    const fromDate = dateFrom ? new Date(dateFrom) : null;
-    const toDate = dateTo ? new Date(dateTo) : null;
-    const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-
-    const presets = [7, 14, 30, 60, 90, 180, 365];
-    const isActive = isToday && presets.includes(diffDays);
-
-    const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
-
-    const fromDateNormalized = fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate()) : null;
-    const masterStartNormalized = masterStart ? new Date(masterStart.getFullYear(), masterStart.getMonth(), masterStart.getDate()) : null;
-
-    const isTruncated = masterStartNormalized && fromDateNormalized && fromDateNormalized < masterStartNormalized;
-
-    return {
-      isAnyPresetActive: isActive,
-      isDataTruncated: !!isTruncated,
-      availableStartDate: masterStart ? masterStart.toLocaleDateString() : null
-    };
-  }, [dateFrom, dateTo, masterDatasetInfo]);
-
-  // JQL-Lite Filter state
-  const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
-  const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
+  // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
-
-  // Staging filters for multi-select without instant update
-  const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
 
   // Drill-down state extracted to useDrillDown hook
   const { drillDownKeys, drillDownTitle, isDrillDownOpen, openDrillDown, closeDrillDown } = useDrillDown();
+
+  // ─── Period Analysis Hook ───────────────────────────────────────────────────
+  const periodAnalysis = usePeriodAnalysis(
+    dateFrom ? new Date(dateFrom) : new Date(),
+    dateTo ? new Date(dateTo) : new Date(),
+    masterDatasetInfo
+  );
+
+  // ─── JQL Filters Hook ────────────────────────────────────────────────────────
+  const jqlFilters = useJqlFilters();
+
+  // ─── Plugin Visibility Hook ───────────────────────────────────────────────────
+  const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
+  const pluginVisibility = usePluginVisibility(allPluginIds, 'cfg_active_plugins');
+
+  // ─── KPI Calculations Hook ────────────────────────────────────────────────────
+  const kpiCalculations = useKpiCalculations(
+    dateFrom ? new Date(dateFrom) : new Date(),
+    dateTo ? new Date(dateTo) : new Date(),
+    globalFilters
+  );
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
 
-  // Load saved JQLs on mount
+  // Load saved JQLs handled by useJqlFilters hook
   useEffect(() => {
-    setDashboardJqls(localConfig.getDashboardJqls());
-
     // Load active plugins order for initial sorting
     const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
     if (raw) {
@@ -167,10 +160,7 @@ export function KpiDashboard() {
     }
   }, []);
 
-  const saveDashboardJqls = (updated: SavedJql[]) => {
-    setDashboardJqls(updated);
-    localConfig.saveDashboardJqls(updated);
-  };
+  // Removed: setDashboardJqls - now handled by useJqlFilters hook
 
   const lastSaveRequestId = useRef(0);
 
@@ -248,35 +238,17 @@ export function KpiDashboard() {
   ]);
 
   const handleUpdatePendingFilter = (key: string, value: string) => {
-    if (value === 'all') {
-      setPendingFilters(prev => ({ ...prev, [key]: [] }));
-      return;
-    }
-    setPendingFilters(prev => {
-      const current = prev[key] || [];
-      if (current.includes(value)) {
-        return { ...prev, [key]: current.filter(v => v !== value) };
-      } else {
-        return { ...prev, [key]: [...current, value] };
-      }
-    });
+    jqlFilters.toggleStagingFilter(key, value);
   };
 
   const handleApplyFilters = () => {
     hasUserInitiatedCalc.current = true;
-    setGlobalFilters(pendingFilters);
+    setGlobalFilters(jqlFilters.stagingFilters);
     toast.success('Filters applied');
   };
 
   const handleUpdateFilter = (key: string, value: string) => {
-    setPendingFilters(prev => {
-      const updated = { ...prev };
-      if (updated[key]) {
-        updated[key] = updated[key].filter(v => v !== value);
-        if (updated[key].length === 0) delete updated[key];
-      }
-      return updated;
-    });
+    jqlFilters.toggleStagingFilter(key, value);
   };
 
   const toggleDimension = (pluginId: string, value: string) => {
@@ -817,7 +789,7 @@ export function KpiDashboard() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Analysis Period</Label>
-                {isDataTruncated && (
+                {periodAnalysis.requiresTruncation && (
                   <UITooltip>
                     <TooltipTrigger asChild>
                       <Badge variant="outline" className="h-4 py-0 text-[9px] border-amber-500/30 text-amber-500 gap-1 animate-pulse cursor-help">
@@ -826,7 +798,7 @@ export function KpiDashboard() {
                     </TooltipTrigger>
                     <TooltipContent side="top" className="max-w-xs p-3 shadow-lg border-amber-200 dark:border-amber-800">
                       <p className="text-xs">
-                        Your selected analysis starts on <strong className="text-amber-600 dark:text-amber-400">{new Date(dateFrom).toLocaleDateString()}</strong>, but your local dataset only contains data from <strong className="text-amber-600 dark:text-amber-400">{availableStartDate}</strong> onwards.<br /><br />
+                        Your selected analysis starts on <strong className="text-amber-600 dark:text-amber-400">{new Date(dateFrom).toLocaleDateString()}</strong>, but your local dataset only contains data from <strong className="text-amber-600 dark:text-amber-400">{periodAnalysis.availableStartDate ? new Date(periodAnalysis.availableStartDate).toLocaleDateString() : 'N/A'}</strong> onwards.<br /><br />
                         The charts and metrics will still render, but will only reflect the available data.
                       </p>
                     </TooltipContent>
@@ -959,7 +931,7 @@ export function KpiDashboard() {
                   Advanced Filtering
                 </h4>
                 <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-400 hover:text-red-500" onClick={() => {
-                  setPendingFilters({});
+                  jqlFilters.clearStagingFilters();
                   setGlobalFilters({});
                 }}>
                   Clear All Filters
@@ -990,30 +962,20 @@ export function KpiDashboard() {
                       onClick={() => {
                         if (!jqlQuery) return;
                         if (editingJqlId) {
-                          const oldJql = dashboardJqls.find(j => j.id === editingJqlId);
-                          const updated = dashboardJqls.map(j => j.id === editingJqlId ? { ...j, query: jqlQuery } : j);
-                          saveDashboardJqls(updated);
+                          const oldJql = jqlFilters.jqlList.find(j => j.id === editingJqlId);
+                          jqlFilters.editJql(editingJqlId, jqlQuery, oldJql?.name || 'Saved JQL');
                           setEditingJqlId(null);
                           setJqlQuery('');
                           toast.success('Filter updated');
 
-                          setPendingFilters(prev => {
-                            const jqlFilters = (prev['jql'] || []).filter(q => oldJql ? q !== oldJql.query : true);
-                            if (!jqlFilters.includes(jqlQuery)) jqlFilters.push(jqlQuery);
-                            return { ...prev, jql: jqlFilters };
-                          });
                         } else {
                           const id = `djql-${Date.now()}`;
                           const newQuery = jqlQuery;
-                          saveDashboardJqls([...dashboardJqls, { id, name: newQuery, query: newQuery }]);
+                          jqlFilters.addJql(newQuery, newQuery);
                           setJqlQuery('');
                           toast.success('Filter saved to dashboard');
 
-                          setPendingFilters(prev => {
-                            const jqlFilters = prev['jql'] || [];
-                            if (!jqlFilters.includes(newQuery)) return { ...prev, jql: [...jqlFilters, newQuery] };
-                            return prev;
-                          });
+                          jqlFilters.toggleStagingFilter('jql', newQuery);
                         }
                       }}
                     >
@@ -1034,10 +996,10 @@ export function KpiDashboard() {
                     )}
                   </div>
 
-                  {dashboardJqls.length > 0 && (
+                  {jqlFilters.jqlList.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                      {dashboardJqls.map(djql => {
-                        const isActive = pendingFilters['jql']?.includes(djql.query);
+                      {jqlFilters.jqlList.map(djql => {
+                        const isActive = jqlFilters.stagingFilters['jql']?.includes(djql.query);
                         const isEditing = editingJqlId === djql.id;
                         return (
                           <div key={djql.id} className="flex items-center gap-1">
@@ -1062,7 +1024,7 @@ export function KpiDashboard() {
                                   <AlertDialogTrigger asChild>
                                     <span
                                       className="hover:text-red-200 transition-colors p-0.5"
-                                      onClick={(e) => { e.stopPropagation(); setJqlToDelete(djql.id); }}
+                                      onClick={(e) => { e.stopPropagation(); }}
                                     >
                                       <Trash2 className="h-2.5 w-2.5" />
                                     </span>
@@ -1075,7 +1037,7 @@ export function KpiDashboard() {
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                      <AlertDialogCancel onClick={() => setJqlToDelete(null)}>Cancel</AlertDialogCancel>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
                                       <AlertDialogAction
                                         className="bg-red-600 hover:bg-red-700"
                                         onClick={() => {
