@@ -68,7 +68,15 @@ async function runPollingExtraction() {
       }),
     });
 
-    const data = await res.json();
+    const contentType = res.headers.get('content-type');
+    let data;
+    if (contentType && contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      throw new Error(`Invalid response format (not JSON): ${text.substring(0, 100)}`);
+    }
+
     if (data.success) {
       pollingState.runCount++;
       pollingState.lastError = null;
@@ -130,7 +138,12 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json({ success: false, error: 'Malformed JSON payload' }, { status: 400 });
+    }
     const { 
       connectionId, 
       intervalMinutes, 

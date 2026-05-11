@@ -121,15 +121,13 @@ if (!isPostgres) {
     const absPath = path.resolve(rootDir, relPath);
     const prismaAbsPath = path.resolve(prismaDir, relPath);
     
-    if (!fs.existsSync(absPath) && !fs.existsSync(prismaAbsPath)) {
-      console.log('> SQLite database file missing. Initializing database...');
-      try {
-        execSync('npx prisma db push', { stdio: 'inherit', cwd: rootDir });
-        console.log('✓ Database initialized successfully');
-      } catch (error) {
-        console.error('✗ Failed to initialize database');
-        // Don't exit(1) here as generate was successful
-      }
+    // Always push schema changes for SQLite to ensure database is in sync
+    console.log('> Synchronizing SQLite database schema...');
+    try {
+      execSync('npx prisma db push --skip-generate', { stdio: 'inherit', cwd: rootDir });
+      console.log('✓ Database schema synchronized');
+    } catch (error) {
+      console.error('✗ Failed to synchronize database schema');
     }
   }
 }

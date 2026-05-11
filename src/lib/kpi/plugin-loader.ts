@@ -118,7 +118,7 @@ export class PluginLoader {
           // Try to load the plugin file using dynamic import
           try {
             const fileUrl = `file://${fullPath}`;
-            const pluginModule = await import(fileUrl);
+            const pluginModule = await import(/* webpackIgnore: true */ fileUrl);
             const plugin = pluginModule.default || pluginModule;
 
             // Validate plugin structure
