@@ -8,18 +8,24 @@ echo ============================================================
 echo.
 
 :: ── Step 1: Clean and Prepare ─────────────────────────────────
-echo [1/4] Cleaning up previous builds and checking for locks...
+echo [1/5] Cleaning up previous builds and checking for locks...
 
 :: Check for running node processes that might lock Prisma files
 tasklist /FI "IMAGENAME eq node.exe" 2>NUL | find /I /N "node.exe">NUL
 if "%ERRORLEVEL%"=="0" (
-    echo ! Warning: Multiple 'node.exe' processes are running. 
+    echo ! Warning: Multiple 'node.exe' processes are running.
     echo   This often causes EPERM errors during Prisma generation.
     echo.
-    set /p KILL_NODE="Do you want to stop all running Node processes to avoid file locks? (Y/N): "
-    if /I "!KILL_NODE!"=="Y" (
-        echo   Stopping Node processes...
-        taskkill /F /IM node.exe >nul 2>&1
+    echo   Running Node processes:
+    tasklist /FI "IMAGENAME eq node.exe" /FO TABLE /NH
+    echo.
+    set /p KILL_PIDS="Enter PID(s) to kill (comma-separated, or press Enter to skip): "
+    if not "!KILL_PIDS!"=="" (
+        echo   Stopping selected Node processes...
+        for %%p in (!KILL_PIDS!) do (
+            taskkill /F /PID %%p >nul 2>&1
+            echo     Killed PID %%p
+        )
         echo   Done.
     ) else (
         echo   Proceeding without stopping processes. If build fails, please close them manually.
@@ -32,7 +38,7 @@ mkdir "dist\app"
 echo       Done.
 
 :: ── Step 2: Build Application ─────────────────────────────────
-echo [2/4] Building Next.js application (standalone mode)...
+echo [2/5] Building Next.js application (standalone mode)...
 set NODE_ENV=production
 call npm run build
 if %errorlevel% neq 0 (
@@ -43,7 +49,7 @@ if %errorlevel% neq 0 (
 echo       Build successful.
 
 :: ── Step 3: Assemble dist\app folder ──────────────────────────
-echo [3/4] Assembling portable app folder...
+echo [3/5] Assembling portable app folder...
 
 :: Copy standalone server + static assets
 xcopy /s /e /y ".next\standalone" "dist\app\" >nul
@@ -64,7 +70,7 @@ del /f /q "dist\app\tsconfig*" >nul 2>&1
 echo       App folder ready.
 
 :: ── Step 4: Create Smart Launcher (with port scan) ────────────
-echo [4/4] Creating launcher with auto port scan...
+echo [4/5] Creating launcher with auto port scan...
 
 > "dist\Start Jira Dashboard.bat" (
     echo @echo off
@@ -86,7 +92,7 @@ echo [4/4] Creating launcher with auto port scan...
     echo.
     echo set "PORT=3000"
     echo :find_port
-    echo %%SystemRoot%%\System32\netstat.exe -ano ^| %%SystemRoot%%\System32\find.exe "0.0.0.0:%%PORT%% " ^>nul 2^>^&1
+    echo %%SystemRoot%%\System32\netstat.exe -ano ^| %%SystemRoot%%\System32\findstr.exe /R /C:":%%PORT%% " ^>nul 2^>^&1
     echo if %%errorlevel%% equ 0 ^(
     echo     echo   Port %%PORT%% is occupied, trying next...
     echo     set /a PORT+=1
