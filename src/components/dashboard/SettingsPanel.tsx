@@ -49,16 +49,37 @@ export function SettingsPanel() {
   };
 
   // @MX:ANCHOR: Configuration Management
-  const handleExport = () => {
-    const data = localConfig.exportConfig();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `jira-etl-config-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Configuration exported');
+  const handleExport = async () => {
+    setConfigExporting(true);
+    try {
+      const localData = localConfig.exportConfig();
+      
+      // Fetch database views
+      const params = new URLSearchParams({
+        storageConfig: JSON.stringify(storageConfig)
+      });
+      const res = await fetch(`/api/dashboard/views/bulk?${params}`);
+      const dbData = await res.json();
+      
+      const finalData = {
+        ...localData,
+        databaseViews: dbData.success ? dbData.views : []
+      };
+
+      const blob = new Blob([JSON.stringify(finalData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `jira-etl-config-full-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Full configuration and view settings exported');
+    } catch (err) {
+      console.error('Export failed:', err);
+      toast.error('Failed to export view settings from database');
+    } finally {
+      setConfigExporting(false);
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,17 +87,42 @@ export function SettingsPanel() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
+      setConfigImporting(true);
       try {
         const data = JSON.parse(event.target?.result as string);
+        
+        // 1. Import localStorage config
         const result = localConfig.importConfig(data);
+        
+        // 2. Import database views if present
+        if (data.databaseViews && Array.isArray(data.databaseViews)) {
+          const res = await fetch('/api/dashboard/views/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              views: data.databaseViews,
+              storageConfig
+            })
+          });
+          const dbResult = await res.json();
+          if (!dbResult.success) {
+            toast.error(`Database views import failed: ${dbResult.error}`);
+          }
+        }
+
         if (result.success) {
-          toast.success('Configuration imported. Please refresh the page.');
+          toast.success('Configuration and views imported. Refreshing page...');
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
         } else {
           toast.error(`Import failed: ${result.error}`);
         }
       } catch (err) {
         toast.error('Invalid configuration file');
+      } finally {
+        setConfigImporting(false);
       }
     };
     reader.readAsText(file);
@@ -98,7 +144,7 @@ export function SettingsPanel() {
           <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4">
             <p className="text-xs text-slate-500 dark:text-slate-400">
               <Info className="inline h-3 w-3 mr-1" />
-              Exported configuration includes Jira & PG connections, plugins, and settings.
+              Exported configuration includes connections, settings, presets, and all saved dashboard views.
             </p>
           </div>
           <div className="flex gap-3">

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ChartConfig, ExtractedIssue, JiraConnection, KpiCalcResult, JqlFilter, KpiCardConfig } from '@/types/dashboard';
+import { ChartConfig, ExtractedIssue, JiraConnection, KpiCalcResult, JqlFilter, KpiCardConfig, DashboardView } from '@/types/dashboard';
 import { AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 
 // @MX:ANCHOR: Central Application Store (useAppStore)
@@ -84,6 +84,20 @@ interface AppState {
 
   jqlResultCache: Map<string, { results: KpiCalcResult[]; timestamp: number }>;
   setJqlResultCache: (cache: Map<string, { results: KpiCalcResult[]; timestamp: number }>) => void;
+
+  // @MX:ANCHOR: Saved Views State
+  // @MX:NOTE: Persistent dashboard layouts and configurations stored in the database.
+  savedViews: DashboardView[];
+  setSavedViews: (views: DashboardView[]) => void;
+  activeView: DashboardView | null;
+  setActiveView: (view: DashboardView | null) => void;
+  isViewModified: boolean;
+  setIsViewModified: (modified: boolean) => void;
+
+  // @MX:ANCHOR: Widget Titles
+  // @MX:NOTE: User-defined titles for widgets and charts.
+  widgetTitles: Record<string, string>;
+  setWidgetTitles: (titles: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -178,4 +192,20 @@ export const useAppStore = create<AppState>((set) => ({
 
   jqlResultCache: new Map(),
   setJqlResultCache: (cache) => set({ jqlResultCache: cache }),
+
+  // @MX:ANCHOR: Saved Views
+  savedViews: [],
+  setSavedViews: (savedViews) => set({ savedViews }),
+  activeView: null,
+  setActiveView: (activeView) => set({ activeView }),
+  isViewModified: false,
+  setIsViewModified: (isViewModified) => set({ isViewModified }),
+
+  // @MX:ANCHOR: Widget Titles
+  widgetTitles: {},
+  // @MX:WARN: Record update pattern
+  // @MX:REASON: Updates are merged to preserve other widget titles.
+  setWidgetTitles: (titles) => set((state) => ({
+    widgetTitles: typeof titles === 'function' ? titles(state.widgetTitles) : titles
+  })),
 }));

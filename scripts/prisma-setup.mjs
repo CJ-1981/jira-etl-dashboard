@@ -12,20 +12,34 @@ const envFile = path.join(rootDir, '.env');
 console.log('--- Prisma Setup Script ---');
 
 // Helper for cleaning directories with retry (handles Windows file locks)
-function cleanDirectorySync(dir) {
+function cleanDirectorySync(dir, retries = 3) {
   if (!fs.existsSync(dir)) return true;
   
-  try {
-    fs.rmSync(dir, { recursive: true, force: true });
-    return true;
-  } catch (error) {
-    if (error.code === 'EPERM' || error.code === 'EBUSY') {
-      console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);
-      console.warn('  Common causes: A running dev server, VS Code Prisma extension, or an open terminal.');
-      return false;
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return true;
+    } catch (error) {
+      if (error.code === 'EPERM' || error.code === 'EBUSY') {
+        if (i < retries - 1) {
+          console.warn(`! Directory ${path.relative(rootDir, dir)} is locked. Retrying (${i + 1}/${retries})...`);
+          // Real blocking sleep via child process to save CPU
+          try {
+            execSync('powershell -Command "Start-Sleep -s 1"', { stdio: 'ignore' });
+          } catch (e) {
+            // Fallback for non-windows or if powershell fails
+            execSync('sleep 1', { stdio: 'ignore' });
+          }
+          continue;
+        }
+        console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);
+        console.warn('  Common causes: A running dev server, VS Code Prisma extension, or an open terminal.');
+        return false;
+      }
+      throw error;
     }
-    throw error;
   }
+  return false;
 }
 
 // 1. Ensure required directories exist
@@ -79,12 +93,20 @@ try {
   const pgGenDir = path.join(prismaDir, 'generated', 'postgresql');
 
   console.log('> Generating SQLite Prisma client...');
-  cleanDirectorySync(sqliteGenDir);
-  execSync('npx prisma generate --schema=prisma/schema.sqlite.prisma', { stdio: 'inherit', cwd: rootDir });
+  if (cleanDirectorySync(sqliteGenDir)) {
+    execSync('npx prisma generate --schema=prisma/schema.sqlite.prisma', { stdio: 'inherit', cwd: rootDir });
+  } else {
+    console.error('✗ Cannot generate SQLite client: Directory is locked.');
+    process.exit(1);
+  }
   
   console.log('> Generating PostgreSQL Prisma client...');
-  cleanDirectorySync(pgGenDir);
-  execSync('npx prisma generate --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit', cwd: rootDir });
+  if (cleanDirectorySync(pgGenDir)) {
+    execSync('npx prisma generate --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit', cwd: rootDir });
+  } else {
+    console.error('✗ Cannot generate PostgreSQL client: Directory is locked.');
+    process.exit(1);
+  }
   
   // Also sync the main schema.prisma for general tools (Studio, etc)
   const sourcePath = path.join(prismaDir, isPostgres ? 'schema.postgresql.prisma' : 'schema.sqlite.prisma');
@@ -113,23 +135,18 @@ try {
   process.exit(1);
 }
 
-// 5. Database push for SQLite if file missing
+// 5. Unconditionally synchronize Prisma schema (prisma db push)
 if (!isPostgres) {
   const sqlitePathMatch = databaseUrl.match(/file:(.+)/);
   if (sqlitePathMatch) {
-    const relPath = sqlitePathMatch[1];
-    const absPath = path.resolve(rootDir, relPath);
-    const prismaAbsPath = path.resolve(prismaDir, relPath);
-    
-    if (!fs.existsSync(absPath) && !fs.existsSync(prismaAbsPath)) {
-      console.log('> SQLite database file missing. Initializing database...');
-      try {
-        execSync('npx prisma db push', { stdio: 'inherit', cwd: rootDir });
-        console.log('✓ Database initialized successfully');
-      } catch (error) {
-        console.error('✗ Failed to initialize database');
-        // Don't exit(1) here as generate was successful
-      }
+    // Always push schema changes for SQLite to ensure database is in sync
+    console.log('> Synchronizing SQLite database schema...');
+    try {
+      execSync('npx prisma db push --skip-generate', { stdio: 'inherit', cwd: rootDir });
+      console.log('✓ Database schema synchronized');
+    } catch (error) {
+      console.error('✗ Failed to synchronize database schema', error);
+      process.exit(1);
     }
   }
 }

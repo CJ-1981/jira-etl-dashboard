@@ -250,14 +250,27 @@ export const localConfig = {
   },
 
   exportConfig: () => {
-    const data = {
-      version: '1.0',
+    const data: any = {
+      version: '1.1',
       exportedAt: new Date().toISOString(),
       jiraConnections: localConfig.getJiraConnections(),
       pgConnections: localConfig.getPgConnections(),
       customPlugins: localConfig.getKpiPlugins(),
       settings: localConfig.getSettings(),
+      storage: localConfig.getStorageConfig(),
       savedJqls: localConfig.getSavedJqls(),
+      dashboardJqls: localConfig.getDashboardJqls(),
+      etlUpdateOnly: localConfig.getEtlUpdateOnly(),
+      activeConnectionId: localConfig.getActiveConnectionId(),
+      // Raw dumps for complex/nested objects
+      dashboardStates: get(KEYS.dashboardState, {}),
+      presets: get(KEYS.presets, {}),
+      // Submenu states
+      ui: {
+        showDataCenterSubmenu: localConfig.getShowDataCenterSubmenu(),
+        showKpiAnalyticsSubmenu: localConfig.getShowKpiAnalyticsSubmenu(),
+        showSettingsSubmenu: localConfig.getShowSettingsSubmenu(),
+      }
     };
     return data;
   },
@@ -268,7 +281,21 @@ export const localConfig = {
       if (data.pgConnections) localConfig.savePgConnections(data.pgConnections);
       if (data.customPlugins) localConfig.saveKpiPlugins(data.customPlugins);
       if (data.settings) localConfig.saveSettings(data.settings);
+      if (data.storage) localConfig.saveStorageConfig(data.storage);
       if (data.savedJqls) localConfig.saveJqls(data.savedJqls);
+      if (data.dashboardJqls) localConfig.saveDashboardJqls(data.dashboardJqls);
+      if (data.etlUpdateOnly !== undefined) localConfig.saveEtlUpdateOnly(data.etlUpdateOnly);
+      if (data.activeConnectionId) localConfig.setActiveConnectionId(data.activeConnectionId);
+      
+      if (data.dashboardStates) set(KEYS.dashboardState, data.dashboardStates);
+      if (data.presets) set(KEYS.presets, data.presets);
+      
+      if (data.ui) {
+        if (data.ui.showDataCenterSubmenu !== undefined) localConfig.setShowDataCenterSubmenu(data.ui.showDataCenterSubmenu);
+        if (data.ui.showKpiAnalyticsSubmenu !== undefined) localConfig.setShowKpiAnalyticsSubmenu(data.ui.showKpiAnalyticsSubmenu);
+        if (data.ui.showSettingsSubmenu !== undefined) localConfig.setShowSettingsSubmenu(data.ui.showSettingsSubmenu);
+      }
+      
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.message };

@@ -292,32 +292,3 @@ function sanitizeSegment(segment: string): string {
   return segment;
 }
 
-KpiPlugin = {
-  id: '${id}',
-  name: '${name}',
-  category: 'custom',
-  domain: '${domain}',
-  version: '${version || '1.0.0'}',
-  unit: '${unit}',
-  ${description ? `description: '${description}',` : ''}
-  calculate: ${calculate}
-};
-
-export default ${id}Plugin;
-`;
-}
-
-/**
- * Sanitize a path segment to prevent traversal attacks
- */
-function sanitizeSegment(segment: string): string {
-  if (!segment || typeof segment !== 'string') {
-    throw new Error('Invalid segment: must be a non-empty string');
-  }
-  // Allow only alphanumeric, underscore, and hyphen
-  if (!/^[a-z0-9_-]+$/i.test(segment)) {
-    throw new Error(`Invalid segment: "${segment}" contains unsafe characters`);
-  }
-  return segment;
-}
-

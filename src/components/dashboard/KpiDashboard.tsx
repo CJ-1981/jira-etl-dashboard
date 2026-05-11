@@ -16,6 +16,7 @@ import {
 } from '@/lib/chart-data-utils';
 import { KpiDataTable } from './KpiDataTable';
 import { KpiErrorBoundary } from './KpiErrorBoundary';
+import { ViewManager } from './ViewManager';
 import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -74,10 +75,11 @@ import {
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
   Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
   ArrowUp, Search, ChevronDown, ChevronUp, Database, Filter, RefreshCw,
+  Save, 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
-import { localConfig, type SavedJql, type DashboardPreset } from '@/lib/config/local-store';
+import { localConfig, type SavedJql } from '@/lib/config/local-store';
 import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { JqlAutocomplete } from './JqlAutocomplete';
 import { useAppStore } from '@/store/app-store';
@@ -92,7 +94,10 @@ export function KpiDashboard() {
     dashboardJqlQuery: jqlQuery, setDashboardJqlQuery: setJqlQuery,
     filterPanelOpen, setFilterPanelOpen, theme, showFloatingBar,
     setActiveTab, kpiSubTab, setKpiSubTab,
-    customWidgetResults, setCustomWidgetResults, calculatingWidgets, setCalculatingWidgets
+    customWidgetResults, setCustomWidgetResults, calculatingWidgets, setCalculatingWidgets,
+    kpiCardConfigs, setKpiCardConfigs,
+    activeView, setIsViewModified, setActiveView,
+    widgetTitles, setWidgetTitles
   } = useAppStore();
 
   const onPrint = () => window.print();
@@ -145,12 +150,6 @@ export function KpiDashboard() {
   const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
   const [drillDownTitle, setDrillDownTitle] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
-  const [presets, setPresets] = useState<DashboardPreset[]>([]);
-  const [newPresetName, setNewPresetName] = useState('');
-  const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
-
-  // @MX:NOTE: Per-view custom widget title overrides; key = "pluginId|resultName"
-  const [widgetTitles, setWidgetTitles] = useState<Record<string, string>>({});
 
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
@@ -158,89 +157,93 @@ export function KpiDashboard() {
   // Load saved JQLs on mount
   useEffect(() => {
     setDashboardJqls(localConfig.getDashboardJqls());
-    if (activeConnectionId) {
-      setPresets(localConfig.getDashboardPresets(activeConnectionId));
-    }
 
     // Load active plugins order for initial sorting
     const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
     if (raw) {
       setActivePluginsOrder(JSON.parse(raw));
     }
-  }, [activeConnectionId]);
-
-  const handleSavePreset = () => {
-    if (!newPresetName || !activeConnectionId) return;
-    const newPreset: DashboardPreset = {
-      id: `preset-${Date.now()}`,
-      name: newPresetName,
-      dateFrom,
-      dateTo,
-      globalFilters,
-      charts,
-      dashboardJql: jqlQuery,
-      hiddenDimensions: Array.from(hiddenDimensions),
-      widgetTitles,
-    };
-    const updated = [...presets, newPreset];
-    setPresets(updated);
-    localConfig.saveDashboardPresets(activeConnectionId, updated);
-    setNewPresetName('');
-    setPresetPopoverOpen(false);
-    toast.success(`View "${newPresetName}" saved`);
-  };
-
-  const handleUpdatePreset = (id: string, name: string) => {
-    if (!activeConnectionId) return;
-    const updated = presets.map(p => {
-      if (p.id === id) {
-        return {
-          ...p,
-          dateFrom,
-          dateTo,
-          globalFilters,
-          charts,
-          dashboardJql: jqlQuery,
-          hiddenDimensions: Array.from(hiddenDimensions),
-          widgetTitles,
-        };
-      }
-      return p;
-    });
-    setPresets(updated);
-    localConfig.saveDashboardPresets(activeConnectionId, updated);
-    toast.success(`View "${name}" updated`);
-  };
-
-  const handleLoadPreset = (preset: DashboardPreset) => {
-    hasUserInitiatedCalc.current = true;
-    setDateFrom(preset.dateFrom);
-    setDateTo(preset.dateTo);
-    setGlobalFilters(preset.globalFilters);
-    setPendingFilters(preset.globalFilters);
-    setCharts(preset.charts);
-    // Don't load JQL into input field - only apply it via globalFilters
-    // User can click edit icon on saved filters to edit them
-    setHiddenDimensions(new Set(preset.hiddenDimensions));
-    // @MX:NOTE: Restore per-view widget title overrides
-    setWidgetTitles(preset.widgetTitles || {});
-    setPresetPopoverOpen(false);
-    toast.success(`Loaded view: ${preset.name}`);
-  };
-
-  const handleDeletePreset = (id: string) => {
-    const updated = presets.filter(p => p.id !== id);
-    setPresets(updated);
-    if (activeConnectionId) {
-      localConfig.saveDashboardPresets(activeConnectionId, updated);
-    }
-    toast.success('View deleted');
-  };
+  }, []);
 
   const saveDashboardJqls = (updated: SavedJql[]) => {
     setDashboardJqls(updated);
     localConfig.saveDashboardJqls(updated);
   };
+
+  const lastSaveRequestId = useRef(0);
+
+  // @MX:NOTE: Saved View change detection and auto-save logic
+  useEffect(() => {
+    if (!activeView) {
+      setIsViewModified(false);
+      return;
+    }
+
+    const currentData = {
+      dateFrom,
+      dateTo,
+      region,
+      globalFilters,
+      charts,
+      dashboardJqlQuery: jqlQuery,
+      kpiCardConfigs,
+      hiddenDimensions: Array.from(hiddenDimensions),
+      widgetTitles,
+    };
+
+    try {
+      const savedData = JSON.parse(activeView.data);
+      
+      // Deep comparison via stringification
+      const isModified = JSON.stringify(currentData) !== JSON.stringify(savedData);
+      setIsViewModified(isModified);
+
+      // Auto-save logic
+      if (isModified && activeView.autoSaveEnabled) {
+        const requestId = ++lastSaveRequestId.current;
+        const timeoutId = setTimeout(async () => {
+          try {
+            const res = await fetch(`/api/dashboard/views/${activeView.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                data: JSON.stringify(currentData),
+                storageConfig
+              })
+            });
+            const data = await res.json();
+            
+            // Only update state if this is still the latest request
+            if (data.success && requestId === lastSaveRequestId.current) {
+              setActiveView(data.view);
+              setIsViewModified(false);
+            }
+          } catch (error) {
+            console.error('Auto-save failed:', error);
+          }
+        }, 3000); // 3 second debounce
+
+        return () => clearTimeout(timeoutId);
+      }
+    } catch (e) {
+      console.error('Failed to parse active view data:', e);
+    }
+  }, [
+    activeView?.id, 
+    activeView?.autoSaveEnabled,
+    dateFrom, 
+    dateTo, 
+    region, 
+    globalFilters, 
+    charts, 
+    jqlQuery, 
+    kpiCardConfigs, 
+    hiddenDimensions, 
+    widgetTitles,
+    setIsViewModified,
+    setActiveView,
+    storageConfig
+  ]);
 
   const handleUpdatePendingFilter = (key: string, value: string) => {
     if (value === 'all') {
@@ -755,87 +758,7 @@ export function KpiDashboard() {
                     <RefreshCw className={`h-3 w-3 ${calculating ? 'animate-spin' : ''}`} />
                     Recalculate
                   </Button>
-                  <Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[10px] text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 gap-1 rounded-md"
-                      >
-                        <Zap className="h-3 w-3" />
-                        Saved Views
-                        {presets.length > 0 && <Badge className="ml-1 bg-emerald-500 hover:bg-emerald-600 border-none h-3 min-w-[12px] flex items-center justify-center p-0 text-[8px]">{presets.length}</Badge>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-xl z-[60]">
-                      <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Dashboard Presets</h4>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Save and recall layouts & filters</p>
-                      </div>
-                      <div className="p-2 max-h-[300px] overflow-y-auto">
-                        {presets.length === 0 ? (
-                          <div className="py-8 text-center">
-                            <p className="text-xs text-slate-400 italic">No saved views yet</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {presets.map(p => (
-                              <div key={p.id} className="group flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleLoadPreset(p)}>
-                                <div className="flex flex-col gap-0.5">
-                                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{p.name}</span>
-                                  <span className="text-[10px] text-slate-400">{new Date(p.dateFrom).toLocaleDateString()} - {new Date(p.dateTo).toLocaleDateString()}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <UITooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-500"
-                                        onClick={(e) => { e.stopPropagation(); handleUpdatePreset(p.id, p.name); }}
-                                      >
-                                        <RefreshCw className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">
-                                      <p className="text-xs">Update view with current settings</p>
-                                    </TooltipContent>
-                                  </UITooltip>
-                                  <UITooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
-                                        onClick={(e) => { e.stopPropagation(); handleDeletePreset(p.id); }}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">
-                                      <p className="text-xs">Delete view</p>
-                                    </TooltipContent>
-                                  </UITooltip>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                        <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Save Current View</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="View Name..."
-                            value={newPresetName}
-                            onChange={(e) => setNewPresetName(e.target.value)}
-                            className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
-                          />
-                          <Button size="sm" className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={handleSavePreset} disabled={!newPresetName}>Save</Button>
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                  <ViewManager />
                 </div>
               </div>
               <CardDescription className="text-slate-600 dark:text-slate-400">
@@ -2004,21 +1927,12 @@ export function KpiDashboard() {
                       <div className="space-y-2">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Active Plugins</p>
                         {sortedKpiResults.length > 0 ? (
-                          <div className="space-y-1.5">
-                            {sortedKpiResults.map((kpi) => {
-                              const pluginDisplay = kpi.pluginId
-                                .split('_')
-                                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                                .join(' ');
-                              return (
-                                <div key={kpi.pluginId} className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="text-[10px] py-0 h-4 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 border-none">
-                                    {pluginDisplay}
-                                  </Badge>
-                                  <span className="text-[10px] text-slate-500">{kpi.results.length} metric{kpi.results.length !== 1 ? 's' : ''}</span>
-                                </div>
-                              );
-                            })}
+                          <div className="flex flex-wrap gap-1.5">
+                            {sortedKpiResults.map(p => (
+                              <Badge key={p.pluginId} variant="secondary" className="text-[9px] py-0 h-4 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 border-none">
+                                {p.pluginId}
+                              </Badge>
+                            ))}
                           </div>
                         ) : (
                           <p className="text-xs text-slate-500 italic">No active plugins</p>
@@ -2028,33 +1942,27 @@ export function KpiDashboard() {
                   </UITooltip>
                 </TooltipProvider>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 pr-1.5">
                 <Button
-                  variant="ghost"
                   size="sm"
+                  className="rounded-full h-8 px-4 bg-blue-600 hover:bg-blue-700 text-xs font-bold shadow-lg shadow-blue-600/20 gap-2"
                   onClick={() => {
                     hasUserInitiatedCalc.current = true;
                     runCalculation();
                     toast.info('Recalculating KPIs...');
                   }}
                   disabled={calculating}
-                  className="rounded-full h-8 px-3 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 text-[11px] font-medium transition-all"
                 >
-                  {calculating ? (
-                    <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3 w-3 mr-1.5" />
-                  )}
+                  <RefreshCw className={`h-3 w-3 ${calculating ? 'animate-spin' : ''}`} />
                   Recalculate
                 </Button>
-                <Separator orientation="vertical" className="h-4 bg-slate-200 dark:bg-slate-800" />
                 <Button
-                  variant="ghost"
                   size="sm"
+                  variant="ghost"
+                  className="rounded-full h-8 px-2 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 gap-1"
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                  className="rounded-full h-8 px-3 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-medium transition-all"
                 >
-                  <ArrowUp className="h-3 w-3 mr-1.5" />
+                  <ArrowUp className="h-3.5 w-3.5" />
                   Top
                 </Button>
               </div>
@@ -2062,18 +1970,6 @@ export function KpiDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {calculating && (
-        <div className="fixed inset-0 z-[100] bg-white/60 dark:bg-slate-950/60 backdrop-blur-[2px] flex flex-col items-center justify-center animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col items-center gap-4">
-            <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
-            <div className="text-center">
-              <h3 className="text-lg font-bold">Recalculating KPIs</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Processing master dataset analytics...</p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
