@@ -19,9 +19,17 @@ if exist "release" (
 :: Check for running node processes that might lock Prisma files (excluding this script's host)
 tasklist /FI "IMAGENAME eq node.exe" 2>NUL | find /I /N "node.exe">NUL
 if "%ERRORLEVEL%"=="0" (
-    echo [WARNING] Multiple 'node.exe' processes are running. 
-    echo           This may cause EPERM errors during Prisma generation.
-    echo           If the build fails, please close all other terminals/IDE.
+    echo ! Warning: Multiple 'node.exe' processes are running. 
+    echo   This may cause EPERM errors during Prisma generation.
+    echo.
+    set /p KILL_NODE="Do you want to stop all running Node processes to avoid file locks? (Y/N): "
+    if /I "!KILL_NODE!"=="Y" (
+        echo   Stopping Node processes...
+        taskkill /F /IM node.exe >nul 2>&1
+        echo   Done.
+    ) else (
+        echo   Proceeding without stopping processes. If the build fails, please close them manually.
+    )
     echo.
 )
 

@@ -12,20 +12,30 @@ const envFile = path.join(rootDir, '.env');
 console.log('--- Prisma Setup Script ---');
 
 // Helper for cleaning directories with retry (handles Windows file locks)
-function cleanDirectorySync(dir) {
+function cleanDirectorySync(dir, retries = 3) {
   if (!fs.existsSync(dir)) return true;
   
-  try {
-    fs.rmSync(dir, { recursive: true, force: true });
-    return true;
-  } catch (error) {
-    if (error.code === 'EPERM' || error.code === 'EBUSY') {
-      console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);
-      console.warn('  Common causes: A running dev server, VS Code Prisma extension, or an open terminal.');
-      return false;
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return true;
+    } catch (error) {
+      if (error.code === 'EPERM' || error.code === 'EBUSY') {
+        if (i < retries - 1) {
+          console.warn(`! Directory ${path.relative(rootDir, dir)} is locked. Retrying (${i + 1}/${retries})...`);
+          // Small sync delay
+          const start = Date.now();
+          while (Date.now() - start < 1000) {} 
+          continue;
+        }
+        console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);
+        console.warn('  Common causes: A running dev server, VS Code Prisma extension, or an open terminal.');
+        return false;
+      }
+      throw error;
     }
-    throw error;
   }
+  return false;
 }
 
 // 1. Ensure required directories exist
@@ -79,12 +89,20 @@ try {
   const pgGenDir = path.join(prismaDir, 'generated', 'postgresql');
 
   console.log('> Generating SQLite Prisma client...');
-  cleanDirectorySync(sqliteGenDir);
-  execSync('npx prisma generate --schema=prisma/schema.sqlite.prisma', { stdio: 'inherit', cwd: rootDir });
+  if (cleanDirectorySync(sqliteGenDir)) {
+    execSync('npx prisma generate --schema=prisma/schema.sqlite.prisma', { stdio: 'inherit', cwd: rootDir });
+  } else {
+    console.error('✗ Cannot generate SQLite client: Directory is locked.');
+    process.exit(1);
+  }
   
   console.log('> Generating PostgreSQL Prisma client...');
-  cleanDirectorySync(pgGenDir);
-  execSync('npx prisma generate --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit', cwd: rootDir });
+  if (cleanDirectorySync(pgGenDir)) {
+    execSync('npx prisma generate --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit', cwd: rootDir });
+  } else {
+    console.error('✗ Cannot generate PostgreSQL client: Directory is locked.');
+    process.exit(1);
+  }
   
   // Also sync the main schema.prisma for general tools (Studio, etc)
   const sourcePath = path.join(prismaDir, isPostgres ? 'schema.postgresql.prisma' : 'schema.sqlite.prisma');

@@ -8,7 +8,25 @@ echo ============================================================
 echo.
 
 :: ── Step 1: Clean and Prepare ─────────────────────────────────
-echo [1/4] Cleaning up previous builds...
+echo [1/4] Cleaning up previous builds and checking for locks...
+
+:: Check for running node processes that might lock Prisma files
+tasklist /FI "IMAGENAME eq node.exe" 2>NUL | find /I /N "node.exe">NUL
+if "%ERRORLEVEL%"=="0" (
+    echo ! Warning: Multiple 'node.exe' processes are running. 
+    echo   This often causes EPERM errors during Prisma generation.
+    echo.
+    set /p KILL_NODE="Do you want to stop all running Node processes to avoid file locks? (Y/N): "
+    if /I "!KILL_NODE!"=="Y" (
+        echo   Stopping Node processes...
+        taskkill /F /IM node.exe >nul 2>&1
+        echo   Done.
+    ) else (
+        echo   Proceeding without stopping processes. If build fails, please close them manually.
+    )
+    echo.
+)
+
 if exist "dist" rd /s /q "dist" >nul 2>&1
 mkdir "dist\app"
 echo       Done.
@@ -54,8 +72,8 @@ echo [4/4] Creating launcher with auto port scan...
     echo title Jira ETL Dashboard
     echo.
     echo :: ─── Locate node.exe ────────────────────────────────────────────
-    echo set "NODE_BIN="
-    echo where node.exe ^>nul 2^>^&1
+    echo set "NODE_BIN=node"
+    echo %%SystemRoot%%\System32\where.exe node.exe ^>nul 2^>^&1
     echo if %%errorlevel%% equ 0 ^(
     echo     set "NODE_BIN=node.exe"
     echo ^) else if exist "%%~dp0node.exe" ^(
@@ -66,10 +84,9 @@ echo [4/4] Creating launcher with auto port scan...
     echo     exit /b 1
     echo ^)
     echo.
-    echo :: ─── Auto Port Scan ─────────────────────────────────────────────
     echo set "PORT=3000"
     echo :find_port
-    echo netstat -ano ^| find "0.0.0.0:%%PORT%% " ^>nul 2^>^&1
+    echo %%SystemRoot%%\System32\netstat.exe -ano ^| %%SystemRoot%%\System32\find.exe "0.0.0.0:%%PORT%% " ^>nul 2^>^&1
     echo if %%errorlevel%% equ 0 ^(
     echo     echo   Port %%PORT%% is occupied, trying next...
     echo     set /a PORT+=1
@@ -100,6 +117,24 @@ echo [4/4] Creating launcher with auto port scan...
     echo cd /d "%%~dp0app"
     echo "%%NODE_BIN%%" server.js
     echo pause
+)
+
+echo       Launcher created.
+
+:: ── Step 5: Bundle Node.js runtime (for portability) ──────────
+echo [5/5] Bundling Node.js runtime...
+set "NODE_PATH="
+for /f "tokens=*" %%i in ('where node.exe') do (
+    set "NODE_PATH=%%i"
+    goto :node_found
+)
+
+:node_found
+if defined NODE_PATH (
+    copy /y "!NODE_PATH!" "dist\node.exe" >nul
+    echo       node.exe bundled from !NODE_PATH!
+) else (
+    echo       ! Warning: node.exe not found in PATH. Build will require node.exe to be added manually.
 )
 
 echo.
