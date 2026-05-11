@@ -65,14 +65,17 @@ export function ViewManager() {
       // Clear current active view when switching connections to prevent incompatible state
       setActiveView(null);
       setIsViewModified(false);
-      fetchViews();
+      // @MX:WARN - Closure Risk: fetchViews must be called with fresh state
+      // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from 
+      // stale closures if fetchViews depends on the activeView value from the current render.
+      fetchViews(null);
     } else {
       setSavedViews([]);
       setActiveView(null);
     }
   }, [activeConnectionRef]);
 
-  const fetchViews = async () => {
+  const fetchViews = async (currentActiveView: DashboardView | null = activeView) => {
     if (!activeConnectionRef) return;
     setLoading(true);
     try {
@@ -87,7 +90,7 @@ export function ViewManager() {
         
         // If there's a default view and no active view, load it
         const defaultView = data.views.find((v: DashboardView) => v.isDefault);
-        if (defaultView && !activeView) {
+        if (defaultView && !currentActiveView) {
           loadView(defaultView);
         }
       }
@@ -205,8 +208,13 @@ export function ViewManager() {
     if (!confirm('Are you sure you want to delete this view?')) return;
     
     try {
-      const res = await fetch(`/api/dashboard/views/${id}?storageConfig=${encodeURIComponent(JSON.stringify(storageConfig))}`, {
-        method: 'DELETE'
+      // @MX:WARN - Sensitive Data: DB credentials in storageConfig
+      // @MX:REASON - storageConfig contains database URLs which may include credentials.
+      // We send it in the request body to avoid exposure in server logs.
+      const res = await fetch(`/api/dashboard/views/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storageConfig })
       });
       if (res.ok) {
         setSavedViews(savedViews.filter(v => v.id !== id));
@@ -283,12 +291,20 @@ export function ViewManager() {
                 {savedViews.map(view => (
                   <div 
                     key={view.id} 
-                    className={`group flex items-center justify-between p-2 rounded-lg transition-colors cursor-pointer ${
+                    className={`group flex items-center justify-between p-2 rounded-lg transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                       activeView?.id === view.id 
                         ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-500/20' 
                         : 'hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent'
                     }`}
                     onClick={() => loadView(view)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        loadView(view);
+                      }
+                    }}
                   >
                     <div className="flex flex-col gap-0.5 min-w-0">
                       <div className="flex items-center gap-1.5">

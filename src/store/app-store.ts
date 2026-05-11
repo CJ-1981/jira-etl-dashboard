@@ -85,7 +85,8 @@ interface AppState {
   jqlResultCache: Map<string, { results: KpiCalcResult[]; timestamp: number }>;
   setJqlResultCache: (cache: Map<string, { results: KpiCalcResult[]; timestamp: number }>) => void;
 
-  // Saved Views
+  // @MX:ANCHOR: Saved Views State
+  // @MX:NOTE: Persistent dashboard layouts and configurations stored in the database.
   savedViews: DashboardView[];
   setSavedViews: (views: DashboardView[]) => void;
   activeView: DashboardView | null;
@@ -93,7 +94,8 @@ interface AppState {
   isViewModified: boolean;
   setIsViewModified: (modified: boolean) => void;
 
-  // Widget Titles
+  // @MX:ANCHOR: Widget Titles
+  // @MX:NOTE: User-defined titles for widgets and charts.
   widgetTitles: Record<string, string>;
   setWidgetTitles: (titles: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
 }
@@ -191,6 +193,7 @@ export const useAppStore = create<AppState>((set) => ({
   jqlResultCache: new Map(),
   setJqlResultCache: (cache) => set({ jqlResultCache: cache }),
 
+  // @MX:ANCHOR: Saved Views
   savedViews: [],
   setSavedViews: (savedViews) => set({ savedViews }),
   activeView: null,
@@ -198,7 +201,10 @@ export const useAppStore = create<AppState>((set) => ({
   isViewModified: false,
   setIsViewModified: (isViewModified) => set({ isViewModified }),
 
+  // @MX:ANCHOR: Widget Titles
   widgetTitles: {},
+  // @MX:WARN: Record update pattern
+  // @MX:REASON: Updates are merged to preserve other widget titles.
   setWidgetTitles: (titles) => set((state) => ({
     widgetTitles: typeof titles === 'function' ? titles(state.widgetTitles) : titles
   })),

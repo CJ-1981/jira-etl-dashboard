@@ -170,6 +170,8 @@ export function KpiDashboard() {
     localConfig.saveDashboardJqls(updated);
   };
 
+  const lastSaveRequestId = useRef(0);
+
   // @MX:NOTE: Saved View change detection and auto-save logic
   useEffect(() => {
     if (!activeView) {
@@ -198,6 +200,7 @@ export function KpiDashboard() {
 
       // Auto-save logic
       if (isModified && activeView.autoSaveEnabled) {
+        const requestId = ++lastSaveRequestId.current;
         const timeoutId = setTimeout(async () => {
           try {
             const res = await fetch(`/api/dashboard/views/${activeView.id}`, {
@@ -209,7 +212,9 @@ export function KpiDashboard() {
               })
             });
             const data = await res.json();
-            if (data.success) {
+            
+            // Only update state if this is still the latest request
+            if (data.success && requestId === lastSaveRequestId.current) {
               setActiveView(data.view);
               setIsViewModified(false);
             }

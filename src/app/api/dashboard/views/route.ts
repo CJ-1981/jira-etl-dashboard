@@ -35,7 +35,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json({ success: false, error: 'Malformed JSON payload' }, { status: 400 });
+    }
     const { connectionRef, name, data, isDefault, autoSaveEnabled, storageConfig } = body;
 
     if (!connectionRef || !name || !data) {
@@ -44,22 +49,26 @@ export async function POST(request: Request) {
 
     const db = getDb(storageConfig);
     
-    // If setting as default, unset others for this connection
-    if (isDefault) {
-      await (db as any).dashboardView.updateMany({
-        where: { connectionRef, isDefault: true },
-        data: { isDefault: false }
-      });
-    }
-
-    const view = await (db as any).dashboardView.create({
-      data: {
-        connectionRef,
-        name,
-        data: typeof data === 'string' ? data : JSON.stringify(data),
-        isDefault: !!isDefault,
-        autoSaveEnabled: !!autoSaveEnabled,
+    const view = await (db as any).$transaction(async (tx: any) => {
+      // @MX:WARN - Concurrency Risk: Atomic default view creation required
+      // @MX:REASON - Unsetting previous defaults and creating the new default view must 
+      // happen atomically to maintain the invariant that only one view is default.
+      if (isDefault) {
+        await tx.dashboardView.updateMany({
+          where: { connectionRef, isDefault: true },
+          data: { isDefault: false }
+        });
       }
+
+      return await tx.dashboardView.create({
+        data: {
+          connectionRef,
+          name,
+          data: typeof data === 'string' ? data : JSON.stringify(data),
+          isDefault: !!isDefault,
+          autoSaveEnabled: !!autoSaveEnabled,
+        }
+      });
     });
 
     return NextResponse.json({ success: true, view });

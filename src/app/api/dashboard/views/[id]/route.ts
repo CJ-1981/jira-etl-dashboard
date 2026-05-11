@@ -23,20 +23,23 @@ export async function PATCH(
     if (data !== undefined) updateData.data = typeof data === 'string' ? data : JSON.stringify(data);
     if (autoSaveEnabled !== undefined) updateData.autoSaveEnabled = !!autoSaveEnabled;
     
-    if (isDefault) {
-      updateData.isDefault = true;
-      // Unset others
-      await (db as any).dashboardView.updateMany({
-        where: { connectionRef: currentView.connectionRef, isDefault: true, id: { not: id } },
-        data: { isDefault: false }
-      });
-    } else if (isDefault === false) {
-      updateData.isDefault = false;
-    }
+    if (isDefault !== undefined) updateData.isDefault = !!isDefault;
 
-    const view = await (db as any).dashboardView.update({
-      where: { id },
-      data: updateData
+    const view = await (db as any).$transaction(async (tx: any) => {
+      // @MX:WARN - Concurrency Risk: Atomic default view update required
+      // @MX:REASON - Unsetting other defaults and setting the new one must happen in a single 
+      // transaction to prevent race conditions where multiple views might be marked as default.
+      if (isDefault) {
+        await tx.dashboardView.updateMany({
+          where: { connectionRef: currentView.connectionRef, isDefault: true, id: { not: id } },
+          data: { isDefault: false }
+        });
+      }
+
+      return await tx.dashboardView.update({
+        where: { id },
+        data: updateData
+      });
     });
 
     return NextResponse.json({ success: true, view });
@@ -52,14 +55,11 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(request.url);
-    const storageConfigRaw = searchParams.get('storageConfig');
+    const body = await request.json().catch(() => ({}));
+    const { storageConfig } = body;
     
-    let storageConfig;
-    if (storageConfigRaw) {
-      try {
-        storageConfig = JSON.parse(storageConfigRaw);
-      } catch (e) {}
+    if (!storageConfig) {
+      return NextResponse.json({ success: false, error: 'storageConfig is required in request body' }, { status: 400 });
     }
 
     const db = getDb(storageConfig);
