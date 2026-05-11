@@ -188,9 +188,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'connectionId is required' }, { status: 400 });
       }
 
+      // Validate intervalMinutes if provided
+      if (intervalMinutes !== undefined) {
+        const interval = Number(intervalMinutes);
+        if (isNaN(interval) || interval <= 0) {
+          return NextResponse.json({ success: false, error: 'intervalMinutes must be a positive number' }, { status: 400 });
+        }
+        pollingState.intervalMinutes = interval;
+      }
+
       pollingState.enabled = true;
       pollingState.connectionId = connectionId || pollingState.connectionId;
-      pollingState.intervalMinutes = intervalMinutes || pollingState.intervalMinutes;
+      // intervalMinutes handled above with validation
       pollingState.dateFrom = dateFrom || pollingState.dateFrom;
       pollingState.dateTo = dateTo || pollingState.dateTo;
       pollingState.jql = jql || pollingState.jql;

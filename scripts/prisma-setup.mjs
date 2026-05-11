@@ -23,9 +23,13 @@ function cleanDirectorySync(dir, retries = 3) {
       if (error.code === 'EPERM' || error.code === 'EBUSY') {
         if (i < retries - 1) {
           console.warn(`! Directory ${path.relative(rootDir, dir)} is locked. Retrying (${i + 1}/${retries})...`);
-          // Small sync delay
-          const start = Date.now();
-          while (Date.now() - start < 1000) {} 
+          // Real blocking sleep via child process to save CPU
+          try {
+            execSync('powershell -Command "Start-Sleep -s 1"', { stdio: 'ignore' });
+          } catch (e) {
+            // Fallback for non-windows or if powershell fails
+            execSync('sleep 1', { stdio: 'ignore' });
+          }
           continue;
         }
         console.warn(`! Warning: Directory ${path.relative(rootDir, dir)} is locked by another process.`);

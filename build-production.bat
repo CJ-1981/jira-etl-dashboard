@@ -76,10 +76,10 @@ echo [4/4] Creating launcher with auto port scan...
     echo %%SystemRoot%%\System32\where.exe node.exe ^>nul 2^>^&1
     echo if %%errorlevel%% equ 0 ^(
     echo     set "NODE_BIN=node.exe"
-    echo ^) else if exist "%%~dp0node.exe" ^(
-    echo     set "NODE_BIN=%%~dp0node.exe"
+    echo ^) else if exist "%%~dp0app\node.exe" ^(
+    echo     set "NODE_BIN=%%~dp0app\node.exe"
     echo ^) else ^(
-    echo     echo [ERROR] node.exe not found. Please place node.exe in the same folder as this script.
+    echo     echo [ERROR] node.exe not found. Please place node.exe in the 'app' folder.
     echo     pause
     echo     exit /b 1
     echo ^)
@@ -131,10 +131,10 @@ for /f "tokens=*" %%i in ('where node.exe') do (
 
 :node_found
 if defined NODE_PATH (
-    copy /y "!NODE_PATH!" "dist\node.exe" >nul
-    echo       node.exe bundled from !NODE_PATH!
+    copy /y "!NODE_PATH!" "dist\app\node.exe" >nul
+    echo       node.exe bundled into dist\app\ from !NODE_PATH!
 ) else (
-    echo       ! Warning: node.exe not found in PATH. Build will require node.exe to be added manually.
+    echo       ! Warning: node.exe not found in PATH. Build will require node.exe to be added manually to dist\app\.
 )
 
 echo.
