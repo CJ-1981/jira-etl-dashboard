@@ -83,6 +83,7 @@ import { localConfig, type SavedJql } from '@/lib/config/local-store';
 import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { JqlAutocomplete } from './JqlAutocomplete';
 import { useAppStore } from '@/store/app-store';
+import { useDrillDown } from '@/hooks/useDrillDown';
 
 export function KpiDashboard() {
   const {
@@ -147,8 +148,9 @@ export function KpiDashboard() {
   // Staging filters for multi-select without instant update
   const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
 
-  const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
-  const [drillDownTitle, setDrillDownTitle] = useState('');
+  // Drill-down state extracted to useDrillDown hook
+  const { drillDownKeys, drillDownTitle, isDrillDownOpen, openDrillDown, closeDrillDown } = useDrillDown();
+
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   const jqlInputRef = useRef<HTMLInputElement>(null);
@@ -312,8 +314,7 @@ export function KpiDashboard() {
   };
 
   const handleDrillDown = (keys: string[], title: string) => {
-    setDrillDownKeys(keys);
-    setDrillDownTitle(title);
+    openDrillDown(keys, title);
   };
 
   const { data: calculationData, isLoading: calculating, refetch: runCalculation } = useQuery({
@@ -1799,7 +1800,7 @@ export function KpiDashboard() {
       )}
 
       {/* Drill-down Sheet */}
-      <Sheet open={!!drillDownKeys} onOpenChange={(open) => !open && setDrillDownKeys(null)}>
+      <Sheet open={isDrillDownOpen} onOpenChange={(open) => !open && closeDrillDown()}>
         <SheetContent side="right" className="w-[90%] sm:w-[540px] border-l-slate-200 dark:border-l-slate-800 p-0 overflow-hidden flex flex-col">
           <SheetHeader className="p-6 border-b border-slate-100 dark:border-slate-800 shrink-0">
             <SheetTitle className="flex items-center gap-2 text-xl">
@@ -1850,7 +1851,7 @@ export function KpiDashboard() {
       </Sheet>
 
       <AnimatePresence>
-        {showFloatingBar && !drillDownKeys && (
+        {showFloatingBar && !isDrillDownOpen && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
