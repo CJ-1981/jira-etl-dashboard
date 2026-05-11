@@ -1045,7 +1045,7 @@ export function KpiDashboard() {
                                             const updated = dashboardJqls.filter(j => j.id !== jqlToDelete);
                                             saveDashboardJqls(updated);
                                             const queryToDelete = dashboardJqls.find(j => j.id === jqlToDelete)?.query;
-                                            if (queryToDelete && pendingFilters['jql']?.includes(queryToDelete)) {
+                                            if (queryToDelete && jqlFilters.stagingFilters['jql']?.includes(queryToDelete)) {
                                               handleUpdatePendingFilter('jql', queryToDelete);
                                             }
                                             if (editingJqlId === jqlToDelete) {
@@ -1091,8 +1091,8 @@ export function KpiDashboard() {
                             className="w-full h-8 text-[11px] justify-between bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-normal"
                           >
                             <span className="truncate">
-                              {pendingFilters[filter.key]?.length
-                                ? `${pendingFilters[filter.key].length} selected`
+                              {jqlFilters.stagingFilters[filter.key]?.length
+                                ? `${jqlFilters.stagingFilters[filter.key].length} selected`
                                 : `All ${filter.label}${filter.label === 'Priority' ? 'ies' : filter.label === 'Status' ? 'es' : 's'}`}
                             </span>
                             <ChevronDown className="h-3 w-3 opacity-50" />
@@ -1119,7 +1119,7 @@ export function KpiDashboard() {
                                   handleUpdatePendingFilter(filter.key, opt);
                                 }}
                               >
-                                <Checkbox checked={!!pendingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
+                                <Checkbox checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
                                 <span className="text-xs truncate">{opt}</span>
                               </div>
                             ))}
@@ -1135,7 +1135,7 @@ export function KpiDashboard() {
                     size="sm"
                     onClick={handleApplyFilters}
                     className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-2"
-                    disabled={JSON.stringify(globalFilters) === JSON.stringify(pendingFilters)}
+                    disabled={JSON.stringify(globalFilters) === JSON.stringify(jqlFilters.stagingFilters)}
                   >
                     <CheckCircle2 className="h-4 w-4" />
                     Apply Filters
@@ -1143,9 +1143,9 @@ export function KpiDashboard() {
                 </div>
               </div>
 
-              {Object.keys(pendingFilters).length > 0 && (
+              {Object.keys(jqlFilters.stagingFilters).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {(Object.entries(pendingFilters) as [string, string[]][]).map(([key, values]) => (
+                  {(Object.entries(jqlFilters.stagingFilters) as [string, string[]][]).map(([key, values]) => (
                     values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
                         <span className="text-slate-400">{key}:</span> {val}
