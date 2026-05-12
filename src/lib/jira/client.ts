@@ -61,13 +61,14 @@ export interface JiraSearchResult {
 
 export interface JiraFieldMapping {
   storyPointsField: string;
+  issueOwnerTeamField: string;
   sprintField: string;
   epicLinkField: string;
 }
 
 export class JiraClient {
   private config: JiraConnectionConfig;
-  private fieldMapping: JiraFieldMapping;
+  private fieldMapping: Required<JiraFieldMapping>;
 
   constructor(config: JiraConnectionConfig, fieldMapping?: Partial<JiraFieldMapping>) {
     // Normalize baseUrl: ensure it has a protocol
@@ -84,6 +85,7 @@ export class JiraClient {
     };
     this.fieldMapping = {
       storyPointsField: fieldMapping?.storyPointsField || 'customfield_10002',
+      issueOwnerTeamField: fieldMapping?.issueOwnerTeamField || 'customfield_10100',
       sprintField: fieldMapping?.sprintField || 'customfield_10020',
       epicLinkField: fieldMapping?.epicLinkField || 'customfield_10014',
     };
@@ -370,7 +372,8 @@ export class JiraClient {
         maxResults,
         fields: ['summary', 'issuetype', 'priority', 'status', 'assignee', 'reporter',
                  'created', 'updated', 'resolutiondate', 'duedate',
-                 this.fieldMapping.storyPointsField, 'labels', 'components', 'comment'],
+                 this.fieldMapping.storyPointsField, this.fieldMapping.issueOwnerTeamField,
+                 'labels', 'components', 'comment'],
       };
 
       if (safeExpand.length > 0) {
