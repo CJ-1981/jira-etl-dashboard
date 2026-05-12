@@ -25,7 +25,7 @@ export interface JiraIssue {
     resolutiondate?: string;
     duedate?: string;
     customfield_10002?: number; // Story Points (varies by instance)
-    customfield_10100?: string; // Issue Owner Team (LTIC) - adjust field ID as needed
+    customfield_10132?: string | { value: string; id: string; self: string }; // Issue Owner Team (LTIC) - select field returns object
     labels?: string[];
     components?: { name: string }[];
   };
@@ -85,7 +85,7 @@ export class JiraClient {
     };
     this.fieldMapping = {
       storyPointsField: fieldMapping?.storyPointsField || 'customfield_10002',
-      issueOwnerTeamField: fieldMapping?.issueOwnerTeamField || 'customfield_10100',
+      issueOwnerTeamField: fieldMapping?.issueOwnerTeamField || 'customfield_10132',
       sprintField: fieldMapping?.sprintField || 'customfield_10020',
       epicLinkField: fieldMapping?.epicLinkField || 'customfield_10014',
     };
@@ -527,10 +527,25 @@ export class JiraClient {
 }
 
 /**
+ * Extract value from a Jira select field
+ * Jira select fields return either a string or an object: { value: string, id: string, self: string }
+ */
+export function extractSelectFieldValue(field: string | { value: string } | undefined | null): string | null {
+  if (!field) return null;
+  if (typeof field === 'string') return field;
+  if (typeof field === 'object' && 'value' in field) return field.value;
+  return null;
+}
+
+/**
  * Transform raw Jira issues into a flat, analysis-ready format
  */
 export function transformIssue(issue: JiraIssue) {
   const transitions = extractTransitions(issue);
+
+  // Extract Issue Owner Team value from select field object
+  const issueOwnerTeam = extractSelectFieldValue(issue.fields.customfield_10132);
+
   return {
     key: issue.key,
     summary: issue.fields.summary,
@@ -540,7 +555,7 @@ export function transformIssue(issue: JiraIssue) {
     statusCategory: issue.fields.status.statusCategory?.name || 'Unknown',
     assignee: issue.fields.assignee?.displayName || 'Unassigned',
     reporter: issue.fields.reporter?.displayName || 'Unknown',
-    issueOwnerTeam: issue.fields.customfield_10100 || null,
+    issueOwnerTeam,
     created: issue.fields.created,
     updated: issue.fields.updated,
     resolved: issue.fields.resolutiondate || null,
@@ -555,7 +570,7 @@ export function transformIssue(issue: JiraIssue) {
 
 const JIRA_FIELD_MAP = {
   storyPointsField: 'customfield_10002',
-  issueOwnerTeamField: 'customfield_10100', // Issue Owner Team (LTIC)
+  issueOwnerTeamField: 'customfield_10132', // Issue Owner Team (LTIC) - select field
 };
 
 function extractTransitions(issue: JiraIssue): Array<{

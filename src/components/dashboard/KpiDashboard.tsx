@@ -17,6 +17,7 @@ import {
 import { KpiDataTable } from './KpiDataTable';
 import { KpiErrorBoundary } from './KpiErrorBoundary';
 import { ViewManager } from './ViewManager';
+import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
 import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -678,7 +679,16 @@ export function KpiDashboard() {
     );
   }, [sortedKpiResults]);
 
+  // Helper function to extract value from Jira select fields
+  const extractSelectFieldValue = (field: any): string | null => {
+    if (!field) return null;
+    if (typeof field === 'string') return field;
+    if (typeof field === 'object' && field.value) return field.value;
+    return null;
+  };
+
   const filterOptions = useMemo(() => {
+    const issueOwnerTeamField = getIssueOwnerTeamField();
     const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>(), issueOwnerTeam: new Set<string>() };
     if (masterDatasetInfo?.issues) {
       masterDatasetInfo.issues.forEach((i: any) => {
@@ -691,9 +701,13 @@ export function KpiDashboard() {
         if (f.status?.name) options.status.add(f.status.name);
         if (f.components) f.components.forEach((c: any) => options.component.add(c.name));
         if (f.labels) f.labels.forEach((l: any) => options.label.add(l));
-        if (f.customfield_10100) {
-          options.issueOwnerTeam.add(f.customfield_10100);
-          console.log(`[Filter Debug] Issue ${i.key} has Issue Owner Team: ${f.customfield_10100}`);
+        if (f[issueOwnerTeamField]) {
+          // Jira select fields return objects: { value: "Team Name", id: "123" }
+          const teamValue = extractSelectFieldValue(f[issueOwnerTeamField]);
+          if (teamValue) {
+            options.issueOwnerTeam.add(teamValue);
+            console.log(`[Filter Debug] Issue ${i.key} has Issue Owner Team (${issueOwnerTeamField}): ${teamValue}`);
+          }
         }
       });
     }
