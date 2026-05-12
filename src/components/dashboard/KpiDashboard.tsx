@@ -121,6 +121,7 @@ export function KpiDashboard() {
 
   // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
+  const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
 
   // Drill-down state extracted to useDrillDown hook
   const { drillDownKeys, drillDownTitle, isDrillDownOpen, openDrillDown, closeDrillDown } = useDrillDown();
@@ -1024,7 +1025,10 @@ export function KpiDashboard() {
                                   <AlertDialogTrigger asChild>
                                     <span
                                       className="hover:text-red-200 transition-colors p-0.5"
-                                      onClick={(e) => { e.stopPropagation(); }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setJqlToDelete(djql.id);
+                                      }}
                                     >
                                       <Trash2 className="h-2.5 w-2.5" />
                                     </span>
@@ -1037,14 +1041,13 @@ export function KpiDashboard() {
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogCancel onClick={() => setJqlToDelete(null)}>Cancel</AlertDialogCancel>
                                       <AlertDialogAction
                                         className="bg-red-600 hover:bg-red-700"
                                         onClick={() => {
                                           if (jqlToDelete) {
-                                            const updated = dashboardJqls.filter(j => j.id !== jqlToDelete);
-                                            saveDashboardJqls(updated);
-                                            const queryToDelete = dashboardJqls.find(j => j.id === jqlToDelete)?.query;
+                                            const queryToDelete = jqlFilters.jqlList.find(j => j.id === jqlToDelete)?.query;
+                                            jqlFilters.deleteJql(jqlToDelete);
                                             if (queryToDelete && jqlFilters.stagingFilters['jql']?.includes(queryToDelete)) {
                                               handleUpdatePendingFilter('jql', queryToDelete);
                                             }
