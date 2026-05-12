@@ -28,6 +28,7 @@ import openTicketsByStatusPlugin from './plugins/builtin/throughput/open-tickets
 import resolutionRatePlugin from './plugins/builtin/quality/resolution-rate';
 import reassignmentPlugin from './plugins/builtin/quality/reassignment';
 import openTicketsByAssigneePlugin from './plugins/builtin/assignee/open-tickets-by-assignee';
+import openTicketsByIssueOwnerTeamPlugin from './plugins/builtin/assignee/open-tickets-by-issue-owner-team';
 
 // Import all time-series plugins directly
 import avgProcessingHoursWeeklyPlugin from './plugins/time-series/processing-time/avg-processing-hours-weekly';
@@ -80,6 +81,7 @@ export class PluginLoader {
 
       // Assignee plugins
       openTicketsByAssigneePlugin,
+      openTicketsByIssueOwnerTeamPlugin,
     ];
   }
 
