@@ -691,9 +691,13 @@ export function KpiDashboard() {
         if (f.status?.name) options.status.add(f.status.name);
         if (f.components) f.components.forEach((c: any) => options.component.add(c.name));
         if (f.labels) f.labels.forEach((l: any) => options.label.add(l));
-        if (f.customfield_10100) options.issueOwnerTeam.add(f.customfield_10100);
+        if (f.customfield_10100) {
+          options.issueOwnerTeam.add(f.customfield_10100);
+          console.log(`[Filter Debug] Issue ${i.key} has Issue Owner Team: ${f.customfield_10100}`);
+        }
       });
     }
+    console.log(`[Filter Debug] Total unique Issue Owner Teams: ${options.issueOwnerTeam.size}`, Array.from(options.issueOwnerTeam));
     return { project: Array.from(options.project).sort(), assignee: Array.from(options.assignee).sort(), priority: Array.from(options.priority).sort(), issueType: Array.from(options.issueType).sort(), status: Array.from(options.status).sort(), component: Array.from(options.component).sort(), label: Array.from(options.label).sort(), issueOwnerTeam: Array.from(options.issueOwnerTeam).sort() };
   }, [masterDatasetInfo]);
 
@@ -1074,7 +1078,7 @@ export function KpiDashboard() {
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
                     { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
-                  ].filter(f => f.options.length > 1).map(filter => (
+                  ].filter(f => f.options.length >= 1).map(filter => (
                     <div key={filter.key} className="space-y-1.5 no-print">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
                       <Popover>
