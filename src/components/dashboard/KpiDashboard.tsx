@@ -17,6 +17,7 @@ import {
 import { KpiDataTable } from './KpiDataTable';
 import { KpiErrorBoundary } from './KpiErrorBoundary';
 import { ViewManager } from './ViewManager';
+import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
 import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -83,6 +84,11 @@ import { localConfig, type SavedJql } from '@/lib/config/local-store';
 import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { JqlAutocomplete } from './JqlAutocomplete';
 import { useAppStore } from '@/store/app-store';
+import { useDrillDown } from '@/hooks/useDrillDown';
+import { usePeriodAnalysis } from '@/hooks/usePeriodAnalysis';
+import { usePluginVisibility } from '@/hooks/usePluginVisibility';
+import { useJqlFilters } from '@/hooks/useJqlFilters';
+import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 
 export function KpiDashboard() {
   const {
@@ -111,64 +117,40 @@ export function KpiDashboard() {
   const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
   const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
   const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
-  const [activePluginsOrder, setActivePluginsOrder] = useState<string[]>([]);
 
-
-  // ─── Period Analysis Helpers ──────────────────────────────────────────────
-  const { isAnyPresetActive, isDataTruncated, availableStartDate } = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const isToday = dateTo === todayStr;
-    const fromDate = dateFrom ? new Date(dateFrom) : null;
-    const toDate = dateTo ? new Date(dateTo) : null;
-    const diffDays = (fromDate && toDate) ? Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-
-    const presets = [7, 14, 30, 60, 90, 180, 365];
-    const isActive = isToday && presets.includes(diffDays);
-
-    const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
-
-    const fromDateNormalized = fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate()) : null;
-    const masterStartNormalized = masterStart ? new Date(masterStart.getFullYear(), masterStart.getMonth(), masterStart.getDate()) : null;
-
-    const isTruncated = masterStartNormalized && fromDateNormalized && fromDateNormalized < masterStartNormalized;
-
-    return {
-      isAnyPresetActive: isActive,
-      isDataTruncated: !!isTruncated,
-      availableStartDate: masterStart ? masterStart.toLocaleDateString() : null
-    };
-  }, [dateFrom, dateTo, masterDatasetInfo]);
-
-  // JQL-Lite Filter state
-  const [dashboardJqls, setDashboardJqls] = useState<SavedJql[]>([]);
-  const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
+  // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
+  const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
 
-  // Staging filters for multi-select without instant update
-  const [pendingFilters, setPendingFilters] = useState<Record<string, string[]>>(globalFilters);
+  // Drill-down state extracted to useDrillDown hook
+  const { drillDownKeys, drillDownTitle, isDrillDownOpen, openDrillDown, closeDrillDown } = useDrillDown();
 
-  const [drillDownKeys, setDrillDownKeys] = useState<string[] | null>(null);
-  const [drillDownTitle, setDrillDownTitle] = useState('');
+  // ─── Period Analysis Hook ───────────────────────────────────────────────────
+  const periodAnalysis = usePeriodAnalysis(
+    dateFrom ? new Date(dateFrom) : new Date(),
+    dateTo ? new Date(dateTo) : new Date(),
+    masterDatasetInfo
+  );
+
+  // ─── JQL Filters Hook ────────────────────────────────────────────────────────
+  const jqlFilters = useJqlFilters();
+
+  // ─── Plugin Visibility Hook ───────────────────────────────────────────────────
+  const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
+  const pluginVisibility = usePluginVisibility(allPluginIds, 'cfg_active_plugins');
+
+  // ─── KPI Calculations Hook ────────────────────────────────────────────────────
+  const kpiCalculations = useKpiCalculations(
+    dateFrom ? new Date(dateFrom) : new Date(),
+    dateTo ? new Date(dateTo) : new Date(),
+    globalFilters
+  );
+
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
-
-  // Load saved JQLs on mount
-  useEffect(() => {
-    setDashboardJqls(localConfig.getDashboardJqls());
-
-    // Load active plugins order for initial sorting
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
-    if (raw) {
-      setActivePluginsOrder(JSON.parse(raw));
-    }
-  }, []);
-
-  const saveDashboardJqls = (updated: SavedJql[]) => {
-    setDashboardJqls(updated);
-    localConfig.saveDashboardJqls(updated);
-  };
+  // Removed: setDashboardJqls and activePluginsOrder loading - now handled by useJqlFilters and usePluginVisibility hooks
 
   const lastSaveRequestId = useRef(0);
 
@@ -246,35 +228,17 @@ export function KpiDashboard() {
   ]);
 
   const handleUpdatePendingFilter = (key: string, value: string) => {
-    if (value === 'all') {
-      setPendingFilters(prev => ({ ...prev, [key]: [] }));
-      return;
-    }
-    setPendingFilters(prev => {
-      const current = prev[key] || [];
-      if (current.includes(value)) {
-        return { ...prev, [key]: current.filter(v => v !== value) };
-      } else {
-        return { ...prev, [key]: [...current, value] };
-      }
-    });
+    jqlFilters.toggleStagingFilter(key, value);
   };
 
   const handleApplyFilters = () => {
     hasUserInitiatedCalc.current = true;
-    setGlobalFilters(pendingFilters);
+    setGlobalFilters(jqlFilters.stagingFilters);
     toast.success('Filters applied');
   };
 
   const handleUpdateFilter = (key: string, value: string) => {
-    setPendingFilters(prev => {
-      const updated = { ...prev };
-      if (updated[key]) {
-        updated[key] = updated[key].filter(v => v !== value);
-        if (updated[key].length === 0) delete updated[key];
-      }
-      return updated;
-    });
+    jqlFilters.toggleStagingFilter(key, value);
   };
 
   const toggleDimension = (pluginId: string, value: string) => {
@@ -312,8 +276,7 @@ export function KpiDashboard() {
   };
 
   const handleDrillDown = (keys: string[], title: string) => {
-    setDrillDownKeys(keys);
-    setDrillDownTitle(title);
+    openDrillDown(keys, title);
   };
 
   const { data: calculationData, isLoading: calculating, refetch: runCalculation } = useQuery({
@@ -600,11 +563,6 @@ export function KpiDashboard() {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'cfg_active_plugins') {
         filterByActivePlugins();
-        // Force re-render of sorted KPIs
-        const raw = localStorage.getItem('cfg_active_plugins');
-        if (raw) {
-          setActivePluginsOrder(JSON.parse(raw));
-        }
       }
     };
 
@@ -679,12 +637,18 @@ export function KpiDashboard() {
   }, [runCalculation, setFilterPanelOpen]);
 
   const sortedKpiResults = useMemo(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
-    if (raw === null) return kpiResults; // Default: show all if never configured
+    // Use activePlugins from usePluginVisibility hook
+    const activeOrder = pluginVisibility.activePlugins;
 
-    const activeOrder = JSON.parse(raw) as string[];
-    if (activeOrder.length === 0) return []; // Explicitly none if user unchecked all
+    // If never configured (all plugins active), show all in original order
+    if (activeOrder.length === kpiResults.length) {
+      return kpiResults;
+    }
 
+    // If explicitly none selected
+    if (activeOrder.length === 0) return [];
+
+    // Sort by active plugin order
     return [...kpiResults].sort((a, b) => {
       const idxA = activeOrder.indexOf(a.pluginId);
       const idxB = activeOrder.indexOf(b.pluginId);
@@ -693,7 +657,7 @@ export function KpiDashboard() {
       if (idxB === -1) return -1;
       return idxA - idxB;
     });
-  }, [kpiResults, activePluginsOrder]);
+  }, [kpiResults, pluginVisibility.activePlugins]);
 
   const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
@@ -715,8 +679,17 @@ export function KpiDashboard() {
     );
   }, [sortedKpiResults]);
 
+  // Helper function to extract value from Jira select fields
+  const extractSelectFieldValue = (field: any): string | null => {
+    if (!field) return null;
+    if (typeof field === 'string') return field;
+    if (typeof field === 'object' && field.value) return field.value;
+    return null;
+  };
+
   const filterOptions = useMemo(() => {
-    const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>() };
+    const issueOwnerTeamField = getIssueOwnerTeamField();
+    const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>(), issueOwnerTeam: new Set<string>() };
     if (masterDatasetInfo?.issues) {
       masterDatasetInfo.issues.forEach((i: any) => {
         const f = i.fields || {};
@@ -728,9 +701,18 @@ export function KpiDashboard() {
         if (f.status?.name) options.status.add(f.status.name);
         if (f.components) f.components.forEach((c: any) => options.component.add(c.name));
         if (f.labels) f.labels.forEach((l: any) => options.label.add(l));
+        if (f[issueOwnerTeamField]) {
+          // Jira select fields return objects: { value: "Team Name", id: "123" }
+          const teamValue = extractSelectFieldValue(f[issueOwnerTeamField]);
+          if (teamValue) {
+            options.issueOwnerTeam.add(teamValue);
+            console.log(`[Filter Debug] Issue ${i.key} has Issue Owner Team (${issueOwnerTeamField}): ${teamValue}`);
+          }
+        }
       });
     }
-    return { project: Array.from(options.project).sort(), assignee: Array.from(options.assignee).sort(), priority: Array.from(options.priority).sort(), issueType: Array.from(options.issueType).sort(), status: Array.from(options.status).sort(), component: Array.from(options.component).sort(), label: Array.from(options.label).sort() };
+    console.log(`[Filter Debug] Total unique Issue Owner Teams: ${options.issueOwnerTeam.size}`, Array.from(options.issueOwnerTeam));
+    return { project: Array.from(options.project).sort(), assignee: Array.from(options.assignee).sort(), priority: Array.from(options.priority).sort(), issueType: Array.from(options.issueType).sort(), status: Array.from(options.status).sort(), component: Array.from(options.component).sort(), label: Array.from(options.label).sort(), issueOwnerTeam: Array.from(options.issueOwnerTeam).sort() };
   }, [masterDatasetInfo]);
 
   return (
@@ -816,7 +798,7 @@ export function KpiDashboard() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Analysis Period</Label>
-                {isDataTruncated && (
+                {periodAnalysis.requiresTruncation && (
                   <UITooltip>
                     <TooltipTrigger asChild>
                       <Badge variant="outline" className="h-4 py-0 text-[9px] border-amber-500/30 text-amber-500 gap-1 animate-pulse cursor-help">
@@ -825,7 +807,7 @@ export function KpiDashboard() {
                     </TooltipTrigger>
                     <TooltipContent side="top" className="max-w-xs p-3 shadow-lg border-amber-200 dark:border-amber-800">
                       <p className="text-xs">
-                        Your selected analysis starts on <strong className="text-amber-600 dark:text-amber-400">{new Date(dateFrom).toLocaleDateString()}</strong>, but your local dataset only contains data from <strong className="text-amber-600 dark:text-amber-400">{availableStartDate}</strong> onwards.<br /><br />
+                        Your selected analysis starts on <strong className="text-amber-600 dark:text-amber-400">{new Date(dateFrom).toLocaleDateString()}</strong>, but your local dataset only contains data from <strong className="text-amber-600 dark:text-amber-400">{periodAnalysis.availableStartDate ? new Date(periodAnalysis.availableStartDate).toLocaleDateString() : 'N/A'}</strong> onwards.<br /><br />
                         The charts and metrics will still render, but will only reflect the available data.
                       </p>
                     </TooltipContent>
@@ -958,7 +940,7 @@ export function KpiDashboard() {
                   Advanced Filtering
                 </h4>
                 <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-400 hover:text-red-500" onClick={() => {
-                  setPendingFilters({});
+                  jqlFilters.clearStagingFilters();
                   setGlobalFilters({});
                 }}>
                   Clear All Filters
@@ -989,30 +971,20 @@ export function KpiDashboard() {
                       onClick={() => {
                         if (!jqlQuery) return;
                         if (editingJqlId) {
-                          const oldJql = dashboardJqls.find(j => j.id === editingJqlId);
-                          const updated = dashboardJqls.map(j => j.id === editingJqlId ? { ...j, query: jqlQuery } : j);
-                          saveDashboardJqls(updated);
+                          const oldJql = jqlFilters.jqlList.find(j => j.id === editingJqlId);
+                          jqlFilters.editJql(editingJqlId, jqlQuery, oldJql?.name || 'Saved JQL');
                           setEditingJqlId(null);
                           setJqlQuery('');
                           toast.success('Filter updated');
 
-                          setPendingFilters(prev => {
-                            const jqlFilters = (prev['jql'] || []).filter(q => oldJql ? q !== oldJql.query : true);
-                            if (!jqlFilters.includes(jqlQuery)) jqlFilters.push(jqlQuery);
-                            return { ...prev, jql: jqlFilters };
-                          });
                         } else {
                           const id = `djql-${Date.now()}`;
                           const newQuery = jqlQuery;
-                          saveDashboardJqls([...dashboardJqls, { id, name: newQuery, query: newQuery }]);
+                          jqlFilters.addJql(newQuery, newQuery);
                           setJqlQuery('');
                           toast.success('Filter saved to dashboard');
 
-                          setPendingFilters(prev => {
-                            const jqlFilters = prev['jql'] || [];
-                            if (!jqlFilters.includes(newQuery)) return { ...prev, jql: [...jqlFilters, newQuery] };
-                            return prev;
-                          });
+                          jqlFilters.toggleStagingFilter('jql', newQuery);
                         }
                       }}
                     >
@@ -1033,10 +1005,10 @@ export function KpiDashboard() {
                     )}
                   </div>
 
-                  {dashboardJqls.length > 0 && (
+                  {jqlFilters.jqlList.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                      {dashboardJqls.map(djql => {
-                        const isActive = pendingFilters['jql']?.includes(djql.query);
+                      {jqlFilters.jqlList.map(djql => {
+                        const isActive = jqlFilters.stagingFilters['jql']?.includes(djql.query);
                         const isEditing = editingJqlId === djql.id;
                         return (
                           <div key={djql.id} className="flex items-center gap-1">
@@ -1061,7 +1033,10 @@ export function KpiDashboard() {
                                   <AlertDialogTrigger asChild>
                                     <span
                                       className="hover:text-red-200 transition-colors p-0.5"
-                                      onClick={(e) => { e.stopPropagation(); setJqlToDelete(djql.id); }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setJqlToDelete(djql.id);
+                                      }}
                                     >
                                       <Trash2 className="h-2.5 w-2.5" />
                                     </span>
@@ -1079,10 +1054,9 @@ export function KpiDashboard() {
                                         className="bg-red-600 hover:bg-red-700"
                                         onClick={() => {
                                           if (jqlToDelete) {
-                                            const updated = dashboardJqls.filter(j => j.id !== jqlToDelete);
-                                            saveDashboardJqls(updated);
-                                            const queryToDelete = dashboardJqls.find(j => j.id === jqlToDelete)?.query;
-                                            if (queryToDelete && pendingFilters['jql']?.includes(queryToDelete)) {
+                                            const queryToDelete = jqlFilters.jqlList.find(j => j.id === jqlToDelete)?.query;
+                                            jqlFilters.deleteJql(jqlToDelete);
+                                            if (queryToDelete && jqlFilters.stagingFilters['jql']?.includes(queryToDelete)) {
                                               handleUpdatePendingFilter('jql', queryToDelete);
                                             }
                                             if (editingJqlId === jqlToDelete) {
@@ -1117,7 +1091,8 @@ export function KpiDashboard() {
                     { label: 'Status', key: 'status', options: filterOptions.status },
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
-                  ].filter(f => f.options.length > 1).map(filter => (
+                    { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
+                  ].filter(f => f.options.length >= 1).map(filter => (
                     <div key={filter.key} className="space-y-1.5 no-print">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
                       <Popover>
@@ -1128,8 +1103,8 @@ export function KpiDashboard() {
                             className="w-full h-8 text-[11px] justify-between bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-normal"
                           >
                             <span className="truncate">
-                              {pendingFilters[filter.key]?.length
-                                ? `${pendingFilters[filter.key].length} selected`
+                              {jqlFilters.stagingFilters[filter.key]?.length
+                                ? `${jqlFilters.stagingFilters[filter.key].length} selected`
                                 : `All ${filter.label}${filter.label === 'Priority' ? 'ies' : filter.label === 'Status' ? 'es' : 's'}`}
                             </span>
                             <ChevronDown className="h-3 w-3 opacity-50" />
@@ -1156,7 +1131,7 @@ export function KpiDashboard() {
                                   handleUpdatePendingFilter(filter.key, opt);
                                 }}
                               >
-                                <Checkbox checked={!!pendingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
+                                <Checkbox checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
                                 <span className="text-xs truncate">{opt}</span>
                               </div>
                             ))}
@@ -1172,7 +1147,7 @@ export function KpiDashboard() {
                     size="sm"
                     onClick={handleApplyFilters}
                     className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-2"
-                    disabled={JSON.stringify(globalFilters) === JSON.stringify(pendingFilters)}
+                    disabled={JSON.stringify(globalFilters) === JSON.stringify(jqlFilters.stagingFilters)}
                   >
                     <CheckCircle2 className="h-4 w-4" />
                     Apply Filters
@@ -1180,9 +1155,9 @@ export function KpiDashboard() {
                 </div>
               </div>
 
-              {Object.keys(pendingFilters).length > 0 && (
+              {Object.keys(jqlFilters.stagingFilters).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {(Object.entries(pendingFilters) as [string, string[]][]).map(([key, values]) => (
+                  {(Object.entries(jqlFilters.stagingFilters) as [string, string[]][]).map(([key, values]) => (
                     values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
                         <span className="text-slate-400">{key}:</span> {val}
@@ -1799,7 +1774,7 @@ export function KpiDashboard() {
       )}
 
       {/* Drill-down Sheet */}
-      <Sheet open={!!drillDownKeys} onOpenChange={(open) => !open && setDrillDownKeys(null)}>
+      <Sheet open={isDrillDownOpen} onOpenChange={(open) => !open && closeDrillDown()}>
         <SheetContent side="right" className="w-[90%] sm:w-[540px] border-l-slate-200 dark:border-l-slate-800 p-0 overflow-hidden flex flex-col">
           <SheetHeader className="p-6 border-b border-slate-100 dark:border-slate-800 shrink-0">
             <SheetTitle className="flex items-center gap-2 text-xl">
@@ -1850,7 +1825,7 @@ export function KpiDashboard() {
       </Sheet>
 
       <AnimatePresence>
-        {showFloatingBar && !drillDownKeys && (
+        {showFloatingBar && !isDrillDownOpen && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}

@@ -24,9 +24,11 @@ import slaByStatusExclClonePlugin from './plugins/builtin/sla/sla-by-status-excl
 import timeInStatusPlugin from './plugins/builtin/turnaround/time-in-status';
 import throughputPlugin from './plugins/builtin/throughput/throughput';
 import openTicketsByPriorityPlugin from './plugins/builtin/throughput/open-tickets-by-priority';
+import openTicketsByStatusPlugin from './plugins/builtin/throughput/open-tickets-by-status';
 import resolutionRatePlugin from './plugins/builtin/quality/resolution-rate';
 import reassignmentPlugin from './plugins/builtin/quality/reassignment';
 import openTicketsByAssigneePlugin from './plugins/builtin/assignee/open-tickets-by-assignee';
+import openTicketsByIssueOwnerTeamPlugin from './plugins/builtin/assignee/open-tickets-by-issue-owner-team';
 
 // Import all time-series plugins directly
 import avgProcessingHoursWeeklyPlugin from './plugins/time-series/processing-time/avg-processing-hours-weekly';
@@ -71,6 +73,7 @@ export class PluginLoader {
       // Throughput plugins
       throughputPlugin,
       openTicketsByPriorityPlugin,
+      openTicketsByStatusPlugin,
 
       // Quality plugins
       resolutionRatePlugin,
@@ -78,6 +81,7 @@ export class PluginLoader {
 
       // Assignee plugins
       openTicketsByAssigneePlugin,
+      openTicketsByIssueOwnerTeamPlugin,
     ];
   }
 

@@ -236,6 +236,7 @@ export function createMockIssues(count: number, overrides?: Partial<any>) {
     statusCategory: i % 2 === 0 ? 'In Progress' : 'Done',
     assignee: i % 2 === 0 ? 'user@example.com' : 'Unassigned',
     reporter: 'test@example.com',
+    issueOwnerTeam: i % 3 === 0 ? 'LTIC-Team-A' : i % 3 === 1 ? 'LTIC-Team-B' : null,
     created: new Date(`2024-01-${(i % 30) + 1}`),
     updated: new Date(`2024-01-${(i % 30) + 1}`),
     resolved: i % 2 === 0 ? null : new Date(`2024-01-${(i % 30) + 2}`),

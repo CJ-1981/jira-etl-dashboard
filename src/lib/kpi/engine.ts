@@ -7,6 +7,7 @@
 
 import type { GermanState } from '../holidays/german-holidays';
 import type { JiraIssue } from '../jira/client';
+import { extractSelectFieldValue } from '../jira/client';
 import { PluginLoader } from './plugin-loader';
 import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
 
@@ -58,6 +59,7 @@ function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     statusCategory: issue.fields?.status?.statusCategory?.name || (issue as any).statusCategory || 'Unknown',
     assignee: issue.fields?.assignee?.displayName || (issue as any).assignee || 'Unassigned',
     reporter: issue.fields?.reporter?.displayName || (issue as any).reporter || 'Unknown',
+    issueOwnerTeam: extractSelectFieldValue((issue.fields as any)?.customfield_10132) || null,
     created: new Date(issue.fields?.created || (issue as any).created || Date.now()),
     updated: new Date(issue.fields?.updated || (issue as any).updated || Date.now()),
     resolved: (issue.fields?.resolutiondate || (issue as any).resolved) ? new Date(issue.fields?.resolutiondate || (issue as any).resolved) : null,
@@ -230,6 +232,7 @@ export class KpiEngine {
           else if (key === 'project') issueValue = transformed.project;
           else if (key === 'component') issueValue = transformed.components;
           else if (key === 'label') issueValue = transformed.labels;
+          else if (key === 'issueOwnerTeam') issueValue = transformed.issueOwnerTeam || 'Unassigned';
 
           const lowerValues = values.map(v => v.toLowerCase());
           const match = Array.isArray(issueValue) 

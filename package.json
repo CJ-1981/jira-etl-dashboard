@@ -27,7 +27,10 @@
     "clean:full": "shx rm -rf .next node_modules/.cache && shx rm -rf node_modules/.prisma",
     "dev:clean": "npm run clean && npm run dev",
     "db:deploy": "prisma migrate deploy",
-    "postinstall": "node scripts/prisma-setup.mjs"
+    "postinstall": "node scripts/prisma-setup.mjs",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -106,16 +109,24 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.6",
+    "@vitest/ui": "^4.1.6",
     "caxa": "^3.0.1",
     "cross-env": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "^16.1.7",
+    "jsdom": "^29.1.1",
     "shx": "^0.3.4",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.5",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.6"
   }
 }
