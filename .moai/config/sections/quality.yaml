@@ -9,7 +9,7 @@ constitution:
         max_transformation_size: small
         preserve_before_improve: true
         require_existing_tests: true
-    development_mode: ddd
+    development_mode: tdd
     enforce_quality: true
     lsp_integration:
         diagnostic_sources:
