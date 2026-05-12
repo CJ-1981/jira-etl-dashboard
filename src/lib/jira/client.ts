@@ -25,6 +25,7 @@ export interface JiraIssue {
     resolutiondate?: string;
     duedate?: string;
     customfield_10002?: number; // Story Points (varies by instance)
+    customfield_10100?: string; // Issue Owner Team (LTIC) - adjust field ID as needed
     labels?: string[];
     components?: { name: string }[];
   };
@@ -536,6 +537,7 @@ export function transformIssue(issue: JiraIssue) {
     statusCategory: issue.fields.status.statusCategory?.name || 'Unknown',
     assignee: issue.fields.assignee?.displayName || 'Unassigned',
     reporter: issue.fields.reporter?.displayName || 'Unknown',
+    issueOwnerTeam: issue.fields.customfield_10100 || null,
     created: issue.fields.created,
     updated: issue.fields.updated,
     resolved: issue.fields.resolutiondate || null,
@@ -550,6 +552,7 @@ export function transformIssue(issue: JiraIssue) {
 
 const JIRA_FIELD_MAP = {
   storyPointsField: 'customfield_10002',
+  issueOwnerTeamField: 'customfield_10100', // Issue Owner Team (LTIC)
 };
 
 function extractTransitions(issue: JiraIssue): Array<{

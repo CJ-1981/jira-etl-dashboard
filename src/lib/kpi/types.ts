@@ -202,6 +202,7 @@ export interface TransformedIssue {
   statusCategory: string;
   assignee: string;
   reporter: string;
+  issueOwnerTeam: string | null;
   created: Date;
   updated: Date;
   resolved: Date | null;
