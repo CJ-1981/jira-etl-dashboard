@@ -679,7 +679,7 @@ export function KpiDashboard() {
   }, [sortedKpiResults]);
 
   const filterOptions = useMemo(() => {
-    const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>() };
+    const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>(), issueOwnerTeam: new Set<string>() };
     if (masterDatasetInfo?.issues) {
       masterDatasetInfo.issues.forEach((i: any) => {
         const f = i.fields || {};
@@ -691,9 +691,10 @@ export function KpiDashboard() {
         if (f.status?.name) options.status.add(f.status.name);
         if (f.components) f.components.forEach((c: any) => options.component.add(c.name));
         if (f.labels) f.labels.forEach((l: any) => options.label.add(l));
+        if (i.issueOwnerTeam) options.issueOwnerTeam.add(i.issueOwnerTeam);
       });
     }
-    return { project: Array.from(options.project).sort(), assignee: Array.from(options.assignee).sort(), priority: Array.from(options.priority).sort(), issueType: Array.from(options.issueType).sort(), status: Array.from(options.status).sort(), component: Array.from(options.component).sort(), label: Array.from(options.label).sort() };
+    return { project: Array.from(options.project).sort(), assignee: Array.from(options.assignee).sort(), priority: Array.from(options.priority).sort(), issueType: Array.from(options.issueType).sort(), status: Array.from(options.status).sort(), component: Array.from(options.component).sort(), label: Array.from(options.label).sort(), issueOwnerTeam: Array.from(options.issueOwnerTeam).sort() };
   }, [masterDatasetInfo]);
 
   return (
@@ -1072,6 +1073,7 @@ export function KpiDashboard() {
                     { label: 'Status', key: 'status', options: filterOptions.status },
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
+                    { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
                   ].filter(f => f.options.length > 1).map(filter => (
                     <div key={filter.key} className="space-y-1.5 no-print">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
