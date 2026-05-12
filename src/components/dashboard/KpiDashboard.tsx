@@ -116,8 +116,6 @@ export function KpiDashboard() {
   const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
   const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
   const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
-  const [activePluginsOrder, setActivePluginsOrder] = useState<string[]>([]);
-
 
   // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
@@ -151,17 +149,7 @@ export function KpiDashboard() {
 
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
-
-  // Load saved JQLs handled by useJqlFilters hook
-  useEffect(() => {
-    // Load active plugins order for initial sorting
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
-    if (raw) {
-      setActivePluginsOrder(JSON.parse(raw));
-    }
-  }, []);
-
-  // Removed: setDashboardJqls - now handled by useJqlFilters hook
+  // Removed: setDashboardJqls and activePluginsOrder loading - now handled by useJqlFilters and usePluginVisibility hooks
 
   const lastSaveRequestId = useRef(0);
 
@@ -574,11 +562,6 @@ export function KpiDashboard() {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'cfg_active_plugins') {
         filterByActivePlugins();
-        // Force re-render of sorted KPIs
-        const raw = localStorage.getItem('cfg_active_plugins');
-        if (raw) {
-          setActivePluginsOrder(JSON.parse(raw));
-        }
       }
     };
 
@@ -653,12 +636,18 @@ export function KpiDashboard() {
   }, [runCalculation, setFilterPanelOpen]);
 
   const sortedKpiResults = useMemo(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
-    if (raw === null) return kpiResults; // Default: show all if never configured
+    // Use activePlugins from usePluginVisibility hook
+    const activeOrder = pluginVisibility.activePlugins;
 
-    const activeOrder = JSON.parse(raw) as string[];
-    if (activeOrder.length === 0) return []; // Explicitly none if user unchecked all
+    // If never configured (all plugins active), show all in original order
+    if (activeOrder.length === kpiResults.length) {
+      return kpiResults;
+    }
 
+    // If explicitly none selected
+    if (activeOrder.length === 0) return [];
+
+    // Sort by active plugin order
     return [...kpiResults].sort((a, b) => {
       const idxA = activeOrder.indexOf(a.pluginId);
       const idxB = activeOrder.indexOf(b.pluginId);
@@ -667,7 +656,7 @@ export function KpiDashboard() {
       if (idxB === -1) return -1;
       return idxA - idxB;
     });
-  }, [kpiResults, activePluginsOrder]);
+  }, [kpiResults, pluginVisibility.activePlugins]);
 
   const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
