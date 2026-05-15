@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Use standalone output only in production
-  ...(process.env.NODE_ENV === 'production' ? { output: 'standalone' } : {}),
+  // Use standalone output for production, export for Electron
+  ...(process.env.NODE_ENV === 'production'
+    ? { output: 'standalone' }
+    : {}),
 
   // Enable typed routes for better TypeScript support
   typedRoutes: true,
