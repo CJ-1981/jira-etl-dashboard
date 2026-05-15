@@ -1,0 +1,23 @@
+{
+  "description": "JIRA Custom Field Mappings - Update these IDs to match your JIRA instance",
+  "note": "Run 'node scripts/find-team-field.js' to automatically find the correct field IDs",
+  "fields": {
+    "storyPointsField": "customfield_10002",
+    "issueOwnerTeamField": "customfield_10132",
+    "sprintField": "customfield_10020",
+    "epicLinkField": "customfield_10014"
+  },
+  "instructions": {
+    "issueOwnerTeamField": {
+      "description": "Field containing team/owner information",
+      "howToFind": "Run 'node scripts/find-team-field.js' or check your JIRA field list via API",
+      "commonValues": [
+        "customfield_10100",
+        "customfield_10200",
+        "customfield_10050"
+      ],
+      "whatItShouldContain": "Team names like 'Backend Team', 'Frontend Team', 'Platform Team'",
+      "whatItShouldNotContain": "Feature names like '360 view', 'Cameras', 'Pedal', etc."
+    }
+  }
+}
