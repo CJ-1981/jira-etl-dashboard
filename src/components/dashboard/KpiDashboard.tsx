@@ -1484,7 +1484,7 @@ export function KpiDashboard() {
                         })}</div>
                         {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`)) && (
                           <div className="text-xs text-slate-400 italic">
-                            {Array.from(hiddenDimensions).filter(k => k.startsWith('time_in_status|')).length} status(es) hidden
+                            {Array.from(hiddenDimensions).filter(k => k.startsWith(`${kpi.pluginId}|`)).length} status(es) hidden
                           </div>
                         )}
                         </CardContent>
