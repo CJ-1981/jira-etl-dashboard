@@ -1470,13 +1470,14 @@ export function KpiDashboard() {
                                     <EyeOff className="h-3.5 w-3.5" />
                                   </button>
                                 </div>
-                                <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                                <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
                               </div>
                               <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                 <div
                                   className="absolute h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
-                                  style={{ width: `${Math.min(100, (result.value / 120) * 100)}%` }}
+                                  style={{ width: `${(result.value / Math.max(...kpi.results.map(r => r.value), 1)) * 100}%` }}
                                 />
+                              </div>
                               </div>
                             </div>
                           );
