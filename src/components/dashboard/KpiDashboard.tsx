@@ -76,11 +76,11 @@ import {
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
   Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
   ArrowUp, Search, ChevronDown, ChevronUp, Database, Filter, RefreshCw,
-  Save, 
+  Save,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
-import { localConfig, type SavedJql } from '@/lib/config/local-store';
+import { localConfig, type SavedJql, type KpiPlugin } from '@/lib/config/local-store';
 import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { JqlAutocomplete } from './JqlAutocomplete';
 import { useAppStore } from '@/store/app-store';
@@ -119,6 +119,14 @@ export function KpiDashboard() {
   const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
   const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
 
+  // Plugin registry for names
+  const [pluginRegistry, setPluginRegistry] = useState<Record<string, KpiPlugin>>({});
+
+  // Get plugin name from registry or fallback to pluginId
+  const getPluginName = useCallback((pluginId: string): string => {
+    return pluginRegistry[pluginId]?.name || pluginId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }, [pluginRegistry]);
+
   // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
@@ -140,6 +148,38 @@ export function KpiDashboard() {
   const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
   const pluginVisibility = usePluginVisibility(allPluginIds, 'cfg_active_plugins');
   const { widgetOrder } = useWidgetOrder();
+
+  // Fetch plugin metadata for correct names
+  useEffect(() => {
+    const fetchPlugins = async () => {
+      try {
+        const customPlugins = localConfig.getKpiPlugins();
+        let allPlugins = [...customPlugins];
+        try {
+          const res = await fetch('/api/kpi/plugins');
+          const data = await res.json();
+          if (data.success && data.plugins) {
+            const customIds = new Set(customPlugins.map(p => p.id));
+            const builtins = data.plugins.filter((p: KpiPlugin) => !customIds.has(p.id));
+            allPlugins = [...allPlugins, ...builtins];
+          }
+        } catch (err) {
+          console.error('Failed to fetch built-in plugins:', err);
+        }
+
+        // Create plugin ID to name mapping
+        const registry: Record<string, KpiPlugin> = {};
+        allPlugins.forEach((plugin: KpiPlugin) => {
+          registry[plugin.id] = plugin;
+        });
+        setPluginRegistry(registry);
+      } catch (err) {
+        console.error('Failed to load plugin registry:', err);
+      }
+    };
+
+    fetchPlugins();
+  }, []);
 
   // ─── KPI Calculations Hook ────────────────────────────────────────────────────
   const kpiCalculations = useKpiCalculations(
@@ -1724,7 +1764,7 @@ export function KpiDashboard() {
                           <div className="flex items-center gap-2">
                             <CardTitle className="flex items-center gap-2">
                               <TrendingUp className="h-5 w-5 text-cyan-400" />
-                              Other Priority Analysis
+                              {getPluginName(kpi.pluginId)}
                             </CardTitle>
                             <button
                               onClick={() => setOtherPriorityPanelExpanded(!otherPriorityPanelExpanded)}
@@ -1750,47 +1790,129 @@ export function KpiDashboard() {
                       </CardHeader>
                       {otherPriorityPanelExpanded && (
                         <CardContent>
-                          <div className="space-y-3">{kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                            const dimKey = `${kpi.pluginId}|${result.dimensions?.priority || result.name}`;
-                            if (hiddenDimensions.has(dimKey)) return null;
+                          <div className="space-y-3">
+                            {(() => {
+                              // Group results by priority
+                              const priorityGroups: Record<string, KpiCalcResult['results'][0][]> = {};
 
-                            const priority = result.dimensions?.priority || result.name;
-                            const priorityColors: Record<string, string> = {
-                              'Highest': 'bg-red-500',
-                              'High': 'bg-orange-500',
-                              'Medium': 'bg-amber-500',
-                              'Low': 'bg-blue-500',
-                              'Lowest': 'bg-cyan-500',
-                            };
+                              kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
+                                const priority = result.dimensions?.priority || 'Unknown';
+                                if (!priorityGroups[priority]) {
+                                  priorityGroups[priority] = [];
+                                }
+                                priorityGroups[priority].push(result);
+                              });
 
-                            return (
-                              <div key={idx} className="space-y-1">
-                                <div className="flex items-center justify-between text-sm">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                      onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                                    >
-                                      {result.name}
-                                    </span>
-                                    <button
-                                      onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
-                                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                    >
-                                      <EyeOff className="h-3.5 w-3.5" />
-                                    </button>
+                              // Color mapping for age categories
+                              const ageColors: Record<string, string> = {
+                                'existing': 'bg-slate-500',
+                                'last_week': 'bg-amber-500',
+                                'this_week': 'bg-emerald-400',
+                              };
+
+                              return Object.entries(priorityGroups).map(([priority, results]) => {
+                                const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority ? `${priority}-${r.dimensions.ageCategory}` : priority}`));
+                                if (visibleResults.length === 0) return null;
+
+                                const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+
+                                return (
+                                  <div key={priority} className="space-y-2 group">
+                                    {/* Priority Header */}
+                                    <div className="flex items-center justify-between text-sm">
+                                      <div className="flex items-center gap-2">
+                                        <span
+                                          className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                          onClick={() => {
+                                            // Gather all ticket keys for this priority across all age categories
+                                            const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
+                                            handleDrillDown(allTicketKeys, `Priority: ${priority} (All)`);
+                                          }}
+                                          title="Click to see all tickets for this priority"
+                                        >
+                                          {priority}
+                                        </span>
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          // Hide all age categories for this priority
+                                          const dimsToAdd = [`${kpi.pluginId}|${priority}-existing`, `${kpi.pluginId}|${priority}-last_week`, `${kpi.pluginId}|${priority}-this_week`];
+                                          setHiddenDimensions((prev: Set<string>) => {
+                                            const next = new Set(prev);
+                                            dimsToAdd.forEach(d => next.add(d));
+                                            return next;
+                                          });
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                        title="Hide this priority"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+
+                                    {/* Stacked/Segmented Bar */}
+                                    <div className="space-y-1">
+                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                                        {visibleResults
+                                          .sort((a, b) => {
+                                            // Sort by age: existing → last_week → this_week
+                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                            return ageA - ageB;
+                                          })
+                                          .map((result, idx) => {
+                                            const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
+                                            const ageCategory = result.dimensions?.ageCategory as string;
+                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                            return (
+                                              <div
+                                                key={idx}
+                                                className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
+                                                style={{ width: `${width}%` }}
+                                                onClick={() => handleDrillDown(result.ticketKeys || [], `${priority} (${result.dimensions?.ageCategory})`)}
+                                                title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
+                                              />
+                                            );
+                                          })}
+                                      </div>
+
+                                      {/* Age Category Breakdown */}
+                                      <div className="flex gap-2 flex-wrap">
+                                        {visibleResults
+                                          .sort((a, b) => {
+                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                            return ageA - ageB;
+                                          })
+                                          .map((result, idx) => {
+                                            const ageCategory = result.dimensions?.ageCategory as string;
+                                            const ageLabel: Record<string, string> = {
+                                              'existing': '2+ weeks',
+                                              'last_week': '1 week',
+                                              'this_week': 'This week',
+                                            };
+                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1.5 text-xs">
+                                                <div className={`w-2.5 h-2.5 rounded-sm ${colorClass}`} />
+                                                <span className="text-slate-600 dark:text-slate-400">
+                                                  {ageLabel[ageCategory] || ageCategory}: {result.value}
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
-                                </div>
-                                <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                  <div
-                                    className="absolute h-full bg-gradient-to-r from-cyan-500 to-blue-400 transition-all duration-300"
-                                    style={{ width: `${(result.value / 120) * 100}%` }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}</div>
+                                );
+                              });
+                            })()}
+                          </div>
                           {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
                             <div className="text-xs text-slate-400 italic">
                               {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
@@ -1894,14 +2016,14 @@ export function KpiDashboard() {
                   )) : null;
 
                 case 'assignee':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
-                    <Card key={`assignee-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <Card key={`assignee-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
                       <CardHeader>
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <CardTitle className="flex items-center gap-2">
                               <UserCheck className="h-5 w-5 text-indigo-400" />
-                              Tickets by Assignee
+                              {getPluginName(kpi.pluginId)}
                             </CardTitle>
                             <button
                               onClick={() => setAssigneePanelExpanded(!assigneePanelExpanded)}
@@ -1928,45 +2050,136 @@ export function KpiDashboard() {
                       {assigneePanelExpanded && (
                         <CardContent>
                           <div className="space-y-3">
-                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                              const dimKey = `${kpi.pluginId}|${result.dimensions?.assignee || result.name}`;
-                              if (hiddenDimensions.has(dimKey)) return null;
+                            {(() => {
+                              // Group results by assignee or team
+                              const isTeam = kpi.pluginId === 'open_tickets_by_issue_owner_team';
+                              const dimensionKey = isTeam ? 'team' : 'assignee';
+                              const groups: Record<string, KpiCalcResult['results'][0][]> = {};
 
-                              const assignee = result.dimensions?.assignee || result.name;
-                              const maxVal = Math.max(...widget.kpis.flatMap(k => k.results.map(r => r.value)), 1);
+                              kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
+                                const key = result.dimensions?.[dimensionKey] || 'Unknown';
+                                if (!groups[key]) {
+                                  groups[key] = [];
+                                }
+                                groups[key].push(result);
+                              });
 
-                              return (
-                                <div key={idx} className="space-y-1">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <span
-                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                                      >
-                                        {result.name}
-                                      </span>
+                              // Color mapping for age categories
+                              const ageColors: Record<string, string> = {
+                                'existing': 'bg-slate-500',
+                                'last_week': 'bg-amber-500',
+                                'this_week': 'bg-emerald-400',
+                              };
+
+                              return Object.entries(groups).map(([key, results]) => {
+                                const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] ? `${key}-${r.dimensions.ageCategory}` : key}`));
+                                if (visibleResults.length === 0) return null;
+
+                                const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+
+                                return (
+                                  <div key={key} className="space-y-2 group">
+                                    {/* Assignee/Team Header */}
+                                    <div className="flex items-center justify-between text-sm">
+                                      <div className="flex items-center gap-2">
+                                        <span
+                                          className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                          onClick={() => {
+                                            // Gather all ticket keys for this assignee/team across all age categories
+                                            const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
+                                            handleDrillDown(allTicketKeys, `${isTeam ? 'Team' : 'Assignee'}: ${key} (All)`);
+                                          }}
+                                          title={`Click to see all tickets for this ${isTeam ? 'team' : 'assignee'}`}
+                                        >
+                                          {key}
+                                        </span>
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                                      </div>
                                       <button
-                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
+                                        onClick={() => {
+                                          // Hide all age categories for this assignee/team
+                                          const dimsToAdd = [`${kpi.pluginId}|${key}-existing`, `${kpi.pluginId}|${key}-last_week`, `${kpi.pluginId}|${key}-this_week`];
+                                          setHiddenDimensions((prev: Set<string>) => {
+                                            const next = new Set(prev);
+                                            dimsToAdd.forEach(d => next.add(d));
+                                            return next;
+                                          });
+                                        }}
                                         className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                        title={`Hide this ${isTeam ? 'team' : 'assignee'}`}
                                       >
                                         <EyeOff className="h-3.5 w-3.5" />
                                       </button>
                                     </div>
-                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+
+                                    {/* Stacked/Segmented Bar */}
+                                    <div className="space-y-1">
+                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                                        {visibleResults
+                                          .sort((a, b) => {
+                                            // Sort by age: existing → last_week → this_week
+                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                            return ageA - ageB;
+                                          })
+                                          .map((result, idx) => {
+                                            const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
+                                            const ageCategory = result.dimensions?.ageCategory as string;
+                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                            return (
+                                              <div
+                                                key={idx}
+                                                className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
+                                                style={{ width: `${width}%` }}
+                                                onClick={() => handleDrillDown(result.ticketKeys || [], `${key} (${result.dimensions?.ageCategory})`)}
+                                                title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
+                                              />
+                                            );
+                                          })}
+                                      </div>
+
+                                      {/* Age Category Breakdown */}
+                                      <div className="flex gap-2 flex-wrap">
+                                        {visibleResults
+                                          .sort((a, b) => {
+                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                            return ageA - ageB;
+                                          })
+                                          .map((result, idx) => {
+                                            const ageCategory = result.dimensions?.ageCategory as string;
+                                            const ageLabel: Record<string, string> = {
+                                              'existing': '2+ weeks',
+                                              'last_week': '1 week',
+                                              'this_week': 'This week',
+                                            };
+                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1.5 text-xs">
+                                                <div className={`w-2.5 h-2.5 rounded-sm ${colorClass}`} />
+                                                <span className="text-slate-600 dark:text-slate-400">
+                                                  {ageLabel[ageCategory] || ageCategory}: {result.value}
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700"
-                                      style={{ width: `${(result.value / maxVal) * 100}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              });
+                            })()}
                           </div>
-                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`)) && (
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => {
+                            const dimensionKey = kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team' : 'assignee';
+                            return hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] || r.name}`);
+                          }) && (
                             <div className="text-xs text-slate-400 italic">
-                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} assignee(s) hidden
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} {kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team(s)' : 'assignee(s)'} hidden
                             </div>
                           )}
                         </CardContent>
