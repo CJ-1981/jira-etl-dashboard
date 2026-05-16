@@ -1970,6 +1970,19 @@ export function KpiDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Recalculation Spinner */}
+      {kpiCalculations.isCalculating && (
+        <div className="fixed inset-0 z-[100] bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col items-center gap-4">
+            <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
+            <div className="text-center">
+              <h3 className="text-lg font-bold">Calculating KPIs</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Processing your metrics...</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

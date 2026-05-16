@@ -59,21 +59,43 @@ export function ViewManager() {
   // Handle connection reference carefully - app-store uses activeConnectionId
   const activeConnectionRef = activeConnectionId;
 
-  // Fetch views on connection change
-  useEffect(() => {
-    if (activeConnectionId) {
-      // Clear current active view when switching connections to prevent incompatible state
-      setActiveView(null);
+  const getCurrentViewState = (): DashboardViewState => {
+    return {
+      dateFrom,
+      dateTo,
+      region,
+      globalFilters,
+      charts: dashboardCharts,
+      dashboardJqlQuery,
+      kpiCardConfigs,
+      hiddenDimensions: Array.from(hiddenDimensions),
+      widgetTitles,
+    };
+  };
+
+  const loadView = (view: DashboardView) => {
+    try {
+      const state = JSON.parse(view.data) as DashboardViewState;
+      
+      setDateFrom(state.dateFrom || '');
+      setDateTo(state.dateTo || '');
+      setRegion(state.region || 'national');
+      setGlobalFilters(state.globalFilters || {});
+      setDashboardCharts(state.charts || []);
+      setDashboardJqlQuery(state.dashboardJqlQuery || '');
+      setKpiCardConfigs(state.kpiCardConfigs || []);
+      setHiddenDimensions(new Set(state.hiddenDimensions || []));
+      setWidgetTitles(state.widgetTitles || {});
+      
+      setActiveView(view);
       setIsViewModified(false);
-      // @MX:WARN - Closure Risk: fetchViews must be called with fresh state
-      // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from 
-      // stale closures if fetchViews depends on the activeView value from the current render.
-      fetchViews(null);
-    } else {
-      setSavedViews([]);
-      setActiveView(null);
+      setPopoverOpen(false);
+      toast.success(`Loaded view: ${view.name}`);
+    } catch (e) {
+      console.error('Parse error:', e);
+      toast.error('Failed to parse view data');
     }
-  }, [activeConnectionRef]);
+  };
 
   const fetchViews = async (currentActiveView: DashboardView | null = activeView) => {
     if (!activeConnectionRef) return;
@@ -101,19 +123,21 @@ export function ViewManager() {
     }
   };
 
-  const getCurrentViewState = (): DashboardViewState => {
-    return {
-      dateFrom,
-      dateTo,
-      region,
-      globalFilters,
-      charts: dashboardCharts,
-      dashboardJqlQuery,
-      kpiCardConfigs,
-      hiddenDimensions: Array.from(hiddenDimensions),
-      widgetTitles,
-    };
-  };
+  // Fetch views on connection change
+  useEffect(() => {
+    if (activeConnectionId) {
+      // Clear current active view when switching connections to prevent incompatible state
+      setActiveView(null);
+      setIsViewModified(false);
+      // @MX:WARN - Closure Risk: fetchViews must be called with fresh state
+      // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from 
+      // stale closures if fetchViews depends on the activeView value from the current render.
+      fetchViews(null);
+    } else {
+      setSavedViews([]);
+      setActiveView(null);
+    }
+  }, [activeConnectionRef]);
 
   const handleCreateView = async () => {
     if (!newViewName || !activeConnectionRef) return;
@@ -176,30 +200,6 @@ export function ViewManager() {
       toast.error('Failed to save view');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadView = (view: DashboardView) => {
-    try {
-      const state = JSON.parse(view.data) as DashboardViewState;
-      
-      setDateFrom(state.dateFrom || '');
-      setDateTo(state.dateTo || '');
-      setRegion(state.region || 'national');
-      setGlobalFilters(state.globalFilters || {});
-      setDashboardCharts(state.charts || []);
-      setDashboardJqlQuery(state.dashboardJqlQuery || '');
-      setKpiCardConfigs(state.kpiCardConfigs || []);
-      setHiddenDimensions(new Set(state.hiddenDimensions || []));
-      setWidgetTitles(state.widgetTitles || {});
-      
-      setActiveView(view);
-      setIsViewModified(false);
-      setPopoverOpen(false);
-      toast.success(`Loaded view: ${view.name}`);
-    } catch (e) {
-      console.error('Parse error:', e);
-      toast.error('Failed to parse view data');
     }
   };
 
