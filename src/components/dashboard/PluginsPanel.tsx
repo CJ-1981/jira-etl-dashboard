@@ -626,13 +626,12 @@ export function PluginsPanel() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
-            <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Configure whose comments can reset the SLA clock.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
+      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Configure whose comments can reset the SLA clock.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
             <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3 shrink-0">
               <p className="text-xs text-amber-800 dark:text-amber-400">
                 <Info className="inline h-3 w-3 mr-1" />
@@ -714,7 +713,7 @@ export function PluginsPanel() {
               <span className="text-xs text-slate-400">{Object.keys(settings.sla?.statusTargets || {}).length} statuses configured</span>
             </div>
             {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
-              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 max-h-[480px]">
+              <div className="space-y-2 max-h-[480px] overflow-y-auto pr-2">
                 {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
                   <div key={status} className="flex items-center gap-3">
                     <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
@@ -735,7 +734,7 @@ export function PluginsPanel() {
                 ))}
               </div>
             )}
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 mt-auto shrink-0">
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
               <Button onClick={() => {
                 localConfig.saveSettings(settings);
                 setInitialSettings(settings);
@@ -745,18 +744,18 @@ export function PluginsPanel() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
+        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-400" /> 
+              <AlertTriangle className="h-5 w-5 text-red-400" />
               KPI Alert Thresholds
             </CardTitle>
             <CardDescription className="text-slate-600 dark:text-slate-400">
               Define warning and critical limits for specific metrics to highlight performance issues.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
-            <div className="flex items-center gap-3 mb-2 shrink-0">
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3 mb-2">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -787,7 +786,7 @@ export function PluginsPanel() {
               </span>
             </div>
 
-            <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-2 max-h-[480px]">
+            <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2">
               {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
                 const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
                 const label = plugin?.name || pluginId;
@@ -868,7 +867,7 @@ export function PluginsPanel() {
               })}
             </div>
 
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 mt-auto shrink-0">
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
               <Button
                 onClick={() => {
                   localConfig.saveSettings(settings);
@@ -883,7 +882,6 @@ export function PluginsPanel() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
