@@ -1448,35 +1448,37 @@ export function KpiDashboard() {
                           )}
                         </div>
                       </CardHeader>
-                      {statusTimePanelExpanded && (
-                        <CardContent>
-                        <div className="space-y-3">{kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                          const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
-                          if (hiddenDimensions.has(dimKey)) return null;
+                      {statusTimePanelExpanded && (() => {
+                        const maxValue = Math.max(...kpi.results.map(r => r.value), 1);
+                        return (
+                          <CardContent>
+                            <div className="space-y-3">{kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                              const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
+                              if (hiddenDimensions.has(dimKey)) return null;
 
-                          return (
-                            <div key={idx} className="space-y-1 group">
-                              <div className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                    onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                                  >
-                                    {result.name}
-                                  </span>
-                                  <button
-                                    onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
-                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                  >
-                                    <EyeOff className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                                <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
-                              </div>
-                              <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                <div
-                                  className="absolute h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
-                                  style={{ width: `${(result.value / Math.max(...kpi.results.map(r => r.value), 1)) * 100}%` }}
+                              return (
+                                <div key={idx} className="space-y-1 group">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                      >
+                                        {result.name}
+                                      </span>
+                                      <button
+                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                    <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
+                                  </div>
+                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="absolute h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
+                                      style={{ width: `${(result.value / maxValue) * 100}%` }}
                                 />
                               </div>
                             </div>
@@ -1488,6 +1490,7 @@ export function KpiDashboard() {
                           </div>
                         )}
                         </CardContent>
+                        )()}
                       )}
                     </Card>
                   )) : null;
