@@ -44,7 +44,8 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     const firstTransition = transitions[0];
     const initialStatus = firstTransition.fromStatus;
     if (initialStatus) {
-      const durationHours = (firstTransition.occurredAt.getTime() - issue.fields.created.getTime()) / (1000 * 60 * 60);
+      const createdDate = new Date(issue.fields.created);
+      const durationHours = (firstTransition.occurredAt.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
       timeInStatus[initialStatus] = (timeInStatus[initialStatus] || 0) + Math.max(0, durationHours);
     }
 
@@ -61,7 +62,8 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     }
   } else {
     // No transitions - all time spent in current status
-    const startTime = issue.fields.created.getTime();
+    const createdDate = new Date(issue.fields.created);
+    const startTime = createdDate.getTime();
     const endTime = issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate).getTime() : Date.now();
     const durationHours = (endTime - startTime) / (1000 * 60 * 60);
     timeInStatus[issue.fields.status.name] = durationHours;
@@ -77,6 +79,7 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     statusCategory: issue.fields?.status?.statusCategory?.name || (issue as any).statusCategory || 'Unknown',
     assignee: issue.fields?.assignee?.displayName || (issue as any).assignee || 'Unassigned',
     reporter: issue.fields?.reporter?.displayName || (issue as any).reporter || 'Unknown',
+    issueOwnerTeam: null, // Default, will be handled by engine if needed
     created: new Date(issue.fields?.created || (issue as any).created || Date.now()),
     updated: new Date(issue.fields?.updated || (issue as any).updated || Date.now()),
     resolved: (issue.fields?.resolutiondate || (issue as any).resolved) ? new Date(issue.fields?.resolutiondate || (issue as any).resolved) : null,

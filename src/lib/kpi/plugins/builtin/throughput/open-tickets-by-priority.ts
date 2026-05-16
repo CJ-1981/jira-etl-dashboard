@@ -15,7 +15,7 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
   version: '1.0.0',
   pluginType: 'builtin',
   isActive: true,
-  visualization: 'bar',
+  visualization: 'horizontal_bar',
   unit: 'tickets',
 
   calculate(context: KpiContext): KpiResult[] {

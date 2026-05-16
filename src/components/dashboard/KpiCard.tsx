@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area
+  AreaChart, Area, ReferenceLine
 } from 'recharts';
 import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings, Pencil, Check, X as XIcon } from 'lucide-react';
 import {
@@ -120,6 +120,33 @@ export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitl
   };
 
   const alertStatus = getAlertStatus();
+
+  // Helper function to get SLA target for current plugin
+  const getSlaTarget = () => {
+    if (!settings?.sla?.statusTargets || !pluginId) return null;
+
+    // Try to match plugin ID or result name with status targets
+    const statusTargets = settings.sla.statusTargets;
+
+    // Direct plugin ID match
+    if (statusTargets[pluginId]) {
+      return statusTargets[pluginId];
+    }
+
+    // Try to match by result name (handle cases like "In Progress", "Done", etc.)
+    const resultNameLower = result.name.toLowerCase();
+    for (const [status, target] of Object.entries(statusTargets)) {
+      if (status.toLowerCase() === resultNameLower ||
+          resultNameLower.includes(status.toLowerCase()) ||
+          status.toLowerCase().includes(resultNameLower)) {
+        return target;
+      }
+    }
+
+    return null;
+  };
+
+  const slaTarget = getSlaTarget();
 
   const getIcon = () => {
     if (result.name.includes('Processing')) return <Clock className="h-5 w-5" />;
@@ -335,10 +362,39 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
 
   // Get custom widget results and calculating state from store
-  const { customWidgetResults, calculatingWidgets, dateFrom, dateTo, region, globalFilters, activeConnectionId, masterDatasetInfo } = useAppStore();
+  const { customWidgetResults, calculatingWidgets, dateFrom, dateTo, region, globalFilters, activeConnectionId, masterDatasetInfo, settings } = useAppStore();
 
   // Check if selected KPI is a time-series plugin
   const isTimeSeries = config.kpiId ? isTimeSeriesPlugin(config.kpiId) : false;
+
+  // Helper function to get SLA target for current chart
+  const getSlaTargetForChart = () => {
+    if (!settings?.sla?.statusTargets || !config.kpiId) return null;
+
+    const statusTargets = settings.sla.statusTargets;
+
+    // Direct plugin ID match
+    if (statusTargets[config.kpiId]) {
+      return statusTargets[config.kpiId];
+    }
+
+    // Try to match by KPI name
+    const kpi = kpiResults.find(k => k.pluginId === config.kpiId);
+    if (kpi && kpi.results[0]) {
+      const resultNameLower = kpi.results[0].name.toLowerCase();
+      for (const [status, target] of Object.entries(statusTargets)) {
+        if (status.toLowerCase() === resultNameLower ||
+            resultNameLower.includes(status.toLowerCase()) ||
+            status.toLowerCase().includes(resultNameLower)) {
+          return target;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const slaTarget = getSlaTargetForChart();
 
   // Determine which results to use (custom or global)
   const effectiveResults = useMemo(() => {
@@ -800,7 +856,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           // @MX:ANCHOR: Line Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <LineChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+              <LineChart data={mergedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
@@ -839,19 +895,39 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                         const { cx, cy, payload } = props;
                         if (payload.isComplete === false) {
                           return (
-                            <circle 
+                            <circle
                               key={`dot-${idx}-${payload.name}`}
-                              cx={cx} cy={cy} r={4} 
-                              fill="transparent" 
-                              stroke={color} 
-                              strokeWidth={2} 
-                              strokeDasharray="2 2" 
+                              cx={cx} cy={cy} r={4}
+                              fill="transparent"
+                              stroke={color}
+                              strokeWidth={2}
+                              strokeDasharray="2 2"
                             />
                           );
                         }
                         return <circle key={`dot-${idx}-${payload.name}`} cx={cx} cy={cy} r={4} fill={color} />;
                       }}
                       hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
+                    />
+                  );
+                })}
+                {/* SLA Target Reference Lines */}
+                {slaTarget !== null && !isNaN(slaTarget) && kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                  if (hiddenDimensions.has(`${config.kpiId}|${result.name}`)) return null;
+                  return (
+                    <ReferenceLine
+                      key={`sla-ref-${result.name}-${idx}`}
+                      y={slaTarget}
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      label={{
+                        value: `SLA: ${slaTarget}h`,
+                        position: 'insideBottomRight',
+                        fill: '#f59e0b',
+                        fontSize: 10,
+                        fontWeight: 600
+                      }}
                     />
                   );
                 })}
@@ -871,11 +947,11 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 content={<CustomLineAreaTooltip />}
               />
               {/* @MX:ANCHOR: Line Chart (Standard) */}
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                stroke="#3b82f6" 
-                strokeWidth={2} 
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#3b82f6"
+                strokeWidth={2}
                 activeDot={{
                   onClick: (_e: any, payload: any) => {
                     const keys = payload.payload.ticketKeys;
@@ -889,7 +965,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   const { cx, cy, payload } = props;
                   if (payload.isComplete === false) {
                     return (
-                      <circle 
+                      <circle
                         key={`dot-${payload.name}`}
                         cx={cx} cy={cy} r={4} 
                         fill="transparent" 
@@ -900,8 +976,24 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     );
                   }
                   return <circle key={`dot-${payload.name}`} cx={cx} cy={cy} r={4} fill="#3b82f6" />;
-                }} 
+                }}
               />
+              {/* SLA Target Reference Line */}
+              {slaTarget !== null && !isNaN(slaTarget) && (
+                <ReferenceLine
+                  y={slaTarget}
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  label={{
+                    value: `SLA: ${slaTarget}h`,
+                    position: 'right',
+                    fill: '#f59e0b',
+                    fontSize: 11,
+                    fontWeight: 600
+                  }}
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         );
@@ -970,6 +1062,26 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     }}
                   />
                 ))}
+                {/* SLA Target Reference Lines */}
+                {slaTarget !== null && !isNaN(slaTarget) && kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                  if (hiddenDimensions.has(`${config.kpiId}|${result.name}`)) return null;
+                  return (
+                    <ReferenceLine
+                      key={`sla-ref-area-${result.name}-${idx}`}
+                      y={slaTarget}
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      label={{
+                        value: `SLA: ${slaTarget}h`,
+                        position: 'right',
+                        fill: '#f59e0b',
+                        fontSize: 11,
+                        fontWeight: 600
+                      }}
+                    />
+                  );
+                })}
               </AreaChart>
             </ResponsiveContainer>
           );
@@ -1002,6 +1114,22 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   cursor: "pointer"
                 }}
               />
+              {/* SLA Target Reference Line */}
+              {slaTarget !== null && !isNaN(slaTarget) && (
+                <ReferenceLine
+                  y={slaTarget}
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  label={{
+                    value: `SLA: ${slaTarget}h`,
+                    position: 'right',
+                    fill: '#f59e0b',
+                    fontSize: 11,
+                    fontWeight: 600
+                  }}
+                />
+              )}
             </AreaChart>
           </ResponsiveContainer>
         );

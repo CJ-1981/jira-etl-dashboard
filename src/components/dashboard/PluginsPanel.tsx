@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
-  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown
+  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown, Search
 } from 'lucide-react';
 import {
   DndContext,
@@ -120,6 +120,7 @@ export function PluginsPanel() {
   const [initialSettings, setInitialSettings] = useState<AppSettings>(settings);
   const [isInitialized, setIsInitialized] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Sync initialSettings once the store settings are loaded from localStorage
   useEffect(() => {
@@ -375,6 +376,32 @@ export function PluginsPanel() {
 
   const hasUnsavedSettings = JSON.stringify(settings) !== JSON.stringify(initialSettings);
 
+  // Filter plugins based on search query
+  const filteredPlugins = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return plugins;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const filtered: Record<string, KpiPlugin[]> = {};
+
+    Object.entries(plugins).forEach(([category, pluginList]) => {
+      const matchingPlugins = pluginList.filter(plugin =>
+        plugin.name.toLowerCase().includes(query) ||
+        plugin.description.toLowerCase().includes(query) ||
+        plugin.unit.toLowerCase().includes(query) ||
+        category.toLowerCase().includes(query) ||
+        plugin.pluginType.toLowerCase().includes(query)
+      );
+
+      if (matchingPlugins.length > 0) {
+        filtered[category] = matchingPlugins;
+      }
+    });
+
+    return filtered;
+  }, [plugins, searchQuery]);
+
   return (
     <div className="space-y-6">
       {/* Unified Builder Modal */}
@@ -462,17 +489,41 @@ export function PluginsPanel() {
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {!loading && Object.keys(plugins).length > 0 && (
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                <Badge variant="outline" className="text-xs">{activePlugins.length} active</Badge>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="text-[10px] h-7 px-2" onClick={selectAllPlugins}>All</Button>
-                  <Button variant="outline" size="sm" className="text-[10px] h-7 px-2" onClick={deselectAllPlugins}>None</Button>
+              <div className="space-y-3 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-xs">{activePlugins.length} active</Badge>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" className="text-[10px] h-7 px-2" onClick={selectAllPlugins}>All</Button>
+                    <Button variant="outline" size="sm" className="text-[10px] h-7 px-2" onClick={deselectAllPlugins}>None</Button>
+                  </div>
                 </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Search plugins by name, description, or category..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                {searchQuery && Object.keys(filteredPlugins).length < Object.keys(plugins).length && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Found {Object.values(filteredPlugins).flat().length} of {Object.values(plugins).flat().length} plugins
+                  </p>
+                )}
               </div>
             )}
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
               <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
-                {Object.entries(plugins).map(([category, pluginList]) => (
+                {Object.entries(filteredPlugins).map(([category, pluginList]) => (
                   <div key={category}>
                     <div
                       className="flex items-center gap-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
@@ -504,6 +555,13 @@ export function PluginsPanel() {
                     )}
                   </div>
                 ))}
+                {searchQuery && Object.keys(filteredPlugins).length === 0 && (
+                  <div className="text-center py-8 text-slate-400 dark:text-slate-500">
+                    <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No plugins found matching "{searchQuery}"</p>
+                    <p className="text-xs mt-1">Try different keywords or clear the search</p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

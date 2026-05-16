@@ -66,6 +66,7 @@ describe('KPI Types', () => {
         statusCategory: 'To Do',
         assignee: 'user@example.com',
         reporter: 'reporter@example.com',
+        issueOwnerTeam: null,
         created: new Date('2024-01-01'),
         updated: new Date('2024-01-02'),
         resolved: null,
