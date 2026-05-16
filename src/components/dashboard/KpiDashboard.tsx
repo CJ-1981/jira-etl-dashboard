@@ -113,6 +113,7 @@ export function KpiDashboard() {
   // State for panel expansion
   const [assigneePanelExpanded, setAssigneePanelExpanded] = useState(true);
   const [statusTimePanelExpanded, setStatusTimePanelExpanded] = useState(true);
+  const [openTicketsByStatusPanelExpanded, setOpenTicketsByStatusPanelExpanded] = useState(true);
   const [distributionPanelExpanded, setDistributionPanelExpanded] = useState(true);
   const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
   const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
@@ -237,6 +238,8 @@ export function KpiDashboard() {
     hasUserInitiatedCalc.current = true;
     isApplyingUserFiltersRef.current = true;
     setGlobalFilters(jqlFilters.stagingFilters);
+    // Update last synced state to prevent immediate re-sync
+    lastSyncedGlobalFiltersRef.current = jqlFilters.stagingFilters;
     // Reset flag after a brief delay to allow the state to update
     setTimeout(() => {
       isApplyingUserFiltersRef.current = false;
@@ -251,19 +254,18 @@ export function KpiDashboard() {
   // Track if we're applying user filters to avoid sync loops
   const isApplyingUserFiltersRef = useRef(false);
 
+  // Track the last synced globalFilters to detect actual changes
+  const lastSyncedGlobalFiltersRef = useRef<Record<string, string[]> | null>(null);
+
   // Sync stagingFilters with globalFilters when globalFilters changes externally (e.g., view loading, page refresh)
   useEffect(() => {
     // Only sync if this is not a user-initiated filter application
-    // and globalFilters differs from stagingFilters
     if (!isApplyingUserFiltersRef.current) {
-      const globalKeys = Object.keys(globalFilters).sort();
-      const stagingKeys = Object.keys(jqlFilters.stagingFilters).sort();
+      // Check if globalFilters actually changed from last sync
+      const globalFiltersJson = JSON.stringify(globalFilters);
+      const lastSyncedJson = JSON.stringify(lastSyncedGlobalFiltersRef.current);
 
-      // Check if filters are out of sync
-      const keysMatch = globalKeys.length === stagingKeys.length &&
-        globalKeys.every((key, i) => key === stagingKeys[i]);
-
-      if (!keysMatch || JSON.stringify(globalFilters) !== JSON.stringify(jqlFilters.stagingFilters)) {
+      if (globalFiltersJson !== lastSyncedJson) {
         // Clear staging filters and sync with globalFilters
         jqlFilters.clearStagingFilters();
         Object.entries(globalFilters).forEach(([key, values]) => {
@@ -271,9 +273,13 @@ export function KpiDashboard() {
             jqlFilters.toggleStagingFilter(key, value);
           });
         });
+
+        // Update last synced state
+        lastSyncedGlobalFiltersRef.current = globalFilters;
       }
     }
-  }, [globalFilters, jqlFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalFilters]); // Only depend on globalFilters, not jqlFilters object
 
   const toggleDimension = (pluginId: string, value: string) => {
     setHiddenDimensions((prev: Set<string>) => {
@@ -696,6 +702,7 @@ export function KpiDashboard() {
   const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
   const statusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
+  const openTicketsByStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'open_tickets_by_status' && !isTimeSeriesPlugin(r.pluginId));
   const slaStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
   const slaPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.pluginId === 'sla_by_priority');
   const otherPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.priority && r.pluginId !== 'sla_by_priority' && !isTimeSeriesPlugin(r.pluginId));
@@ -1386,6 +1393,180 @@ export function KpiDashboard() {
                 ));
               })}</div>
             </CardContent>
+            )}
+          </Card>
+        )}
+
+        {openTicketsByStatusKpis.length > 0 && (
+          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
+                  <button
+                    onClick={() => setOpenTicketsByStatusPanelExpanded(!openTicketsByStatusPanelExpanded)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    title={openTicketsByStatusPanelExpanded ? "Collapse" : "Expand"}
+                    aria-label={openTicketsByStatusPanelExpanded ? "Collapse section" : "Expand section"}
+                  >
+                    {openTicketsByStatusPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+                {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setHiddenDimensions((prev: Set<string>) => {
+                      const next = new Set(prev);
+                      next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
+                      return next;
+                    });
+                  }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            {openTicketsByStatusPanelExpanded && (
+              <CardContent>
+              {/* Age Legend */}
+              <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-slate-500" />
+                  <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-amber-500" />
+                  <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-emerald-400" />
+                  <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {(() => {
+                  // Group results by status
+                  const statusGroups: Record<string, KpiCalcResult['results'][0][]> = {};
+
+                  openTicketsByStatusKpis.forEach((kpi) => {
+                    kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
+                      const status = result.dimensions?.status || 'Unknown';
+                      if (!statusGroups[status]) {
+                        statusGroups[status] = [];
+                      }
+                      statusGroups[status].push(result);
+                    });
+                  });
+
+                  // Color mapping for age categories
+                  const ageColors: Record<string, string> = {
+                    'existing': 'bg-slate-500',
+                    'last_week': 'bg-amber-500',
+                    'this_week': 'bg-emerald-400',
+                  };
+
+                  return Object.entries(statusGroups).map(([status, results]) => {
+                    const visibleResults = results.filter((r) => !hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
+                    if (visibleResults.length === 0) return null;
+
+                    const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+                    const maxVal = Math.max(...visibleResults.map((r) => r.value));
+
+                    return (
+                      <div key={status} className="space-y-2 group">
+                        {/* Status Header */}
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                              onClick={() => {
+                                // Gather all ticket keys for this status across all age categories
+                                const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
+                                handleDrillDown(allTicketKeys, `Status: ${status} (All)`);
+                              }}
+                              title="Click to see all tickets for this status"
+                            >
+                              {status}
+                            </span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              // Hide all age categories for this status
+                              const dimsToAdd = [`open_tickets_by_status|${status}-existing`, `open_tickets_by_status|${status}-last_week`, `open_tickets_by_status|${status}-this_week`];
+                              setHiddenDimensions((prev: Set<string>) => {
+                                const next = new Set(prev);
+                                dimsToAdd.forEach(d => next.add(d));
+                                return next;
+                              });
+                            }}
+                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                            title="Hide this status"
+                          >
+                            <EyeOff className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Stacked/Segmented Bar */}
+                        <div className="space-y-1">
+                          <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                            {visibleResults
+                              .sort((a, b) => {
+                                // Sort by age: existing → last_week → this_week
+                                const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                return ageA - ageB;
+                              })
+                              .map((result, idx) => {
+                                const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
+                                const ageCategory = result.dimensions?.ageCategory as string;
+                                const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
+                                    style={{ width: `${width}%` }}
+                                    onClick={() => handleDrillDown(result.ticketKeys || [], `${status} (${result.dimensions?.ageCategory})`)}
+                                    title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
+                                  />
+                                );
+                              })}
+                          </div>
+
+                          {/* Age Category Breakdown */}
+                          <div className="flex gap-2 flex-wrap">
+                            {visibleResults
+                              .sort((a, b) => {
+                                const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                return ageA - ageB;
+                              })
+                              .map((result, idx) => {
+                                const ageCategory = result.dimensions?.ageCategory as string;
+                                const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                return (
+                                  <div key={idx} className="flex items-center gap-1 text-xs">
+                                    <div className={`w-2 h-2 rounded ${colorClass}`} />
+                                    <span className="text-slate-600 dark:text-slate-400">
+                                      {result.dimensions?.ageCategory === 'this_week' ? 'This week' :
+                                       result.dimensions?.ageCategory === 'last_week' ? '1 week' : '2+ weeks'}: {result.value}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+              </CardContent>
             )}
           </Card>
         )}

@@ -271,16 +271,82 @@ export function ViewManager() {
     }
   };
 
+  const handleSetDefaultView = async (view: DashboardView, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    try {
+      // If this view is already default, unset it
+      if (view.isDefault) {
+        const res = await fetch(`/api/dashboard/views/${view.id}/default`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storageConfig })
+        });
+        if (res.ok) {
+          setSavedViews(savedViews.map(v => ({ ...v, isDefault: false })));
+          toast.success('Default view cleared');
+        } else {
+          const errorData = await res.json();
+          toast.error(errorData.error || 'Failed to clear default view');
+        }
+      } else {
+        // Set this view as default (unset all others)
+        const res = await fetch(`/api/dashboard/views/${view.id}/default`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storageConfig })
+        });
+        if (res.ok) {
+          setSavedViews(savedViews.map(v => ({ ...v, isDefault: v.id === view.id })));
+          toast.success(`"${view.name}" set as default view`);
+        } else {
+          const errorData = await res.json();
+          toast.error(errorData.error || 'Failed to set default view');
+        }
+      }
+    } catch (error) {
+      console.error('Set default view error:', error);
+      toast.error('Failed to update default view');
+    }
+  };
+
+  const handleBackToDefault = () => {
+    // Find the default view
+    const defaultView = savedViews.find(v => v.isDefault);
+    if (defaultView) {
+      loadView(defaultView);
+    } else {
+      // If no default view exists, clear the active view and reset to current state
+      setActiveView(null);
+      setIsViewModified(false);
+      toast.success('Returned to default dashboard');
+    }
+  };
+
   return (
     <div className="flex items-center gap-2 no-print">
+      {/* Back to Default button - shown when a saved view is active */}
+      {activeView && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleBackToDefault}
+          className="h-7 px-2 text-[10px] gap-1 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-500/20"
+          title="Return to default view"
+        >
+          <ToggleLeft className="h-3 w-3" />
+          Back to Default
+        </Button>
+      )}
+
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
             className={`h-7 px-2 text-[10px] gap-1.5 rounded-md transition-all ${
-              activeView 
-                ? 'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20' 
+              activeView
+                ? 'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20'
                 : 'text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
             }`}
           >
@@ -343,6 +409,15 @@ export function ViewManager() {
                     </div>
                     
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-slate-400 hover:text-blue-500"
+                        onClick={(e) => handleSetDefaultView(view, e)}
+                        title={view.isDefault ? "Remove as default" : "Set as default view"}
+                      >
+                        {view.isDefault ? <ToggleLeft className="h-4 w-4 text-blue-500" /> : <ToggleRight className="h-4 w-4" />}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

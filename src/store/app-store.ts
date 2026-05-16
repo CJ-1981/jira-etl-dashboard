@@ -98,6 +98,11 @@ interface AppState {
   // @MX:NOTE: User-defined titles for widgets and charts.
   widgetTitles: Record<string, string>;
   setWidgetTitles: (titles: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
+
+  // @MX:ANCHOR: Widget Display Order
+  // @MX:NOTE: Controls the order of widgets (individual KPIs and panel sections) on the dashboard.
+  widgetDisplayOrder: string[];
+  setWidgetDisplayOrder: (order: string[]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -208,4 +213,8 @@ export const useAppStore = create<AppState>((set) => ({
   setWidgetTitles: (titles) => set((state) => ({
     widgetTitles: typeof titles === 'function' ? titles(state.widgetTitles) : titles
   })),
+
+  // @MX:ANCHOR: Widget Display Order
+  widgetDisplayOrder: [],
+  setWidgetDisplayOrder: (order) => set({ widgetDisplayOrder: order }),
 }));

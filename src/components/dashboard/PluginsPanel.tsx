@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
-  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown, Search
+  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown, Search, Star, Timer, BarChart3, TrendingUp, UserCheck, EyeOff
 } from 'lucide-react';
 import {
   DndContext,
@@ -47,6 +47,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { localConfig, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
+import { useWidgetOrder, WidgetDefinition } from '@/hooks/useWidgetOrder';
 
 const METRIC_TYPES = [
   { id: 'count', label: 'Count', icon: '🔢' },
@@ -90,8 +91,8 @@ function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin,
   const cat = categoryLabels[domainKey] || categoryLabels['custom'];
 
   return (
-    <div 
-      ref={setNodeRef} 
+    <div
+      ref={setNodeRef}
       style={style}
       className={`rounded-lg border transition-colors ${isActive ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-gray-100/50 dark:bg-slate-800/30'} p-3 flex items-center gap-3`}
     >
@@ -114,6 +115,67 @@ function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin,
   );
 }
 
+function SortablePanelItem({ panel, onToggle }: { panel: WidgetDefinition, onToggle: () => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: panel.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
+
+  const icons: Record<string, React.ReactNode> = {
+    'Timer': <Timer className="h-4 w-4 text-blue-400" />,
+    'BarChart3': <BarChart3 className="h-4 w-4 text-emerald-400" />,
+    'Activity': <Activity className="h-4 w-4 text-purple-400" />,
+    'Target': <Target className="h-4 w-4 text-amber-400" />,
+    'TrendingUp': <TrendingUp className="h-4 w-4 text-cyan-400" />,
+    'UserCheck': <UserCheck className="h-4 w-4 text-indigo-400" />,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`rounded-lg border transition-colors cursor-grab active:cursor-grabbing border-purple-500/30 bg-purple-50/50 dark:bg-purple-500/5 p-3`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1">
+          <div className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-600">
+            <GripVertical className="h-4 w-4" />
+          </div>
+          <div className="flex items-center gap-2">
+            {icons[panel.icon || 'Activity']}
+            <h4 className="font-semibold text-sm">{panel.name}</h4>
+            <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">Panel</Badge>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-500/10"
+          title="Hide panel"
+        >
+          <EyeOff className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function PluginsPanel() {
   const { settings, setSettings } = useAppStore();
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
@@ -121,6 +183,12 @@ export function PluginsPanel() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'favorites'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active'>('all');
+  const [favoritePlugins, setFavoritePlugins] = useState<Set<string>>(new Set());
+
+  // Widget ordering system
+  const { widgetOrder, reorderWidget, isWidgetVisible, toggleWidgetVisibility, getWidgetDefinitions, initializeWidgetOrder } = useWidgetOrder();
 
   // Sync initialSettings once the store settings are loaded from localStorage
   useEffect(() => {
@@ -185,16 +253,21 @@ export function PluginsPanel() {
 
       if (isMounted.current) {
         setPlugins(grouped);
+        const allPluginIds = allPlugins.map(p => p.id);
         const savedActivePlugins = localStorage.getItem('cfg_active_plugins');
         if (savedActivePlugins) {
           try {
             const activeIds = JSON.parse(savedActivePlugins) as string[];
             setActivePlugins(activeIds);
+            // Initialize widget order with available plugins
+            initializeWidgetOrder(activeIds);
           } catch (err) {
-            setActivePlugins(allPlugins.map(p => p.id));
+            setActivePlugins(allPluginIds);
+            initializeWidgetOrder(allPluginIds);
           }
         } else {
-          setActivePlugins(allPlugins.map(p => p.id));
+          setActivePlugins(allPluginIds);
+          initializeWidgetOrder(allPluginIds);
         }
       }
     } catch {
@@ -241,6 +314,18 @@ export function PluginsPanel() {
     }
   }, []);
 
+  // Load favorite plugins from localStorage
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem('cfg_favorite_plugins');
+    if (savedFavorites) {
+      try {
+        setFavoritePlugins(new Set(JSON.parse(savedFavorites)));
+      } catch (err) {
+        console.error('Failed to load favorite plugins:', err);
+      }
+    }
+  }, []);
+
   const toggleGroupCollapse = useCallback((category: string) => {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
@@ -268,6 +353,20 @@ export function PluginsPanel() {
     });
   }, [saveActivePlugins]);
 
+  const toggleFavorite = useCallback((pluginId: string) => {
+    setFavoritePlugins(prev => {
+      const next = new Set(prev);
+      if (next.has(pluginId)) {
+        next.delete(pluginId);
+      } else {
+        next.add(pluginId);
+      }
+      // Save to localStorage
+      localStorage.setItem('cfg_favorite_plugins', JSON.stringify(Array.from(next)));
+      return next;
+    });
+  }, []);
+
   const selectAllPlugins = useCallback(() => {
     const allPluginIds = Object.values(plugins).flat().map(p => p.id);
     setActivePlugins(allPluginIds);
@@ -283,13 +382,26 @@ export function PluginsPanel() {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      setActivePlugins((items) => {
-        const oldIndex = items.indexOf(active.id as string);
-        const newIndex = items.indexOf(over.id as string);
-        const next = arrayMove(items, oldIndex, newIndex);
-        saveActivePlugins(next);
-        return next;
-      });
+      // Handle widget reordering using the widget ordering system
+      const oldIndex = widgetOrder.indexOf(active.id as string);
+      const newIndex = widgetOrder.indexOf(over.id as string);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        // Both items are in widget order - reorder them
+        reorderWidget(oldIndex, newIndex);
+      } else {
+        // Fallback to plugin reordering for active plugins
+        setActivePlugins((items) => {
+          const oldPluginIndex = items.indexOf(active.id as string);
+          const newPluginIndex = items.indexOf(over.id as string);
+          if (oldPluginIndex !== -1 && newPluginIndex !== -1) {
+            const next = arrayMove(items, oldPluginIndex, newPluginIndex);
+            saveActivePlugins(next);
+            return next;
+          }
+          return items;
+        });
+      }
     }
   };
 
@@ -376,31 +488,58 @@ export function PluginsPanel() {
 
   const hasUnsavedSettings = JSON.stringify(settings) !== JSON.stringify(initialSettings);
 
-  // Filter plugins based on search query
+  // Filter plugins based on search query and favorite filter
   const filteredPlugins = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return plugins;
+    let result = plugins;
+
+    // Apply favorite filter
+    if (favoriteFilter === 'favorites') {
+      const favoritePluginsGrouped: Record<string, KpiPlugin[]> = {};
+      Object.entries(plugins).forEach(([category, pluginList]) => {
+        const favorites = pluginList.filter(plugin => favoritePlugins.has(plugin.id));
+        if (favorites.length > 0) {
+          favoritePluginsGrouped[category] = favorites;
+        }
+      });
+      result = favoritePluginsGrouped;
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered: Record<string, KpiPlugin[]> = {};
+    // Apply active filter
+    if (activeFilter === 'active') {
+      const activePluginsGrouped: Record<string, KpiPlugin[]> = {};
+      Object.entries(result).forEach(([category, pluginList]) => {
+        const active = pluginList.filter(plugin => activePlugins.includes(plugin.id));
+        if (active.length > 0) {
+          activePluginsGrouped[category] = active;
+        }
+      });
+      result = activePluginsGrouped;
+    }
 
-    Object.entries(plugins).forEach(([category, pluginList]) => {
-      const matchingPlugins = pluginList.filter(plugin =>
-        plugin.name.toLowerCase().includes(query) ||
-        plugin.description.toLowerCase().includes(query) ||
-        plugin.unit.toLowerCase().includes(query) ||
-        category.toLowerCase().includes(query) ||
-        plugin.pluginType.toLowerCase().includes(query)
-      );
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const filtered: Record<string, KpiPlugin[]> = {};
 
-      if (matchingPlugins.length > 0) {
-        filtered[category] = matchingPlugins;
-      }
-    });
+      Object.entries(result).forEach(([category, pluginList]) => {
+        const matchingPlugins = pluginList.filter(plugin =>
+          plugin.name.toLowerCase().includes(query) ||
+          plugin.description.toLowerCase().includes(query) ||
+          plugin.unit.toLowerCase().includes(query) ||
+          category.toLowerCase().includes(query) ||
+          plugin.pluginType.toLowerCase().includes(query)
+        );
 
-    return filtered;
-  }, [plugins, searchQuery]);
+        if (matchingPlugins.length > 0) {
+          filtered[category] = matchingPlugins;
+        }
+      });
+
+      result = filtered;
+    }
+
+    return result;
+  }, [plugins, searchQuery, favoriteFilter, activeFilter, favoritePlugins, activePlugins]);
 
   return (
     <div className="space-y-6">
@@ -514,6 +653,40 @@ export function PluginsPanel() {
                     </button>
                   )}
                 </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={favoriteFilter === 'all' && activeFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    className={`text-[10px] h-7 px-2 ${favoriteFilter === 'all' && activeFilter === 'all' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+                    onClick={() => {
+                      setFavoriteFilter('all');
+                      setActiveFilter('all');
+                    }}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'active' ? 'default' : 'outline'}
+                    size="sm"
+                    className={`text-[10px] h-7 px-2 gap-1 ${activeFilter === 'active' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+                    onClick={() => setActiveFilter(activeFilter === 'active' ? 'all' : 'active')}
+                  >
+                    <CheckCircle2 className={`h-3 w-3 ${activeFilter === 'active' ? 'fill-white' : ''}`} />
+                    Active
+                  </Button>
+                  <Button
+                    variant={favoriteFilter === 'favorites' ? 'default' : 'outline'}
+                    size="sm"
+                    className={`text-[10px] h-7 px-2 gap-1 ${favoriteFilter === 'favorites' ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+                    onClick={() => setFavoriteFilter(favoriteFilter === 'favorites' ? 'all' : 'favorites')}
+                  >
+                    <Star className={`h-3 w-3 ${favoriteFilter === 'favorites' ? 'fill-white' : ''}`} />
+                    Favorites
+                  </Button>
+                  <span className="text-xs text-slate-400 ml-auto">
+                    {activePlugins.length} active · {favoritePlugins.size} favorites
+                  </span>
+                </div>
                 {searchQuery && Object.keys(filteredPlugins).length < Object.keys(plugins).length && (
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     Found {Object.values(filteredPlugins).flat().length} of {Object.values(plugins).flat().length} plugins
@@ -548,7 +721,23 @@ export function PluginsPanel() {
                               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p>
                             </div>
                           </div>
-                          <Badge variant="outline" className="text-xs flex-shrink-0">{plugin.unit}</Badge>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(plugin.id);
+                              }}
+                              className={`flex-shrink-0 transition-colors ${
+                                favoritePlugins.has(plugin.id)
+                                  ? 'text-amber-500 hover:text-amber-600'
+                                  : 'text-slate-300 dark:text-slate-600 hover:text-amber-400'
+                              }`}
+                              title={favoritePlugins.has(plugin.id) ? 'Remove from favorites' : 'Add to favorites'}
+                            >
+                              <Star className={`h-4 w-4 ${favoritePlugins.has(plugin.id) ? 'fill-current' : ''}`} />
+                            </button>
+                            <Badge variant="outline" className="text-xs flex-shrink-0">{plugin.unit}</Badge>
+                          </div>
                         </div>
                       </div>
                     ))}</div>
@@ -569,35 +758,51 @@ export function PluginsPanel() {
 
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Sliders className="h-5 w-5 text-emerald-400" /> KPI Display Order</CardTitle>
-            <CardDescription>Drag and drop to reorder active KPIs on the dashboard</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Sliders className="h-5 w-5 text-emerald-400" /> Widget Display Order</CardTitle>
+            <CardDescription>Drag and drop to reorder widgets (KPIs and panels) on the dashboard. Charts are not affected.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden flex flex-col">
-            {activePlugins.length === 0 ? (
+            {widgetOrder.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-12">
                 <Sliders className="h-10 w-10 mb-2 opacity-20" />
-                <p className="text-sm">No active plugins to reorder</p>
+                <p className="text-sm">No widgets to reorder</p>
               </div>
             ) : (
               <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
-                <DndContext 
+                <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
                   onDragEnd={handleDragEnd}
                 >
-                  <SortableContext 
-                    items={activePlugins}
+                  <SortableContext
+                    items={widgetOrder}
                     strategy={verticalListSortingStrategy}
                   >
-                    {activePlugins.map((id) => {
+                    {widgetOrder.map((id) => {
+                      // Check if this is a panel section
+                      if (id.startsWith('panel-')) {
+                        const panelDef = getWidgetDefinitions().find(p => p.id === id);
+                        if (!panelDef) return null;
+
+                        return (
+                          <SortablePanelItem
+                            key={id}
+                            panel={panelDef}
+                            onToggle={() => toggleWidgetVisibility(id)}
+                          />
+                        );
+                      }
+
+                      // Otherwise it's an individual KPI plugin
                       const plugin = Object.values(plugins).flat().find(p => p.id === id);
                       if (!plugin) return null;
+
                       return (
-                        <SortablePluginItem 
-                          key={id} 
-                          plugin={plugin} 
-                          isActive={true} 
-                          onToggle={() => togglePlugin(id)} 
+                        <SortablePluginItem
+                          key={id}
+                          plugin={plugin}
+                          isActive={true}
+                          onToggle={() => togglePlugin(id)}
                         />
                       );
                     })}
@@ -666,6 +871,20 @@ export function PluginsPanel() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(plugin.id);
+                        }}
+                        className={`flex-shrink-0 transition-colors ${
+                          favoritePlugins.has(plugin.id)
+                            ? 'text-amber-500 hover:text-amber-600'
+                            : 'text-slate-300 dark:text-slate-600 hover:text-amber-400'
+                        }`}
+                        title={favoritePlugins.has(plugin.id) ? 'Remove from favorites' : 'Add to favorites'}
+                      >
+                        <Star className={`h-4 w-4 ${favoritePlugins.has(plugin.id) ? 'fill-current' : ''}`} />
+                      </button>
                       <Badge variant="outline" className="text-xs">{plugin.unit}</Badge>
                       <Button
                         variant="ghost"

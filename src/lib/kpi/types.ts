@@ -110,6 +110,9 @@ export interface KpiPlugin<T = KpiResult | KpiResult[]> {
   /** Whether the plugin is currently active */
   isActive?: boolean;
 
+  /** Whether the plugin is marked as favorite by the user */
+  isFavorite?: boolean;
+
   /** Visualization type hint for UI rendering */
   visualization?: 'card' | 'horizontal_bar' | 'pie' | 'line';
 
