@@ -499,6 +499,15 @@ export function PluginsPanel() {
     return result;
   }, [plugins, searchQuery, favoriteFilter, activeFilter, favoritePlugins, activePlugins]);
 
+  // Create a lookup map for O(1) plugin access by ID
+  const pluginLookupMap = useMemo(() => {
+    const map = new Map<string, KpiPlugin>();
+    Object.values(plugins).flat().forEach(plugin => {
+      map.set(plugin.id, plugin);
+    });
+    return map;
+  }, [plugins]);
+
   return (
     <div className="space-y-6">
       {/* Unified Builder Modal */}
@@ -740,7 +749,7 @@ export function PluginsPanel() {
                     {widgetOrder
                       .filter(id => id.startsWith('plugin-')) // Only KPI plugins
                       .map((id) => {
-                        const plugin = Object.values(plugins).flat().find(p => p.id === id.replace('plugin-', ''));
+                        const plugin = pluginLookupMap.get(id.replace('plugin-', ''));
                         if (!plugin || isTimeSeriesPlugin(plugin.id)) return null;
 
                         return (
@@ -1012,7 +1021,7 @@ export function PluginsPanel() {
 
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
               {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
-                const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
+                const plugin = pluginLookupMap.get(pluginId);
                 const label = plugin?.name || pluginId;
                 
                 return (
