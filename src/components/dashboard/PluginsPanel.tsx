@@ -446,7 +446,7 @@ export function PluginsPanel() {
               </div>
             )}
             <div className="flex justify-end pt-2">
-              <Button className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto" onClick={handleCreate} disabled={!builderData.name}>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 w-auto min-w-[180px]" onClick={handleCreate} disabled={!builderData.name}>
                 <Save className="mr-2 h-4 w-4" />Save Plugin
               </Button>
             </div>
@@ -454,13 +454,13 @@ export function PluginsPanel() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-emerald-400" /> KPI Plugin Registry</CardTitle>
             <CardDescription>Select which KPIs to calculate and display</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 overflow-hidden flex flex-col">
             {!loading && Object.keys(plugins).length > 0 && (
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
                 <Badge variant="outline" className="text-xs">{activePlugins.length} active</Badge>
@@ -471,7 +471,7 @@ export function PluginsPanel() {
               </div>
             )}
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
-              <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[480px]">
                 {Object.entries(plugins).map(([category, pluginList]) => (
                   <div key={category}>
                     <div
@@ -521,7 +521,7 @@ export function PluginsPanel() {
                 <p className="text-sm">No active plugins to reorder</p>
               </div>
             ) : (
-              <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar max-h-[600px]">
+              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[480px]">
                 <DndContext 
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -626,121 +626,264 @@ export function PluginsPanel() {
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Configure whose comments can reset the SLA clock.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3">
-            <p className="text-xs text-amber-800 dark:text-amber-400">
-              <Info className="inline h-3 w-3 mr-1" />
-              {settings.sla?.useAnyoneCommentsForSla
-                ? 'When anyone comments on a ticket during a status, the SLA clock resets to that comment. This includes comments from the assignee, team members, or other stakeholders.'
-                : 'When the assignee comments on a ticket during a status, the SLA clock resets to that comment. Comments from others are ignored.'}
-            </p>
-          </div>
-          <div className="py-3 border-b border-slate-200 dark:border-slate-700">
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Comment Rule for SLA Clock Reset
-              </Label>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Choose which comments can reset the SLA clock during a status period
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
+            <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Configure whose comments can reset the SLA clock.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3 shrink-0">
+              <p className="text-xs text-amber-800 dark:text-amber-400">
+                <Info className="inline h-3 w-3 mr-1" />
+                {settings.sla?.useAnyoneCommentsForSla
+                  ? 'When anyone comments on a ticket during a status, the SLA clock resets to that comment. This includes comments from the assignee, team members, or other stakeholders.'
+                  : 'When the assignee comments on a ticket during a status, the SLA clock resets to that comment. Comments from others are ignored.'}
               </p>
-              <RadioGroup
-                value={settings.sla?.useAnyoneCommentsForSla ? 'anyone' : 'assignee'}
-                onValueChange={(value) => {
-                  const sla = settings.sla ?? {};
-                  setSettings({
-                    ...settings,
-                    sla: { ...sla, useAnyoneCommentsForSla: value === 'anyone' }
-                  });
-                }}
-              >
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="assignee" id="sla-assignee">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === false ? "checked" : "unchecked"}></div>
-                        <Label htmlFor="sla-assignee" className={`text-sm cursor-pointer ${settings.sla?.useAnyoneCommentsForSla === false ? 'text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
-                          Assignee only
-                        </Label>
-                      </div>
-                    </RadioGroupItem>
-                    <p className={`text-xs ${settings.sla?.useAnyoneCommentsForSla === false ? 'text-slate-700 dark:text-slate-300 font-medium' : 'text-slate-400'}`}>Only assignee comments</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="anyone" id="sla-anyone">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === true ? "checked" : "unchecked"}></div>
-                        <Label htmlFor="sla-anyone" className={`text-sm cursor-pointer ${settings.sla?.useAnyoneCommentsForSla === true ? 'text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
-                          Anyone
-                        </Label>
-                      </div>
-                    </RadioGroupItem>
-                    <p className={`text-xs ${settings.sla?.useAnyoneCommentsForSla === true ? 'text-slate-700 dark:text-slate-300 font-medium' : 'text-slate-400'}`}>Any comment</p>
-                  </div>
-                </div>
-              </RadioGroup>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={async () => {
-              try {
-                const activeConn = localConfig.getActiveConnectionId();
-                if (!activeConn) { toast.error('Select a connection first'); return; }
-                const storageCfg = localConfig.getStorageConfig();
-                const res = await fetch(`/api/jira/master/${activeConn}`, {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'get', storageConfig: storageCfg })
-                });
-                const data = await res.json();
-                if (!data.success || !data.data?.issues) { toast.error('No extraction data found'); return; }
-                const statusSet = new Set<string>();
-                for (const issue of data.data.issues) {
-                  const changelog = issue.changelog?.histories || [];
-                  for (const h of changelog) for (const item of h.items) if (item.field === 'status' && item.toString) statusSet.add(item.toString);
-                  if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
-                }
-                const sla = settings.sla ?? {};
-                const currentTargets = { ...(sla.statusTargets || {}) };
-                for (const s of statusSet) if (!(s in currentTargets)) currentTargets[s] = 0;
-                setSettings({ ...settings, sla: { ...sla, statusTargets: currentTargets } });
-                toast.success(`Detected ${statusSet.size} unique statuses`);
-              } catch { toast.error('Failed to detect statuses'); }
-            }} className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"><Activity className="mr-2 h-4 w-4" /> Detect Statuses from Data</Button>
-            <span className="text-xs text-slate-400">{Object.keys(settings.sla?.statusTargets || {}).length} statuses configured</span>
-          </div>
-          {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-              {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
-                <div key={status} className="flex items-center gap-3">
-                  <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
-                  <Input type="number" min="0" value={hours ?? ''} onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0;
+            <div className="py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
+              <div className="flex flex-col gap-2">
+                <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Comment Rule for SLA Clock Reset
+                </Label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Choose which comments can reset the SLA clock during a status period
+                </p>
+                <RadioGroup
+                  value={settings.sla?.useAnyoneCommentsForSla ? 'anyone' : 'assignee'}
+                  onValueChange={(value) => {
                     const sla = settings.sla ?? {};
-                    const statusTargets = sla.statusTargets ?? {};
-                    setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
-                }} className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                <span className="text-xs text-slate-400">hours</span>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
-                  const sla = settings.sla ?? {};
-                  const updated = { ...(sla.statusTargets || {}) }; 
-                  delete updated[status];
-                  setSettings({ ...settings, sla: { ...sla, statusTargets: updated } });
-                  }}><Trash2 className="h-3 w-3" /></Button>
-                </div>
-              ))}
+                    setSettings({
+                      ...settings,
+                      sla: { ...sla, useAnyoneCommentsForSla: value === 'anyone' }
+                    });
+                  }}
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="assignee" id="sla-assignee">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === false ? "checked" : "unchecked"}></div>
+                          <Label htmlFor="sla-assignee" className={`text-sm cursor-pointer ${settings.sla?.useAnyoneCommentsForSla === false ? 'text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
+                            Assignee only
+                          </Label>
+                        </div>
+                      </RadioGroupItem>
+                      <p className={`text-xs ${settings.sla?.useAnyoneCommentsForSla === false ? 'text-slate-700 dark:text-slate-300 font-medium' : 'text-slate-400'}`}>Only assignee comments</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="anyone" id="sla-anyone">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600" data-state={settings.sla?.useAnyoneCommentsForSla === true ? "checked" : "unchecked"}></div>
+                          <Label htmlFor="sla-anyone" className={`text-sm cursor-pointer ${settings.sla?.useAnyoneCommentsForSla === true ? 'text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
+                            Anyone
+                          </Label>
+                        </div>
+                      </RadioGroupItem>
+                      <p className={`text-xs ${settings.sla?.useAnyoneCommentsForSla === true ? 'text-slate-700 dark:text-slate-300 font-medium' : 'text-slate-400'}`}>Any comment</p>
+                    </div>
+                  </div>
+                </RadioGroup>
+              </div>
             </div>
-          )}
-          <Button onClick={() => {
-            localConfig.saveSettings(settings);
-            setInitialSettings(settings);
-            toast.success('SLA targets saved');
-          }} className="bg-amber-600 hover:bg-amber-700" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save SLA Targets</Button>
-        </CardContent>
-      </Card>
+            <div className="flex items-center gap-3 shrink-0">
+              <Button variant="outline" size="sm" onClick={async () => {
+                try {
+                  const activeConn = localConfig.getActiveConnectionId();
+                  if (!activeConn) { toast.error('Select a connection first'); return; }
+                  const storageCfg = localConfig.getStorageConfig();
+                  const res = await fetch(`/api/jira/master/${activeConn}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'get', storageConfig: storageCfg })
+                  });
+                  const data = await res.json();
+                  if (!data.success || !data.data?.issues) { toast.error('No extraction data found'); return; }
+                  const statusSet = new Set<string>();
+                  for (const issue of data.data.issues) {
+                    const changelog = issue.changelog?.histories || [];
+                    for (const h of changelog) for (const item of h.items) if (item.field === 'status' && item.toString) statusSet.add(item.toString);
+                    if (issue.fields?.status?.name) statusSet.add(issue.fields.status.name);
+                  }
+                  const sla = settings.sla ?? {};
+                  const currentTargets = { ...(sla.statusTargets || {}) };
+                  for (const s of statusSet) if (!(s in currentTargets)) currentTargets[s] = 0;
+                  setSettings({ ...settings, sla: { ...sla, statusTargets: currentTargets } });
+                  toast.success(`Detected ${statusSet.size} unique statuses`);
+                } catch { toast.error('Failed to detect statuses'); }
+              }} className="border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"><Activity className="mr-2 h-4 w-4" /> Detect Statuses from Data</Button>
+              <span className="text-xs text-slate-400">{Object.keys(settings.sla?.statusTargets || {}).length} statuses configured</span>
+            </div>
+            {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
+              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 max-h-[480px]">
+                {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
+                  <div key={status} className="flex items-center gap-3">
+                    <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
+                    <Input type="number" min="0" value={hours ?? ''} onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      const sla = settings.sla ?? {};
+                      const statusTargets = sla.statusTargets ?? {};
+                      setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
+                  }} className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                  <span className="text-xs text-slate-400">hours</span>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
+                    const sla = settings.sla ?? {};
+                    const updated = { ...(sla.statusTargets || {}) }; 
+                    delete updated[status];
+                    setSettings({ ...settings, sla: { ...sla, statusTargets: updated } });
+                    }}><Trash2 className="h-3 w-3" /></Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 mt-auto shrink-0">
+              <Button onClick={() => {
+                localConfig.saveSettings(settings);
+                setInitialSettings(settings);
+                toast.success('SLA targets saved');
+              }} className="bg-amber-600 hover:bg-amber-700 w-auto min-w-[180px]" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save SLA Targets</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-400" /> 
+              KPI Alert Thresholds
+            </CardTitle>
+            <CardDescription className="text-slate-600 dark:text-slate-400">
+              Define warning and critical limits for specific metrics to highlight performance issues.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
+            <div className="flex items-center gap-3 mb-2 shrink-0">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  const availableKpis = Object.values(plugins).flat().map(p => p.id);
+                  const currentThresholds = { ...(settings.alerts?.thresholds || {}) };
+                  let added = 0;
+                  availableKpis.forEach(id => {
+                    if (!currentThresholds[id]) {
+                      currentThresholds[id] = { warning: NaN, critical: NaN, operator: '>' };
+                      added++;
+                    }
+                  });
+                  if (added > 0) {
+                    const alerts = settings.alerts ?? {};
+                    setSettings({ ...settings, alerts: { ...alerts, thresholds: currentThresholds } });
+                    toast.success(`Added ${added} KPI alert placeholders`);
+                  } else {
+                    toast.info('All available KPIs already have thresholds');
+                  }
+                }}
+                className="text-xs"
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Alert for all KPIs
+              </Button>
+              <span className="text-xs text-slate-400">
+                {Object.keys(settings.alerts?.thresholds || {}).length} alerts configured
+              </span>
+            </div>
+
+            <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-2 max-h-[480px]">
+              {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
+                const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
+                const label = plugin?.name || pluginId;
+                
+                return (
+                  <div key={pluginId} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 grid grid-cols-1 md:grid-cols-[minmax(200px,2fr)_auto_auto_auto_auto] items-center gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200 break-words">{label}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider break-all">{pluginId}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-slate-500 w-12">Operator</Label>
+                      <Select 
+                        value={config.operator} 
+                        onValueChange={(v: any) => {
+                          const alerts = settings.alerts ?? {};
+                          const updated = { ...(alerts.thresholds || {}) };
+                          updated[pluginId] = { ...config, operator: v };
+                          setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-16 text-xs bg-white dark:bg-slate-950">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value=">">{'>'}</SelectItem>
+                          <SelectItem value="<">{'<'}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-amber-500 w-14">Warning</Label>
+                      <Input 
+                        type="number" 
+                        value={isNaN(config.warning) || config.warning === null ? '' : config.warning} 
+                        onChange={(e) => {
+                          const alerts = settings.alerts ?? {};
+                          const updated = { ...(alerts.thresholds || {}) };
+                          updated[pluginId] = { ...config, warning: parseFloat(e.target.value) };
+                          setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
+                        }}
+                        className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-red-500 w-12">Critical</Label>
+                      <Input 
+                        type="number" 
+                        value={isNaN(config.critical) || config.critical === null ? '' : config.critical} 
+                        onChange={(e) => {
+                          const alerts = settings.alerts ?? {};
+                          const updated = { ...(alerts.thresholds || {}) };
+                          updated[pluginId] = { ...config, critical: parseFloat(e.target.value) };
+                          setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
+                        }}
+                        className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
+                      />
+                    </div>
+
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" 
+                      onClick={() => {
+                        const alerts = settings.alerts ?? {};
+                        const updated = { ...(alerts.thresholds || {}) };
+                        delete updated[pluginId];
+                        setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 mt-auto shrink-0">
+              <Button
+                onClick={() => {
+                  localConfig.saveSettings(settings);
+                  setInitialSettings(settings);
+                  toast.success('Alert thresholds saved');
+                }}
+                className="bg-red-600 hover:bg-red-700 w-auto min-w-[180px]"
+                disabled={!hasUnsavedSettings}
+              >
+                <Save className="mr-2 h-4 w-4" /> Save Alert Thresholds
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
@@ -813,146 +956,7 @@ export function PluginsPanel() {
             <Button onClick={() => {
               localConfig.saveSettings(settings); setInitialSettings(settings);
               toast.success('KPI Defaults saved');
-            }} className="bg-blue-600 hover:bg-blue-700" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save KPI Defaults</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 mt-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-red-400" /> 
-            KPI Alert Thresholds
-          </CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">
-            Define warning and critical limits for specific metrics to highlight performance issues.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 mb-4">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => {
-                const availableKpis = Object.values(plugins).flat().map(p => p.id);
-                const currentThresholds = { ...(settings.alerts?.thresholds || {}) };
-                let added = 0;
-                availableKpis.forEach(id => {
-                  if (!currentThresholds[id]) {
-                    currentThresholds[id] = { warning: NaN, critical: NaN, operator: '>' };
-                    added++;
-                  }
-                });
-                if (added > 0) {
-                  const alerts = settings.alerts ?? {};
-                  setSettings({ ...settings, alerts: { ...alerts, thresholds: currentThresholds } });
-                  toast.success(`Added ${added} KPI alert placeholders`);
-                } else {
-                  toast.info('All available KPIs already have thresholds');
-                }
-              }}
-              className="text-xs"
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" /> Add Alert for all KPIs
-            </Button>
-            <span className="text-xs text-slate-400">
-              {Object.keys(settings.alerts?.thresholds || {}).length} alerts configured
-            </span>
-          </div>
-
-          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-            {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
-              const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
-              const label = plugin?.name || pluginId;
-              
-              return (
-                <div key={pluginId} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold truncate text-slate-700 dark:text-slate-200">{label}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{pluginId}</p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-slate-500 w-12">Operator</Label>
-                    <Select 
-                      value={config.operator} 
-                      onValueChange={(v: any) => {
-                        const alerts = settings.alerts ?? {};
-                        const updated = { ...(alerts.thresholds || {}) };
-                        updated[pluginId] = { ...config, operator: v };
-                        setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-16 text-xs bg-white dark:bg-slate-950">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value=">">{'>'}</SelectItem>
-                        <SelectItem value="<">{'<'}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-amber-500 w-14">Warning</Label>
-                    <Input 
-                      type="number" 
-                      value={isNaN(config.warning) || config.warning === null ? '' : config.warning} 
-                      onChange={(e) => {
-                        const alerts = settings.alerts ?? {};
-                        const updated = { ...(alerts.thresholds || {}) };
-                        updated[pluginId] = { ...config, warning: parseFloat(e.target.value) };
-                        setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
-                      }}
-                      className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-red-500 w-12">Critical</Label>
-                    <Input 
-                      type="number" 
-                      value={isNaN(config.critical) || config.critical === null ? '' : config.critical} 
-                      onChange={(e) => {
-                        const alerts = settings.alerts ?? {};
-                        const updated = { ...(alerts.thresholds || {}) };
-                        updated[pluginId] = { ...config, critical: parseFloat(e.target.value) };
-                        setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
-                      }}
-                      className="h-8 w-20 text-xs bg-white dark:bg-slate-950" 
-                    />
-                  </div>
-
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" 
-                    onClick={() => {
-                      const alerts = settings.alerts ?? {};
-                      const updated = { ...(alerts.thresholds || {}) };
-                      delete updated[pluginId];
-                      setSettings({ ...settings, alerts: { ...alerts, thresholds: updated } });
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button 
-              onClick={() => {
-                localConfig.saveSettings(settings);
-                setInitialSettings(settings);
-                toast.success('Alert thresholds saved');
-              }} 
-              className="bg-red-600 hover:bg-red-700" 
-              disabled={!hasUnsavedSettings}
-            >
-              <Save className="mr-2 h-4 w-4" /> Save Alert Thresholds
-            </Button>
+            }} className="bg-blue-600 hover:bg-blue-700 w-auto min-w-[180px]" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save KPI Defaults</Button>
           </div>
         </CardContent>
       </Card>

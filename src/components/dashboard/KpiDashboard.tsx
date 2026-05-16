@@ -229,6 +229,8 @@ export function KpiDashboard() {
 
   const handleUpdatePendingFilter = (key: string, value: string) => {
     jqlFilters.toggleStagingFilter(key, value);
+    // Mark view as modified when filters change
+    setIsViewModified(true);
   };
 
   const handleApplyFilters = () => {
@@ -985,6 +987,7 @@ export function KpiDashboard() {
                           toast.success('Filter saved to dashboard');
 
                           jqlFilters.toggleStagingFilter('jql', newQuery);
+                          setIsViewModified(true);
                         }
                       }}
                     >
@@ -1147,7 +1150,29 @@ export function KpiDashboard() {
                     size="sm"
                     onClick={handleApplyFilters}
                     className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-2"
-                    disabled={JSON.stringify(globalFilters) === JSON.stringify(jqlFilters.stagingFilters)}
+                    disabled={(() => {
+                      // Check if staging filters have any content different from global filters
+                      const stagingKeys = Object.keys(jqlFilters.stagingFilters);
+                      const globalKeys = Object.keys(globalFilters);
+
+                      // Enable if key count differs
+                      if (stagingKeys.length !== globalKeys.length) return false;
+
+                      // Enable if any values differ
+                      for (const key of stagingKeys) {
+                        const stagingVals = jqlFilters.stagingFilters[key] || [];
+                        const globalVals = globalFilters[key] || [];
+
+                        if (stagingVals.length !== globalVals.length) return false;
+
+                        // Check if all values match
+                        const hasAllValues = stagingVals.every(v => globalVals.includes(v));
+                        if (!hasAllValues) return false;
+                      }
+
+                      // If we get here, they're the same - disable button
+                      return true;
+                    })()}
                   >
                     <CheckCircle2 className="h-4 w-4" />
                     Apply Filters

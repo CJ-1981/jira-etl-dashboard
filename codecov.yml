@@ -1,0 +1,37 @@
+# Codecov Configuration
+# https://codecov.io/gh/CJ-1981/jira-etl-dashboard/settings
+
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: 75%
+        threshold: 1%
+        informational: true
+
+ignore:
+  - node_modules/
+  - .next/
+  - src/types/**
+  - **/*.d.ts
+  - **/*.config.*
+  - vitest.setup.ts
+
+comment:
+  layout: "reach,diff,flags,files,footer"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+github_checks:
+  annotations: true
+
+flags:
+  unittests:
+    carryforward: true
