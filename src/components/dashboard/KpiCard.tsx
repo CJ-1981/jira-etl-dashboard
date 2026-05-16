@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area, ReferenceLine
+  AreaChart, Area, ReferenceLine, Brush
 } from 'recharts';
 import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings, Pencil, Check, X as XIcon } from 'lucide-react';
 import {
@@ -342,6 +342,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const displayTitle = config.customTitle || 'Chart Visualization';
+
+  // Zoom/Pan state for time series charts
+  const [zoomDomain, setZoomDomain] = useState<{ start?: number; end?: number } | null>(null);
 
   const handleStartTitleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -853,10 +856,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             return dataPoint;
           });
 
+          // Filter data based on zoom domain
+          const zoomedData = zoomDomain && zoomDomain.end !== undefined
+            ? mergedData.slice(zoomDomain.start, zoomDomain.end + 1)
+            : mergedData;
+
           // @MX:ANCHOR: Line Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <LineChart data={mergedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+              <LineChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 80 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
@@ -864,13 +872,30 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   {...tooltipStyle}
                   content={<CustomLineAreaTooltip />}
                 />
-                <Legend 
-                  onClick={handleLegendClick} 
-                  cursor="pointer" 
-                  formatter={renderLegend} 
-                  verticalAlign="top" 
+                <Legend
+                  onClick={handleLegendClick}
+                  cursor="pointer"
+                  formatter={renderLegend}
+                  verticalAlign="top"
                   align="right"
                   wrapperStyle={{ paddingBottom: '20px' }}
+                />
+                <Brush
+                  dataKey="name"
+                  height={30}
+                  stroke="#3b82f6"
+                  fill="#3b82f6"
+                  fillOpacity={0.3}
+                  onChange={(brushState: any) => {
+                    if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
+                      setZoomDomain({
+                        start: brushState.startIndex,
+                        end: brushState.endIndex
+                      });
+                    } else {
+                      setZoomDomain(null);
+                    }
+                  }}
                 />
                 {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                   const color = CHART_COLORS[idx % CHART_COLORS.length];
@@ -922,7 +947,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                       strokeWidth={2}
                       strokeDasharray="5 5"
                       label={{
-                        value: `SLA: ${slaTarget}h`,
+                        value: `${slaTarget}h`,
                         position: 'insideBottomRight',
                         fill: '#f59e0b',
                         fontSize: 10,
@@ -987,9 +1012,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   strokeDasharray="5 5"
                   label={{
                     value: `SLA: ${slaTarget}h`,
-                    position: 'right',
+                    position: 'insideBottomRight',
                     fill: '#f59e0b',
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: 600
                   }}
                 />
@@ -1024,7 +1049,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           // @MX:ANCHOR: Area Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <AreaChart data={mergedData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+              <AreaChart data={mergedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
@@ -1074,9 +1099,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                       strokeDasharray="5 5"
                       label={{
                         value: `SLA: ${slaTarget}h`,
-                        position: 'right',
+                        position: 'insideBottomRight',
                         fill: '#f59e0b',
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: 600
                       }}
                     />
@@ -1089,7 +1114,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1123,9 +1148,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   strokeDasharray="5 5"
                   label={{
                     value: `SLA: ${slaTarget}h`,
-                    position: 'right',
+                    position: 'insideBottomRight',
                     fill: '#f59e0b',
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: 600
                   }}
                 />
