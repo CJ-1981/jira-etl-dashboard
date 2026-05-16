@@ -235,13 +235,45 @@ export function KpiDashboard() {
 
   const handleApplyFilters = () => {
     hasUserInitiatedCalc.current = true;
+    isApplyingUserFiltersRef.current = true;
     setGlobalFilters(jqlFilters.stagingFilters);
+    // Reset flag after a brief delay to allow the state to update
+    setTimeout(() => {
+      isApplyingUserFiltersRef.current = false;
+    }, 100);
     toast.success('Filters applied');
   };
 
   const handleUpdateFilter = (key: string, value: string) => {
     jqlFilters.toggleStagingFilter(key, value);
   };
+
+  // Track if we're applying user filters to avoid sync loops
+  const isApplyingUserFiltersRef = useRef(false);
+
+  // Sync stagingFilters with globalFilters when globalFilters changes externally (e.g., view loading, page refresh)
+  useEffect(() => {
+    // Only sync if this is not a user-initiated filter application
+    // and globalFilters differs from stagingFilters
+    if (!isApplyingUserFiltersRef.current) {
+      const globalKeys = Object.keys(globalFilters).sort();
+      const stagingKeys = Object.keys(jqlFilters.stagingFilters).sort();
+
+      // Check if filters are out of sync
+      const keysMatch = globalKeys.length === stagingKeys.length &&
+        globalKeys.every((key, i) => key === stagingKeys[i]);
+
+      if (!keysMatch || JSON.stringify(globalFilters) !== JSON.stringify(jqlFilters.stagingFilters)) {
+        // Clear staging filters and sync with globalFilters
+        jqlFilters.clearStagingFilters();
+        Object.entries(globalFilters).forEach(([key, values]) => {
+          values.forEach(value => {
+            jqlFilters.toggleStagingFilter(key, value);
+          });
+        });
+      }
+    }
+  }, [globalFilters, jqlFilters]);
 
   const toggleDimension = (pluginId: string, value: string) => {
     setHiddenDimensions((prev: Set<string>) => {
