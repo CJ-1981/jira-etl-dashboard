@@ -1449,6 +1449,19 @@ export function KpiDashboard() {
                         </div>
                       </CardHeader>
                       {statusTimePanelExpanded && (() => {
+                        // Handle empty results
+                        if (!kpi.results || kpi.results.length === 0) {
+                          return (
+                            <CardContent>
+                              <div className="text-center py-8 text-slate-400 dark:text-slate-600">
+                                <Timer className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                                <p className="text-sm">No turnaround time data available</p>
+                                <p className="text-xs mt-1">This plugin requires resolved tickets with status transitions.</p>
+                              </div>
+                            </CardContent>
+                          );
+                        }
+
                         const maxValue = Math.max(...kpi.results.map(r => r.value), 1);
                         return (
                           <CardContent>
