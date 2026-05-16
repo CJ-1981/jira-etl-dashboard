@@ -938,7 +938,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <LineChart data={selectedKpiData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+            <LineChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
