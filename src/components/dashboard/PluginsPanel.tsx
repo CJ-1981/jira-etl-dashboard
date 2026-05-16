@@ -471,7 +471,7 @@ export function PluginsPanel() {
               </div>
             )}
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
-              <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[240px]">
                 {Object.entries(plugins).map(([category, pluginList]) => (
                   <div key={category}>
                     <div
@@ -521,7 +521,7 @@ export function PluginsPanel() {
                 <p className="text-sm">No active plugins to reorder</p>
               </div>
             ) : (
-              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[240px]">
                 <DndContext 
                   sensors={sensors}
                   collisionDetection={closestCenter}
