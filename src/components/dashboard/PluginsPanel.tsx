@@ -199,15 +199,15 @@ export function PluginsPanel() {
           try {
             const activeIds = JSON.parse(savedActivePlugins) as string[];
             setActivePlugins(activeIds);
-            // Initialize widget order with non-time-series plugins only
-            initializeWidgetOrder(activeIds, isTimeSeriesPlugin);
+            // Initialize widget order with non-time-series plugins only (use prefixed IDs)
+            initializeWidgetOrder(activeIds.map(id => `plugin-${id}`), isTimeSeriesPlugin);
           } catch (err) {
             setActivePlugins(allPluginIds);
-            initializeWidgetOrder(allPluginIds, isTimeSeriesPlugin);
+            initializeWidgetOrder(allPluginIds.map(id => `plugin-${id}`), isTimeSeriesPlugin);
           }
         } else {
           setActivePlugins(allPluginIds);
-          initializeWidgetOrder(allPluginIds, isTimeSeriesPlugin);
+          initializeWidgetOrder(allPluginIds.map(id => `plugin-${id}`), isTimeSeriesPlugin);
         }
       }
     } catch {

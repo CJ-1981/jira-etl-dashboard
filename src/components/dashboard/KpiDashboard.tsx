@@ -157,6 +157,7 @@ export function KpiDashboard() {
         let allPlugins = [...customPlugins];
         try {
           const res = await fetch('/api/kpi/plugins');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (data.success && data.plugins) {
             const customIds = new Set(customPlugins.map(p => p.id));
@@ -1434,14 +1435,14 @@ export function KpiDashboard() {
                               {statusTimePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                             </button>
                           </div>
-                          {Array.from(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
+                          {Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`)) && (
                             <Button variant="ghost" size="sm" onClick={() => {
                               setHiddenDimensions((prev: Set<string>) => {
                                 const next = new Set(prev);
-                                next.forEach(k => { if (k.startsWith('time_in_status|')) next.delete(k); });
+                                next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
                                 return next;
                               });
-                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                            }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
                               <RotateCw className="h-3 w-3 mr-1" /> Restore All
                             </Button>
                           )}
