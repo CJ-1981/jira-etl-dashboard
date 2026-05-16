@@ -89,6 +89,7 @@ import { usePeriodAnalysis } from '@/hooks/usePeriodAnalysis';
 import { usePluginVisibility } from '@/hooks/usePluginVisibility';
 import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
+import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 
 export function KpiDashboard() {
   const {
@@ -114,7 +115,6 @@ export function KpiDashboard() {
   const [assigneePanelExpanded, setAssigneePanelExpanded] = useState(true);
   const [statusTimePanelExpanded, setStatusTimePanelExpanded] = useState(true);
   const [openTicketsByStatusPanelExpanded, setOpenTicketsByStatusPanelExpanded] = useState(true);
-  const [distributionPanelExpanded, setDistributionPanelExpanded] = useState(true);
   const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
   const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
   const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
@@ -139,6 +139,7 @@ export function KpiDashboard() {
   // ─── Plugin Visibility Hook ───────────────────────────────────────────────────
   const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
   const pluginVisibility = usePluginVisibility(allPluginIds, 'cfg_active_plugins');
+  const { widgetOrder } = useWidgetOrder();
 
   // ─── KPI Calculations Hook ────────────────────────────────────────────────────
   const kpiCalculations = useKpiCalculations(
@@ -700,14 +701,60 @@ export function KpiDashboard() {
   }, [kpiResults, pluginVisibility.activePlugins]);
 
   const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const statusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
-  const openTicketsByStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'open_tickets_by_status' && !isTimeSeriesPlugin(r.pluginId));
-  const slaStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
-  const slaPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.pluginId === 'sla_by_priority');
-  const otherPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.priority && r.pluginId !== 'sla_by_priority' && !isTimeSeriesPlugin(r.pluginId));
-  const distributionKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
-  const timeSeriesKpis = sortedKpiResults.filter((r: KpiCalcResult) => isTimeSeriesPlugin(r.pluginId));
+  // @MX:NOTE: Widget Order Mapping - Maps widget display order IDs to their corresponding KPI groups
+  // @MX:REASON: Groups plugins by dimension type for organized dashboard rendering
+  const widgetOrderMapping = useMemo(() => {
+    const mapping: Record<string, { kpis: KpiCalcResult[]; component: string }> = {};
+
+    // Group by dimension type, not by artificial panels
+    sortedKpiResults.forEach((kpiResult) => {
+      const { pluginId, results } = kpiResult;
+      if (!results[0]) return;
+
+      const dimension = results[0].dimensions;
+      if (!dimension) return;
+
+      // Determine component type based on dimension
+      let componentType: string;
+      if (dimension.status) {
+        componentType = pluginId === 'time_in_status' ? 'status-time' : 'status-open';
+      } else if (dimension.priority && pluginId === 'sla_by_priority') {
+        componentType = 'sla-priority';
+      } else if (dimension.priority) {
+        componentType = 'other-priority';
+      } else if (dimension.assignee) {
+        componentType = 'assignee';
+      } else {
+        componentType = 'main';
+      }
+
+      // Create widget key based on plugin ID (individual plugins, not panels)
+      const widgetKey = `plugin-${pluginId}`;
+      if (!mapping[widgetKey]) {
+        mapping[widgetKey] = { kpis: [], component: componentType };
+      }
+      mapping[widgetKey].kpis.push(kpiResult);
+    });
+
+    return mapping;
+  }, [sortedKpiResults]);
+
+  // Filter widget order to only include plugins that exist and have data
+  const orderedWidgets = useMemo(() => {
+    return widgetOrder
+      .filter(id => {
+        // Only include individual plugins that exist in the mapping
+        if (id.startsWith('plugin-')) {
+          const widget = widgetOrderMapping[id];
+          return widget && widget.kpis.length > 0;
+        }
+        return false; // No more artificial panels
+      })
+      .map(id => ({
+        id,
+        ...widgetOrderMapping[id]
+      }));
+  }, [widgetOrder, widgetOrderMapping]);
 
   // Results specifically for the Table View (Metrics Overview)
   // Excludes trend items (time series) and metrics with specific breakdown dimensions
@@ -1326,629 +1373,614 @@ export function KpiDashboard() {
           )}
         </div>
 
-        {statusKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
-                  <button
-                    onClick={() => setStatusTimePanelExpanded(!statusTimePanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={statusTimePanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={statusTimePanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {statusTimePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('time_in_status|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {statusTimePanelExpanded && (
-              <CardContent>
-              <div className="space-y-3">{statusKpis.map((kpi) => {
-                const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`));
-                const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
-
-                return visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                  <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-blue-500 hover:underline"
-                          onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                        >
-                          {result.name}
-                        </span>
-                        <button
-                          onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                          title="Hide bar"
-                        >
-                          <EyeOff className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
-                    </div>
-                    <div
-                      className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-blue-400 transition-all"
-                      onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                    >
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500"
-                        style={{ width: `${(result.value / maxVal) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ));
-              })}</div>
-            </CardContent>
-            )}
-          </Card>
-        )}
-
-        {openTicketsByStatusKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
-                  <button
-                    onClick={() => setOpenTicketsByStatusPanelExpanded(!openTicketsByStatusPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={openTicketsByStatusPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={openTicketsByStatusPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {openTicketsByStatusPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {openTicketsByStatusPanelExpanded && (
-              <CardContent>
-              {/* Age Legend */}
-              <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-slate-500" />
-                  <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-amber-500" />
-                  <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-emerald-400" />
-                  <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {(() => {
-                  // Group results by status
-                  const statusGroups: Record<string, KpiCalcResult['results'][0][]> = {};
-
-                  openTicketsByStatusKpis.forEach((kpi) => {
-                    kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
-                      const status = result.dimensions?.status || 'Unknown';
-                      if (!statusGroups[status]) {
-                        statusGroups[status] = [];
-                      }
-                      statusGroups[status].push(result);
-                    });
-                  });
-
-                  // Color mapping for age categories
-                  const ageColors: Record<string, string> = {
-                    'existing': 'bg-slate-500',
-                    'last_week': 'bg-amber-500',
-                    'this_week': 'bg-emerald-400',
-                  };
-
-                  return Object.entries(statusGroups).map(([status, results]) => {
-                    const visibleResults = results.filter((r) => !hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
-                    if (visibleResults.length === 0) return null;
-
-                    const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
-                    const maxVal = Math.max(...visibleResults.map((r) => r.value));
-
-                    return (
-                      <div key={status} className="space-y-2 group">
-                        {/* Status Header */}
-                        <div className="flex items-center justify-between text-sm">
+        {/* Ordered Widgets Section - follows widget display order */}
+        {orderedWidgets.length > 0 && (
+          <div className="space-y-4">
+            {orderedWidgets.map((widget) => {
+              switch (widget.component) {
+                case 'status-time':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
+                    <Card key={`status-time-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <span
-                              className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                              onClick={() => {
-                                // Gather all ticket keys for this status across all age categories
-                                const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
-                                handleDrillDown(allTicketKeys, `Status: ${status} (All)`);
-                              }}
-                              title="Click to see all tickets for this status"
+                            <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
+                            <button
+                              onClick={() => setStatusTimePanelExpanded(!statusTimePanelExpanded)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                              title={statusTimePanelExpanded ? "Collapse" : "Expand"}
+                              aria-label={statusTimePanelExpanded ? "Collapse section" : "Expand section"}
                             >
-                              {status}
-                            </span>
-                            <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                              {statusTimePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
                           </div>
-                          <button
-                            onClick={() => {
-                              // Hide all age categories for this status
-                              const dimsToAdd = [`open_tickets_by_status|${status}-existing`, `open_tickets_by_status|${status}-last_week`, `open_tickets_by_status|${status}-this_week`];
+                          {Array.from(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
+                            <Button variant="ghost" size="sm" onClick={() => {
                               setHiddenDimensions((prev: Set<string>) => {
                                 const next = new Set(prev);
-                                dimsToAdd.forEach(d => next.add(d));
+                                next.forEach(k => { if (k.startsWith('time_in_status|')) next.delete(k); });
                                 return next;
                               });
-                            }}
-                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                            title="Hide this status"
-                          >
-                            <EyeOff className="h-3.5 w-3.5" />
-                          </button>
+                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                            </Button>
+                          )}
                         </div>
+                      </CardHeader>
+                      {statusTimePanelExpanded && (
+                        <CardContent>
+                        <div className="space-y-3">{kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                          const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
+                          if (hiddenDimensions.has(dimKey)) return null;
 
-                        {/* Stacked/Segmented Bar */}
-                        <div className="space-y-1">
-                          <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
-                            {visibleResults
-                              .sort((a, b) => {
-                                // Sort by age: existing → last_week → this_week
-                                const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                return ageA - ageB;
-                              })
-                              .map((result, idx) => {
-                                const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
-                                const ageCategory = result.dimensions?.ageCategory as string;
-                                const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-
-                                return (
-                                  <div
-                                    key={idx}
-                                    className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
-                                    style={{ width: `${width}%` }}
-                                    onClick={() => handleDrillDown(result.ticketKeys || [], `${status} (${result.dimensions?.ageCategory})`)}
-                                    title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
-                                  />
-                                );
-                              })}
-                          </div>
-
-                          {/* Age Category Breakdown */}
-                          <div className="flex gap-2 flex-wrap">
-                            {visibleResults
-                              .sort((a, b) => {
-                                const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                return ageA - ageB;
-                              })
-                              .map((result, idx) => {
-                                const ageCategory = result.dimensions?.ageCategory as string;
-                                const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-
-                                return (
-                                  <div key={idx} className="flex items-center gap-1 text-xs">
-                                    <div className={`w-2 h-2 rounded ${colorClass}`} />
-                                    <span className="text-slate-600 dark:text-slate-400">
-                                      {result.dimensions?.ageCategory === 'this_week' ? 'This week' :
-                                       result.dimensions?.ageCategory === 'last_week' ? '1 week' : '2+ weeks'}: {result.value}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-              </CardContent>
-            )}
-          </Card>
-        )}
-
-        {distributionKpis.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-purple-400" />
-                Distribution Analysis
-              </h3>
-              <button
-                onClick={() => setDistributionPanelExpanded(!distributionPanelExpanded)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                title={distributionPanelExpanded ? "Collapse" : "Expand"}
-                aria-label={distributionPanelExpanded ? "Collapse section" : "Expand section"}
-              >
-                {distributionPanelExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-            </div>
-            {distributionPanelExpanded && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {distributionKpis.map((kpi) => (
-                <Card key={kpi.pluginId} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                  <CardHeader>
-                    <CardTitle className="text-md flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-purple-400" />
-                      {kpi.results[0].name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {(() => {
-                        // Custom sort for buckets based on plugin
-                        let bucketOrder: string[] = [];
-                        if (kpi.pluginId === 'cycle_time_histogram') {
-                          bucketOrder = ['< 4h', '4-8h (1d)', '8-16h (2d)', '16-40h (1w)', '40-80h (2w)', '> 80h (2w+)'];
-                        } else if (kpi.pluginId === 'aging_wip') {
-                          bucketOrder = ['< 1 day', '1-3 days', '3-7 days', '1-2 weeks', '2-4 weeks', '> 4 weeks'];
-                        }
-
-                        const sortedResults = [...kpi.results].sort((a, b) => {
-                          const aIdx = bucketOrder.indexOf(a.dimensions?.bucket || '');
-                          const bIdx = bucketOrder.indexOf(b.dimensions?.bucket || '');
-                          if (aIdx === -1 || bIdx === -1) return 0;
-                          return aIdx - bIdx;
-                        });
-
-                        const maxVal = Math.max(...sortedResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
-
-                        return sortedResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                          <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                            <div className="flex items-center justify-between text-sm">
-                              <span
-                                className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-purple-500 hover:underline"
-                                onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                              >
-                                {result.dimensions?.bucket || result.name}
-                              </span>
-                              <span className="font-mono font-semibold text-purple-400">{result.value} {result.unit}</span>
+                          return (
+                            <div key={idx} className="space-y-1 group">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                    onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                  >
+                                    {result.name}
+                                  </span>
+                                  <button
+                                    onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
+                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                  >
+                                    <EyeOff className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                              </div>
+                              <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                  className="absolute h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
+                                  style={{ width: `${Math.min(100, (result.value / 120) * 100)}%` }}
+                                />
+                              </div>
                             </div>
-                            <div
-                              className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-purple-400 transition-all"
-                              onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                          );
+                        })}</div>
+                        {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`)) && (
+                          <div className="text-xs text-slate-400 italic">
+                            {Array.from(hiddenDimensions).filter(k => k.startsWith('time_in_status|')).length} status(es) hidden
+                          </div>
+                        )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  )) : null;
+
+                case 'status-open':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
+                    <Card key={`status-open-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
+                            <button
+                              onClick={() => setOpenTicketsByStatusPanelExpanded(!openTicketsByStatusPanelExpanded)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                              title={openTicketsByStatusPanelExpanded ? "Collapse" : "Expand"}
+                              aria-label={openTicketsByStatusPanelExpanded ? "Collapse section" : "Expand section"}
                             >
-                              <div
-                                className="h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-500"
-                                style={{ width: `${(result.value / maxVal) * 100}%` }}
-                              />
-                            </div>
+                              {openTicketsByStatusPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
                           </div>
-                        ));
-                      })()}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            )}
+                          {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setHiddenDimensions((prev: Set<string>) => {
+                                const next = new Set(prev);
+                                next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
+                                return next;
+                              });
+                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      {openTicketsByStatusPanelExpanded && (
+                        <CardContent>
+                        {/* Age Legend */}
+                        <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-slate-500" />
+                            <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-amber-500" />
+                            <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-emerald-400" />
+                            <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {(() => {
+                            // Group results by status
+                            const statusGroups: Record<string, KpiCalcResult['results'][0][]> = {};
+
+                            kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
+                              const status = result.dimensions?.status || 'Unknown';
+                              if (!statusGroups[status]) {
+                                statusGroups[status] = [];
+                              }
+                              statusGroups[status].push(result);
+                            });
+
+                            // Color mapping for age categories
+                            const ageColors: Record<string, string> = {
+                              'existing': 'bg-slate-500',
+                              'last_week': 'bg-amber-500',
+                              'this_week': 'bg-emerald-400',
+                            };
+
+                            return Object.entries(statusGroups).map(([status, results]) => {
+                              const visibleResults = results.filter((r) => !hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
+                              if (visibleResults.length === 0) return null;
+
+                              const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+
+                              return (
+                                <div key={status} className="space-y-2 group">
+                                  {/* Status Header */}
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => {
+                                          // Gather all ticket keys for this status across all age categories
+                                          const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
+                                          handleDrillDown(allTicketKeys, `Status: ${status} (All)`);
+                                        }}
+                                        title="Click to see all tickets for this status"
+                                      >
+                                        {status}
+                                      </span>
+                                      <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        // Hide all age categories for this status
+                                        const dimsToAdd = [`open_tickets_by_status|${status}-existing`, `open_tickets_by_status|${status}-last_week`, `open_tickets_by_status|${status}-this_week`];
+                                        setHiddenDimensions((prev: Set<string>) => {
+                                          const next = new Set(prev);
+                                          dimsToAdd.forEach(d => next.add(d));
+                                          return next;
+                                        });
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      title="Hide this status"
+                                    >
+                                      <EyeOff className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+
+                                  {/* Stacked/Segmented Bar */}
+                                  <div className="space-y-1">
+                                    <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                                      {visibleResults
+                                        .sort((a, b) => {
+                                          // Sort by age: existing → last_week → this_week
+                                          const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                          const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                          const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                          return ageA - ageB;
+                                        })
+                                        .map((result, idx) => {
+                                          const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
+                                          const ageCategory = result.dimensions?.ageCategory as string;
+                                          const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                          return (
+                                            <div
+                                              key={idx}
+                                              className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
+                                              style={{ width: `${width}%` }}
+                                              onClick={() => handleDrillDown(result.ticketKeys || [], `${status} (${result.dimensions?.ageCategory})`)}
+                                              title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
+                                            />
+                                          );
+                                        })}
+                                    </div>
+
+                                    {/* Age Category Breakdown */}
+                                    <div className="flex gap-2 flex-wrap">
+                                      {visibleResults
+                                        .sort((a, b) => {
+                                          const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                          const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                          const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                          return ageA - ageB;
+                                        })
+                                        .map((result, idx) => {
+                                          const ageCategory = result.dimensions?.ageCategory as string;
+                                          const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+
+                                          return (
+                                            <div key={idx} className="flex items-center gap-1 text-xs">
+                                              <div className={`w-2 h-2 rounded ${colorClass}`} />
+                                              <span className="text-slate-600 dark:text-slate-400">
+                                                {result.dimensions?.ageCategory === 'this_week' ? 'This week' :
+                                                 result.dimensions?.ageCategory === 'last_week' ? '1 week' : '2+ weeks'}: {result.value}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                        {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${r.dimensions?.status}-${r.dimensions.ageCategory}` : r.dimensions?.status || r.name}`)) && (
+                          <div className="text-xs text-slate-400 italic mt-2">
+                            {Array.from(hiddenDimensions).filter(k => k.startsWith('open_tickets_by_status|')).length} age category(es) hidden
+                          </div>
+                        )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  )) : null;
+
+                case 'sla-priority':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <Card key={`sla-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
+                            <button
+                              onClick={() => setPrioritySlaPanelExpanded(!prioritySlaPanelExpanded)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                              title={prioritySlaPanelExpanded ? "Collapse" : "Expand"}
+                              aria-label={prioritySlaPanelExpanded ? "Collapse section" : "Expand section"}
+                            >
+                              {prioritySlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setHiddenDimensions((prev: Set<string>) => {
+                                const next = new Set(prev);
+                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                return next;
+                              });
+                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      {prioritySlaPanelExpanded && (
+                        <CardContent>
+                          <div className="space-y-3">
+                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                              const dimKey = `${kpi.pluginId}|${result.dimensions?.priority || result.name}`;
+                              if (hiddenDimensions.has(dimKey)) return null;
+
+                              const priority = result.dimensions?.priority || result.name;
+                              const priorityColor: Record<string, string> = {
+                                'Highest': 'bg-red-500',
+                                'High': 'bg-orange-500',
+                                'Medium': 'bg-amber-500',
+                                'Low': 'bg-blue-500',
+                                'Lowest': 'bg-cyan-500',
+                              };
+
+                              return (
+                                <div key={idx} className="space-y-1">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                      >
+                                        {result.name}
+                                      </span>
+                                      <Badge className="text-[9px] py-0 h-3.5 px-1.5 border border-slate-300 dark:border-slate-600">
+                                        {result.comparison?.label || 'No Target'}
+                                      </Badge>
+                                      <button
+                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                                  </div>
+                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="absolute h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-300"
+                                      style={{ width: `${(result.value / Math.max(result.value, result.comparison?.value || 1)) * 100}%` }}
+                                    />
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 text-center">{result.value}h vs {result.comparison?.value || 'N/A'}h target</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  )) : null;
+
+                case 'other-priority':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <Card key={`other-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="flex items-center gap-2">
+                              <TrendingUp className="h-5 w-5 text-cyan-400" />
+                              Other Priority Analysis
+                            </CardTitle>
+                            <button
+                              onClick={() => setOtherPriorityPanelExpanded(!otherPriorityPanelExpanded)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                              title={otherPriorityPanelExpanded ? "Collapse" : "Expand"}
+                              aria-label={otherPriorityPanelExpanded ? "Collapse section" : "Expand section"}
+                            >
+                              {otherPriorityPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setHiddenDimensions((prev: Set<string>) => {
+                                const next = new Set(prev);
+                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                return next;
+                              });
+                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      {otherPriorityPanelExpanded && (
+                        <CardContent>
+                          <div className="space-y-3">{kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                            const dimKey = `${kpi.pluginId}|${result.dimensions?.priority || result.name}`;
+                            if (hiddenDimensions.has(dimKey)) return null;
+
+                            const priority = result.dimensions?.priority || result.name;
+                            const priorityColors: Record<string, string> = {
+                              'Highest': 'bg-red-500',
+                              'High': 'bg-orange-500',
+                              'Medium': 'bg-amber-500',
+                              'Low': 'bg-blue-500',
+                              'Lowest': 'bg-cyan-500',
+                            };
+
+                            return (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex items-center justify-between text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                      onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                    >
+                                      {result.name}
+                                    </span>
+                                    <button
+                                      onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
+                                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                    >
+                                      <EyeOff className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                  <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                                </div>
+                                <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="absolute h-full bg-gradient-to-r from-cyan-500 to-blue-400 transition-all duration-300"
+                                    style={{ width: `${(result.value / 120) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}</div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  )) : null;
+
+                case 'sla-status':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <Card key={`sla-status-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="flex items-center gap-2">
+                              <Target className="h-5 w-5 text-emerald-400" />
+                              {kpi.pluginId === 'sla_by_status_excl_clone' ? 'SLA by Status (Excl. Clones)' : 'SLA by Status'}
+                            </CardTitle>
+                            <button
+                              onClick={() => setStatusSlaPanelExpanded(!statusSlaPanelExpanded)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                              title={statusSlaPanelExpanded ? "Collapse" : "Expand"}
+                              aria-label={statusSlaPanelExpanded ? "Collapse section" : "Expand section"}
+                            >
+                              {statusSlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setHiddenDimensions((prev: Set<string>) => {
+                                const next = new Set(prev);
+                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                return next;
+                              });
+                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      {statusSlaPanelExpanded && (
+                        <CardContent>
+                          <div className="space-y-3">
+                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                              const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
+                              if (hiddenDimensions.has(dimKey)) return null;
+
+                              const status = result.dimensions?.status || result.name;
+                              const statusColor: Record<string, string> = {
+                                'Done': 'bg-emerald-500',
+                                'Closed': 'bg-slate-500',
+                                'Resolved': 'bg-blue-500',
+                                'In Progress': 'bg-blue-600',
+                                'To Do': 'bg-gray-500',
+                                'In Review': 'bg-purple-500',
+                              };
+
+                              return (
+                                <div key={idx} className="space-y-1">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                      >
+                                        {result.name}
+                                      </span>
+                                      <Badge className="text-[9px] py-0 h-3.5 px-1.5 border border-slate-300 dark:border-slate-600">
+                                        {result.comparison?.label || 'No Target'}
+                                      </Badge>
+                                      <button
+                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                                  </div>
+                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="absolute h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                                      style={{ width: `${(result.value / Math.max(result.value, result.comparison?.value || 1)) * 100}%` }}
+                                    />
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 text-center">{result.value}h vs {result.comparison?.value || 'N/A'}h target</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`)) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} status(es) hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  )) : null;
+
+                case 'assignee':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
+                    <Card key={`assignee-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="flex items-center gap-2">
+                              <UserCheck className="h-5 w-5 text-indigo-400" />
+                              Tickets by Assignee
+                            </CardTitle>
+                            <button
+                              onClick={() => setAssigneePanelExpanded(!assigneePanelExpanded)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                              title={assigneePanelExpanded ? "Collapse" : "Expand"}
+                              aria-label={assigneePanelExpanded ? "Collapse section" : "Expand section"}
+                            >
+                              {assigneePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setHiddenDimensions((prev: Set<string>) => {
+                                const next = new Set(prev);
+                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                return next;
+                              });
+                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      {assigneePanelExpanded && (
+                        <CardContent>
+                          <div className="space-y-3">
+                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                              const dimKey = `${kpi.pluginId}|${result.dimensions?.assignee || result.name}`;
+                              if (hiddenDimensions.has(dimKey)) return null;
+
+                              const assignee = result.dimensions?.assignee || result.name;
+                              const maxVal = Math.max(...widget.kpis.flatMap(k => k.results.map(r => r.value)), 1);
+
+                              return (
+                                <div key={idx} className="space-y-1">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                      >
+                                        {result.name}
+                                      </span>
+                                      <button
+                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                                  </div>
+                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700"
+                                      style={{ width: `${(result.value / maxVal) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`)) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} assignee(s) hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  )) : null;
+
+                default:
+                  return null;
+              }
+            })}
           </div>
         )}
 
-        {slaPriorityKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
-                  <button
-                    onClick={() => setPrioritySlaPanelExpanded(!prioritySlaPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={prioritySlaPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={prioritySlaPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {prioritySlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_priority|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('sla_by_priority|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {prioritySlaPanelExpanded && (
-              <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaPriorityKpis.map((kpi) => [...kpi.results].sort((a, b) => (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true })).map((result: KpiCalcResult['results'][0], idx: number) => {
-                if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
-                const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
-                return (
-                  <div
-                    key={`${kpi.pluginId}-${idx}`}
-                    className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
-                    onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`) : undefined}
-                  >
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.priority || ''); }}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                      title="Hide widget"
-                    >
-                      <EyeOff className="h-3 w-3" />
-                    </button>
-                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.priority}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
-                    {result.details && (
-                      <div className="space-y-1 mt-2">
-                        <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Target')?.value || '-'}h</span></div>
-                        <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: any) => d.label === 'Total')?.value || 0}</span></div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }))}</div>
-            </CardContent>
-            )}
-          </Card>
-        )}
-
-        {otherPriorityKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2">
-                    <Ticket className="h-5 w-5 text-amber-500" />
-                    Tickets by Priority
-                  </CardTitle>
-                  <button
-                    onClick={() => setOtherPriorityPanelExpanded(!otherPriorityPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={otherPriorityPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={otherPriorityPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {otherPriorityPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {otherPriorityKpis.some(kpi => Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`))) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      otherPriorityKpis.forEach(kpi => {
-                        next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
-                      });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {otherPriorityPanelExpanded && (
-              <CardContent>
-                <div className="space-y-4">{otherPriorityKpis.map((kpi) => {
-                  const visibleResults = kpi.results
-                    .filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`))
-                    .sort((a, b) => {
-                      const pA = a.dimensions?.priority || a.name;
-                      const pB = b.dimensions?.priority || b.name;
-                      return pA.localeCompare(pB, undefined, { numeric: true, sensitivity: 'base' });
-                    });
-                  const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
-
-                  return (
-                    <div key={kpi.pluginId} className="space-y-3">
-                      {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                        <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
-                                onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`)}
-                              >
-                                {result.dimensions?.priority || result.name}
-                              </span>
-                              <button
-                                onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
-                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                title="Hide bar"
-                              >
-                                <EyeOff className="h-3 w-3" />
-                              </button>
-                            </div>
-                            <span className="font-mono font-bold text-amber-500">{result.value} {result.unit}</span>
-                          </div>
-                          <div
-                            className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-amber-400 transition-all"
-                            onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`)}
-                          >
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-700"
-                              style={{ width: `${(result.value / maxVal) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}</div>
-              </CardContent>
-            )}
-          </Card>
-        )}
-
-        {slaStatusKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
-                  <button
-                    onClick={() => setStatusSlaPanelExpanded(!statusSlaPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={statusSlaPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={statusSlaPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {statusSlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-              <CardDescription className="text-slate-600 dark:text-slate-400">Compliance with per-status SLA targets. Assignee comments reset the clock.</CardDescription>
-            </CardHeader>
-            {statusSlaPanelExpanded && (
-              <CardContent className="space-y-8">
-                {slaStatusKpis.map((kpi) => (
-                  <div key={kpi.pluginId} className="space-y-3">
-                    {slaStatusKpis.length > 1 && (
-                      <div className="flex items-center gap-2 px-1">
-                        <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider py-0 h-4">
-                          {kpi.pluginId === 'sla_by_status_excl_clone' ? 'Excl. Clones' : 'Standard'}
-                        </Badge>
-                        <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
-                      {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                        if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
-                        const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
-                        return (
-                          <div
-                            key={`${kpi.pluginId}-${idx}`}
-                            className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
-                            onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.status}`) : undefined}
-                          >
-                            <button
-                              onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.status || ''); }}
-                              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                              title="Hide widget"
-                            >
-                              <EyeOff className="h-3 w-3" />
-                            </button>
-                            <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
-                            {result.details && (
-                              <div className="space-y-1 mt-2">
-                                <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Target')?.value || '-'}h</span></div>
-                                <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: any) => d.label === 'Total')?.value || 0}</span></div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            )}
-          </Card>
-        )}
-
-        {assigneeKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2">
-                    <UserCheck className="h-5 w-5 text-indigo-400" />
-                    Tickets by Assignee
-                  </CardTitle>
-                  <button
-                    onClick={() => setAssigneePanelExpanded(!assigneePanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={assigneePanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={assigneePanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {assigneePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_assignee|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('open_tickets_by_assignee|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-indigo-400 hover:text-indigo-500 hover:bg-indigo-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {assigneePanelExpanded && (
-              <CardContent>
-                <div className="space-y-4">{assigneeKpis.map((kpi) => {
-                  const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`));
-                  const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
-
-                  return (
-                    <div key={kpi.pluginId} className="space-y-3">
-                      {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                        <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
-                                onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
-                              >
-                                {result.dimensions?.assignee || result.name}
-                              </span>
-                              <button
-                                onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
-                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                title="Hide bar"
-                              >
-                                <EyeOff className="h-3 w-3" />
-                              </button>
-                            </div>
-                            <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
-                          </div>
-                          <div
-                            className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-indigo-400 transition-all"
-                            onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
-                          >
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700"
-                              style={{ width: `${(result.value / maxVal) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}</div>
-              </CardContent>
-            )}
-          </Card>
-        )}
 
         {/* Chart Section */}
         {kpiResults.length > 0 && (
