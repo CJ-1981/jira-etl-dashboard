@@ -1479,7 +1479,6 @@ export function KpiDashboard() {
                                   style={{ width: `${(result.value / Math.max(...kpi.results.map(r => r.value), 1)) * 100}%` }}
                                 />
                               </div>
-                              </div>
                             </div>
                           );
                         })}</div>
