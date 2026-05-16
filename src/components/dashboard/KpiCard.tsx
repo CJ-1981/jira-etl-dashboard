@@ -11,7 +11,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area, ReferenceLine, Brush
 } from 'recharts';
-import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings, Pencil, Check, X as XIcon } from 'lucide-react';
+import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings, Pencil, Check, X as XIcon, ZoomOut, ZoomIn } from 'lucide-react';
 import {
   Tooltip as UITooltip,
   TooltipContent,
@@ -961,9 +961,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
+        const zoomedData = zoomDomain && zoomDomain.end !== undefined
+          ? selectedKpiData.slice(zoomDomain.start, zoomDomain.end + 1)
+          : selectedKpiData;
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <LineChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <LineChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1019,6 +1023,23 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   }}
                 />
               )}
+              <Brush
+                dataKey="name"
+                height={30}
+                stroke="#3b82f6"
+                fill="#3b82f6"
+                fillOpacity={0.3}
+                onChange={(brushState: any) => {
+                  if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
+                    setZoomDomain({
+                      start: brushState.startIndex,
+                      end: brushState.endIndex
+                    });
+                  } else {
+                    setZoomDomain(null);
+                  }
+                }}
+              />
             </LineChart>
           </ResponsiveContainer>
         );
@@ -1107,14 +1128,35 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     />
                   );
                 })}
+                <Brush
+                  dataKey="name"
+                  height={30}
+                  stroke="#3b82f6"
+                  fill="#3b82f6"
+                  fillOpacity={0.3}
+                  onChange={(brushState: any) => {
+                    if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
+                      setZoomDomain({
+                        start: brushState.startIndex,
+                        end: brushState.endIndex
+                      });
+                    } else {
+                      setZoomDomain(null);
+                    }
+                  }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           );
         }
 
+        const zoomedData = zoomDomain && zoomDomain.end !== undefined
+          ? selectedKpiData.slice(zoomDomain.start, zoomDomain.end + 1)
+          : selectedKpiData;
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <AreaChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1155,6 +1197,23 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   }}
                 />
               )}
+              <Brush
+                dataKey="name"
+                height={30}
+                stroke="#3b82f6"
+                fill="#3b82f6"
+                fillOpacity={0.3}
+                onChange={(brushState: any) => {
+                  if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
+                    setZoomDomain({
+                      start: brushState.startIndex,
+                      end: brushState.endIndex
+                    });
+                  } else {
+                    setZoomDomain(null);
+                  }
+                }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         );
@@ -1331,6 +1390,35 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 >
                   <ChevronDown className="h-4 w-4" />
                 </Button>
+              )}
+              {/* Zoom/Pan controls for time series charts */}
+              {isTimeSeries && (
+                <>
+                  {zoomDomain ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setZoomDomain(null)}
+                      data-export-ignore="true"
+                      className="text-purple-500 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-500/10 h-8 w-8 p-0"
+                      aria-label="Reset zoom"
+                      title="Reset zoom to show all data"
+                    >
+                      <ZoomOut className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled
+                      data-export-ignore="true"
+                      className="text-slate-300 dark:text-slate-600 h-8 w-8 p-0"
+                      aria-label="Zoom not available"
+                    >
+                      <ZoomIn className="h-4 w-4" />
+                    </Button>
+                  )}
+                </>
               )}
             </div>
             <Popover open={jqlSettingsOpen} onOpenChange={setJqlSettingsOpen}>
