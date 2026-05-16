@@ -97,7 +97,7 @@ export function ViewManager() {
     }
   };
 
-  const fetchViews = async (currentActiveView: DashboardView | null = activeView) => {
+  const fetchViews = async (restoreViewId: string | null = null) => {
     if (!activeConnectionRef) return;
     setLoading(true);
     try {
@@ -109,10 +109,19 @@ export function ViewManager() {
       const data = await res.json();
       if (data.success) {
         setSavedViews(data.views);
-        
+
+        // Restore the saved view if requested
+        if (restoreViewId) {
+          const viewToRestore = data.views.find((v: DashboardView) => v.id === restoreViewId);
+          if (viewToRestore && !activeView) {
+            loadView(viewToRestore);
+            return;
+          }
+        }
+
         // If there's a default view and no active view, load it
         const defaultView = data.views.find((v: DashboardView) => v.isDefault);
-        if (defaultView && !currentActiveView) {
+        if (defaultView && !activeView) {
           loadView(defaultView);
         }
       }
@@ -126,18 +135,28 @@ export function ViewManager() {
   // Fetch views on connection change
   useEffect(() => {
     if (activeConnectionId) {
-      // Clear current active view when switching connections to prevent incompatible state
-      setActiveView(null);
-      setIsViewModified(false);
+      // Try to restore the last active view for this connection
+      const savedActiveViewId = localStorage.getItem(`activeView_${activeConnectionRef}`);
+
       // @MX:WARN - Closure Risk: fetchViews must be called with fresh state
-      // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from 
+      // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from
       // stale closures if fetchViews depends on the activeView value from the current render.
-      fetchViews(null);
+      fetchViews(savedActiveViewId);
     } else {
       setSavedViews([]);
       setActiveView(null);
     }
   }, [activeConnectionRef]);
+
+  // Persist active view to localStorage whenever it changes
+  useEffect(() => {
+    if (activeConnectionRef && activeView) {
+      localStorage.setItem(`activeView_${activeConnectionRef}`, activeView.id);
+    } else if (activeConnectionRef && !activeView) {
+      // Clear the saved view if no view is active
+      localStorage.removeItem(`activeView_${activeConnectionRef}`);
+    }
+  }, [activeView, activeConnectionRef]);
 
   const handleCreateView = async () => {
     if (!newViewName || !activeConnectionRef) return;

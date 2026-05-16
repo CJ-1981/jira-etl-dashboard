@@ -1030,7 +1030,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 stroke="#3b82f6"
                 fill="#3b82f6"
                 fillOpacity={0.3}
-                data={mergedData}
+                data={selectedKpiData}
                 onChange={(brushState: any) => {
                   if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
                     setZoomDomain({
@@ -1136,6 +1136,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   stroke="#3b82f6"
                   fill="#3b82f6"
                   fillOpacity={0.3}
+                  data={mergedData}
                   onChange={(brushState: any) => {
                     if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
                       setZoomDomain({
@@ -1205,7 +1206,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 stroke="#3b82f6"
                 fill="#3b82f6"
                 fillOpacity={0.3}
-                data={mergedData}
+                data={selectedKpiData}
                 onChange={(brushState: any) => {
                   if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
                     setZoomDomain({
