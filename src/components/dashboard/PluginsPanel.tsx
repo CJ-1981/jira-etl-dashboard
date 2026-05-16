@@ -471,7 +471,7 @@ export function PluginsPanel() {
               </div>
             )}
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
-              <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[240px]">
+              <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
                 {Object.entries(plugins).map(([category, pluginList]) => (
                   <div key={category}>
                     <div
@@ -521,7 +521,7 @@ export function PluginsPanel() {
                 <p className="text-sm">No active plugins to reorder</p>
               </div>
             ) : (
-              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[240px]">
+              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
                 <DndContext 
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -713,7 +713,7 @@ export function PluginsPanel() {
               <span className="text-xs text-slate-400">{Object.keys(settings.sla?.statusTargets || {}).length} statuses configured</span>
             </div>
             {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
-              <div className="space-y-2 max-h-[480px] overflow-y-auto pr-2">
+              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
                 {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
                   <div key={status} className="flex items-center gap-3">
                     <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
@@ -786,7 +786,7 @@ export function PluginsPanel() {
               </span>
             </div>
 
-            <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2">
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
               {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
                 const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
                 const label = plugin?.name || pluginId;
