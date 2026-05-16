@@ -33,7 +33,7 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
   unit: 'tickets',
 
   calculate(context: KpiContext): KpiResult[] {
-    const referenceDate = new Date(); // Use current date for age calculation
+    const referenceDate = context.period.end || new Date(); // Use period end date for consistent age calculation
     const openIssues = context.issues.filter((i) => !isIssueDone(i));
 
     // Group tickets by assignee and age category
