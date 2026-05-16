@@ -922,8 +922,8 @@ export function KpiDashboard() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-4" data-period-section>
+        <CardContent data-period-section>
+          <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Analysis Period</Label>
