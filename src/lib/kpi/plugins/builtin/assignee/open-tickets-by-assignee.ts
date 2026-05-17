@@ -129,8 +129,8 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
 
-    // Reverse for horizontal bar chart (Recharts renders bottom-to-top)
-    return sortedResults.reverse();
+    // Return sorted results (no reversal needed - Recharts handles order correctly)
+    return sortedResults;
   },
 };
 

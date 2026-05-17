@@ -39,6 +39,17 @@ const priorityOrder: Record<string, number> = {
   'P3-Low': 3,
   'P4': 4,
   'P4-Lowest': 4,
+  // Handle case variations and Jira-specific formats
+  'p0': 0,
+  'p0-highest': 0,
+  'p1': 1,
+  'p1-high': 1,
+  'p2': 2,
+  'p2-medium': 2,
+  'p3': 3,
+  'p3-low': 3,
+  'p4': 4,
+  'p4-lowest': 4,
   'Unassigned': 999,
 };
 
@@ -141,8 +152,8 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
 
-    // Reverse for horizontal bar chart (Recharts renders bottom-to-top)
-    return sortedResults.reverse();
+    // Return sorted results (no reversal needed - Recharts handles order correctly)
+    return sortedResults;
   },
 };
 
