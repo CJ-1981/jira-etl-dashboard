@@ -320,7 +320,7 @@ export function KpiDashboard() {
         lastSyncedGlobalFiltersRef.current = globalFilters;
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [globalFilters]); // Only depend on globalFilters, not jqlFilters object
 
   const toggleDimension = (pluginId: string, value: string) => {
@@ -751,6 +751,9 @@ export function KpiDashboard() {
     sortedKpiResults.forEach((kpiResult) => {
       const { pluginId, results } = kpiResult;
       if (!results[0]) return;
+
+      // Do not include time-series plugins in widgets
+      if (isTimeSeriesPlugin(pluginId)) return;
 
       const dimension = results[0].dimensions;
       if (!dimension) return;
@@ -1486,7 +1489,7 @@ export function KpiDashboard() {
                                         </div>
                                         <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                           <div
-                                            className="absolute h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
+                                            className="absolute h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
                                             style={{ width: `${(result.value / maxValue) * 100}%` }}
                                           />
                                         </div>
@@ -1643,31 +1646,6 @@ export function KpiDashboard() {
                                           );
                                         })}
                                     </div>
-
-                                    {/* Age Category Breakdown */}
-                                    <div className="flex gap-2 flex-wrap">
-                                      {visibleResults
-                                        .sort((a, b) => {
-                                          const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                          const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                          const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                          return ageA - ageB;
-                                        })
-                                        .map((result, idx) => {
-                                          const ageCategory = result.dimensions?.ageCategory as string;
-                                          const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-
-                                          return (
-                                            <div key={idx} className="flex items-center gap-1 text-xs">
-                                              <div className={`w-2 h-2 rounded ${colorClass}`} />
-                                              <span className="text-slate-600 dark:text-slate-400">
-                                                {result.dimensions?.ageCategory === 'this_week' ? 'This week' :
-                                                 result.dimensions?.ageCategory === 'last_week' ? '1 week' : '2+ weeks'}: {result.value}
-                                              </span>
-                                            </div>
-                                          );
-                                        })}
-                                    </div>
                                   </div>
                                 </div>
                               );
@@ -1806,6 +1784,22 @@ export function KpiDashboard() {
                       </CardHeader>
                       {otherPriorityPanelExpanded && (
                         <CardContent>
+                          {/* Age Legend */}
+                          <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-slate-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-amber-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-emerald-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
+                            </div>
+                          </div>
                           <div className="space-y-3">
                             {(() => {
                               // Group results by priority
@@ -1890,45 +1884,15 @@ export function KpiDashboard() {
                                                 style={{ width: `${width}%` }}
                                                 onClick={() => handleDrillDown(result.ticketKeys || [], `${priority} (${result.dimensions?.ageCategory})`)}
                                                 title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
-                                              />
-                                            );
-                                          })}
-                                      </div>
-
-                                      {/* Age Category Breakdown */}
-                                      <div className="flex gap-2 flex-wrap">
-                                        {visibleResults
-                                          .sort((a, b) => {
-                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                            return ageA - ageB;
-                                          })
-                                          .map((result, idx) => {
-                                            const ageCategory = result.dimensions?.ageCategory as string;
-                                            const ageLabel: Record<string, string> = {
-                                              'existing': '2+ weeks',
-                                              'last_week': '1 week',
-                                              'this_week': 'This week',
-                                            };
-                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-
-                                            return (
-                                              <div key={idx} className="flex items-center gap-1.5 text-xs">
-                                                <div className={`w-2.5 h-2.5 rounded-sm ${colorClass}`} />
-                                                <span className="text-slate-600 dark:text-slate-400">
-                                                  {ageLabel[ageCategory] || ageCategory}: {result.value}
-                                                </span>
-                                              </div>
-                                            );
-                                          })}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
+                                                />
+                                                );
+                                                })}
+                                                </div>
+                                                </div>
+                                                </div>
+                                                );
+                                                });
+                                                })()}                          </div>
                           {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
                             <div className="text-xs text-slate-400 italic">
                               {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
@@ -2065,6 +2029,22 @@ export function KpiDashboard() {
                       </CardHeader>
                       {assigneePanelExpanded && (
                         <CardContent>
+                          {/* Age Legend */}
+                          <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-slate-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-amber-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-emerald-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
+                            </div>
+                          </div>
                           <div className="space-y-3">
                             {(() => {
                               // Group results by assignee or team
@@ -2151,45 +2131,15 @@ export function KpiDashboard() {
                                                 style={{ width: `${width}%` }}
                                                 onClick={() => handleDrillDown(result.ticketKeys || [], `${key} (${result.dimensions?.ageCategory})`)}
                                                 title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
-                                              />
-                                            );
-                                          })}
-                                      </div>
-
-                                      {/* Age Category Breakdown */}
-                                      <div className="flex gap-2 flex-wrap">
-                                        {visibleResults
-                                          .sort((a, b) => {
-                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                            return ageA - ageB;
-                                          })
-                                          .map((result, idx) => {
-                                            const ageCategory = result.dimensions?.ageCategory as string;
-                                            const ageLabel: Record<string, string> = {
-                                              'existing': '2+ weeks',
-                                              'last_week': '1 week',
-                                              'this_week': 'This week',
-                                            };
-                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-
-                                            return (
-                                              <div key={idx} className="flex items-center gap-1.5 text-xs">
-                                                <div className={`w-2.5 h-2.5 rounded-sm ${colorClass}`} />
-                                                <span className="text-slate-600 dark:text-slate-400">
-                                                  {ageLabel[ageCategory] || ageCategory}: {result.value}
-                                                </span>
-                                              </div>
-                                            );
-                                          })}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
+                                                />
+                                                );
+                                                })}
+                                                </div>
+                                                </div>
+                                                </div>
+                                                );
+                                                });
+                                                })()}                          </div>
                           {kpi.results.some((r: KpiCalcResult['results'][0]) => {
                             const dimensionKey = kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team' : 'assignee';
                             return hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] || r.name}`);

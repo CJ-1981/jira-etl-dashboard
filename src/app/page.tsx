@@ -144,7 +144,7 @@ export default function Home() {
     // @MX:NOTE: Mount-only initialization. loadMasterDataset and storageConfig 
     // are intentionally omitted as we want to trigger initial data load 
     // ONLY once using the fresh values read directly from localConfig.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);
 
   // Secondary effect: Handle connection changes after initial load
@@ -237,7 +237,7 @@ export default function Home() {
     } else {
       if (isDev) console.log('[App] Master dataset date range not available yet');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [activeConnectionId, mounted, masterDatasetInfo]);
 
   useEffect(() => {

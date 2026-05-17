@@ -35,7 +35,7 @@ const openTicketsByStatusPlugin: KpiPlugin = {
   unit: 'tickets',
 
   calculate(context: KpiContext): KpiResult[] {
-    const referenceDate = context.period.end || new Date(); // Use period end date for consistent age calculation
+    const referenceDate = context.period?.end ?? new Date(); // Use period end date for consistent age calculation
     const openIssues = context.issues.filter((i) => !isIssueDone(i));
 
     // Group tickets by status and age category

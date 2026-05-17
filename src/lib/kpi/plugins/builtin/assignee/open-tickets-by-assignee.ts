@@ -116,7 +116,7 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
     );
 
     const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-    return results.sort((a, b) => {
+    const sortedResults = results.sort((a, b) => {
       const assigneeA = a.dimensions?.assignee || '';
       const assigneeB = b.dimensions?.assignee || '';
       const totalA = assigneeTotals[assigneeA] || 0;
@@ -128,6 +128,9 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
       if (assigneeA !== assigneeB) return assigneeA.localeCompare(assigneeB);
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
+
+    // Reverse for horizontal bar chart (Recharts renders bottom-to-top)
+    return sortedResults.reverse();
   },
 };
 

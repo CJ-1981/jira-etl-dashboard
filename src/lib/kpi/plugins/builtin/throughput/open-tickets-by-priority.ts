@@ -50,7 +50,7 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
   unit: 'tickets',
 
   calculate(context: KpiContext): KpiResult[] {
-    const referenceDate = context.period.end || new Date(); // Use period end date for consistent age calculation
+    const referenceDate = context.period?.end ?? new Date(); // Use period end date for consistent age calculation
     const openIssues = context.issues.filter((i) => !isIssueDone(i));
 
     // Group tickets by priority and age category
@@ -124,7 +124,7 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
 
     // Sort results by priority (ascending P0→P3), then by age category (existing → last_week → this_week)
     const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-    return results.sort((a, b) => {
+    const sortedResults = results.sort((a, b) => {
       const priorityA = a.dimensions?.priority || '';
       const priorityB = b.dimensions?.priority || '';
       const orderA = priorityOrder[priorityA] ?? 999;
@@ -135,6 +135,9 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
       if (orderA !== orderB) return orderA - orderB; // Ascending priority (P0 → P3)
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
+
+    // Reverse for horizontal bar chart (Recharts renders bottom-to-top)
+    return sortedResults.reverse();
   },
 };
 

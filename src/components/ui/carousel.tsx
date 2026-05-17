@@ -96,7 +96,7 @@ function Carousel({
   // useLayoutEffect for synchronous external system setup (carousel API)
   React.useLayoutEffect(() => {
     if (!api) return
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- External system sync: Embla carousel API events */
+     
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)

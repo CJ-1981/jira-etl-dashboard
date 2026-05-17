@@ -128,7 +128,7 @@ export function useWidgetOrder(): UseWidgetOrderResult {
       const widgetKpis = excludeFilter ? availableKpis.filter(id => !excludeFilter(id)) : availableKpis;
 
       // Add any new KPIs that aren't already in the order
-      const existingKpis = prev.filter(id => !id.startsWith('panel-'));
+      const existingKpis = prev.filter(id => !id.startsWith('panel-') && (!excludeFilter || !excludeFilter(id)));
       const newKpis = widgetKpis.filter(id => !existingKpis.includes(id));
       const panels = prev.filter(id => id.startsWith('panel-'));
 

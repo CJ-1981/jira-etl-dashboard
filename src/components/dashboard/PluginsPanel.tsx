@@ -324,12 +324,28 @@ export function PluginsPanel() {
     const allPluginIds = Object.values(plugins).flat().map(p => p.id);
     setActivePlugins(allPluginIds);
     saveActivePlugins(allPluginIds);
-  }, [plugins, saveActivePlugins]);
+
+    // Add all plugin widgets to widget order when selecting all (excluding time-series)
+    const allPluginWidgetIds = allPluginIds
+      .filter(id => !isTimeSeriesPlugin(id))
+      .map(id => `plugin-${id}`);
+
+    // Add any missing widgets to the order
+    allPluginWidgetIds.forEach(widgetId => {
+      if (!widgetOrder.includes(widgetId)) {
+        toggleWidgetVisibility(widgetId);
+      }
+    });
+  }, [plugins, saveActivePlugins, widgetOrder, toggleWidgetVisibility]);
 
   const deselectAllPlugins = useCallback(() => {
     setActivePlugins([]);
     saveActivePlugins([]);
-  }, [saveActivePlugins]);
+
+    // Remove all plugin widgets from widget order when deselecting all
+    const pluginWidgetIds = widgetOrder.filter(id => id.startsWith('plugin-'));
+    pluginWidgetIds.forEach(widgetId => toggleWidgetVisibility(widgetId));
+  }, [saveActivePlugins, toggleWidgetVisibility, widgetOrder]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -747,16 +763,21 @@ export function PluginsPanel() {
                     {widgetOrder
                       .filter(id => id.startsWith('plugin-')) // Only KPI plugins
                       .map((id) => {
-                        const plugin = pluginLookupMap.get(id.replace('plugin-', ''));
+                        const pluginId = id.replace('plugin-', '');
+                        const plugin = pluginLookupMap.get(pluginId);
                         if (!plugin || isTimeSeriesPlugin(plugin.id)) return null;
+
+                        // Only show active plugins in widget display order
+                        const isActive = activePlugins.includes(pluginId);
+                        if (!isActive) return null;
 
                         return (
                           <SortablePluginItem
                             key={id}
                             plugin={plugin}
-                            isActive={true}
+                            isActive={isActive}
                             sortableId={id} // Use prefixed ID for sorting in widget order
-                            onToggle={() => togglePlugin(id.replace('plugin-', ''))}
+                            onToggle={() => togglePlugin(pluginId)}
                           />
                         );
                       })}
