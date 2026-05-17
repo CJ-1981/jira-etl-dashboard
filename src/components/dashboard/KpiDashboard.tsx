@@ -203,7 +203,7 @@ export function KpiDashboard() {
     globalFilters
   );
 
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  // Table-only view — grid view removed
 
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
@@ -816,18 +816,6 @@ export function KpiDashboard() {
       }));
   }, [widgetOrder, widgetOrderMapping]);
 
-  // Results specifically for the Table View (Metrics Overview)
-  // Excludes trend items (time series) and metrics with specific breakdown dimensions
-  const tableKpiResults = useMemo(() => {
-    return sortedKpiResults.filter((r: KpiCalcResult) =>
-      !r.results[0]?.dimensions?.status &&
-      !r.results[0]?.dimensions?.priority &&
-      !r.results[0]?.dimensions?.assignee &&
-      !r.results[0]?.dimensions?.team &&
-      !r.results[0]?.dimensions?.bucket &&
-      !isTimeSeriesPlugin(r.pluginId)
-    );
-  }, [sortedKpiResults]);
 
   // Helper function to extract value from Jira select fields
   const extractSelectFieldValue = (field: any): string | null => {
@@ -1358,25 +1346,6 @@ export function KpiDashboard() {
               Metrics Overview
             </h3>
 
-            <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'grid' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-              >
-                Grid View
-              </Button>
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('table')}
-                className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'table' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-              >
-                Table View
-              </Button>
-            </div>
-
             <Button
               variant="outline"
               size="sm"
@@ -1386,53 +1355,12 @@ export function KpiDashboard() {
               <Download className="h-3.5 w-3.5 mr-1.5" />
               Export CSV
             </Button>
-
-            {Array.from(hiddenDimensions).some(k => mainKpis.some(mk => k === `${mk.pluginId}|`)) && (
-              <Button variant="ghost" size="sm" onClick={() => {
-                setHiddenDimensions((prev: Set<string>) => {
-                  const next = new Set(prev);
-                  mainKpis.forEach(mk => next.delete(`${mk.pluginId}|`));
-                  return next;
-                });
-              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                <RotateCw className="h-3 w-3 mr-1" /> Restore All Widgets
-              </Button>
-            )}
           </div>
-          {viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
-              {mainKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
-                const titleKey = `${kpi.pluginId}|${result.name}`;
-                return (
-                  <KpiErrorBoundary key={`${kpi.pluginId}-${idx}`} name={result.name}>
-                    <KpiCard
-                      result={result}
-                      pluginId={kpi.pluginId}
-                      onHide={() => toggleDimension(kpi.pluginId, '')}
-                      onClick={result.ticketKeys ? () => {
-                        handleDrillDown(result.ticketKeys || [], result.name);
-                      } : undefined}
-                      customTitle={widgetTitles[titleKey]}
-                      onTitleChange={(newTitle) => {
-                        setWidgetTitles(prev => {
-                          const next = { ...prev };
-                          if (newTitle) next[titleKey] = newTitle;
-                          else delete next[titleKey];
-                          return next;
-                        });
-                      }}
-                    />
-                  </KpiErrorBoundary>
-                );
-              }))}
-            </div>
-          ) : (
-            <KpiDataTable
-              results={tableKpiResults}
-              onDrillDown={handleDrillDown}
-            />
-          )}
+          <KpiDataTable
+            results={sortedKpiResults}
+            onDrillDown={handleDrillDown}
+            getPluginName={getPluginName}
+          />
         </div>
 
         {/* Ordered Widgets Section - follows widget display order */}
