@@ -30,10 +30,15 @@ const priorityOrder: Record<string, number> = {
   'Low': 3,
   'Lowest': 4,
   'P0': 0,
+  'P0-Highest': 0,
   'P1': 1,
+  'P1-High': 1,
   'P2': 2,
+  'P2-Medium': 2,
   'P3': 3,
+  'P3-Low': 3,
   'P4': 4,
+  'P4-Lowest': 4,
   'Unassigned': 999,
 };
 
