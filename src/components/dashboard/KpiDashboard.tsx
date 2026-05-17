@@ -768,6 +768,8 @@ export function KpiDashboard() {
         componentType = 'other-priority';
       } else if (dimension.assignee || dimension.team) {
         componentType = 'assignee'; // Team dimension uses same rendering as assignee
+      } else if (dimension.bucket && pluginId === 'cycle_time_histogram') {
+        componentType = 'cycle-time-histogram'; // Route to histogram chart
       } else {
         componentType = 'main';
       }
@@ -2154,6 +2156,33 @@ export function KpiDashboard() {
                       )}
                     </Card>
                   )) : null;
+
+                case 'cycle-time-histogram':
+                  return widget.kpis.length > 0 ? (
+                    <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                      <ChartCard
+                        key={`cycle-time-histogram-${widget.kpis[0].pluginId}`}
+                        config={{
+                          id: `cycle-time-histogram-${widget.kpis[0].pluginId}`,
+                          type: 'bar',
+                          kpiId: widget.kpis[0].pluginId,
+                          width: 'lg',
+                          height: 'md',
+                          jqlFilter: { enabled: false, query: '', mode: 'override' }
+                        }}
+                        kpiResults={kpiResults}
+                        hiddenDimensions={hiddenDimensions}
+                        toggleDimension={toggleDimension}
+                        onRemove={handleRemoveChart}
+                        onChange={handleUpdateChart}
+                        onMoveUp={handleMoveChart ? (id) => handleMoveChart(id, 'up') : undefined}
+                        onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
+                        onClick={handleDrillDown}
+                        theme={theme as any}
+                        calculateWidgetJql={calculateWidgetJql}
+                      />
+                    </div>
+                  ) : null;
 
                 default:
                   return null;
