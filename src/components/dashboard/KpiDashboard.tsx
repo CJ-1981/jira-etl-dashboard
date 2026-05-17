@@ -118,6 +118,7 @@ export function KpiDashboard() {
   const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
   const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
   const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
+  const [metricsOverviewExpanded, setMetricsOverviewExpanded] = useState(true);
 
   // Plugin registry for names
   const [pluginRegistry, setPluginRegistry] = useState<Record<string, KpiPlugin>>({});
@@ -1341,26 +1342,53 @@ export function KpiDashboard() {
       {kpiResults.length > 0 && (<>
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-emerald-500" />
-              Metrics Overview
-            </h3>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportKpis}
-              className="h-8 text-[10px] uppercase tracking-wider font-bold border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+            <button
+              onClick={() => setMetricsOverviewExpanded(!metricsOverviewExpanded)}
+              className="flex items-center gap-2 group text-left"
+              aria-expanded={metricsOverviewExpanded}
             >
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Export CSV
-            </Button>
+              <Activity className="h-5 w-5 text-emerald-500 shrink-0" />
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                Metrics Overview
+              </h3>
+              {metricsOverviewExpanded
+                ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+              <span className="text-xs text-slate-400 font-normal ml-1">
+                {metricsOverviewExpanded ? '' : `(${sortedKpiResults.reduce((acc, r) => acc + r.results.length, 0)} rows)`}
+              </span>
+            </button>
+
+            {metricsOverviewExpanded && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportKpis}
+                className="h-8 text-[10px] uppercase tracking-wider font-bold border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Export CSV
+              </Button>
+            )}
           </div>
-          <KpiDataTable
-            results={sortedKpiResults}
-            onDrillDown={handleDrillDown}
-            getPluginName={getPluginName}
-          />
+          <AnimatePresence initial={false}>
+            {metricsOverviewExpanded && (
+              <motion.div
+                key="metrics-table"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                style={{ overflow: 'hidden' }}
+              >
+                <KpiDataTable
+                  results={sortedKpiResults}
+                  onDrillDown={handleDrillDown}
+                  getPluginName={getPluginName}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Ordered Widgets Section - follows widget display order */}
