@@ -870,27 +870,34 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         // Debug logging
         if (process.env.NODE_ENV === 'development' && config.kpiId?.includes('open_tickets_by')) {
+          const dataValues = visibleBarData.map(d => ({
+            name: d.name,
+            thisWeek: d.thisWeek,
+            prevWeek: d.prevWeek,
+            existing: d.existing,
+            totalValue: d.value,
+            hasThisWeek: d.thisWeek !== undefined,
+            hasPrevWeek: d.prevWeek !== undefined,
+            hasExisting: d.existing !== undefined,
+            thisWeekValue: d.thisWeek || 0,
+            prevWeekValue: d.prevWeek || 0,
+            existingValue: d.existing || 0
+          }));
+
           console.log('[ChartCard] Bar rendering debug:', {
             kpiId: config.kpiId,
             hasAgeBreakdownInResults,
             hasWeeklyLayers,
             kpiResults: kpi?.results?.length,
             visibleBarData: visibleBarData.length,
-            sampleData: visibleBarData[0],
-            allDataFields: visibleBarData.map(d => ({
-              name: d.name,
-              thisWeek: d.thisWeek,
-              prevWeek: d.prevWeek,
-              existing: d.existing,
-              totalValue: d.value
-            })),
-            rawDataStructure: visibleBarData.map(d => ({
-              keys: Object.keys(d),
-              values: Object.values(d)
-            })),
+            dataValues,
             hiddenDimensions: Array.from(hiddenDimensions),
             shouldRenderStandardBar: !hasWeeklyLayers,
-            shouldRenderAgeBreakdownBars: hasWeeklyLayers
+            shouldRenderAgeBreakdownBars: hasWeeklyLayers,
+            totalThisWeek: dataValues.reduce((sum, d) => sum + d.thisWeekValue, 0),
+            totalPrevWeek: dataValues.reduce((sum, d) => sum + d.prevWeekValue, 0),
+            totalExisting: dataValues.reduce((sum, d) => sum + d.existingValue, 0),
+            maxTotalValue: Math.max(...dataValues.map(d => d.totalValue))
           });
         }
 
@@ -966,7 +973,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     name="This Week"
                     fill={AGE_CATEGORY_COLORS.this_week}
                     stackId="ageBreakdown"
-                    hide={hiddenDimensions.has(`${config.kpiId}|This Week`)}
                     cursor="pointer"
                     onClick={(data) => {
                       if (data && data.ticketKeys) {
@@ -979,7 +985,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     name="1 week old"
                     fill={AGE_CATEGORY_COLORS.last_week}
                     stackId="ageBreakdown"
-                    hide={hiddenDimensions.has(`${config.kpiId}|1 week old`)}
                     cursor="pointer"
                     onClick={(data) => {
                       if (data && data.ticketKeys) {
@@ -992,7 +997,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     name="2+ weeks old"
                     fill={AGE_CATEGORY_COLORS.existing}
                     stackId="ageBreakdown"
-                    hide={hiddenDimensions.has(`${config.kpiId}|2+ weeks old`)}
                     cursor="pointer"
                     onClick={(data) => {
                       if (data && data.ticketKeys) {
