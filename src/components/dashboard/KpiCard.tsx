@@ -992,19 +992,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                       }
                     }}
                   />
-                  <Bar
-                    dataKey="existing"
-                    name="2+ weeks old"
-                    fill={AGE_CATEGORY_COLORS.existing}
-                    radius={[4, 4, 0, 0]}
-                    hide={hiddenDimensions.has(`${config.kpiId}|2+ weeks old`)}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "2+ weeks old");
-                      }
-                    }}
-                  />
                 </>
               )}
             </BarChart>
