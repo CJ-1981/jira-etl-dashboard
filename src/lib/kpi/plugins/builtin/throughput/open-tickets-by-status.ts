@@ -107,17 +107,30 @@ const openTicketsByStatusPlugin: KpiPlugin = {
       }
     }
 
-    // Sort results by status, then by age category (existing → last_week → this_week)
+    // Sort results by total status count (descending), then by age category (existing → last_week → this_week)
+    const statusTotals = Object.fromEntries(
+      Object.entries(statusAgeGroups).map(([status, groups]) => [
+        status,
+        groups.existing.size + groups.last_week.size + groups.this_week.size
+      ])
+    );
+
     const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-    return results.sort((a, b) => {
+    const sortedResults = results.sort((a, b) => {
       const statusA = a.dimensions?.status || '';
       const statusB = b.dimensions?.status || '';
+      const totalA = statusTotals[statusA] || 0;
+      const totalB = statusTotals[statusB] || 0;
       const ageA = ageOrder[a.dimensions?.ageCategory as AgeCategory] ?? 999;
       const ageB = ageOrder[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
+      if (totalA !== totalB) return totalB - totalA; // Descending total count
       if (statusA !== statusB) return statusA.localeCompare(statusB);
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
+
+    // Reverse for horizontal bar chart (Recharts renders bottom-to-top)
+    return sortedResults.reverse();
   },
 };
 

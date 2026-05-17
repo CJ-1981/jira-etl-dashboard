@@ -93,11 +93,9 @@ export function transformForBarChart(
 
   // If we have multiple results, it's likely a breakdown (by status, priority, assignee, etc.)
   if (kpi.results.length > 1 || kpi.results[0]?.dimensions) {
-    const sortedResults = [...kpi.results].sort((a, b) => {
-      const aDim = Object.values(a.dimensions || {}).join('') || a.name;
-      const bDim = Object.values(b.dimensions || {}).join('') || b.name;
-      return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
-    });
+    // @MX:NOTE: Preserve plugin's sorting order (by ticket count or priority)
+    // @MX:REASON: Plugins already sort results correctly; don't override with alphabetical sorting
+    const sortedResults = kpi.results;
 
     // Check if results contain age breakdown data (by checking for ageCategory dimensions or age-related naming patterns)
     const hasAgeBreakdown = kpi.results.some(r =>
@@ -172,7 +170,9 @@ export function transformForBarChart(
       }
 
       // Convert grouped data to chart format with age breakdown
-      return Array.from(grouped.values()).map((group) => ({
+      // @MX:NOTE: Sort grouped data by total count DESC to preserve plugin ordering
+      // @MX:REASON: Map maintains insertion order but we need explicit sort after grouping
+      const groupedArray = Array.from(grouped.values()).map((group) => ({
         name: group.baseName,
         value: group.thisWeek + group.prevWeek + group.existing,
         fill: group.fill,
@@ -181,6 +181,9 @@ export function transformForBarChart(
         prevWeek: group.prevWeek || 0,
         existing: group.existing || 0,
       }));
+
+      // Sort by total count (descending) to match plugin's sort order
+      return groupedArray.sort((a, b) => b.value - a.value);
     }
 
     // Regular processing for non-age-breakdown results
@@ -250,11 +253,9 @@ export function transformForPieChart(
   const kpi = kpiResults.find((k) => k.pluginId === selectedKpiId);
   if (!kpi || kpi.results.length === 0) return [];
 
-  const sortedResults = [...kpi.results].sort((a, b) => {
-    const aDim = Object.values(a.dimensions || {}).join('') || a.name;
-    const bDim = Object.values(b.dimensions || {}).join('') || b.name;
-    return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
-  });
+  // @MX:NOTE: Preserve plugin's sorting order
+  // @MX:REASON: Plugins already sort results correctly; don't override
+  const sortedResults = kpi.results;
 
   return sortedResults.map((result, index) => {
     const dimensionValues = Object.values(result.dimensions || {});
@@ -304,11 +305,9 @@ export function transformForLineChart(
 
   // Fallback: treat dimensions as x-axis categories
   if (kpi.results.length > 1 || kpi.results[0]?.dimensions) {
-    const sortedResults = [...kpi.results].sort((a, b) => {
-      const aDim = Object.values(a.dimensions || {}).join('') || a.name;
-      const bDim = Object.values(b.dimensions || {}).join('') || b.name;
-      return aDim.localeCompare(bDim, undefined, { numeric: true, sensitivity: 'base' });
-    });
+    // @MX:NOTE: Preserve plugin's sorting order
+    // @MX:REASON: Plugins already sort results correctly; don't override
+    const sortedResults = kpi.results;
 
     return sortedResults.map((result) => {
       const dimensionValues = Object.values(result.dimensions || {});

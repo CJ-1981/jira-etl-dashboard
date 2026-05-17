@@ -544,6 +544,8 @@ export function transformIssue(issue: JiraIssue) {
   const transitions = extractTransitions(issue);
 
   // Extract Issue Owner Team value from select field object
+  // @MX:NOTE: Use hardcoded customfield_10132 for Issue Owner Team (LTIC)
+  // @MX:REASON: Custom Jira field that varies by instance; use REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD env var to override
   const issueOwnerTeam = extractSelectFieldValue(issue.fields.customfield_10132);
 
   return {

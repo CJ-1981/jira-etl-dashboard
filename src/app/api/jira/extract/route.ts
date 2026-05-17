@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { extractSelectFieldValue } from '@/lib/jira/client';
 import { JiraClient } from '@/lib/jira/client';
 import { getDb } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
@@ -285,6 +286,7 @@ export async function POST(request: Request) {
             status: fields.status?.name || 'Unknown',
             assignee: fields.assignee?.displayName || 'Unassigned',
             reporter: fields.reporter?.displayName || 'Unknown',
+            issueOwnerTeam: extractSelectFieldValue((fields as any)?.customfield_10132) || null,
             created: fields.created ? new Date(fields.created) : new Date(),
             updated: fields.updated ? new Date(fields.updated) : new Date(),
             resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
@@ -301,6 +303,7 @@ export async function POST(request: Request) {
             status: fields.status?.name || 'Unknown',
             assignee: fields.assignee?.displayName || 'Unassigned',
             reporter: fields.reporter?.displayName || 'Unknown',
+            issueOwnerTeam: extractSelectFieldValue((fields as any)?.customfield_10132) || null,
             updated: fields.updated ? new Date(fields.updated) : new Date(),
             resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
             dueDate: fields.duedate ? new Date(fields.duedate) : null,
