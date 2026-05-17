@@ -741,7 +741,7 @@ export function KpiDashboard() {
     });
   }, [kpiResults, pluginVisibility.activePlugins]);
 
-  const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !r.results[0]?.dimensions?.team && !isTimeSeriesPlugin(r.pluginId));
+  const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !r.results[0]?.dimensions?.team && !r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
   // @MX:NOTE: Widget Order Mapping - Maps widget display order IDs to their corresponding KPI groups
   // @MX:REASON: Groups plugins by dimension type for organized dashboard rendering
   const widgetOrderMapping = useMemo(() => {
@@ -808,6 +808,7 @@ export function KpiDashboard() {
       !r.results[0]?.dimensions?.priority &&
       !r.results[0]?.dimensions?.assignee &&
       !r.results[0]?.dimensions?.team &&
+      !r.results[0]?.dimensions?.bucket &&
       !isTimeSeriesPlugin(r.pluginId)
     );
   }, [sortedKpiResults]);
