@@ -14,7 +14,7 @@
  * }
  * ```
  */
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
 export interface UsePluginVisibilityResult {
   /** Array of active plugin IDs in current order */
@@ -67,14 +67,48 @@ export function usePluginVisibility(
   });
 
   const [filter, setFilter] = useState<string>('');
+  // Guard: true while this hook is writing to storage to avoid reacting to its own events
+  const isSelfWriting = useRef(false);
+
+  // Re-sync from localStorage whenever the storage key changes externally
+  // (e.g. Plugin Config tab saves a new selection, then user returns to Dashboard)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncFromStorage = () => {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved !== null) {
+          const parsed = JSON.parse(saved) as string[];
+          setActivePlugins(parsed);
+        }
+      } catch (error) {
+        console.error(`Failed to sync ${storageKey} from localStorage:`, error);
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === storageKey && !isSelfWriting.current) {
+        syncFromStorage();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [storageKey]);
 
   // Persist to local storage on change
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     try {
+      isSelfWriting.current = true;
       localStorage.setItem(storageKey, JSON.stringify(activePlugins));
+      // Reset on next microtask so the storage event (dispatched synchronously by PluginsPanel)
+      // is processed before we clear the flag
+      Promise.resolve().then(() => { isSelfWriting.current = false; });
     } catch (error) {
+      isSelfWriting.current = false;
       console.error(`Failed to save ${storageKey} to localStorage:`, error);
     }
   }, [activePlugins, storageKey]);

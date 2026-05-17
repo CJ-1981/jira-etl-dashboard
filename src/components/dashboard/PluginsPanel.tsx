@@ -240,6 +240,13 @@ export function PluginsPanel() {
 
   const saveActivePlugins = useCallback((pluginIds: string[]) => {
     localStorage.setItem('cfg_active_plugins', JSON.stringify(pluginIds));
+    // Dispatch a StorageEvent so same-tab listeners (e.g. usePluginVisibility) can react.
+    // The native `storage` event only fires in other tabs, not the originating tab.
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'cfg_active_plugins',
+      newValue: JSON.stringify(pluginIds),
+      storageArea: localStorage,
+    }));
   }, []);
 
   // Load collapsed groups from localStorage

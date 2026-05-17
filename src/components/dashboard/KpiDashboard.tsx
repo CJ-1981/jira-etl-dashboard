@@ -737,16 +737,20 @@ export function KpiDashboard() {
     // Use activePlugins from usePluginVisibility hook
     const activeOrder = pluginVisibility.activePlugins;
 
-    // If never configured (all plugins active), show all in original order
-    if (activeOrder.length === kpiResults.length) {
-      return kpiResults;
-    }
-
     // If explicitly none selected
     if (activeOrder.length === 0) return [];
 
-    // Sort by active plugin order
-    return [...kpiResults].sort((a, b) => {
+    // Check if there is a saved list in localStorage (i.e. the user configured plugins)
+    const hasSavedList = typeof window !== 'undefined'
+      ? localStorage.getItem('cfg_active_plugins') !== null
+      : false;
+
+    // If never configured, show all in original order (no filter applied)
+    if (!hasSavedList) return kpiResults;
+
+    // Filter to only active plugins, then sort by configured order
+    const filtered = kpiResults.filter(r => activeOrder.includes(r.pluginId));
+    return filtered.sort((a, b) => {
       const idxA = activeOrder.indexOf(a.pluginId);
       const idxB = activeOrder.indexOf(b.pluginId);
       if (idxA === -1 && idxB === -1) return 0;
