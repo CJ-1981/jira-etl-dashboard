@@ -780,7 +780,13 @@ export function KpiDashboard() {
       // Determine component type based on dimension
       let componentType: string;
       if (dimension.status) {
-        componentType = pluginId === 'time_in_status' ? 'status-time' : 'status-open';
+        if (pluginId === 'time_in_status') {
+          componentType = 'status-time';
+        } else if (pluginId === 'sla_by_status' || pluginId === 'sla_by_status_excl_clone') {
+          componentType = 'sla-status';
+        } else {
+          componentType = 'status-open';
+        }
       } else if (dimension.priority && pluginId === 'sla_by_priority') {
         componentType = 'sla-priority';
       } else if (dimension.priority) {
