@@ -442,6 +442,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="kpi" className="space-y-6">
+            {/* @MX:NOTE: Enable smooth scroll to top on sub-tab switch for better UX */}
             <Tabs value={kpiSubTab} onValueChange={(value) => {
               setKpiSubTab(value);
               window.scrollTo({ top: 0, behavior: 'smooth' });
