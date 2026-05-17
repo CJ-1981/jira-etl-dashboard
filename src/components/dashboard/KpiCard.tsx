@@ -849,7 +849,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
-        const visibleBarData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
+        const visibleBarData = selectedKpiData; // Temporarily disable filtering to test
         // Check for age breakdown layers in data (thisWeek, prevWeek, existing fields)
         // OR check if the KPI results contain age breakdown patterns
         const hasAgeBreakdownInResults = kpi?.results?.some((r: any) =>
@@ -870,117 +870,39 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         // Debug logging
         if (process.env.NODE_ENV === 'development' && config.kpiId?.includes('open_tickets_by')) {
-          const dataValues = visibleBarData.map(d => ({
-            name: d.name,
-            thisWeek: d.thisWeek,
-            prevWeek: d.prevWeek,
-            existing: d.existing,
-            totalValue: d.value,
-            hasThisWeek: d.thisWeek !== undefined,
-            hasPrevWeek: d.prevWeek !== undefined,
-            hasExisting: d.existing !== undefined,
-            thisWeekValue: d.thisWeek || 0,
-            prevWeekValue: d.prevWeek || 0,
-            existingValue: d.existing || 0
-          }));
-
-          console.log('[ChartCard] Bar rendering debug:', {
+          const firstItem = visibleBarData[0];
+          console.log('[ChartCard] Detailed data structure:', {
             kpiId: config.kpiId,
-            hasAgeBreakdownInResults,
+            visibleBarDataCount: visibleBarData.length,
+            firstItemKeys: Object.keys(firstItem || {}),
+            firstItemValues: Object.values(firstItem || {}),
+            firstItemRaw: firstItem,
             hasWeeklyLayers,
-            kpiResults: kpi?.results?.length,
-            visibleBarData: visibleBarData.length,
-            dataValues,
-            hiddenDimensions: Array.from(hiddenDimensions),
-            shouldRenderStandardBar: !hasWeeklyLayers,
             shouldRenderAgeBreakdownBars: hasWeeklyLayers,
-            totalThisWeek: dataValues.reduce((sum, d) => sum + d.thisWeekValue, 0),
-            totalPrevWeek: dataValues.reduce((sum, d) => sum + d.prevWeekValue, 0),
-            totalExisting: dataValues.reduce((sum, d) => sum + d.existingValue, 0),
-            maxTotalValue: Math.max(...dataValues.map(d => d.totalValue))
+            chartHeight,
+            barConfig: {
+              dataKey: 'value',
+              dataKeyExistsInFirstItem: 'value' in (firstItem || {}),
+              valueOfFirstItem: firstItem?.value
+            }
           });
         }
 
+        // TEST: Use simplest possible hardcoded data
+        const testData = [
+          { name: 'A', value: 10 },
+          { name: 'B', value: 20 },
+          { name: 'C', value: 15 }
+        ];
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+            <BarChart data={testData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
+              <XAxis dataKey="name" className="text-xs" />
               <YAxis className="text-xs" />
-              <Tooltip
-                {...tooltipStyle}
-                content={<CustomBarTooltip />}
-              />
-              {(hasWeeklyLayers || selectedKpiData.length > 1) && (
-                <Legend
-                  onClick={handleLegendClick}
-                  cursor="pointer"
-                  formatter={renderLegend}
-                  verticalAlign="top"
-                  align="right"
-                  wrapperStyle={{ paddingBottom: '20px' }}
-                  payload={[
-                    // Age breakdown legends FIRST (at the beginning)
-                    ...(hasWeeklyLayers ? [
-                      {
-                        value: 'This Week',
-                        type: 'rect' as any,
-                        id: 'This Week',
-                        color: AGE_CATEGORY_COLORS.this_week
-                      },
-                      {
-                        value: '1 week old',
-                        type: 'rect' as any,
-                        id: '1 week old',
-                        color: AGE_CATEGORY_COLORS.last_week
-                      },
-                      {
-                        value: '2+ weeks old',
-                        type: 'rect' as any,
-                        id: '2+ weeks old',
-                        color: AGE_CATEGORY_COLORS.existing
-                      }
-                    ] : []),
-                    // THEN data legends (assignee names, priorities, statuses)
-                    ...selectedKpiData.map((d, idx) => ({
-                      value: d.name,
-                      type: 'rect' as any,
-                      id: d.name,
-                      color: d.fill || CHART_COLORS[idx % CHART_COLORS.length]
-                    }))
-                  ]}
-                />
-              )}
-              {/* @MX:ANCHOR: Bar Chart (Standard) */}
-              {!hasWeeklyLayers && (
-                <Bar
-                  dataKey="value"
-                  name="Total Period"
-                  fill="#3b82f6"
-                  hide={hiddenDimensions.has(`${config.kpiId}|Total Period`)}
-                  cursor="pointer"
-                  onClick={(data) => {
-                    if (data && data.ticketKeys) {
-                      onClick(data.ticketKeys, data.name || 'Total Period');
-                    }
-                  }}
-                />
-              )}
-              {hasWeeklyLayers && (
-                <>
-                  <Bar
-                    dataKey="value"
-                    name="Total"
-                    fill="#3b82f6"
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "Total");
-                      }
-                    }}
-                  />
-                </>
-              )}
+              <Tooltip />
+              <Bar dataKey="value" fill="#3b82f6" />
             </BarChart>
           </ResponsiveContainer>
         );
