@@ -4,6 +4,8 @@
  * Transforms KPI results into chart-friendly data formats for Recharts
  */
 
+import { KEYS } from './config/local-store';
+
 export interface KpiResult {
   pluginId: string;
   results: Array<{
@@ -170,8 +172,8 @@ export function transformForBarChart(
       }
 
       // Convert grouped data to chart format with age breakdown
-      // @MX:NOTE: Sort grouped data by total count DESC to preserve plugin ordering
-      // @MX:REASON: Map maintains insertion order but we need explicit sort after grouping
+      // @MX:NOTE: Preserve plugin's custom sorting order (e.g., priority P0->P3 or kanban order)
+      // @MX:REASON: Map maintains the baseName insertion order from the already-sorted plugin results
       const groupedArray = Array.from(grouped.values()).map((group) => ({
         name: group.baseName,
         value: group.thisWeek + group.prevWeek + group.existing,
@@ -182,8 +184,7 @@ export function transformForBarChart(
         existing: group.existing || 0,
       }));
 
-      // Sort by total count (descending) to match plugin's sort order
-      return groupedArray.sort((a, b) => b.value - a.value);
+      return groupedArray;
     }
 
     // Regular processing for non-age-breakdown results
@@ -339,7 +340,7 @@ export function transformForLineChart(
  */
 export function isTimeSeriesPlugin(pluginId: string): boolean {
   // Normalize plugin ID (remove 'plugin-' prefix if present)
-  const normalizedId = pluginId.replace('plugin-', '').replace(/^plugin-/, '');
+  const normalizedId = pluginId.replace(/^plugin-/, '');
 
   // Check if plugin ID contains '_trend' (legacy naming for time-series)
   if (normalizedId.includes('_trend') || normalizedId.includes('trend')) {
@@ -369,7 +370,7 @@ export function isTimeSeriesPlugin(pluginId: string): boolean {
     try {
       const allPlugins: any[] = [];
       // Check both localStorage and API for plugins
-      const localPlugins = localStorage.getItem('cfg_kpi_plugins');
+      const localPlugins = localStorage.getItem(KEYS.plugins);
       if (localPlugins) {
         allPlugins.push(...JSON.parse(localPlugins));
       }

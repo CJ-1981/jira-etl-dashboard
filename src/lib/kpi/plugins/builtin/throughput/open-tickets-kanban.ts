@@ -3,22 +3,10 @@
  * Open tickets organized by Assignee, Status, and Age Category, supporting Kanban board visualization and drill-down
  */
 
-import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
-import { isIssueDone } from '../../../engine-utils';
-
-type AgeCategory = 'this_week' | 'last_week' | 'existing';
-
-function getAgeCategory(createdDate: Date | string, referenceDate: Date | string): AgeCategory {
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const createdDateObj = new Date(createdDate);
-  const referenceDateObj = new Date(referenceDate);
-  const ageMs = referenceDateObj.getTime() - createdDateObj.getTime();
-  const weeksOld = Math.floor(ageMs / msPerWeek);
-
-  if (weeksOld === 0) return 'this_week';
-  if (weeksOld === 1) return 'last_week';
-  return 'existing';
-}
+// @MX:ANCHOR: Age category type import and centralized calculation helper
+// @MX:NOTE: Imports AgeCategory ('this_week' | 'last_week' | 'existing') and getAgeCategory helper robust to negative age deltas
+import type { KpiPlugin, KpiContext, KpiResult, AgeCategory } from '../../../types';
+import { isIssueDone, getAgeCategory, AGE_ORDER } from '../../../engine-utils';
 
 const openTicketsKanbanPlugin: KpiPlugin = {
   id: 'open_tickets_kanban',
@@ -36,7 +24,8 @@ const openTicketsKanbanPlugin: KpiPlugin = {
     const referenceDate = context.period?.end ?? new Date();
     const openIssues = context.issues.filter((i) => !isIssueDone(i));
 
-    // Group tickets by status, then assignee, then age category
+    // @MX:ANCHOR: Ticket grouping by status, assignee, and age category
+    // @MX:NOTE: Builds multi-level index to support Kanban board columns, swimlanes, and age indicators
     const groups: Record<string, Record<string, Record<AgeCategory, Set<string>>>> = {};
 
     for (const issue of openIssues) {
@@ -91,8 +80,6 @@ const openTicketsKanbanPlugin: KpiPlugin = {
       }
     }
 
-    const ageOrder: Record<AgeCategory, number> = { existing: 0, last_week: 1, this_week: 2 };
-
     // Sort results by status, then assignee, then age
     return results.sort((a, b) => {
       const statusA = a.dimensions?.status || '';
@@ -103,8 +90,8 @@ const openTicketsKanbanPlugin: KpiPlugin = {
       const assigneeB = b.dimensions?.assignee || '';
       if (assigneeA !== assigneeB) return assigneeA.localeCompare(assigneeB);
 
-      const ageA = ageOrder[(a.dimensions?.ageCategory as AgeCategory) ?? 'existing'] ?? 999;
-      const ageB = ageOrder[(b.dimensions?.ageCategory as AgeCategory) ?? 'existing'] ?? 999;
+      const ageA = AGE_ORDER[(a.dimensions?.ageCategory as AgeCategory) ?? 'existing'] ?? 999;
+      const ageB = AGE_ORDER[(b.dimensions?.ageCategory as AgeCategory) ?? 'existing'] ?? 999;
       return ageA - ageB;
     });
   },

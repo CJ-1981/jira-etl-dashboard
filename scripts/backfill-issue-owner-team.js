@@ -15,8 +15,16 @@ const prisma = new PrismaClient({
 async function backfillIssueOwnerTeam() {
   console.log('=== Backfilling Issue Owner Team Field ===\n');
 
+  const cursorArgIndex = process.argv.indexOf('--cursor');
+  const startCursor = cursorArgIndex !== -1 ? parseInt(process.argv[cursorArgIndex + 1], 10) : null;
+  const batchSize = 1000;
+
   try {
-    // Get all master tickets that don't have issueOwnerTeam but have rawData
+    const initialTotal = await prisma.masterTicket.count({
+      where: { issueOwnerTeam: null }
+    });
+
+    // Get master tickets that don't have issueOwnerTeam but have rawData using deterministic cursor
     const tickets = await prisma.masterTicket.findMany({
       where: {
         issueOwnerTeam: null
@@ -26,15 +34,19 @@ async function backfillIssueOwnerTeam() {
         jiraKey: true,
         rawData: true
       },
-      take: 1000 // Process in batches
+      orderBy: { id: 'asc' },
+      take: batchSize,
+      ...(startCursor ? { cursor: { id: startCursor }, skip: 1 } : {})
     });
 
-    console.log(`Found ${tickets.length} tickets to backfill...\n`);
+    console.log(`Found ${initialTotal} total tickets needing backfill (${tickets.length} in this batch)...\n`);
 
     let updated = 0;
     let skipped = 0;
+    let lastSeenId = startCursor;
 
     for (const ticket of tickets) {
+      lastSeenId = ticket.id;
       try {
         let rawData;
         try {
@@ -45,7 +57,9 @@ async function backfillIssueOwnerTeam() {
           continue;
         }
 
-        // Extract from the exact same field path
+        // @MX:NOTE: Hardcoded custom field mapping for issueOwnerTeam extraction
+        // @MX:WARN: Hardcoded field IDs (customfield_10132) are fragile and can break across different Jira instances
+        // @MX:REASON: Maps Jira custom field contract for owner-team; ensure field ID matches target instance schema
         const customfield_10132 = rawData?.fields?.customfield_10132;
         let issueOwnerTeam = null;
 
@@ -78,10 +92,10 @@ async function backfillIssueOwnerTeam() {
     console.log(`\n=== Summary ===`);
     console.log(`✓ Updated: ${updated}`);
     console.log(`⊘ Skipped: ${skipped}`);
-    console.log(`\nRemaining tickets to process: ${tickets.length - updated - skipped}`);
+    console.log(`\nRemaining tickets to process: ${initialTotal - updated - skipped}`);
 
-    if (tickets.length === 1000) {
-      console.log('\n⚠️  More tickets remain - run script again to process next batch');
+    if (tickets.length === batchSize && lastSeenId) {
+      console.log(`\n⚠️  More tickets remain - run script with --cursor ${lastSeenId} to process next batch`);
     }
 
   } catch (error) {

@@ -84,6 +84,13 @@ export interface TimeSeriesDataPoint {
 export type TimeInterval = 'daily' | 'weekly' | 'monthly';
 
 /**
+ * Standard age categories for ticket freshness and backlog distribution analysis
+ * @MX:ANCHOR: Age category taxonomy
+ * @MX:REASON: Standardizes age buckets across open and closed ticket plugins
+ */
+export type AgeCategory = 'this_week' | 'last_week' | 'existing';
+
+/**
  * Core plugin interface that all KPI calculators must implement
  * @MX:ANCHOR: Plugin contract - all plugins must implement this interface
  * @MX:REASON: Ensures type safety and consistent API across all plugins

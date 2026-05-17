@@ -7,7 +7,7 @@
 
 import type { JiraIssue } from '../jira/client';
 import { calculateBusinessHours, calculateWorkingDays } from '../holidays/german-holidays';
-import type { TransformedIssue, StatusTransition } from './types';
+import type { TransformedIssue, StatusTransition, AgeCategory } from './types';
 
 // ─── Issue Transformation ───────────────────────────────────────────────────────
 
@@ -326,3 +326,94 @@ export function getFieldValue(issue: TransformedIssue, field: string): unknown {
   const getter = fieldMap[field];
   return getter ? getter() : null;
 }
+
+// ─── Age & Priority Utilities ───────────────────────────────────────────────────
+
+/**
+ * Get standard age category for a ticket given its creation/resolution date and a reference date
+ * @param date - Creation date (for open tickets) or resolution/update date (for closed tickets)
+ * @param referenceDate - Reference date (typically period end date or current time)
+ * @returns AgeCategory ('this_week' | 'last_week' | 'existing')
+ * @MX:ANCHOR: Age categorization logic
+ * @MX:REASON: Provides standardized age calculation robust to negative time deltas
+ */
+export function getAgeCategory(date: Date | string, referenceDate: Date | string): AgeCategory {
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const dateObj = new Date(date);
+  const refObj = new Date(referenceDate);
+  const ageMs = refObj.getTime() - dateObj.getTime();
+  const weeksOld = Math.floor(Math.max(0, ageMs) / msPerWeek);
+
+  if (weeksOld === 0) return 'this_week';
+  if (weeksOld === 1) return 'last_week';
+  return 'existing';
+}
+
+/**
+ * Standard sort order for age categories (existing → last_week → this_week)
+ */
+export const AGE_ORDER: Record<AgeCategory, number> = { existing: 0, last_week: 1, this_week: 2 };
+
+/**
+ * Priority order mapping for ascending sort (P0 → P3, Highest → Lowest)
+ */
+export const PRIORITY_ORDER: Record<string, number> = {
+  'Highest': 0,
+  'High': 1,
+  'Medium': 2,
+  'Low': 3,
+  'Lowest': 4,
+  'P0': 0,
+  'P0-Highest': 0,
+  'P1': 1,
+  'P1-High': 1,
+  'P2': 2,
+  'P2-Medium': 2,
+  'P3': 3,
+  'P3-Low': 3,
+  'P4': 4,
+  'P4-Lowest': 4,
+  'p0': 0,
+  'p0-highest': 0,
+  'p1': 1,
+  'p1-high': 1,
+  'p2': 2,
+  'p2-medium': 2,
+  'p3': 3,
+  'p3-low': 3,
+  'p4': 4,
+  'p4-lowest': 4,
+  'unassigned': 999,
+  'Unassigned': 999,
+  'Unknown': 998,
+  'unknown': 998,
+};
+
+/**
+ * Robust helper function to get numeric priority order value for sorting
+ */
+export function getPriorityOrder(priority: string): number {
+  if (!priority) return 999;
+
+  if (PRIORITY_ORDER[priority] !== undefined) return PRIORITY_ORDER[priority];
+
+  const normalized = priority.toLowerCase().trim();
+  if (PRIORITY_ORDER[normalized] !== undefined) return PRIORITY_ORDER[normalized];
+
+  const pMatch = priority.match(/p(\d+)/i);
+  if (pMatch) {
+    return parseInt(pMatch[1], 10);
+  }
+
+  const textualPriority = normalized.toLowerCase();
+  if (textualPriority.includes('highest') || textualPriority === 'p0') return 0;
+  if (textualPriority.includes('high') && !textualPriority.includes('highest')) return 1;
+  if (textualPriority.includes('medium')) return 2;
+  if (textualPriority.includes('low')) {
+    if (textualPriority.includes('lowest')) return 4;
+    return 3;
+  }
+
+  return 999;
+}
+

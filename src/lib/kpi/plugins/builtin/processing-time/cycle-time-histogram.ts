@@ -48,7 +48,7 @@ const cycleTimeHistogramPlugin: KpiPlugin = {
       }
     }
 
-    // Debug logging
+    // @MX:NOTE: Debug logging for calculation output inspectable in development environment
     if (process.env.NODE_ENV === 'development') {
       console.log('[CycleTimeHistogram] Calculation:', {
         totalResolved: resolvedIssues.length,

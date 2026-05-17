@@ -144,7 +144,7 @@ export default function Home() {
     // @MX:NOTE: Mount-only initialization. loadMasterDataset and storageConfig 
     // are intentionally omitted as we want to trigger initial data load 
     // ONLY once using the fresh values read directly from localConfig.
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);
 
   // Secondary effect: Handle connection changes after initial load
@@ -238,6 +238,7 @@ export default function Home() {
       if (isDev) console.log('[App] Master dataset date range not available yet');
     }
    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConnectionId, mounted, masterDatasetInfo]);
 
   useEffect(() => {
@@ -443,6 +444,7 @@ export default function Home() {
 
           <TabsContent value="kpi" className="space-y-6">
             {/* @MX:NOTE: Enable smooth scroll to top on sub-tab switch for better UX */}
+            {/* @MX:REASON: Ensures users are returned to the top of the viewport when navigating between analytics views */}
             <Tabs value={kpiSubTab} onValueChange={(value) => {
               setKpiSubTab(value);
               window.scrollTo({ top: 0, behavior: 'smooth' });

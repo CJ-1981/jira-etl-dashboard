@@ -3,24 +3,8 @@
  * Number of non-resolved tickets for each status value, broken down by ticket age
  */
 
-import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
-import { isIssueDone } from '../../../engine-utils';
-
-// @MX:NOTE: Age categories for open tickets analysis
-// @MX:REASON: Provides insight into ticket freshness and backlog age distribution
-type AgeCategory = 'this_week' | 'last_week' | 'existing';
-
-function getAgeCategory(createdDate: Date | string, referenceDate: Date | string): AgeCategory {
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const createdDateObj = new Date(createdDate);
-  const referenceDateObj = new Date(referenceDate);
-  const ageMs = referenceDateObj.getTime() - createdDateObj.getTime();
-  const weeksOld = Math.floor(ageMs / msPerWeek);
-
-  if (weeksOld === 0) return 'this_week';
-  if (weeksOld === 1) return 'last_week';
-  return 'existing';
-}
+import type { KpiPlugin, KpiContext, KpiResult, AgeCategory } from '../../../types';
+import { isIssueDone, getAgeCategory, AGE_ORDER } from '../../../engine-utils';
 
 const openTicketsByStatusPlugin: KpiPlugin = {
   id: 'open_tickets_by_status',
@@ -115,14 +99,13 @@ const openTicketsByStatusPlugin: KpiPlugin = {
       ])
     );
 
-    const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
     const sortedResults = results.sort((a, b) => {
       const statusA = a.dimensions?.status || '';
       const statusB = b.dimensions?.status || '';
       const totalA = statusTotals[statusA] || 0;
       const totalB = statusTotals[statusB] || 0;
-      const ageA = ageOrder[a.dimensions?.ageCategory as AgeCategory] ?? 999;
-      const ageB = ageOrder[b.dimensions?.ageCategory as AgeCategory] ?? 999;
+      const ageA = AGE_ORDER[a.dimensions?.ageCategory as AgeCategory] ?? 999;
+      const ageB = AGE_ORDER[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
       if (totalA !== totalB) return totalB - totalA; // Descending total count
       if (statusA !== statusB) return statusA.localeCompare(statusB);

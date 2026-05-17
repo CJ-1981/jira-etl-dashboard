@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { extractSelectFieldValue } from '@/lib/jira/client';
 import { JiraClient } from '@/lib/jira/client';
+import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-config';
 import { getDb } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 
@@ -196,7 +197,7 @@ export async function POST(request: Request) {
       // 1. Store Snapshots
       const snapshotData = chunk.map((issue) => {
         const fields = issue.fields || {};
-        const rawSp = (fields as any)['customfield_10002'];
+        const rawSp = (fields as any)[getStoryPointsField()];
         const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
 
         return {
@@ -272,8 +273,30 @@ export async function POST(request: Request) {
           addedCount++;
         }
 
-        const rawSp = (fields as any)['customfield_10002'];
+        const rawSp = (fields as any)[getStoryPointsField()];
         const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
+
+        const teamFieldKey = getIssueOwnerTeamField();
+        const updatePayload: any = {
+          summary: fields.summary || 'No Summary',
+          issueType: fields.issuetype?.name || 'Task',
+          priority: fields.priority?.name || 'Medium',
+          status: fields.status?.name || 'Unknown',
+          assignee: fields.assignee?.displayName || 'Unassigned',
+          reporter: fields.reporter?.displayName || 'Unknown',
+          updated: fields.updated ? new Date(fields.updated) : new Date(),
+          resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
+          dueDate: fields.duedate ? new Date(fields.duedate) : null,
+          storyPoints: storyPoints,
+          labels: JSON.stringify(fields.labels || []),
+          components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
+          rawData: JSON.stringify(issue),
+          lastUpdatedAt: new Date()
+        };
+
+        if (fields && teamFieldKey in fields && (fields as any)[teamFieldKey] !== undefined) {
+          updatePayload.issueOwnerTeam = extractSelectFieldValue((fields as any)[teamFieldKey]) || null;
+        }
 
         await (db as any).masterTicket.upsert({
           where: { connectionRef_jiraKey: { connectionRef: connectionRef, jiraKey: issue.key } },
@@ -286,7 +309,10 @@ export async function POST(request: Request) {
             status: fields.status?.name || 'Unknown',
             assignee: fields.assignee?.displayName || 'Unassigned',
             reporter: fields.reporter?.displayName || 'Unknown',
-            issueOwnerTeam: extractSelectFieldValue((fields as any)?.customfield_10132) || null,
+            // @MX:NOTE: Hardcoded custom field dependency for issueOwnerTeam mapping
+            // @MX:WARN: Fragile custom field mapping; requires schema alignment across Jira instances
+            // @MX:REASON: Extracts configured owner team custom field to populate issueOwnerTeam column
+            issueOwnerTeam: extractSelectFieldValue((fields as any)?.[teamFieldKey]) || null,
             created: fields.created ? new Date(fields.created) : new Date(),
             updated: fields.updated ? new Date(fields.updated) : new Date(),
             resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
@@ -296,23 +322,7 @@ export async function POST(request: Request) {
             components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
             rawData: JSON.stringify(issue),
           },
-          update: {
-            summary: fields.summary || 'No Summary',
-            issueType: fields.issuetype?.name || 'Task',
-            priority: fields.priority?.name || 'Medium',
-            status: fields.status?.name || 'Unknown',
-            assignee: fields.assignee?.displayName || 'Unassigned',
-            reporter: fields.reporter?.displayName || 'Unknown',
-            issueOwnerTeam: extractSelectFieldValue((fields as any)?.customfield_10132) || null,
-            updated: fields.updated ? new Date(fields.updated) : new Date(),
-            resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
-            dueDate: fields.duedate ? new Date(fields.duedate) : null,
-            storyPoints: storyPoints,
-            labels: JSON.stringify(fields.labels || []),
-            components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
-            rawData: JSON.stringify(issue),
-            lastUpdatedAt: new Date()
-          }
+          update: updatePayload
         });
       }
     }

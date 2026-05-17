@@ -71,6 +71,8 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
   const [pluginFilter, setPluginFilter] = useState<string>('all');
   const [dimTypeFilter, setDimTypeFilter] = useState<string>('all');
 
+  // @MX:ANCHOR: Data row derivation from raw plugin calculation results and alert settings
+  // @MX:NOTE: Flattens hierarchical plugin results into standardized rows suitable for tabular display and filtering
   const data = useMemo<KpiDataRow[]>(() => {
     const rows: KpiDataRow[] = [];
     results.forEach((kpi) => {
@@ -79,6 +81,8 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
         const alertConfig = settings?.alerts?.thresholds?.[pluginId];
         let alertStatus: 'critical' | 'warning' | null = null;
 
+        // @MX:NOTE: Alert status computation evaluating configured threshold operators (> or <)
+        // Semantics: 'critical' indicates severe threshold breach, 'warning' indicates caution needed, null is healthy
         if (alertConfig) {
           const { warning, critical, operator } = alertConfig;
           const val = res.value;
@@ -91,7 +95,8 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
           }
         }
 
-        // Resolve dimension type and value
+        // @MX:TODO: Dimension resolution mapping hierarchical dimension properties to standardized grid columns
+        // Documented keys/precedence: kanban -> status -> priority -> assignee -> team -> bucket -> none
         const dims = res.dimensions || {};
         let dimensionType = 'none';
         let dimensionValue = '—';
@@ -136,7 +141,7 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
     return Array.from(seen).sort();
   }, [data]);
 
-  // Apply plugin + dimension type filters on top of global text filter
+  // @MX:WARN: Filter precedence: pluginFilter and dimTypeFilter are applied directly to the full dataset before TanStack global filter
   const filteredData = useMemo(() => {
     return data.filter(row => {
       if (pluginFilter !== 'all' && row.pluginId !== pluginFilter) return false;
@@ -336,6 +341,7 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
     }),
   ];
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-table does not follow React Compiler memoization expectations, intentional
   const table = useReactTable({
     data: filteredData,
     columns,

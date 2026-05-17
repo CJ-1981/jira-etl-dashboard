@@ -5,19 +5,25 @@
 
 console.log('=== Issue Owner Team Field Diagnostics ===\n');
 
-// 1. Check environment variable
-console.log('1. Environment Variable:');
-console.log('   REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD:', process.env.REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD || 'Not set (using default: customfield_10132)');
+if (typeof window === 'undefined') {
+  console.log('1. Environment Variable:');
+  console.log('   REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD:', process.env.REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD || 'Not set (using default: customfield_10132)');
 
-// 2. Check field config
-console.log('\n2. Field Configuration:');
-try {
-  const { getFieldConfig, getIssueOwnerTeamField } = require('@/lib/jira/field-config');
-  const config = getFieldConfig();
-  console.log('   Configured field:', config.issueOwnerTeamField);
-  console.log('   getIssueOwnerTeamField():', getIssueOwnerTeamField());
-} catch (e) {
-  console.log('   Error loading field config:', e.message);
+  // 2. Check field config
+  console.log('\n2. Field Configuration:');
+  try {
+    const { getFieldConfig, getIssueOwnerTeamField } = require('./src/lib/jira/field-config');
+    const config = getFieldConfig();
+    console.log('   Configured field:', config.issueOwnerTeamField);
+    console.log('   getIssueOwnerTeamField():', getIssueOwnerTeamField());
+  } catch (e) {
+    console.log('   Error loading field config:', e.message);
+  }
+} else {
+  console.log('1. Environment Variable:');
+  console.log('   [Browser Environment: Node.js process.env unavailable]');
+  console.log('\n2. Field Configuration:');
+  console.log('   [Browser Environment: Node.js require() unavailable]');
 }
 
 // 3. Check masterDataset (if available)

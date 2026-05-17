@@ -1,16 +1,22 @@
 #!/bin/bash
 
 # Script to find the correct Issue Owner Team field ID from your Jira instance
-# Usage: ./debug-fields.sh <your-jira-base-url> <email> <api-token>
+# Usage: ./debug-fields.sh <your-jira-base-url> <email> [api-token via $JIRA_API_TOKEN or prompt]
 
 BASE_URL=$1
 EMAIL=$2
-API_TOKEN=$3
+API_TOKEN=${JIRA_API_TOKEN:-$3}
 
-if [ -z "$BASE_URL" ] || [ -z "$EMAIL" ] || [ -z "$API_TOKEN" ]; then
-  echo "Usage: $0 <jira-base-url> <email> <api-token>"
-  echo "Example: $0 https://your-domain.atlassian.net user@example.com your-api-token"
+if [ -z "$BASE_URL" ] || [ -z "$EMAIL" ]; then
+  echo "Usage: $0 <jira-base-url> <email>"
+  echo "Example: $0 https://your-domain.atlassian.net user@example.com"
+  echo "(API token is read from \$JIRA_API_TOKEN or prompted)"
   exit 1
+fi
+
+if [ -z "$API_TOKEN" ]; then
+  read -s -p "Enter Jira API Token: " API_TOKEN
+  echo ""
 fi
 
 echo "Fetching all custom fields from Jira..."

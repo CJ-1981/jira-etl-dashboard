@@ -3,60 +3,8 @@
  * Number of non-resolved tickets for each priority level, broken down by ticket age
  */
 
-import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
-import { isIssueDone } from '../../../engine-utils';
-
-// @MX:NOTE: Age categories for open tickets analysis
-// @MX:REASON: Provides insight into ticket freshness and backlog age distribution
-type AgeCategory = 'this_week' | 'last_week' | 'existing';
-
-function getAgeCategory(createdDate: Date | string, referenceDate: Date | string): AgeCategory {
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const createdDateObj = new Date(createdDate);
-  const referenceDateObj = new Date(referenceDate);
-  const ageMs = referenceDateObj.getTime() - createdDateObj.getTime();
-  const weeksOld = Math.floor(ageMs / msPerWeek);
-
-  if (weeksOld === 0) return 'this_week';
-  if (weeksOld === 1) return 'last_week';
-  return 'existing';
-}
-
-// Priority order for ascending sort (P0 → P3, Highest → Lowest)
-const priorityOrder: Record<string, number> = {
-  'Highest': 0,
-  'High': 1,
-  'Medium': 2,
-  'Low': 3,
-  'Lowest': 4,
-  // P-priority formats (uppercase)
-  'P0': 0,
-  'P0-Highest': 0,
-  'P1': 1,
-  'P1-High': 1,
-  'P2': 2,
-  'P2-Medium': 2,
-  'P3': 3,
-  'P3-Low': 3,
-  'P4': 4,
-  'P4-Lowest': 4,
-  // p-priority formats (lowercase)
-  'p0': 0,
-  'p0-highest': 0,
-  'p1': 1,
-  'p1-high': 1,
-  'p2': 2,
-  'p2-medium': 2,
-  'p3': 3,
-  'p3-low': 3,
-  'p4': 4,
-  'p4-lowest': 4,
-  // Generic priority levels
-  'unassigned': 999,
-  'Unassigned': 999,
-  'Unknown': 998,
-  'unknown': 998,
-};
+import type { KpiPlugin, KpiContext, KpiResult, AgeCategory } from '../../../types';
+import { isIssueDone, getAgeCategory, AGE_ORDER, getPriorityOrder } from '../../../engine-utils';
 
 const openTicketsByPriorityPlugin: KpiPlugin = {
   id: 'open_tickets_by_priority',
@@ -144,40 +92,6 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
     }
 
     // Sort results by priority (ascending P0→P3), then by age category (existing → last_week → this_week)
-    const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-
-    // Helper function to get priority order value
-    const getPriorityOrder = (priority: string): number => {
-      if (!priority) return 999;
-
-      // Try exact match first
-      if (priorityOrder[priority] !== undefined) return priorityOrder[priority];
-
-      // Try normalized lowercase version
-      const normalized = priority.toLowerCase().trim();
-      if (priorityOrder[normalized] !== undefined) return priorityOrder[normalized];
-
-      // Try extracting P-number from various formats
-      const pMatch = priority.match(/p(\d+)/i);
-      if (pMatch) {
-        return parseInt(pMatch[1], 10); // P0=0, P1=1, P2=2, etc.
-      }
-
-      // Try textual priority levels
-      const textualPriority = normalized.toLowerCase();
-      if (textualPriority.includes('highest') || textualPriority === 'p0') return 0;
-      if (textualPriority.includes('high') && !textualPriority.includes('highest')) return 1;
-      if (textualPriority.includes('medium')) return 2;
-      if (textualPriority.includes('low')) {
-        // Distinguish between Low and Lowest
-        if (textualPriority.includes('lowest')) return 4;
-        return 3;
-      }
-
-      // Fallback: try alphabetical sort for unknown formats
-      return 999;
-    };
-
     const sortedResults = results.sort((a, b) => {
       const priorityA = a.dimensions?.priority || '';
       const priorityB = b.dimensions?.priority || '';
@@ -196,8 +110,8 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
         });
       }
 
-      const ageA = ageOrder[a.dimensions?.ageCategory as AgeCategory] ?? 999;
-      const ageB = ageOrder[b.dimensions?.ageCategory as AgeCategory] ?? 999;
+      const ageA = AGE_ORDER[a.dimensions?.ageCategory as AgeCategory] ?? 999;
+      const ageB = AGE_ORDER[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
       if (orderA !== orderB) return orderA - orderB; // Ascending priority (P0 → P3)
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)

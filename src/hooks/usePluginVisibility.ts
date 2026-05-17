@@ -78,14 +78,25 @@ export function usePluginVisibility(
     const syncFromStorage = () => {
       try {
         const saved = localStorage.getItem(storageKey);
-        if (saved !== null) {
-          const parsed = JSON.parse(saved) as string[];
+        if (saved === null) {
+          setActivePlugins(allPlugins);
+          return;
+        }
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
           setActivePlugins(parsed);
+        } else {
+          console.error(`Invalid structure in ${storageKey} localStorage data, resetting to default.`);
+          setActivePlugins(allPlugins);
         }
       } catch (error) {
-        console.error(`Failed to sync ${storageKey} from localStorage:`, error);
+        console.error(`Failed to sync ${storageKey} from localStorage, resetting to default:`, error);
+        setActivePlugins(allPlugins);
       }
     };
+
+    // Immediate sync on mount / storageKey change
+    syncFromStorage();
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === storageKey && !isSelfWriting.current) {
@@ -95,7 +106,7 @@ export function usePluginVisibility(
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [storageKey]);
+  }, [storageKey, allPlugins]);
 
   // Persist to local storage on change
   useEffect(() => {
