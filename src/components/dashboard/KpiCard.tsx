@@ -969,35 +969,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               {hasWeeklyLayers && (
                 <>
                   <Bar
-                    dataKey="thisWeek"
-                    name="This Week"
-                    fill={AGE_CATEGORY_COLORS.this_week}
+                    dataKey="value"
+                    name="Total"
+                    fill="#3b82f6"
                     cursor="pointer"
                     onClick={(data) => {
                       if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "This Week");
-                      }
-                    }}
-                  />
-                  <Bar
-                    dataKey="prevWeek"
-                    name="1 week old"
-                    fill={AGE_CATEGORY_COLORS.last_week}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "1 week old");
-                      }
-                    }}
-                  />
-                  <Bar
-                    dataKey="existing"
-                    name="2+ weeks old"
-                    fill={AGE_CATEGORY_COLORS.existing}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "2+ weeks old");
+                        onClick(data.ticketKeys, "Total");
                       }
                     }}
                   />
