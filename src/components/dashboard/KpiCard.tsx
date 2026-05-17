@@ -856,15 +856,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             return dataPoint;
           });
 
-          // Filter data based on zoom domain
-          const zoomedData = zoomDomain && zoomDomain.end !== undefined
-            ? mergedData.slice(zoomDomain.start, zoomDomain.end + 1)
-            : mergedData;
-
           // @MX:ANCHOR: Line Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <LineChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 80 }}>
+              <LineChart data={mergedData} margin={{ top: 20, right: 60, left: 20, bottom: 80 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
@@ -887,6 +882,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   fill="#3b82f6"
                   fillOpacity={0.3}
                   data={mergedData}
+                  startIndex={zoomDomain?.start ?? 0}
+                  endIndex={zoomDomain?.end ?? (mergedData.length > 0 ? mergedData.length - 1 : 0)}
                   onChange={(brushState: any) => {
                     if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
                       setZoomDomain({
@@ -962,13 +959,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
-        const zoomedData = zoomDomain && zoomDomain.end !== undefined
-          ? selectedKpiData.slice(zoomDomain.start, zoomDomain.end + 1)
-          : selectedKpiData;
-
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <LineChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <LineChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1031,6 +1024,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 fill="#3b82f6"
                 fillOpacity={0.3}
                 data={selectedKpiData}
+                startIndex={zoomDomain?.start ?? 0}
+                endIndex={zoomDomain?.end ?? (selectedKpiData.length > 0 ? selectedKpiData.length - 1 : 0)}
                 onChange={(brushState: any) => {
                   if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
                     setZoomDomain({
@@ -1137,6 +1132,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   fill="#3b82f6"
                   fillOpacity={0.3}
                   data={mergedData}
+                  startIndex={zoomDomain?.start ?? 0}
+                  endIndex={zoomDomain?.end ?? (mergedData.length > 0 ? mergedData.length - 1 : 0)}
                   onChange={(brushState: any) => {
                     if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
                       setZoomDomain({
@@ -1153,13 +1150,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
-        const zoomedData = zoomDomain && zoomDomain.end !== undefined
-          ? selectedKpiData.slice(zoomDomain.start, zoomDomain.end + 1)
-          : selectedKpiData;
-
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1207,6 +1200,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 fill="#3b82f6"
                 fillOpacity={0.3}
                 data={selectedKpiData}
+                startIndex={zoomDomain?.start ?? 0}
+                endIndex={zoomDomain?.end ?? (selectedKpiData.length > 0 ? selectedKpiData.length - 1 : 0)}
                 onChange={(brushState: any) => {
                   if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
                     setZoomDomain({

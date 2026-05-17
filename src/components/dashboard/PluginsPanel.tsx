@@ -268,10 +268,8 @@ export function PluginsPanel() {
 
   // Sync active plugins to widget order when they change
   useEffect(() => {
-    if (activePlugins.length > 0) {
-      const pluginWidgetIds = activePlugins.map(id => `plugin-${id}`);
-      initializeWidgetOrder(pluginWidgetIds, isTimeSeriesPlugin);
-    }
+    const pluginWidgetIds = activePlugins.map(id => `plugin-${id}`);
+    initializeWidgetOrder(pluginWidgetIds, isTimeSeriesPlugin);
   }, [activePlugins, initializeWidgetOrder]);
 
   const toggleGroupCollapse = useCallback((category: string) => {

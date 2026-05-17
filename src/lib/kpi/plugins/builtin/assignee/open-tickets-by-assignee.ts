@@ -10,9 +10,11 @@ import { isIssueDone } from '../../../engine-utils';
 // @MX:REASON: Provides insight into ticket freshness and backlog age distribution
 type AgeCategory = 'this_week' | 'last_week' | 'existing';
 
-function getAgeCategory(createdDate: Date, referenceDate: Date): AgeCategory {
+function getAgeCategory(createdDate: Date | string, referenceDate: Date | string): AgeCategory {
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const ageMs = referenceDate.getTime() - createdDate.getTime();
+  const createdDateObj = new Date(createdDate);
+  const referenceDateObj = new Date(referenceDate);
+  const ageMs = referenceDateObj.getTime() - createdDateObj.getTime();
   const weeksOld = Math.floor(ageMs / msPerWeek);
 
   if (weeksOld === 0) return 'this_week';
@@ -105,14 +107,24 @@ const openTicketsByAssigneePlugin: KpiPlugin = {
       }
     }
 
-    // Sort results by assignee name, then by age category (existing → last_week → this_week)
+    // Sort results by total assignee count descending, then by age category (existing → last_week → this_week)
+    const assigneeTotals = Object.fromEntries(
+      Object.entries(assigneeAgeGroups).map(([assignee, groups]) => [
+        assignee,
+        groups.existing.size + groups.last_week.size + groups.this_week.size
+      ])
+    );
+
     const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
     return results.sort((a, b) => {
       const assigneeA = a.dimensions?.assignee || '';
       const assigneeB = b.dimensions?.assignee || '';
+      const totalA = assigneeTotals[assigneeA] || 0;
+      const totalB = assigneeTotals[assigneeB] || 0;
       const ageA = ageOrder[a.dimensions?.ageCategory as AgeCategory] ?? 999;
       const ageB = ageOrder[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
+      if (totalA !== totalB) return totalB - totalA; // Descending total count
       if (assigneeA !== assigneeB) return assigneeA.localeCompare(assigneeB);
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
