@@ -26,25 +26,25 @@ describe('open_tickets_by_issue_owner_team Plugin', () => {
       { key: 'TEST-6', issueOwnerTeam: null, created: Date.now() - 100000, resolved: null }, // Should be Unassigned
     ];
 
-    const context = createMockContext(0, { issues: customIssues as any });
+    const context = createMockContext(0, { issues: customIssues as any, period: { start: new Date(Date.now() - 86400000 * 30), end: new Date() } });
 
     const results = openTicketsByIssueOwnerTeamPlugin.calculate(context) as any[];
 
     expect(results).toHaveLength(3); // LTIC-Team-A, LTIC-Team-B, and Unassigned
 
-    const teamAResult = results.find((r: any) => r.name === 'Team: LTIC-Team-A');
+    const teamAResult = results.find((r: any) => r.name === 'Team: LTIC-Team-A (This Week)');
     expect(teamAResult).toBeDefined();
     expect(teamAResult?.value).toBe(2); // 2 open tickets (TEST-1, TEST-2)
     expect(teamAResult?.dimensions?.team).toBe('LTIC-Team-A');
     expect(teamAResult?.ticketKeys).toEqual(['TEST-1', 'TEST-2']);
 
-    const teamBResult = results.find((r: any) => r.name === 'Team: LTIC-Team-B');
+    const teamBResult = results.find((r: any) => r.name === 'Team: LTIC-Team-B (This Week)');
     expect(teamBResult).toBeDefined();
     expect(teamBResult?.value).toBe(2); // 2 open tickets (TEST-3, TEST-5)
     expect(teamBResult?.dimensions?.team).toBe('LTIC-Team-B');
     expect(teamBResult?.ticketKeys).toEqual(['TEST-3', 'TEST-5']);
 
-    const unassignedResult = results.find((r: any) => r.name === 'Team: Unassigned');
+    const unassignedResult = results.find((r: any) => r.name === 'Team: Unassigned (This Week)');
     expect(unassignedResult).toBeDefined();
     expect(unassignedResult?.value).toBe(1); // 1 open ticket (TEST-6)
     expect(unassignedResult?.dimensions?.team).toBe('Unassigned');
@@ -57,7 +57,7 @@ describe('open_tickets_by_issue_owner_team Plugin', () => {
       { key: 'TEST-2', issueOwnerTeam: 'LTIC-Team-B', created: Date.now() - 100000, resolved: Date.now() - 50000 },
     ];
 
-    const context = createMockContext(0, { issues: customIssues as any });
+    const context = createMockContext(0, { issues: customIssues as any, period: { start: new Date(Date.now() - 86400000 * 30), end: new Date() } });
 
     const results = openTicketsByIssueOwnerTeamPlugin.calculate(context);
     expect(results).toHaveLength(0);
@@ -72,12 +72,12 @@ describe('open_tickets_by_issue_owner_team Plugin', () => {
       { key: 'TEST-5', issueOwnerTeam: 'LTIC-Team-B', created: Date.now() - 100000, resolved: null },
     ];
 
-    const context = createMockContext(0, { issues: customIssues as any });
+    const context = createMockContext(0, { issues: customIssues as any, period: { start: new Date(Date.now() - 86400000 * 30), end: new Date() } });
 
     const results = openTicketsByIssueOwnerTeamPlugin.calculate(context) as any[];
 
     expect(results[0].value).toBeGreaterThanOrEqual(results[1]?.value || 0);
-    expect(results[0].name).toBe('Team: LTIC-Team-A'); // 3 tickets
-    expect(results[1].name).toBe('Team: LTIC-Team-B'); // 2 tickets
+    expect(results[0].name).toBe('Team: LTIC-Team-A (This Week)'); // 3 tickets
+    expect(results[1].name).toBe('Team: LTIC-Team-B (This Week)'); // 2 tickets
   });
 });
