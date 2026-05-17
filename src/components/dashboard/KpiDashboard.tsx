@@ -147,7 +147,21 @@ export function KpiDashboard() {
   // ─── Plugin Visibility Hook ───────────────────────────────────────────────────
   const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
   const pluginVisibility = usePluginVisibility(allPluginIds, 'cfg_active_plugins');
-  const { widgetOrder } = useWidgetOrder();
+  const { widgetOrder, toggleWidgetVisibility } = useWidgetOrder();
+
+  // Automatically sync widget order with available plugins
+  useEffect(() => {
+    const availablePlugins = kpiResults
+      .filter(kpi => !isTimeSeriesPlugin(kpi.pluginId)) // Exclude time-series plugins
+      .map(kpi => `plugin-${kpi.pluginId}`);
+
+    // Add any missing plugins to widget order
+    availablePlugins.forEach(pluginId => {
+      if (!widgetOrder.includes(pluginId)) {
+        toggleWidgetVisibility(pluginId);
+      }
+    });
+  }, [kpiResults, widgetOrder, toggleWidgetVisibility]);
 
   // Fetch plugin metadata for correct names
   useEffect(() => {
