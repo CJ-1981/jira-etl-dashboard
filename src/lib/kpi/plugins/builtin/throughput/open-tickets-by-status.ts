@@ -10,9 +10,11 @@ import { isIssueDone } from '../../../engine-utils';
 // @MX:REASON: Provides insight into ticket freshness and backlog age distribution
 type AgeCategory = 'this_week' | 'last_week' | 'existing';
 
-function getAgeCategory(createdDate: Date, referenceDate: Date): AgeCategory {
+function getAgeCategory(createdDate: Date | string, referenceDate: Date | string): AgeCategory {
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const ageMs = referenceDate.getTime() - createdDate.getTime();
+  const createdDateObj = new Date(createdDate);
+  const referenceDateObj = new Date(referenceDate);
+  const ageMs = referenceDateObj.getTime() - createdDateObj.getTime();
   const weeksOld = Math.floor(ageMs / msPerWeek);
 
   if (weeksOld === 0) return 'this_week';
@@ -33,7 +35,7 @@ const openTicketsByStatusPlugin: KpiPlugin = {
   unit: 'tickets',
 
   calculate(context: KpiContext): KpiResult[] {
-    const referenceDate = new Date(); // Use current date for age calculation
+    const referenceDate = context.period.end || new Date(); // Use period end date for consistent age calculation
     const openIssues = context.issues.filter((i) => !isIssueDone(i));
 
     // Group tickets by status and age category
