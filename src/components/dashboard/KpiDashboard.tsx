@@ -2159,9 +2159,8 @@ export function KpiDashboard() {
 
                 case 'cycle-time-histogram':
                   return widget.kpis.length > 0 ? (
-                    <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                    <div key={`cycle-time-histogram-wrapper-${widget.kpis[0].pluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
                       <ChartCard
-                        key={`cycle-time-histogram-${widget.kpis[0].pluginId}`}
                         config={{
                           id: `cycle-time-histogram-${widget.kpis[0].pluginId}`,
                           type: 'bar',
