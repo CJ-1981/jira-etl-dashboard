@@ -893,10 +893,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }} layout="vertical">
+            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis type="number" className="text-xs" />
-              <YAxis dataKey="name" type="category" className="text-xs" width={120} />
+              <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
+              <YAxis className="text-xs" />
               <Tooltip
                 {...tooltipStyle}
                 content={<CustomBarTooltip />}
@@ -946,7 +946,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <Bar
                   dataKey="value"
                   name="Total Period"
-                  radius={[4, 4, 0, 0]}
+                  radius={[0, 4, 4, 0]}
                   hide={hiddenDimensions.has(`${config.kpiId}|Total Period`)}
                   cursor="pointer"
                   onClick={(data) => {
@@ -971,7 +971,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     name="This Week"
                     fill={AGE_CATEGORY_COLORS.this_week}
                     stackId="ageBreakdown"
-                    radius={[0, 4, 4, 0]}
+                    radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|This Week`)}
                     cursor="pointer"
                     onClick={(data) => {
@@ -993,7 +993,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     name="1 week old"
                     fill={AGE_CATEGORY_COLORS.last_week}
                     stackId="ageBreakdown"
-                    radius={[0, 4, 4, 0]}
+                    radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|1 week old`)}
                     cursor="pointer"
                     onClick={(data) => {
@@ -1016,7 +1016,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     fill={AGE_CATEGORY_COLORS.existing}
                     stroke="none"
                     stackId="ageBreakdown"
-                    radius={[0, 4, 4, 0]}
+                    radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|2+ weeks old`)}
                     cursor="pointer"
                     onClick={(data) => {
