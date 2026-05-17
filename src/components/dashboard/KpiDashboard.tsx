@@ -1706,7 +1706,7 @@ export function KpiDashboard() {
                               };
 
                               return (
-                                <div key={idx} className="space-y-1">
+                                <div key={idx} className="space-y-1 group">
                                   <div className="flex items-center justify-between text-sm">
                                     <div className="flex items-center gap-2">
                                       <span
@@ -1957,7 +1957,7 @@ export function KpiDashboard() {
                               };
 
                               return (
-                                <div key={idx} className="space-y-1">
+                                <div key={idx} className="space-y-1 group">
                                   <div className="flex items-center justify-between text-sm">
                                     <div className="flex items-center gap-2">
                                       <span
