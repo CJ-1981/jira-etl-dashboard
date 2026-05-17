@@ -109,7 +109,7 @@ export interface DashboardPreset {
   widgetTitles?: Record<string, string>;
 }
 
-const KEYS = {
+export const KEYS = {
   jira: 'cfg_jira_connections',
   pg: 'cfg_pg_connections',
   plugins: 'cfg_kpi_plugins',
@@ -125,6 +125,12 @@ const KEYS = {
   showDataCenterSubmenu: 'cfg_show_data_center_submenu',
   showKpiAnalyticsSubmenu: 'cfg_show_kpi_analytics_submenu',
   showSettingsSubmenu: 'cfg_show_settings_submenu',
+  // Plugin and Widget display states
+  favoritePlugins: 'cfg_favorite_plugins',
+  activePlugins: 'cfg_active_plugins',
+  collapsedGroups: 'cfg_collapsed_plugin_groups',
+  widgetOrder: 'widget_display_order',
+  theme: 'jira-etl-theme',
 };
 
 // @MX:ANCHOR: DEFAULT_SETTINGS
@@ -227,6 +233,36 @@ export const localConfig = {
   getEtlUpdateOnly: () => get<boolean>(KEYS.etlUpdateOnly, false),
   saveEtlUpdateOnly: (val: boolean) => set(KEYS.etlUpdateOnly, val),
 
+  getFavoritePlugins: () => get<string[]>(KEYS.favoritePlugins, []),
+  saveFavoritePlugins: (plugins: string[]) => set(KEYS.favoritePlugins, plugins),
+
+  getActivePlugins: () => get<string[]>(KEYS.activePlugins, []),
+  saveActivePlugins: (plugins: string[]) => {
+    set(KEYS.activePlugins, plugins);
+    if (isBrowser) {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: KEYS.activePlugins,
+        newValue: JSON.stringify(plugins),
+        storageArea: localStorage,
+      }));
+    }
+  },
+
+  getCollapsedGroups: () => get<string[]>(KEYS.collapsedGroups, []),
+  saveCollapsedGroups: (groups: string[]) => set(KEYS.collapsedGroups, groups),
+
+  getWidgetOrder: () => get<string[]>(KEYS.widgetOrder, []),
+  saveWidgetOrder: (order: string[]) => set(KEYS.widgetOrder, order),
+
+  getTheme: () => {
+    if (!isBrowser) return 'light';
+    return localStorage.getItem(KEYS.theme) || 'light';
+  },
+  saveTheme: (theme: string) => {
+    if (!isBrowser) return;
+    localStorage.setItem(KEYS.theme, theme);
+  },
+
   getDashboardState: (connectionId: string) => {
     const states = get<Record<string, DashboardState>>(KEYS.dashboardState, {});
     return states[connectionId] || null;
@@ -251,7 +287,7 @@ export const localConfig = {
 
   exportConfig: () => {
     const data: any = {
-      version: '1.1',
+      version: '1.2',
       exportedAt: new Date().toISOString(),
       jiraConnections: localConfig.getJiraConnections(),
       pgConnections: localConfig.getPgConnections(),
@@ -262,6 +298,11 @@ export const localConfig = {
       dashboardJqls: localConfig.getDashboardJqls(),
       etlUpdateOnly: localConfig.getEtlUpdateOnly(),
       activeConnectionId: localConfig.getActiveConnectionId(),
+      favoritePlugins: localConfig.getFavoritePlugins(),
+      activePlugins: localConfig.getActivePlugins(),
+      collapsedGroups: localConfig.getCollapsedGroups(),
+      widgetOrder: localConfig.getWidgetOrder(),
+      theme: localConfig.getTheme(),
       // Raw dumps for complex/nested objects
       dashboardStates: get(KEYS.dashboardState, {}),
       presets: get(KEYS.presets, {}),
@@ -286,6 +327,11 @@ export const localConfig = {
       if (data.dashboardJqls) localConfig.saveDashboardJqls(data.dashboardJqls);
       if (data.etlUpdateOnly !== undefined) localConfig.saveEtlUpdateOnly(data.etlUpdateOnly);
       if (data.activeConnectionId) localConfig.setActiveConnectionId(data.activeConnectionId);
+      if (data.favoritePlugins) localConfig.saveFavoritePlugins(data.favoritePlugins);
+      if (data.activePlugins) localConfig.saveActivePlugins(data.activePlugins);
+      if (data.collapsedGroups) localConfig.saveCollapsedGroups(data.collapsedGroups);
+      if (data.widgetOrder) localConfig.saveWidgetOrder(data.widgetOrder);
+      if (data.theme) localConfig.saveTheme(data.theme);
       
       if (data.dashboardStates) set(KEYS.dashboardState, data.dashboardStates);
       if (data.presets) set(KEYS.presets, data.presets);

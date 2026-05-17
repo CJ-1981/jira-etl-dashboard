@@ -44,7 +44,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { localConfig, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
+import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
@@ -194,7 +194,7 @@ export function PluginsPanel() {
       if (isMounted.current) {
         setPlugins(grouped);
         const allPluginIds = allPlugins.map(p => p.id);
-        const savedActivePlugins = localStorage.getItem('cfg_active_plugins');
+        const savedActivePlugins = localStorage.getItem(KEYS.activePlugins);
         if (savedActivePlugins) {
           try {
             const activeIds = JSON.parse(savedActivePlugins) as string[];
@@ -239,37 +239,22 @@ export function PluginsPanel() {
   }, [loadPlugins]);
 
   const saveActivePlugins = useCallback((pluginIds: string[]) => {
-    localStorage.setItem('cfg_active_plugins', JSON.stringify(pluginIds));
-    // Dispatch a StorageEvent so same-tab listeners (e.g. usePluginVisibility) can react.
-    // The native `storage` event only fires in other tabs, not the originating tab.
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'cfg_active_plugins',
-      newValue: JSON.stringify(pluginIds),
-      storageArea: localStorage,
-    }));
+    localConfig.saveActivePlugins(pluginIds);
   }, []);
 
   // Load collapsed groups from localStorage
   useEffect(() => {
-    const savedCollapsed = localStorage.getItem('cfg_collapsed_plugin_groups');
-    if (savedCollapsed) {
-      try {
-        setCollapsedGroups(new Set(JSON.parse(savedCollapsed)));
-      } catch (err) {
-        console.error('Failed to load collapsed groups:', err);
-      }
+    const collapsed = localConfig.getCollapsedGroups();
+    if (collapsed.length > 0) {
+      setCollapsedGroups(new Set(collapsed));
     }
   }, []);
 
   // Load favorite plugins from localStorage
   useEffect(() => {
-    const savedFavorites = localStorage.getItem('cfg_favorite_plugins');
-    if (savedFavorites) {
-      try {
-        setFavoritePlugins(new Set(JSON.parse(savedFavorites)));
-      } catch (err) {
-        console.error('Failed to load favorite plugins:', err);
-      }
+    const favorites = localConfig.getFavoritePlugins();
+    if (favorites.length > 0) {
+      setFavoritePlugins(new Set(favorites));
     }
   }, []);
 
@@ -288,7 +273,7 @@ export function PluginsPanel() {
         next.add(category);
       }
       // Save to localStorage
-      localStorage.setItem('cfg_collapsed_plugin_groups', JSON.stringify(Array.from(next)));
+      localConfig.saveCollapsedGroups(Array.from(next));
       return next;
     });
   }, []);
@@ -322,7 +307,7 @@ export function PluginsPanel() {
         next.add(pluginId);
       }
       // Save to localStorage
-      localStorage.setItem('cfg_favorite_plugins', JSON.stringify(Array.from(next)));
+      localConfig.saveFavoritePlugins(Array.from(next));
       return next;
     });
   }, []);
