@@ -145,14 +145,57 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
 
     // Sort results by priority (ascending P0→P3), then by age category (existing → last_week → this_week)
     const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+
+    // Helper function to get priority order value
+    const getPriorityOrder = (priority: string): number => {
+      if (!priority) return 999;
+
+      // Try exact match first
+      if (priorityOrder[priority] !== undefined) return priorityOrder[priority];
+
+      // Try normalized lowercase version
+      const normalized = priority.toLowerCase().trim();
+      if (priorityOrder[normalized] !== undefined) return priorityOrder[normalized];
+
+      // Try extracting P-number from various formats
+      const pMatch = priority.match(/p(\d+)/i);
+      if (pMatch) {
+        return parseInt(pMatch[1], 10); // P0=0, P1=1, P2=2, etc.
+      }
+
+      // Try textual priority levels
+      const textualPriority = normalized.toLowerCase();
+      if (textualPriority.includes('highest') || textualPriority === 'p0') return 0;
+      if (textualPriority.includes('high') && !textualPriority.includes('highest')) return 1;
+      if (textualPriority.includes('medium')) return 2;
+      if (textualPriority.includes('low')) {
+        // Distinguish between Low and Lowest
+        if (textualPriority.includes('lowest')) return 4;
+        return 3;
+      }
+
+      // Fallback: try alphabetical sort for unknown formats
+      return 999;
+    };
+
     const sortedResults = results.sort((a, b) => {
       const priorityA = a.dimensions?.priority || '';
       const priorityB = b.dimensions?.priority || '';
-      // Normalize priority values for consistent matching
-      const normalizedA = priorityA.toLowerCase().trim();
-      const normalizedB = priorityB.toLowerCase().trim();
-      const orderA = priorityOrder[normalizedA] ?? priorityOrder[priorityA] ?? 999;
-      const orderB = priorityOrder[normalizedB] ?? priorityOrder[priorityB] ?? 999;
+
+      const orderA = getPriorityOrder(priorityA);
+      const orderB = getPriorityOrder(priorityB);
+
+      // Debug logging to check actual priority values
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Priority Sort] Priorities:', {
+          priorityA,
+          priorityB,
+          orderA,
+          orderB,
+          result: orderA - orderB
+        });
+      }
+
       const ageA = ageOrder[a.dimensions?.ageCategory as AgeCategory] ?? 999;
       const ageB = ageOrder[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
