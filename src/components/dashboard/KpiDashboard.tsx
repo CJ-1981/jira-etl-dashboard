@@ -790,11 +790,11 @@ export function KpiDashboard() {
       } else if (dimension.priority && pluginId === 'sla_by_priority') {
         componentType = 'sla-priority';
       } else if (dimension.priority) {
-        componentType = 'other-priority';
+        componentType = 'other-priority'; // open_tickets_by_priority
       } else if (dimension.assignee || dimension.team) {
         componentType = 'assignee'; // Team dimension uses same rendering as assignee
-      } else if (dimension.bucket && pluginId === 'cycle_time_histogram') {
-        componentType = 'cycle-time-histogram'; // Route to histogram chart
+      } else if (dimension.bucket) {
+        componentType = 'cycle-time-histogram'; // cycle_time_histogram and aging_wip both use ChartCard histogram renderer
       } else {
         componentType = 'main';
       }
