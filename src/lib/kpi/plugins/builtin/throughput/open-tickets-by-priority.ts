@@ -29,6 +29,7 @@ const priorityOrder: Record<string, number> = {
   'Medium': 2,
   'Low': 3,
   'Lowest': 4,
+  // P-priority formats (uppercase)
   'P0': 0,
   'P0-Highest': 0,
   'P1': 1,
@@ -39,7 +40,7 @@ const priorityOrder: Record<string, number> = {
   'P3-Low': 3,
   'P4': 4,
   'P4-Lowest': 4,
-  // Handle case variations and Jira-specific formats
+  // p-priority formats (lowercase)
   'p0': 0,
   'p0-highest': 0,
   'p1': 1,
@@ -50,7 +51,11 @@ const priorityOrder: Record<string, number> = {
   'p3-low': 3,
   'p4': 4,
   'p4-lowest': 4,
+  // Generic priority levels
+  'unassigned': 999,
   'Unassigned': 999,
+  'Unknown': 998,
+  'unknown': 998,
 };
 
 const openTicketsByPriorityPlugin: KpiPlugin = {
@@ -143,8 +148,11 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
     const sortedResults = results.sort((a, b) => {
       const priorityA = a.dimensions?.priority || '';
       const priorityB = b.dimensions?.priority || '';
-      const orderA = priorityOrder[priorityA] ?? 999;
-      const orderB = priorityOrder[priorityB] ?? 999;
+      // Normalize priority values for consistent matching
+      const normalizedA = priorityA.toLowerCase().trim();
+      const normalizedB = priorityB.toLowerCase().trim();
+      const orderA = priorityOrder[normalizedA] ?? priorityOrder[priorityA] ?? 999;
+      const orderB = priorityOrder[normalizedB] ?? priorityOrder[priorityB] ?? 999;
       const ageA = ageOrder[a.dimensions?.ageCategory as AgeCategory] ?? 999;
       const ageB = ageOrder[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
