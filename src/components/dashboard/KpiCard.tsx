@@ -870,7 +870,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
         // Debug logging
         if (process.env.NODE_ENV === 'development' && config.kpiId?.includes('open_tickets_by')) {
-          console.log('[ChartCard] Age breakdown debug:', {
+          console.log('[ChartCard] Bar rendering debug:', {
             kpiId: config.kpiId,
             hasAgeBreakdownInResults,
             hasWeeklyLayers,
@@ -887,7 +887,10 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             rawDataStructure: visibleBarData.map(d => ({
               keys: Object.keys(d),
               values: Object.values(d)
-            }))
+            })),
+            hiddenDimensions: Array.from(hiddenDimensions),
+            shouldRenderStandardBar: !hasWeeklyLayers,
+            shouldRenderAgeBreakdownBars: hasWeeklyLayers
           });
         }
 
@@ -946,7 +949,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <Bar
                   dataKey="value"
                   name="Total Period"
-                  radius={[0, 4, 4, 0]}
+                  fill="#3b82f6"
                   hide={hiddenDimensions.has(`${config.kpiId}|Total Period`)}
                   cursor="pointer"
                   onClick={(data) => {
@@ -954,15 +957,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                       onClick(data.ticketKeys, data.name || 'Total Period');
                     }
                   }}
-                >
-                  {visibleBarData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]}
-                      fillOpacity={entry.isComplete === false ? 0.4 : 1}
-                    />
-                  ))}
-                </Bar>
+                />
               )}
               {hasWeeklyLayers && (
                 <>
@@ -971,7 +966,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     name="This Week"
                     fill={AGE_CATEGORY_COLORS.this_week}
                     stackId="ageBreakdown"
-                    radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|This Week`)}
                     cursor="pointer"
                     onClick={(data) => {
@@ -979,21 +973,12 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                         onClick(data.ticketKeys, "This Week");
                       }
                     }}
-                  >
-                    {visibleBarData.map((entry, index) => (
-                      <Cell
-                        key={`thisWeek-${index}`}
-                        fill={AGE_CATEGORY_COLORS.this_week}
-                        fillOpacity={entry.thisWeek === 0 ? 0.1 : 1}
-                      />
-                    ))}
-                  </Bar>
+                  />
                   <Bar
                     dataKey="prevWeek"
                     name="1 week old"
                     fill={AGE_CATEGORY_COLORS.last_week}
                     stackId="ageBreakdown"
-                    radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|1 week old`)}
                     cursor="pointer"
                     onClick={(data) => {
@@ -1001,22 +986,12 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                         onClick(data.ticketKeys, "1 week old");
                       }
                     }}
-                  >
-                    {visibleBarData.map((entry, index) => (
-                      <Cell
-                        key={`prevWeek-${index}`}
-                        fill={AGE_CATEGORY_COLORS.last_week}
-                        fillOpacity={entry.prevWeek === 0 ? 0.1 : 1}
-                      />
-                    ))}
-                  </Bar>
+                  />
                   <Bar
                     dataKey="existing"
                     name="2+ weeks old"
                     fill={AGE_CATEGORY_COLORS.existing}
-                    stroke="none"
                     stackId="ageBreakdown"
-                    radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|2+ weeks old`)}
                     cursor="pointer"
                     onClick={(data) => {
@@ -1024,15 +999,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                         onClick(data.ticketKeys, "2+ weeks old");
                       }
                     }}
-                  >
-                    {visibleBarData.map((entry, index) => (
-                      <Cell
-                        key={`existing-${index}`}
-                        fill={AGE_CATEGORY_COLORS.existing}
-                        fillOpacity={entry.existing === 0 ? 0.1 : 1}
-                      />
-                    ))}
-                  </Bar>
+                  />
                 </>
               )}
             </BarChart>
