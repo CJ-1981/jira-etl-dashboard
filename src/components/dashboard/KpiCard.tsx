@@ -850,19 +850,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
         }
 
         const visibleBarData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
-        // Check for age breakdown layers in data (thisWeek, prevWeek, existing fields)
-        // OR check if the KPI results contain age breakdown patterns
-        const hasAgeBreakdownInResults = kpi?.results?.some((r: any) =>
-          r.dimensions?.ageCategory ||
-          r.name?.includes('(Existing)') ||
-          r.name?.includes('(Last Week)') ||
-          r.name?.includes('(This Week)') ||
-          r.details?.some((d: any) => ['This Week', '1 week old', '2+ weeks old'].includes(d.label))
-        );
 
-        // @MX:NOTE: Check for age breakdown fields regardless of values (even zeros should render layers)
-        // @MX:REASON: hasWeeklyLayers determines which rendering path to use; should be based on structure, not content
-        const hasWeeklyLayers = hasAgeBreakdownInResults || visibleBarData.some(d =>
+        // @MX:NOTE: Determine stacked age-breakdown rendering based solely on transformed chart data
+        // @MX:REASON: Checking kpi.results.details was too broad — it matched any KPI that reports age
+        // labels in its details (e.g. total open-tickets), incorrectly suppressing the plain
+        // <Bar dataKey="value"> and rendering bars for undefined fields instead (blank chart).
+        // transformForBarChart is the single source of truth for which fields exist in the data.
+        const hasWeeklyLayers = visibleBarData.some(d =>
           d.thisWeek !== undefined ||
           d.prevWeek !== undefined ||
           d.existing !== undefined
@@ -942,45 +936,50 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   }}
                 />
               )}
+              {/* @MX:NOTE: Bars must be direct children of BarChart - no Fragment wrapper */}
+              {/* @MX:REASON: Recharts scans direct children to register series; a Fragment wrapping */}
+              {/* makes the <Bar> components invisible to Recharts, so nothing renders. */}
               {hasWeeklyLayers && (
-                <>
-                  <Bar
-                    dataKey="existing"
-                    name="2+ weeks old"
-                    fill={AGE_CATEGORY_COLORS.existing}
-                    stackId="ageBreakdown"
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "2+ weeks old");
-                      }
-                    }}
-                  />
-                  <Bar
-                    dataKey="prevWeek"
-                    name="1 week old"
-                    fill={AGE_CATEGORY_COLORS.last_week}
-                    stackId="ageBreakdown"
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "1 week old");
-                      }
-                    }}
-                  />
-                  <Bar
-                    dataKey="thisWeek"
-                    name="This Week"
-                    fill={AGE_CATEGORY_COLORS.this_week}
-                    stackId="ageBreakdown"
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "This Week");
-                      }
-                    }}
-                  />
-                </>
+                <Bar
+                  dataKey="existing"
+                  name="2+ weeks old"
+                  fill={AGE_CATEGORY_COLORS.existing}
+                  stackId="ageBreakdown"
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, "2+ weeks old");
+                    }
+                  }}
+                />
+              )}
+              {hasWeeklyLayers && (
+                <Bar
+                  dataKey="prevWeek"
+                  name="1 week old"
+                  fill={AGE_CATEGORY_COLORS.last_week}
+                  stackId="ageBreakdown"
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, "1 week old");
+                    }
+                  }}
+                />
+              )}
+              {hasWeeklyLayers && (
+                <Bar
+                  dataKey="thisWeek"
+                  name="This Week"
+                  fill={AGE_CATEGORY_COLORS.this_week}
+                  stackId="ageBreakdown"
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, "This Week");
+                    }
+                  }}
+                />
               )}
             </BarChart>
           </ResponsiveContainer>
