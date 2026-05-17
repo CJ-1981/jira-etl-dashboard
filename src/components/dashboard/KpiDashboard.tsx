@@ -1580,12 +1580,15 @@ export function KpiDashboard() {
                               if (visibleResults.length === 0) return null;
 
                               const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+                              const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
+                              const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
+                              const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
 
                               return (
                                 <div key={status} className="space-y-2 group">
                                   {/* Status Header */}
                                   <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <span
                                         className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
                                         onClick={() => {
@@ -1597,7 +1600,28 @@ export function KpiDashboard() {
                                       >
                                         {status}
                                       </span>
-                                      <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
+
+                                      <div className="flex items-center gap-1.5 ml-2">
+                                        {existingCount > 0 && (
+                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title="2+ weeks old">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                            <span>{existingCount}</span>
+                                          </Badge>
+                                        )}
+                                        {lastWeekCount > 0 && (
+                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title="1 week old">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                            <span>{lastWeekCount}</span>
+                                          </Badge>
+                                        )}
+                                        {thisWeekCount > 0 && (
+                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title="This week">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                            <span>{thisWeekCount}</span>
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </div>
                                     <button
                                       onClick={() => {
@@ -1618,7 +1642,7 @@ export function KpiDashboard() {
 
                                   {/* Stacked/Segmented Bar */}
                                   <div className="space-y-1">
-                                    <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                                    <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
                                       {visibleResults
                                         .sort((a, b) => {
                                           // Sort by age: existing → last_week → this_week
@@ -1631,15 +1655,18 @@ export function KpiDashboard() {
                                           const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
                                           const ageCategory = result.dimensions?.ageCategory as string;
                                           const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+                                          const ageLabel = ageCategory === 'existing' ? '2+ weeks' : ageCategory === 'last_week' ? '1 week' : 'This week';
 
                                           return (
                                             <div
                                               key={idx}
-                                              className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
+                                              className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
                                               style={{ width: `${width}%` }}
                                               onClick={() => handleDrillDown(result.ticketKeys || [], `${status} (${result.dimensions?.ageCategory})`)}
-                                              title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
-                                            />
+                                              title={`${ageLabel}: ${result.value} ticket(s)`}
+                                            >
+                                              {result.value > 0 && width >= 6 ? result.value : null}
+                                            </div>
                                           );
                                         })}
                                     </div>
@@ -1789,18 +1816,26 @@ export function KpiDashboard() {
                         <CardContent>
                           {/* Age Legend */}
                           <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                              {kpi.pluginId.includes('closed') ? 'Closed Timeframe:' : 'Age Groups:'}
+                            </span>
                             <div className="flex items-center gap-1">
                               <div className="w-3 h-3 rounded bg-slate-500" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
+                                {kpi.pluginId.includes('closed') ? '2+ weeks ago' : '2+ weeks'}
+                              </span>
                             </div>
                             <div className="flex items-center gap-1">
                               <div className="w-3 h-3 rounded bg-amber-500" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
+                                {kpi.pluginId.includes('closed') ? 'Last week' : '1 week'}
+                              </span>
                             </div>
                             <div className="flex items-center gap-1">
                               <div className="w-3 h-3 rounded bg-emerald-400" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
+                                This week
+                              </span>
                             </div>
                           </div>
                           <div className="space-y-3">
@@ -1828,12 +1863,18 @@ export function KpiDashboard() {
                                 if (visibleResults.length === 0) return null;
 
                                 const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+                                const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
+                                const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
+                                const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
+                                const existingLabel = kpi.pluginId.includes('closed') ? '2+ weeks ago' : '2+ weeks old';
+                                const lastWeekLabel = kpi.pluginId.includes('closed') ? 'Last week' : '1 week old';
+                                const thisWeekLabel = kpi.pluginId.includes('closed') ? 'This week' : 'This week';
 
                                 return (
                                   <div key={priority} className="space-y-2 group">
                                     {/* Priority Header */}
                                     <div className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <span
                                           className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
                                           onClick={() => {
@@ -1845,7 +1886,28 @@ export function KpiDashboard() {
                                         >
                                           {priority}
                                         </span>
-                                        <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
+
+                                        <div className="flex items-center gap-1.5 ml-2">
+                                          {existingCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title={existingLabel}>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                              <span>{existingCount}</span>
+                                            </Badge>
+                                          )}
+                                          {lastWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title={lastWeekLabel}>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                              <span>{lastWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                          {thisWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title={thisWeekLabel}>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                              <span>{thisWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                        </div>
                                       </div>
                                       <button
                                         onClick={() => {
@@ -1866,7 +1928,7 @@ export function KpiDashboard() {
 
                                     {/* Stacked/Segmented Bar */}
                                     <div className="space-y-1">
-                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
                                         {visibleResults
                                           .sort((a, b) => {
                                             // Sort by age: existing → last_week → this_week
@@ -1879,23 +1941,26 @@ export function KpiDashboard() {
                                             const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
                                             const ageCategory = result.dimensions?.ageCategory as string;
                                             const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+                                            const ageLabel = ageCategory === 'existing' ? existingLabel : ageCategory === 'last_week' ? lastWeekLabel : thisWeekLabel;
 
                                             return (
                                               <div
                                                 key={idx}
-                                                className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
+                                                className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
                                                 style={{ width: `${width}%` }}
                                                 onClick={() => handleDrillDown(result.ticketKeys || [], `${priority} (${result.dimensions?.ageCategory})`)}
-                                                title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
-                                                />
-                                                );
-                                                })}
-                                                </div>
-                                                </div>
-                                                </div>
-                                                );
-                                                });
-                                                })()}                          </div>
+                                                title={`${ageLabel}: ${result.value} ticket(s)`}
+                                              >
+                                                {result.value > 0 && width >= 6 ? result.value : null}
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}                          </div>
                           {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
                             <div className="text-xs text-slate-400 italic">
                               {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
@@ -2081,12 +2146,15 @@ export function KpiDashboard() {
                                 if (visibleResults.length === 0) return null;
 
                                 const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+                                const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
+                                const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
+                                const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
 
                                 return (
                                   <div key={key} className="space-y-2 group">
                                     {/* Assignee/Team Header */}
                                     <div className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <span
                                           className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
                                           onClick={() => {
@@ -2098,7 +2166,28 @@ export function KpiDashboard() {
                                         >
                                           {key}
                                         </span>
-                                        <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
+
+                                        <div className="flex items-center gap-1.5 ml-2">
+                                          {existingCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title="2+ weeks old">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                              <span>{existingCount}</span>
+                                            </Badge>
+                                          )}
+                                          {lastWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title="1 week old">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                              <span>{lastWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                          {thisWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title="This week">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                              <span>{thisWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                        </div>
                                       </div>
                                       <button
                                         onClick={() => {
@@ -2119,7 +2208,7 @@ export function KpiDashboard() {
 
                                     {/* Stacked/Segmented Bar */}
                                     <div className="space-y-1">
-                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
                                         {visibleResults
                                           .sort((a, b) => {
                                             // Sort by age: existing → last_week → this_week
@@ -2132,23 +2221,26 @@ export function KpiDashboard() {
                                             const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
                                             const ageCategory = result.dimensions?.ageCategory as string;
                                             const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+                                            const ageLabel = ageCategory === 'existing' ? '2+ weeks' : ageCategory === 'last_week' ? '1 week' : 'This week';
 
                                             return (
                                               <div
                                                 key={idx}
-                                                className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
+                                                className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
                                                 style={{ width: `${width}%` }}
                                                 onClick={() => handleDrillDown(result.ticketKeys || [], `${key} (${result.dimensions?.ageCategory})`)}
-                                                title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
-                                                />
-                                                );
-                                                })}
-                                                </div>
-                                                </div>
-                                                </div>
-                                                );
-                                                });
-                                                })()}                          </div>
+                                                title={`${ageLabel}: ${result.value} ticket(s)`}
+                                              >
+                                                {result.value > 0 && width >= 6 ? result.value : null}
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}                          </div>
                           {kpi.results.some((r: KpiCalcResult['results'][0]) => {
                             const dimensionKey = kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team' : 'assignee';
                             return hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] || r.name}`);
@@ -2293,15 +2385,33 @@ export function KpiDashboard() {
                                                   {item.assignee}
                                                 </span>
                                               </div>
-                                              <div className="flex items-center gap-1.5 shrink-0">
-                                                <Badge variant="outline" className="text-[10px] bg-slate-50 dark:bg-slate-800 font-mono group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 group-hover:border-indigo-300 dark:group-hover:border-indigo-800 transition-colors">
+                                              <div className="flex items-center gap-1 shrink-0">
+                                                {item.ageBreakdown.existing.count > 0 && (
+                                                  <span className="text-[10px] font-mono text-slate-500 flex items-center gap-0.5 ml-0.5" title="2+ weeks old">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                                    {item.ageBreakdown.existing.count}
+                                                  </span>
+                                                )}
+                                                {item.ageBreakdown.last_week.count > 0 && (
+                                                  <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 flex items-center gap-0.5 ml-0.5" title="1 week old">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                                    {item.ageBreakdown.last_week.count}
+                                                  </span>
+                                                )}
+                                                {item.ageBreakdown.this_week.count > 0 && (
+                                                  <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 ml-0.5" title="This week">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                    {item.ageBreakdown.this_week.count}
+                                                  </span>
+                                                )}
+                                                <Badge variant="outline" className="text-[10px] ml-1 bg-slate-50 dark:bg-slate-800 font-mono group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 group-hover:border-indigo-300 dark:group-hover:border-indigo-800 transition-colors" title="Total tickets">
                                                   {item.totalTickets}
                                                 </Badge>
                                               </div>
                                             </div>
 
                                             {/* Segmented Age Bar */}
-                                            <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex gap-0.5 shadow-inner">
+                                            <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex gap-0.5 shadow-inner">
                                               {item.ageBreakdown.this_week.count > 0 && (
                                                 <div
                                                   title={`This week: ${item.ageBreakdown.this_week.count} ticket(s)`}
