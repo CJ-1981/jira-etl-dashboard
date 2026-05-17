@@ -972,7 +972,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     dataKey="thisWeek"
                     name="This Week"
                     fill={AGE_CATEGORY_COLORS.this_week}
-                    stackId="ageBreakdown"
                     cursor="pointer"
                     onClick={(data) => {
                       if (data && data.ticketKeys) {
@@ -984,7 +983,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     dataKey="prevWeek"
                     name="1 week old"
                     fill={AGE_CATEGORY_COLORS.last_week}
-                    stackId="ageBreakdown"
                     cursor="pointer"
                     onClick={(data) => {
                       if (data && data.ticketKeys) {
@@ -996,7 +994,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     dataKey="existing"
                     name="2+ weeks old"
                     fill={AGE_CATEGORY_COLORS.existing}
-                    stackId="ageBreakdown"
                     cursor="pointer"
                     onClick={(data) => {
                       if (data && data.ticketKeys) {
