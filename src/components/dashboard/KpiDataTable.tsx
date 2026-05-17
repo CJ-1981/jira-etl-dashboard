@@ -60,6 +60,7 @@ const DIMENSION_TYPE_LABELS: Record<string, string> = {
   assignee: 'Assignee',
   team: 'Team',
   bucket: 'Bucket',
+  kanban: 'Kanban',
   none: '—',
 };
 
@@ -94,7 +95,8 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
         const dims = res.dimensions || {};
         let dimensionType = 'none';
         let dimensionValue = '—';
-        if (dims.status) { dimensionType = 'status'; dimensionValue = dims.status; }
+        if (dims.kanban) { dimensionType = 'kanban'; dimensionValue = dims.kanban; }
+        else if (dims.status) { dimensionType = 'status'; dimensionValue = dims.status; }
         else if (dims.priority) { dimensionType = 'priority'; dimensionValue = dims.priority; }
         else if (dims.assignee) { dimensionType = 'assignee'; dimensionValue = dims.assignee; }
         else if (dims.team) { dimensionType = 'team'; dimensionValue = dims.team; }
@@ -212,6 +214,7 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
           assignee: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
           team: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20',
           bucket: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+          kanban: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
         };
         return (
           <Badge variant="outline" className={`text-[10px] h-5 font-semibold ${colorMap[val] || ''}`}>

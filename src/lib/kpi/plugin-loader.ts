@@ -25,6 +25,7 @@ import timeInStatusPlugin from './plugins/builtin/turnaround/time-in-status';
 import throughputPlugin from './plugins/builtin/throughput/throughput';
 import openTicketsByPriorityPlugin from './plugins/builtin/throughput/open-tickets-by-priority';
 import openTicketsByStatusPlugin from './plugins/builtin/throughput/open-tickets-by-status';
+import openTicketsKanbanPlugin from './plugins/builtin/throughput/open-tickets-kanban';
 import resolutionRatePlugin from './plugins/builtin/quality/resolution-rate';
 import reassignmentPlugin from './plugins/builtin/quality/reassignment';
 import openTicketsByAssigneePlugin from './plugins/builtin/assignee/open-tickets-by-assignee';
@@ -74,6 +75,7 @@ export class PluginLoader {
       throughputPlugin,
       openTicketsByPriorityPlugin,
       openTicketsByStatusPlugin,
+      openTicketsKanbanPlugin,
 
       // Quality plugins
       resolutionRatePlugin,
