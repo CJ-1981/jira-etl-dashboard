@@ -849,7 +849,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
-        const visibleBarData = selectedKpiData; // Temporarily disable filtering to test
+        const visibleBarData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
         // Check for age breakdown layers in data (thisWeek, prevWeek, existing fields)
         // OR check if the KPI results contain age breakdown patterns
         const hasAgeBreakdownInResults = kpi?.results?.some((r: any) =>
@@ -888,21 +888,100 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           });
         }
 
-        // TEST: Use simplest possible hardcoded data
-        const testData = [
-          { name: 'A', value: 10 },
-          { name: 'B', value: 20 },
-          { name: 'C', value: 15 }
-        ];
-
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={testData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" />
+              <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
-              <Tooltip />
-              <Bar dataKey="value" fill="#3b82f6" />
+              <Tooltip
+                {...tooltipStyle}
+                content={<CustomBarTooltip />}
+              />
+              {hasWeeklyLayers && (
+                <Legend
+                  onClick={handleLegendClick}
+                  cursor="pointer"
+                  formatter={renderLegend}
+                  verticalAlign="top"
+                  align="right"
+                  wrapperStyle={{ paddingBottom: '20px' }}
+                  payload={[
+                    {
+                      value: 'This Week',
+                      type: 'rect' as any,
+                      id: 'This Week',
+                      color: AGE_CATEGORY_COLORS.this_week
+                    },
+                    {
+                      value: '1 week old',
+                      type: 'rect' as any,
+                      id: '1 week old',
+                      color: AGE_CATEGORY_COLORS.last_week
+                    },
+                    {
+                      value: '2+ weeks old',
+                      type: 'rect' as any,
+                      id: '2+ weeks old',
+                      color: AGE_CATEGORY_COLORS.existing
+                    }
+                  ]}
+                />
+              )}
+              {!hasWeeklyLayers && (
+                <Bar
+                  dataKey="value"
+                  name="Total"
+                  fill="#3b82f6"
+                  hide={hiddenDimensions.has(`${config.kpiId}|Total`)}
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, data.name);
+                    }
+                  }}
+                />
+              )}
+              {hasWeeklyLayers && (
+                <>
+                  <Bar
+                    dataKey="existing"
+                    name="2+ weeks old"
+                    fill={AGE_CATEGORY_COLORS.existing}
+                    stackId="ageBreakdown"
+                    cursor="pointer"
+                    onClick={(data) => {
+                      if (data && data.ticketKeys) {
+                        onClick(data.ticketKeys, "2+ weeks old");
+                      }
+                    }}
+                  />
+                  <Bar
+                    dataKey="prevWeek"
+                    name="1 week old"
+                    fill={AGE_CATEGORY_COLORS.last_week}
+                    stackId="ageBreakdown"
+                    cursor="pointer"
+                    onClick={(data) => {
+                      if (data && data.ticketKeys) {
+                        onClick(data.ticketKeys, "1 week old");
+                      }
+                    }}
+                  />
+                  <Bar
+                    dataKey="thisWeek"
+                    name="This Week"
+                    fill={AGE_CATEGORY_COLORS.this_week}
+                    stackId="ageBreakdown"
+                    cursor="pointer"
+                    onClick={(data) => {
+                      if (data && data.ticketKeys) {
+                        onClick(data.ticketKeys, "This Week");
+                      }
+                    }}
+                  />
+                </>
+              )}
             </BarChart>
           </ResponsiveContainer>
         );
