@@ -111,13 +111,19 @@ export function KpiDashboard() {
   const isFirstRender = useRef(true);
   const hasUserInitiatedCalc = useRef(false);
 
-  // State for panel expansion
-  const [assigneePanelExpanded, setAssigneePanelExpanded] = useState(true);
-  const [statusTimePanelExpanded, setStatusTimePanelExpanded] = useState(true);
-  const [openTicketsByStatusPanelExpanded, setOpenTicketsByStatusPanelExpanded] = useState(true);
-  const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
-  const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
-  const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
+  // State for widget panel collapse (Set of collapsed pluginIds)
+  const [collapsedWidgets, setCollapsedWidgets] = useState<Set<string>>(new Set());
+  const toggleWidgetCollapse = useCallback((pluginId: string) => {
+    setCollapsedWidgets(prev => {
+      const next = new Set(prev);
+      if (next.has(pluginId)) {
+        next.delete(pluginId);
+      } else {
+        next.add(pluginId);
+      }
+      return next;
+    });
+  }, []);
   const [metricsOverviewExpanded, setMetricsOverviewExpanded] = useState(true);
 
   // Plugin registry for names
@@ -1407,36 +1413,38 @@ export function KpiDashboard() {
             {orderedWidgets.map((widget) => {
               switch (widget.component) {
                 case 'status-time':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
-                    <Card key={`status-time-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                      <CardHeader>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
-                            <button
-                              onClick={() => setStatusTimePanelExpanded(!statusTimePanelExpanded)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                              title={statusTimePanelExpanded ? "Collapse" : "Expand"}
-                              aria-label={statusTimePanelExpanded ? "Collapse section" : "Expand section"}
-                            >
-                              {statusTimePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                            </button>
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`status-time-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`)) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
                           </div>
-                          {Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`)) && (
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              setHiddenDimensions((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
-                                return next;
-                              });
-                            }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
-                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      {statusTimePanelExpanded && (
-                        <CardContent>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
                           {!kpi.results || kpi.results.length === 0 ? (
                             <div className="text-center py-8 text-slate-400 dark:text-slate-600">
                               <Timer className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -1492,38 +1500,41 @@ export function KpiDashboard() {
                         </CardContent>
                       )}
                     </Card>
-                  )) : null;
+                  );
+                }) : null;
 
                 case 'status-open':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
-                    <Card key={`status-open-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                      <CardHeader>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
-                            <button
-                              onClick={() => setOpenTicketsByStatusPanelExpanded(!openTicketsByStatusPanelExpanded)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                              title={openTicketsByStatusPanelExpanded ? "Collapse" : "Expand"}
-                              aria-label={openTicketsByStatusPanelExpanded ? "Collapse section" : "Expand section"}
-                            >
-                              {openTicketsByStatusPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                            </button>
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`status-open-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
                           </div>
-                          {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              setHiddenDimensions((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
-                                return next;
-                              });
-                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      {openTicketsByStatusPanelExpanded && (
+                        </CardHeader>
+                        {isExpanded && (
                         <CardContent>
                         {/* Age Legend */}
                         <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
@@ -1644,39 +1655,42 @@ export function KpiDashboard() {
                         </CardContent>
                       )}
                     </Card>
-                  )) : null;
+                  );
+                }) : null;
 
                 case 'sla-priority':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
-                    <Card key={`sla-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                      <CardHeader>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
-                            <button
-                              onClick={() => setPrioritySlaPanelExpanded(!prioritySlaPanelExpanded)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                              title={prioritySlaPanelExpanded ? "Collapse" : "Expand"}
-                              aria-label={prioritySlaPanelExpanded ? "Collapse section" : "Expand section"}
-                            >
-                              {prioritySlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                            </button>
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`sla-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
                           </div>
-                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              setHiddenDimensions((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                return next;
-                              });
-                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      {prioritySlaPanelExpanded && (
-                        <CardContent>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
                           <div className="space-y-3">
                             {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                               const dimKey = `${kpi.pluginId}|${result.dimensions?.priority || result.name}`;
@@ -1732,41 +1746,44 @@ export function KpiDashboard() {
                         </CardContent>
                       )}
                     </Card>
-                  )) : null;
+                  );
+                }) : null;
 
                 case 'other-priority':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
-                    <Card key={`other-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                      <CardHeader>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="flex items-center gap-2">
-                              <TrendingUp className="h-5 w-5 text-cyan-400" />
-                              {getPluginName(kpi.pluginId)}
-                            </CardTitle>
-                            <button
-                              onClick={() => setOtherPriorityPanelExpanded(!otherPriorityPanelExpanded)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                              title={otherPriorityPanelExpanded ? "Collapse" : "Expand"}
-                              aria-label={otherPriorityPanelExpanded ? "Collapse section" : "Expand section"}
-                            >
-                              {otherPriorityPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                            </button>
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`other-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2">
+                                <TrendingUp className="h-5 w-5 text-cyan-400" />
+                                {getPluginName(kpi.pluginId)}
+                              </CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
                           </div>
-                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              setHiddenDimensions((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                return next;
-                              });
-                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      {otherPriorityPanelExpanded && (
+                        </CardHeader>
+                        {isExpanded && (
                         <CardContent>
                           {/* Age Legend */}
                           <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
@@ -1885,41 +1902,44 @@ export function KpiDashboard() {
                         </CardContent>
                       )}
                     </Card>
-                  )) : null;
+                  );
+                }) : null;
 
                 case 'sla-status':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
-                    <Card key={`sla-status-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                      <CardHeader>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="flex items-center gap-2">
-                              <Target className="h-5 w-5 text-emerald-400" />
-                              {kpi.pluginId === 'sla_by_status_excl_clone' ? 'SLA by Status (Excl. Clones)' : 'SLA by Status'}
-                            </CardTitle>
-                            <button
-                              onClick={() => setStatusSlaPanelExpanded(!statusSlaPanelExpanded)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                              title={statusSlaPanelExpanded ? "Collapse" : "Expand"}
-                              aria-label={statusSlaPanelExpanded ? "Collapse section" : "Expand section"}
-                            >
-                              {statusSlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                            </button>
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`sla-status-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2">
+                                <Target className="h-5 w-5 text-emerald-400" />
+                                {kpi.pluginId === 'sla_by_status_excl_clone' ? 'SLA by Status (Excl. Clones)' : 'SLA by Status'}
+                              </CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
                           </div>
-                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              setHiddenDimensions((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                return next;
-                              });
-                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      {statusSlaPanelExpanded && (
+                        </CardHeader>
+                        {isExpanded && (
                         <CardContent>
                           <div className="space-y-3">
                             {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
@@ -1977,42 +1997,45 @@ export function KpiDashboard() {
                         </CardContent>
                       )}
                     </Card>
-                  )) : null;
+                  );
+                }) : null;
 
                 case 'assignee':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
-                    <Card key={`assignee-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                      <CardHeader>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="flex items-center gap-2">
-                              <UserCheck className="h-5 w-5 text-indigo-400" />
-                              {getPluginName(kpi.pluginId)}
-                            </CardTitle>
-                            <button
-                              onClick={() => setAssigneePanelExpanded(!assigneePanelExpanded)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                              title={assigneePanelExpanded ? "Collapse" : "Expand"}
-                              aria-label={assigneePanelExpanded ? "Collapse section" : "Expand section"}
-                            >
-                              {assigneePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                            </button>
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`assignee-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2">
+                                <UserCheck className="h-5 w-5 text-indigo-400" />
+                                {getPluginName(kpi.pluginId)}
+                              </CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
                           </div>
-                          {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              setHiddenDimensions((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                return next;
-                              });
-                            }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                              <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      {assigneePanelExpanded && (
-                        <CardContent>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
                           {/* Age Legend */}
                           <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
                             <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
@@ -2135,7 +2158,8 @@ export function KpiDashboard() {
                         </CardContent>
                       )}
                     </Card>
-                  )) : null;
+                  );
+                }) : null;
 
                 case 'cycle-time-histogram':
                   return widget.kpis.length > 0 ? (
