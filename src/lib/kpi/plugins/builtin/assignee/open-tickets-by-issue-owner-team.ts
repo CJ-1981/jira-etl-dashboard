@@ -31,7 +31,7 @@ const openTicketsByIssueOwnerTeamPlugin: KpiPlugin = {
   version: '2.0.0',
   pluginType: 'builtin',
   isActive: true,
-  visualization: 'horizontal_bar',
+  visualization: 'horizontal_bar', // Supports stacked bar with age breakdown
   unit: 'tickets',
 
   calculate(context: KpiContext): KpiResult[] {
