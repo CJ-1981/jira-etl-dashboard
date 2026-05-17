@@ -859,10 +859,13 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           r.name?.includes('(This Week)') ||
           r.details?.some((d: any) => ['This Week', '1 week old', '2+ weeks old'].includes(d.label))
         );
+
+        // @MX:NOTE: Check for age breakdown fields regardless of values (even zeros should render layers)
+        // @MX:REASON: hasWeeklyLayers determines which rendering path to use; should be based on structure, not content
         const hasWeeklyLayers = hasAgeBreakdownInResults || visibleBarData.some(d =>
-          (d.thisWeek !== undefined && d.thisWeek !== 0) ||
-          (d.prevWeek !== undefined && d.prevWeek !== 0) ||
-          (d.existing !== undefined && d.existing !== 0)
+          d.thisWeek !== undefined ||
+          d.prevWeek !== undefined ||
+          d.existing !== undefined
         );
 
         // Debug logging
@@ -873,16 +876,22 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             hasWeeklyLayers,
             kpiResults: kpi?.results?.length,
             visibleBarData: visibleBarData.length,
-            sampleData: visibleBarData[0]
+            sampleData: visibleBarData[0],
+            allDataFields: visibleBarData.map(d => ({
+              name: d.name,
+              thisWeek: d.thisWeek,
+              prevWeek: d.prevWeek,
+              existing: d.existing
+            }))
           });
         }
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+            <BarChart data={visibleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
-              <YAxis className="text-xs" />
+              <XAxis type="number" className="text-xs" />
+              <YAxis dataKey="name" type="category" className="text-xs" width={120} />
               <Tooltip
                 {...tooltipStyle}
                 content={<CustomBarTooltip />}
