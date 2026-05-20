@@ -105,15 +105,15 @@ export function KpiDashboard() {
     customWidgetResults, setCustomWidgetResults, calculatingWidgets, setCalculatingWidgets,
     kpiCardConfigs, setKpiCardConfigs,
     activeView, setIsViewModified, setActiveView,
-    widgetTitles, setWidgetTitles
+    widgetTitles, setWidgetTitles,
+    collapsedWidgets, setCollapsedWidgets
   } = useAppStore();
 
   const onPrint = () => window.print();
   const isFirstRender = useRef(true);
   const hasUserInitiatedCalc = useRef(false);
 
-  // State for widget panel collapse (Set of collapsed pluginIds)
-  const [collapsedWidgets, setCollapsedWidgets] = useState<Set<string>>(new Set());
+  // Toggle section collapse state in the global store
   const toggleWidgetCollapse = useCallback((pluginId: string) => {
     setCollapsedWidgets(prev => {
       const next = new Set(prev);
@@ -124,8 +124,8 @@ export function KpiDashboard() {
       }
       return next;
     });
-  }, []);
-  const [metricsOverviewExpanded, setMetricsOverviewExpanded] = useState(true);
+    setIsViewModified(true);
+  }, [setCollapsedWidgets, setIsViewModified]);
 
   // Plugin registry for names
   const [pluginRegistry, setPluginRegistry] = useState<Record<string, KpiPlugin>>({});
@@ -1426,23 +1426,23 @@ export function KpiDashboard() {
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <button
-              onClick={() => setMetricsOverviewExpanded(!metricsOverviewExpanded)}
+              onClick={() => toggleWidgetCollapse('metrics-overview')}
               className="flex items-center gap-2 group text-left"
-              aria-expanded={metricsOverviewExpanded}
+              aria-expanded={!collapsedWidgets.has('metrics-overview')}
             >
               <Activity className="h-5 w-5 text-emerald-500 shrink-0" />
               <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                 Metrics Overview
               </h3>
-              {metricsOverviewExpanded
+              {!collapsedWidgets.has('metrics-overview')
                 ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                 : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
               <span className="text-xs text-slate-400 font-normal ml-1">
-                {metricsOverviewExpanded ? '' : `(${sortedKpiResults.reduce((acc, r) => acc + r.results.length, 0)} rows)`}
+                {!collapsedWidgets.has('metrics-overview') ? '' : `(${sortedKpiResults.reduce((acc, r) => acc + r.results.length, 0)} rows)`}
               </span>
             </button>
 
-            {metricsOverviewExpanded && (
+            {!collapsedWidgets.has('metrics-overview') && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1455,7 +1455,7 @@ export function KpiDashboard() {
             )}
           </div>
           <AnimatePresence initial={false}>
-            {metricsOverviewExpanded && (
+            {!collapsedWidgets.has('metrics-overview') && (
               <motion.div
                 key="metrics-table"
                 initial={{ opacity: 0, height: 0 }}

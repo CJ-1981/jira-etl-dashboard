@@ -101,6 +101,7 @@ export interface DashboardState {
   dashboardJql?: string;
   dateFrom?: string;
   dateTo?: string;
+  collapsedWidgets?: string[];
 }
 
 export interface DashboardPreset {
@@ -114,6 +115,7 @@ export interface DashboardPreset {
   hiddenDimensions: string[];
   // @MX:NOTE: Custom widget title overrides — key format: "pluginId|resultName" for KpiCards, chart ID for ChartCards (stored in chart.customTitle)
   widgetTitles?: Record<string, string>;
+  collapsedWidgets?: string[];
 }
 
 export const KEYS = {
