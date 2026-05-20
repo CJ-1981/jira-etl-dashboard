@@ -209,6 +209,77 @@ export class JiraClient {
   }
 
   /**
+   * Discover custom fields available in the Jira instance for a given JQL context.
+   *
+   * Strategy:
+   *   1. Run the user's JQL (maxResults=1, expand=names) — the `names` dict maps every
+   *      field ID that appears on that ticket to its human-readable label.
+   *   2. Filter to only `customfield_*` entries.
+   *   3. If JQL returns 0 results, fall back to GET /field and return all custom fields.
+   */
+  async discoverCustomFields(
+    jql: string
+  ): Promise<Array<{ fieldId: string; name: string; type: string }>> {
+    // Step 1 — try to get names from a real ticket in context
+    if (jql.trim()) {
+      try {
+        const searchBody = {
+          jql: jql.trim(),
+          maxResults: 1,
+          fields: ['*all'],
+          expand: ['names'],
+        };
+        const searchRes = await fetch(this.buildUrl('/search'), {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify(searchBody),
+        });
+
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const names: Record<string, string> = searchData.names || {};
+          const customEntries = Object.entries(names).filter(([id]) => id.startsWith('customfield_'));
+
+          if (customEntries.length > 0) {
+            // Get schema info to include field type (best-effort)
+            const schemaMap: Record<string, string> = {};
+            if (searchData.issues?.[0]?.fields) {
+              // Types aren't in names; derive from schema in response if present
+            }
+            return customEntries.map(([fieldId, name]) => ({
+              fieldId,
+              name,
+              type: schemaMap[fieldId] || 'custom',
+            }));
+          }
+        }
+      } catch (_) {
+        // fall through to fallback
+      }
+    }
+
+    // Step 2 — fallback: GET /field filtered to custom fields
+    const fieldsRes = await fetch(this.buildUrl('/field'), {
+      headers: this.getHeaders(),
+    });
+
+    if (!fieldsRes.ok) {
+      throw new Error(`Failed to fetch field list: ${fieldsRes.status} ${fieldsRes.statusText}`);
+    }
+
+    const allFields: Array<{ id: string; name: string; custom: boolean; schema?: { type: string } }> =
+      await fieldsRes.json();
+
+    return allFields
+      .filter(f => f.custom && f.id.startsWith('customfield_'))
+      .map(f => ({
+        fieldId: f.id,
+        name: f.name,
+        type: f.schema?.type || 'custom',
+      }));
+  }
+
+  /**
    * Get a single issue by key (for testing access to specific issues)
    */
   async getIssue(issueKey: string): Promise<JiraIssue | null> {

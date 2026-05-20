@@ -10,6 +10,15 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -18,7 +27,8 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
-  Download, RefreshCw, Server, RotateCw, Clock, HardDrive, LayoutGrid, Trash2, Search, X, ExternalLink, CheckCircle2, Loader2, Save, Plus, Tag
+  Download, RefreshCw, Server, RotateCw, Clock, HardDrive, LayoutGrid, Trash2, Search, X,
+  ExternalLink, CheckCircle2, Loader2, Save, Plus, Tag, Sparkles
 } from 'lucide-react';
 import { localConfig, JiraConnection, SavedJql, CustomExtractField } from '@/lib/config/local-store';
 import { DEFAULT_FIELD_CONFIG } from '@/lib/jira/field-config';
@@ -105,10 +115,81 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [showCustomFields, setShowCustomFields] = useState(false);
 
+  // Auto-discover state
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveredFields, setDiscoveredFields] = useState<Array<{ fieldId: string; name: string; type: string }>>([]);
+  const [selectedDiscovered, setSelectedDiscovered] = useState<Set<string>>(new Set());
+  const [discoverSearch, setDiscoverSearch] = useState('');
+
   // Load custom extract fields
   useEffect(() => {
-    setCustomFields(localConfig.getCustomExtractFields());
+    setCustomFields(localConfig.getCustomExtractFields() as CustomExtractField[]);
   }, []);
+
+  const handleDiscover = async () => {
+    if (!activeConnectionId) { toast.error('Select a connection first'); return; }
+    const activeConn = connections.find(c => c.id === activeConnectionId);
+    if (!activeConn) { toast.error('Active connection not found'); return; }
+
+    setDiscovering(true);
+    setDiscoveredFields([]);
+    setSelectedDiscovered(new Set());
+    setDiscoverSearch('');
+    setDiscoverOpen(true);
+
+    try {
+      const res = await fetch('/api/jira/fields/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jiraCredentials: {
+            baseUrl: activeConn.baseUrl,
+            email: activeConn.email,
+            apiToken: activeConn.apiToken,
+            projectKeys: activeConn.projectKeys,
+          },
+          jql: jql || '',
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to fetch fields');
+      setDiscoveredFields(data.fields || []);
+    } catch (e: any) {
+      toast.error(`Discover failed: ${e.message}`);
+      setDiscoverOpen(false);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const handleAddDiscovered = () => {
+    const alreadyConfigured = new Set(customFields.map(f => f.fieldId));
+    const toAdd: CustomExtractField[] = [];
+
+    selectedDiscovered.forEach(fieldId => {
+      if (alreadyConfigured.has(fieldId)) return;
+      const found = discoveredFields.find(f => f.fieldId === fieldId);
+      if (!found) return;
+      toAdd.push({
+        id: `cf-${Date.now()}-${fieldId}`,
+        fieldId: found.fieldId,
+        label: found.name,
+        role: undefined,
+      });
+    });
+
+    if (toAdd.length === 0) {
+      toast.info('No new fields to add');
+      return;
+    }
+
+    const updated = [...customFields, ...toAdd];
+    setCustomFields(updated);
+    localConfig.saveCustomExtractFields(updated);
+    toast.success(`Added ${toAdd.length} custom field${toAdd.length > 1 ? 's' : ''}`);
+    setDiscoverOpen(false);
+  };
 
   // Load polling status
   useEffect(() => {
@@ -526,12 +607,12 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
 
           {/* Custom Extract Fields */}
           <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <button
-              type="button"
-              className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
-              onClick={() => setShowCustomFields(!showCustomFields)}
-            >
-              <div className="flex items-center gap-2">
+            <div className="flex items-center bg-slate-50 dark:bg-slate-800/50 border-b border-transparent">
+              <button
+                type="button"
+                className="flex-1 flex items-center gap-2 p-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                onClick={() => setShowCustomFields(!showCustomFields)}
+              >
                 <Tag className="h-4 w-4 text-violet-400" />
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Custom Extract Fields</span>
                 {customFields.length > 0 && (
@@ -539,14 +620,25 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                     {customFields.length}
                   </Badge>
                 )}
-              </div>
-              <svg
-                className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${showCustomFields ? 'rotate-180' : ''}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                <svg
+                  className={`h-4 w-4 text-slate-400 transition-transform duration-200 ml-auto ${showCustomFields ? 'rotate-180' : ''}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-full px-3 rounded-none border-l border-slate-200 dark:border-slate-700 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 gap-1.5 text-xs"
+                onClick={handleDiscover}
+                title="Auto-discover custom fields from your Jira instance"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+                <Sparkles className="h-3.5 w-3.5" />
+                Discover
+              </Button>
+            </div>
 
             {showCustomFields && (
               <div className="p-3 space-y-3 border-t border-slate-200 dark:border-slate-700 animate-in slide-in-from-top-1 duration-200">
@@ -612,13 +704,16 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                         toast.error('This field ID is already added');
                         return;
                       }
+                      const roleVal = (document.getElementById('newFieldRole') as HTMLSelectElement)?.value || 'none';
                       const newField: CustomExtractField = {
                         id: `cf-${Date.now()}`,
                         fieldId: trimmedId,
                         label: trimmedLabel,
-                        role: (document.getElementById('newFieldRole') as HTMLSelectElement)?.value as any || undefined,
+                        role: roleVal === 'storyPoints' ? 'storyPoints'
+                          : roleVal === 'issueOwnerTeam' ? 'issueOwnerTeam'
+                          : roleVal === 'custom' ? 'custom'
+                          : undefined,
                       };
-                      if (newField.role === 'none') newField.role = undefined;
                       const updated = [...customFields, newField];
                       setCustomFields(updated);
                       localConfig.saveCustomExtractFields(updated);
@@ -992,6 +1087,121 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Auto-Discover Custom Fields Dialog ── */}
+      <Dialog open={discoverOpen} onOpenChange={setDiscoverOpen}>
+        <DialogContent className="max-w-lg bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <Sparkles className="h-4 w-4 text-violet-400" />
+              Discovered Custom Fields
+            </DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400 text-xs">
+              {jql
+                ? 'Fields found on tickets matching your current JQL.'
+                : 'All custom fields defined in your Jira instance (no JQL configured — showing full list).'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <Input
+              placeholder="Search by name or field ID…"
+              value={discoverSearch}
+              onChange={e => setDiscoverSearch(e.target.value)}
+              className="pl-8 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+            />
+          </div>
+
+          {/* Field list */}
+          <ScrollArea className="h-72 rounded-md border border-slate-200 dark:border-slate-700">
+            {discovering ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 py-10 text-slate-400">
+                <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+                <span className="text-xs">Fetching fields from Jira…</span>
+              </div>
+            ) : discoveredFields.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-xs text-slate-400 py-10">
+                No custom fields found.
+              </div>
+            ) : (() => {
+              const alreadyConfigured = new Set(customFields.map(f => f.fieldId));
+              const lower = discoverSearch.toLowerCase();
+              const filtered = discoveredFields.filter(f =>
+                !lower || f.fieldId.toLowerCase().includes(lower) || f.name.toLowerCase().includes(lower)
+              );
+              if (filtered.length === 0) return (
+                <div className="flex items-center justify-center h-full text-xs text-slate-400 py-10">
+                  No fields match your search.
+                </div>
+              );
+              return (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filtered.map(field => {
+                    const isAlready = alreadyConfigured.has(field.fieldId);
+                    const isSelected = selectedDiscovered.has(field.fieldId);
+                    return (
+                      <label
+                        key={field.fieldId}
+                        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                          isAlready
+                            ? 'opacity-40 cursor-not-allowed'
+                            : 'hover:bg-violet-50/50 dark:hover:bg-violet-500/5'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={isAlready ? false : isSelected}
+                          disabled={isAlready}
+                          onCheckedChange={checked => {
+                            if (isAlready) return;
+                            setSelectedDiscovered(prev => {
+                              const next = new Set(prev);
+                              checked ? next.add(field.fieldId) : next.delete(field.fieldId);
+                              return next;
+                            });
+                          }}
+                          className="border-slate-300 dark:border-slate-600 data-[state=checked]:bg-violet-500 data-[state=checked]:border-violet-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{field.name}</p>
+                          <code className="text-[10px] text-slate-400 dark:text-slate-500">{field.fieldId}</code>
+                        </div>
+                        {isAlready && (
+                          <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-slate-300/50 text-slate-400 shrink-0">Added</Badge>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </ScrollArea>
+
+          <DialogFooter className="flex items-center justify-between gap-3 sm:justify-between">
+            <p className="text-xs text-slate-400">
+              {selectedDiscovered.size > 0
+                ? `${selectedDiscovered.size} field${selectedDiscovered.size > 1 ? 's' : ''} selected`
+                : `${discoveredFields.length} field${discoveredFields.length !== 1 ? 's' : ''} discovered`}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => setDiscoverOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="text-xs h-8 bg-violet-600 hover:bg-violet-700 text-white"
+                disabled={selectedDiscovered.size === 0}
+                onClick={handleAddDiscovered}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add Selected ({selectedDiscovered.size})
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });
+
