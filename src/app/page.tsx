@@ -70,6 +70,7 @@ export default function Home() {
 
   const loadMasterDataset = useCallback(async (connectionId: string, config: any, signal?: AbortSignal) => {
     if (!connectionId) return;
+    let isMounted = true;
     setIsLoadingDb(true);
     try {
       const res = await fetch(`/api/jira/master/${connectionId}`, {
@@ -79,6 +80,7 @@ export default function Home() {
         signal
       });
       const data = await res.json();
+      if (!isMounted) return;
       if (data.success && data.data) {
         setMasterDatasetInfo({
           totalExtracted: data.data.totalExtracted,
@@ -98,8 +100,9 @@ export default function Home() {
       if (e.name === 'AbortError') return;
       console.error('Failed to auto-load master dataset:', e);
     } finally {
-      setIsLoadingDb(false);
+      if (isMounted) setIsLoadingDb(false);
     }
+    return () => { isMounted = false; };
   }, []);
 
   const initialMountRef = useRef(false);

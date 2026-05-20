@@ -23,10 +23,32 @@ export async function POST(
     const db = getDb(storageConfig);
 
     if (action === 'get') {
-      console.log(`[Master API] Fetching tickets for connection: ${connectionId}`);
+      const includeRawData = body.includeRawData === true;
+      console.log(`[Master API] Fetching tickets for connection: ${connectionId} (rawData=${includeRawData})`);
+      
       const masterTickets = await (db as any).masterTicket.findMany({
         where: { connectionRef: connectionId },
-        orderBy: { lastUpdatedAt: 'desc' }
+        orderBy: { lastUpdatedAt: 'desc' },
+        select: {
+          jiraKey: true,
+          summary: true,
+          issueType: true,
+          priority: true,
+          status: true,
+          assignee: true,
+          reporter: true,
+          issueOwnerTeam: true,
+          created: true,
+          updated: true,
+          resolved: true,
+          dueDate: true,
+          storyPoints: true,
+          labels: true,
+          components: true,
+          lastUpdatedAt: true,
+          // Only include rawData when explicitly requested (expensive)
+          ...(includeRawData ? { rawData: true } : {}),
+        }
       });
 
       if (!masterTickets || masterTickets.length === 0) {
@@ -40,25 +62,38 @@ export async function POST(
         });
       }
 
+      // Reconstruct lightweight issue objects for the UI without full rawData
       const reconstructedIssues = masterTickets.map((ticket: any) => {
-        try {
-          const issue = JSON.parse(ticket.rawData);
-          return issue;
-        } catch (e) {
-          console.error(`[Master API] Failed to parse rawData for ticket ${ticket.jiraKey}`);
-          return null;
+        if (includeRawData && ticket.rawData) {
+          try { return JSON.parse(ticket.rawData); } catch { /* fall through */ }
         }
-      }).filter(Boolean);
+        // Build a minimal Jira-shaped issue from stored columns
+        return {
+          key: ticket.jiraKey,
+          fields: {
+            summary: ticket.summary,
+            issuetype: { name: ticket.issueType },
+            priority: { name: ticket.priority },
+            status: { name: ticket.status },
+            assignee: ticket.assignee ? { displayName: ticket.assignee } : null,
+            reporter: ticket.reporter ? { displayName: ticket.reporter } : null,
+            created: ticket.created?.toISOString(),
+            updated: ticket.updated?.toISOString(),
+            resolutiondate: ticket.resolved?.toISOString() || null,
+            duedate: ticket.dueDate?.toISOString() || null,
+            storyPoints: ticket.storyPoints,
+            labels: (() => { try { return JSON.parse(ticket.labels || '[]'); } catch { return []; } })(),
+            components: (() => { try { return JSON.parse(ticket.components || '[]').map((n: string) => ({ name: n })); } catch { return []; } })(),
+          }
+        };
+      });
 
       const dates = reconstructedIssues
-        .map((i: any) => i.fields?.created || i.created)
-        .filter((d: any) => d)
-        .map((d: any) => {
-          const date = new Date(d);
-          return isNaN(date.getTime()) ? null : date.getTime();
-        })
+        .map((i: any) => i.fields?.created)
+        .filter(Boolean)
+        .map((d: string) => { const t = new Date(d).getTime(); return isNaN(t) ? null : t; })
         .filter((t: number | null): t is number => t !== null);
-      
+
       const oldestDate = dates.length > 0 ? new Date(Math.min(...dates)) : null;
       const newestDate = dates.length > 0 ? new Date(Math.max(...dates)) : null;
 
