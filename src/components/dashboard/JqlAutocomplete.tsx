@@ -22,15 +22,7 @@ interface JqlAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  filterOptions: {
-    project: string[];
-    assignee: string[];
-    priority: string[];
-    issueType: string[];
-    status: string[];
-    component: string[];
-    label: string[];
-  };
+  filterOptions: Record<string, string[]>;
   className?: string;
 }
 
@@ -133,13 +125,13 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
         fieldValues.push({ label: '(', description: 'Start list', kind: 'operator', category: 'Operators' });
       }
 
-      if (field === 'status') fieldValues.push(...filterOptions.status.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Status' })));
-      else if (field === 'priority') fieldValues.push(...filterOptions.priority.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Priority' })));
-      else if (field === 'project') fieldValues.push(...filterOptions.project.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Project' })));
-      else if (field === 'issuetype') fieldValues.push(...filterOptions.issueType.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Issue Type' })));
-      else if (field === 'assignee') fieldValues.push(...filterOptions.assignee.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Assignee' })));
-      else if (field === 'label' || field === 'labels') fieldValues.push(...filterOptions.label.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Label' })));
-      else if (field === 'component' || field === 'components') fieldValues.push(...filterOptions.component.map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Component' })));
+      if (field === 'status') fieldValues.push(...(filterOptions.status || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Status' })));
+      else if (field === 'priority') fieldValues.push(...(filterOptions.priority || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Priority' })));
+      else if (field === 'project') fieldValues.push(...(filterOptions.project || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Project' })));
+      else if (field === 'issuetype') fieldValues.push(...(filterOptions.issueType || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Issue Type' })));
+      else if (field === 'assignee') fieldValues.push(...(filterOptions.assignee || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Assignee' })));
+      else if (field === 'label' || field === 'labels') fieldValues.push(...(filterOptions.label || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Label' })));
+      else if (field === 'component' || field === 'components') fieldValues.push(...(filterOptions.component || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Component' })));
       
       return fieldValues.filter(v => v.label.toLowerCase().includes(lowerWord));
     }
