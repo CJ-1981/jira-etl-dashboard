@@ -99,6 +99,11 @@ interface AppState {
   widgetTitles: Record<string, string>;
   setWidgetTitles: (titles: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
 
+  // @MX:ANCHOR: Dashboard Section Collapse State
+  // @MX:NOTE: Persists the collapsed/expanded state of entire sections like "Metrics Overview".
+  collapsedWidgets: Set<string>;
+  setCollapsedWidgets: (widgets: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+
   // @MX:ANCHOR: Widget Display Order
   // @MX:NOTE: Controls the order of widgets (individual KPIs and panel sections) on the dashboard.
   widgetDisplayOrder: string[];
@@ -212,6 +217,11 @@ export const useAppStore = create<AppState>((set) => ({
   // @MX:REASON: Updates are merged to preserve other widget titles.
   setWidgetTitles: (titles) => set((state) => ({
     widgetTitles: typeof titles === 'function' ? titles(state.widgetTitles) : titles
+  })),
+
+  collapsedWidgets: new Set(),
+  setCollapsedWidgets: (widgets) => set((state) => ({
+    collapsedWidgets: new Set(typeof widgets === 'function' ? widgets(new Set(state.collapsedWidgets)) : widgets)
   })),
 
   // @MX:ANCHOR: Widget Display Order

@@ -40,9 +40,24 @@ export async function POST(
     // Reconstruct raw issues for the KPI engine
     const reconstructedIssues = latestRun.ticketSnapshots.map(snapshot => {
       const raw = snapshot.rawData ? JSON.parse(snapshot.rawData) : {};
+
+      // Collect every customfield_* stored in rawData so user-defined fields
+      // (e.g. customfield_10032, customfield_10627) are not lost on this path.
+      const rawCustomFields: Record<string, unknown> = {};
+      if (raw.fields) {
+        for (const [k, v] of Object.entries(raw.fields as Record<string, unknown>)) {
+          if (k.startsWith('customfield_')) rawCustomFields[k] = v;
+        }
+      }
+
+      // Recover issueOwnerTeam: prefer rawData field value, fall back to snapshot column
+      const issueOwnerTeamValue = raw.fields?.customfield_10132 ?? raw.fields?.issueOwnerTeam ?? (snapshot as any).issueOwnerTeam ?? null;
       return {
         key: snapshot.jiraKey,
         fields: {
+          // Spread all raw customfields first so none are silently dropped
+          ...rawCustomFields,
+          // Then override with authoritative column-backed values
           summary: snapshot.summary,
           project: raw.fields?.project,
           issuetype: { name: snapshot.issueType },
@@ -57,6 +72,8 @@ export async function POST(
             : (['Done', 'Closed', 'Resolved', 'Close', 'Completed', 'Ready to Close'].includes(snapshot.status) ? new Date().toISOString() : null),
           duedate: snapshot.dueDate ? new Date(snapshot.dueDate).toISOString() : null,
           customfield_10002: snapshot.storyPoints,
+          customfield_10132: issueOwnerTeamValue,
+          issueOwnerTeam: issueOwnerTeamValue,
           labels: JSON.parse(snapshot.labels || '[]'),
           components: JSON.parse(snapshot.components || '[]').map((name: string) => ({ name })),
         },

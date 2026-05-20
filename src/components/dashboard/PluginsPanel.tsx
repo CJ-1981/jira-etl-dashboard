@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
-  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown, Search, Star, Timer, BarChart3, TrendingUp, UserCheck, EyeOff
+  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown, Search, Star
 } from 'lucide-react';
 import {
   DndContext,
@@ -44,10 +44,11 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { localConfig, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
+import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
-import { useWidgetOrder, WidgetDefinition } from '@/hooks/useWidgetOrder';
+import { useWidgetOrder } from '@/hooks/useWidgetOrder';
+import { isTimeSeriesPlugin } from '@/lib/chart-data-utils';
 
 const METRIC_TYPES = [
   { id: 'count', label: 'Count', icon: '🔢' },
@@ -69,7 +70,7 @@ const categoryLabels: Record<string, { label: string; color: string }> = {
   'custom': { label: 'Custom', color: 'bg-rose-50 dark:bg-rose-500/10 text-rose-400 border-rose-500/30' },
 };
 
-function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin, isActive: boolean, onToggle: () => void }) {
+function SortablePluginItem({ plugin, isActive, onToggle, sortableId }: { plugin: KpiPlugin, isActive: boolean, onToggle: () => void, sortableId?: string }) {
   const {
     attributes,
     listeners,
@@ -77,7 +78,7 @@ function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin,
     transform,
     transition,
     isDragging
-  } = useSortable({ id: plugin.id });
+  } = useSortable({ id: sortableId || plugin.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -115,67 +116,6 @@ function SortablePluginItem({ plugin, isActive, onToggle }: { plugin: KpiPlugin,
   );
 }
 
-function SortablePanelItem({ panel, onToggle }: { panel: WidgetDefinition, onToggle: () => void }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: panel.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 10 : 1,
-  };
-
-  const icons: Record<string, React.ReactNode> = {
-    'Timer': <Timer className="h-4 w-4 text-blue-400" />,
-    'BarChart3': <BarChart3 className="h-4 w-4 text-emerald-400" />,
-    'Activity': <Activity className="h-4 w-4 text-purple-400" />,
-    'Target': <Target className="h-4 w-4 text-amber-400" />,
-    'TrendingUp': <TrendingUp className="h-4 w-4 text-cyan-400" />,
-    'UserCheck': <UserCheck className="h-4 w-4 text-indigo-400" />,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={`rounded-lg border transition-colors cursor-grab active:cursor-grabbing border-purple-500/30 bg-purple-50/50 dark:bg-purple-500/5 p-3`}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 flex-1">
-          <div className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-600">
-            <GripVertical className="h-4 w-4" />
-          </div>
-          <div className="flex items-center gap-2">
-            {icons[panel.icon || 'Activity']}
-            <h4 className="font-semibold text-sm">{panel.name}</h4>
-            <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">Panel</Badge>
-          </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-          className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-500/10"
-          title="Hide panel"
-        >
-          <EyeOff className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export function PluginsPanel() {
   const { settings, setSettings } = useAppStore();
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
@@ -188,7 +128,7 @@ export function PluginsPanel() {
   const [favoritePlugins, setFavoritePlugins] = useState<Set<string>>(new Set());
 
   // Widget ordering system
-  const { widgetOrder, reorderWidget, isWidgetVisible, toggleWidgetVisibility, getWidgetDefinitions, initializeWidgetOrder } = useWidgetOrder();
+  const { widgetOrder, reorderWidget, toggleWidgetVisibility, initializeWidgetOrder } = useWidgetOrder();
 
   // Sync initialSettings once the store settings are loaded from localStorage
   useEffect(() => {
@@ -254,20 +194,20 @@ export function PluginsPanel() {
       if (isMounted.current) {
         setPlugins(grouped);
         const allPluginIds = allPlugins.map(p => p.id);
-        const savedActivePlugins = localStorage.getItem('cfg_active_plugins');
+        const savedActivePlugins = localStorage.getItem(KEYS.activePlugins);
         if (savedActivePlugins) {
           try {
             const activeIds = JSON.parse(savedActivePlugins) as string[];
             setActivePlugins(activeIds);
-            // Initialize widget order with available plugins
-            initializeWidgetOrder(activeIds);
+            // Initialize widget order with non-time-series plugins only (use prefixed IDs)
+            initializeWidgetOrder(activeIds.map(id => `plugin-${id}`), isTimeSeriesPlugin);
           } catch (err) {
             setActivePlugins(allPluginIds);
-            initializeWidgetOrder(allPluginIds);
+            initializeWidgetOrder(allPluginIds.map(id => `plugin-${id}`), isTimeSeriesPlugin);
           }
         } else {
           setActivePlugins(allPluginIds);
-          initializeWidgetOrder(allPluginIds);
+          initializeWidgetOrder(allPluginIds.map(id => `plugin-${id}`), isTimeSeriesPlugin);
         }
       }
     } catch {
@@ -299,32 +239,26 @@ export function PluginsPanel() {
   }, [loadPlugins]);
 
   const saveActivePlugins = useCallback((pluginIds: string[]) => {
-    localStorage.setItem('cfg_active_plugins', JSON.stringify(pluginIds));
+    localConfig.saveActivePlugins(pluginIds);
   }, []);
 
   // Load collapsed groups from localStorage
   useEffect(() => {
-    const savedCollapsed = localStorage.getItem('cfg_collapsed_plugin_groups');
-    if (savedCollapsed) {
-      try {
-        setCollapsedGroups(new Set(JSON.parse(savedCollapsed)));
-      } catch (err) {
-        console.error('Failed to load collapsed groups:', err);
-      }
+    const collapsed = localConfig.getCollapsedGroups();
+    if (collapsed.length > 0) {
+      setCollapsedGroups(new Set(collapsed));
     }
   }, []);
 
   // Load favorite plugins from localStorage
   useEffect(() => {
-    const savedFavorites = localStorage.getItem('cfg_favorite_plugins');
-    if (savedFavorites) {
-      try {
-        setFavoritePlugins(new Set(JSON.parse(savedFavorites)));
-      } catch (err) {
-        console.error('Failed to load favorite plugins:', err);
-      }
+    const favorites = localConfig.getFavoritePlugins();
+    if (favorites.length > 0) {
+      setFavoritePlugins(new Set(favorites));
     }
   }, []);
+
+
 
   const toggleGroupCollapse = useCallback((category: string) => {
     setCollapsedGroups(prev => {
@@ -335,23 +269,30 @@ export function PluginsPanel() {
         next.add(category);
       }
       // Save to localStorage
-      localStorage.setItem('cfg_collapsed_plugin_groups', JSON.stringify(Array.from(next)));
+      localConfig.saveCollapsedGroups(Array.from(next));
       return next;
     });
   }, []);
 
   const togglePlugin = useCallback((pluginId: string) => {
+    const widgetId = `plugin-${pluginId}`;
+
     setActivePlugins(prev => {
-      let next;
-      if (prev.includes(pluginId)) {
-        next = prev.filter(id => id !== pluginId);
-      } else {
-        next = [...prev, pluginId];
-      }
+      const isRemoving = prev.includes(pluginId);
+
+      // Update active plugins list
+      const next = isRemoving
+        ? prev.filter(id => id !== pluginId)
+        : [...prev, pluginId];
+
       saveActivePlugins(next);
+
+      // Sync widget order by toggling the widget ID
+      toggleWidgetVisibility(widgetId);
+
       return next;
     });
-  }, [saveActivePlugins]);
+  }, [saveActivePlugins, toggleWidgetVisibility]);
 
   const toggleFavorite = useCallback((pluginId: string) => {
     setFavoritePlugins(prev => {
@@ -362,7 +303,7 @@ export function PluginsPanel() {
         next.add(pluginId);
       }
       // Save to localStorage
-      localStorage.setItem('cfg_favorite_plugins', JSON.stringify(Array.from(next)));
+      localConfig.saveFavoritePlugins(Array.from(next));
       return next;
     });
   }, []);
@@ -371,12 +312,28 @@ export function PluginsPanel() {
     const allPluginIds = Object.values(plugins).flat().map(p => p.id);
     setActivePlugins(allPluginIds);
     saveActivePlugins(allPluginIds);
-  }, [plugins, saveActivePlugins]);
+
+    // Add all plugin widgets to widget order when selecting all (excluding time-series)
+    const allPluginWidgetIds = allPluginIds
+      .filter(id => !isTimeSeriesPlugin(id))
+      .map(id => `plugin-${id}`);
+
+    // Add any missing widgets to the order
+    allPluginWidgetIds.forEach(widgetId => {
+      if (!widgetOrder.includes(widgetId)) {
+        toggleWidgetVisibility(widgetId);
+      }
+    });
+  }, [plugins, saveActivePlugins, widgetOrder, toggleWidgetVisibility]);
 
   const deselectAllPlugins = useCallback(() => {
     setActivePlugins([]);
     saveActivePlugins([]);
-  }, [saveActivePlugins]);
+
+    // Remove all plugin widgets from widget order when deselecting all
+    const pluginWidgetIds = widgetOrder.filter(id => id.startsWith('plugin-'));
+    pluginWidgetIds.forEach(widgetId => toggleWidgetVisibility(widgetId));
+  }, [saveActivePlugins, toggleWidgetVisibility, widgetOrder]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -390,10 +347,13 @@ export function PluginsPanel() {
         // Both items are in widget order - reorder them
         reorderWidget(oldIndex, newIndex);
       } else {
-        // Fallback to plugin reordering for active plugins
+        // Fallback to plugin reordering for active plugins (strip 'plugin-' prefix)
+        const activeId = (active.id as string).replace('plugin-', '');
+        const overId = (over.id as string).replace('plugin-', '');
+
         setActivePlugins((items) => {
-          const oldPluginIndex = items.indexOf(active.id as string);
-          const newPluginIndex = items.indexOf(over.id as string);
+          const oldPluginIndex = items.indexOf(activeId);
+          const newPluginIndex = items.indexOf(overId);
           if (oldPluginIndex !== -1 && newPluginIndex !== -1) {
             const next = arrayMove(items, oldPluginIndex, newPluginIndex);
             saveActivePlugins(next);
@@ -540,6 +500,15 @@ export function PluginsPanel() {
 
     return result;
   }, [plugins, searchQuery, favoriteFilter, activeFilter, favoritePlugins, activePlugins]);
+
+  // Create a lookup map for O(1) plugin access by ID
+  const pluginLookupMap = useMemo(() => {
+    const map = new Map<string, KpiPlugin>();
+    Object.values(plugins).flat().forEach(plugin => {
+      map.set(plugin.id, plugin);
+    });
+    return map;
+  }, [plugins]);
 
   return (
     <div className="space-y-6">
@@ -759,7 +728,7 @@ export function PluginsPanel() {
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Sliders className="h-5 w-5 text-emerald-400" /> Widget Display Order</CardTitle>
-            <CardDescription>Drag and drop to reorder widgets (KPIs and panels) on the dashboard. Charts are not affected.</CardDescription>
+            <CardDescription>Drag and drop to reorder KPI plugins on the dashboard. Trend/time-series plugins for charts are excluded.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {widgetOrder.length === 0 ? (
@@ -774,38 +743,32 @@ export function PluginsPanel() {
                   collisionDetection={closestCenter}
                   onDragEnd={handleDragEnd}
                 >
+                  {/* Only individual KPI plugins - no artificial panels */}
                   <SortableContext
-                    items={widgetOrder}
+                    items={widgetOrder.filter(id => id.startsWith('plugin-'))}
                     strategy={verticalListSortingStrategy}
                   >
-                    {widgetOrder.map((id) => {
-                      // Check if this is a panel section
-                      if (id.startsWith('panel-')) {
-                        const panelDef = getWidgetDefinitions().find(p => p.id === id);
-                        if (!panelDef) return null;
+                    {widgetOrder
+                      .filter(id => id.startsWith('plugin-')) // Only KPI plugins
+                      .map((id) => {
+                        const pluginId = id.replace('plugin-', '');
+                        const plugin = pluginLookupMap.get(pluginId);
+                        if (!plugin || isTimeSeriesPlugin(plugin.id)) return null;
+
+                        // Only show active plugins in widget display order
+                        const isActive = activePlugins.includes(pluginId);
+                        if (!isActive) return null;
 
                         return (
-                          <SortablePanelItem
+                          <SortablePluginItem
                             key={id}
-                            panel={panelDef}
-                            onToggle={() => toggleWidgetVisibility(id)}
+                            plugin={plugin}
+                            isActive={isActive}
+                            sortableId={id} // Use prefixed ID for sorting in widget order
+                            onToggle={() => togglePlugin(pluginId)}
                           />
                         );
-                      }
-
-                      // Otherwise it's an individual KPI plugin
-                      const plugin = Object.values(plugins).flat().find(p => p.id === id);
-                      if (!plugin) return null;
-
-                      return (
-                        <SortablePluginItem
-                          key={id}
-                          plugin={plugin}
-                          isActive={true}
-                          onToggle={() => togglePlugin(id)}
-                        />
-                      );
-                    })}
+                      })}
                   </SortableContext>
                 </DndContext>
               </div>
@@ -1065,7 +1028,7 @@ export function PluginsPanel() {
 
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
               {(Object.entries(settings.alerts?.thresholds || {}) as [string, { warning: number; critical: number; operator: '>' | '<' }][]).map(([pluginId, config]) => {
-                const plugin = Object.values(plugins).flat().find(p => p.id === pluginId);
+                const plugin = pluginLookupMap.get(pluginId);
                 const label = plugin?.name || pluginId;
                 
                 return (

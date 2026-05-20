@@ -18,6 +18,7 @@ import { KpiDataTable } from './KpiDataTable';
 import { KpiErrorBoundary } from './KpiErrorBoundary';
 import { ViewManager } from './ViewManager';
 import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
+import { extractSelectFieldValue } from '@/lib/jira/client';
 import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -76,11 +77,11 @@ import {
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
   Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
   ArrowUp, Search, ChevronDown, ChevronUp, Database, Filter, RefreshCw,
-  Save, 
+  Save, Columns, Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
-import { localConfig, type SavedJql } from '@/lib/config/local-store';
+import { localConfig, type SavedJql, type KpiPlugin } from '@/lib/config/local-store';
 import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { JqlAutocomplete } from './JqlAutocomplete';
 import { useAppStore } from '@/store/app-store';
@@ -89,6 +90,7 @@ import { usePeriodAnalysis } from '@/hooks/usePeriodAnalysis';
 import { usePluginVisibility } from '@/hooks/usePluginVisibility';
 import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
+import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 
 export function KpiDashboard() {
   const {
@@ -103,25 +105,40 @@ export function KpiDashboard() {
     customWidgetResults, setCustomWidgetResults, calculatingWidgets, setCalculatingWidgets,
     kpiCardConfigs, setKpiCardConfigs,
     activeView, setIsViewModified, setActiveView,
-    widgetTitles, setWidgetTitles
+    widgetTitles, setWidgetTitles,
+    collapsedWidgets, setCollapsedWidgets
   } = useAppStore();
 
   const onPrint = () => window.print();
   const isFirstRender = useRef(true);
   const hasUserInitiatedCalc = useRef(false);
 
-  // State for panel expansion
-  const [assigneePanelExpanded, setAssigneePanelExpanded] = useState(true);
-  const [statusTimePanelExpanded, setStatusTimePanelExpanded] = useState(true);
-  const [openTicketsByStatusPanelExpanded, setOpenTicketsByStatusPanelExpanded] = useState(true);
-  const [distributionPanelExpanded, setDistributionPanelExpanded] = useState(true);
-  const [prioritySlaPanelExpanded, setPrioritySlaPanelExpanded] = useState(true);
-  const [otherPriorityPanelExpanded, setOtherPriorityPanelExpanded] = useState(true);
-  const [statusSlaPanelExpanded, setStatusSlaPanelExpanded] = useState(true);
+  // Toggle section collapse state in the global store
+  const toggleWidgetCollapse = useCallback((pluginId: string) => {
+    setCollapsedWidgets(prev => {
+      const next = new Set(prev);
+      if (next.has(pluginId)) {
+        next.delete(pluginId);
+      } else {
+        next.add(pluginId);
+      }
+      return next;
+    });
+    setIsViewModified(true);
+  }, [setCollapsedWidgets, setIsViewModified]);
+
+  // Plugin registry for names
+  const [pluginRegistry, setPluginRegistry] = useState<Record<string, KpiPlugin>>({});
+
+  // Get plugin name from registry or fallback to pluginId
+  const getPluginName = useCallback((pluginId: string): string => {
+    return pluginRegistry[pluginId]?.name || pluginId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }, [pluginRegistry]);
 
   // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
+  const [filterSearchQuery, setFilterSearchQuery] = useState("");
 
   // Drill-down state extracted to useDrillDown hook
   const { drillDownKeys, drillDownTitle, isDrillDownOpen, openDrillDown, closeDrillDown } = useDrillDown();
@@ -139,6 +156,54 @@ export function KpiDashboard() {
   // ─── Plugin Visibility Hook ───────────────────────────────────────────────────
   const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
   const pluginVisibility = usePluginVisibility(allPluginIds, 'cfg_active_plugins');
+  const { widgetOrder, toggleWidgetVisibility } = useWidgetOrder();
+
+  // Automatically sync widget order with available plugins
+  useEffect(() => {
+    const availablePlugins = kpiResults
+      .filter(kpi => !isTimeSeriesPlugin(kpi.pluginId)) // Exclude time-series plugins
+      .map(kpi => `plugin-${kpi.pluginId}`);
+
+    // Add any missing plugins to widget order
+    availablePlugins.forEach(pluginId => {
+      if (!widgetOrder.includes(pluginId)) {
+        toggleWidgetVisibility(pluginId);
+      }
+    });
+  }, [kpiResults, widgetOrder, toggleWidgetVisibility]);
+
+  // Fetch plugin metadata for correct names
+  useEffect(() => {
+    const fetchPlugins = async () => {
+      try {
+        const customPlugins = localConfig.getKpiPlugins();
+        let allPlugins = [...customPlugins];
+        try {
+          const res = await fetch('/api/kpi/plugins');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (data.success && data.plugins) {
+            const customIds = new Set(customPlugins.map(p => p.id));
+            const builtins = data.plugins.filter((p: KpiPlugin) => !customIds.has(p.id));
+            allPlugins = [...allPlugins, ...builtins];
+          }
+        } catch (err) {
+          console.error('Failed to fetch built-in plugins:', err);
+        }
+
+        // Create plugin ID to name mapping
+        const registry: Record<string, KpiPlugin> = {};
+        allPlugins.forEach((plugin: KpiPlugin) => {
+          registry[plugin.id] = plugin;
+        });
+        setPluginRegistry(registry);
+      } catch (err) {
+        console.error('Failed to load plugin registry:', err);
+      }
+    };
+
+    fetchPlugins();
+  }, []);
 
   // ─── KPI Calculations Hook ────────────────────────────────────────────────────
   const kpiCalculations = useKpiCalculations(
@@ -147,7 +212,7 @@ export function KpiDashboard() {
     globalFilters
   );
 
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  // Table-only view — grid view removed
 
   const jqlInputRef = useRef<HTMLInputElement>(null);
 
@@ -278,7 +343,7 @@ export function KpiDashboard() {
         lastSyncedGlobalFiltersRef.current = globalFilters;
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [globalFilters]); // Only depend on globalFilters, not jqlFilters object
 
   const toggleDimension = (pluginId: string, value: string) => {
@@ -680,16 +745,20 @@ export function KpiDashboard() {
     // Use activePlugins from usePluginVisibility hook
     const activeOrder = pluginVisibility.activePlugins;
 
-    // If never configured (all plugins active), show all in original order
-    if (activeOrder.length === kpiResults.length) {
-      return kpiResults;
-    }
-
     // If explicitly none selected
     if (activeOrder.length === 0) return [];
 
-    // Sort by active plugin order
-    return [...kpiResults].sort((a, b) => {
+    // Check if there is a saved list in localStorage (i.e. the user configured plugins)
+    const hasSavedList = typeof window !== 'undefined'
+      ? localStorage.getItem('cfg_active_plugins') !== null
+      : false;
+
+    // If never configured, show all in original order (no filter applied)
+    if (!hasSavedList) return kpiResults;
+
+    // Filter to only active plugins, then sort by configured order
+    const filtered = kpiResults.filter(r => activeOrder.includes(r.pluginId));
+    return filtered.sort((a, b) => {
       const idxA = activeOrder.indexOf(a.pluginId);
       const idxB = activeOrder.indexOf(b.pluginId);
       if (idxA === -1 && idxB === -1) return 0;
@@ -699,38 +768,98 @@ export function KpiDashboard() {
     });
   }, [kpiResults, pluginVisibility.activePlugins]);
 
-  const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const assigneeKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.assignee && !isTimeSeriesPlugin(r.pluginId));
-  const statusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'time_in_status' && !isTimeSeriesPlugin(r.pluginId));
-  const openTicketsByStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && r.pluginId === 'open_tickets_by_status' && !isTimeSeriesPlugin(r.pluginId));
-  const slaStatusKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.status && (r.pluginId === 'sla_by_status' || r.pluginId === 'sla_by_status_excl_clone') && !isTimeSeriesPlugin(r.pluginId));
-  const slaPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.pluginId === 'sla_by_priority');
-  const otherPriorityKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.priority && r.pluginId !== 'sla_by_priority' && !isTimeSeriesPlugin(r.pluginId));
-  const distributionKpis = sortedKpiResults.filter((r: KpiCalcResult) => r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
-  const timeSeriesKpis = sortedKpiResults.filter((r: KpiCalcResult) => isTimeSeriesPlugin(r.pluginId));
+  const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !r.results[0]?.dimensions?.team && !r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
+  // @MX:NOTE: Widget Order Mapping - Maps widget display order IDs to their corresponding KPI groups
+  // @MX:REASON: Groups plugins by dimension type for organized dashboard rendering
+  const widgetOrderMapping = useMemo(() => {
+    const mapping: Record<string, { kpis: KpiCalcResult[]; component: string }> = {};
 
-  // Results specifically for the Table View (Metrics Overview)
-  // Excludes trend items (time series) and metrics with specific breakdown dimensions
-  const tableKpiResults = useMemo(() => {
-    return sortedKpiResults.filter((r: KpiCalcResult) =>
-      !r.results[0]?.dimensions?.status &&
-      !r.results[0]?.dimensions?.priority &&
-      !r.results[0]?.dimensions?.assignee &&
-      !isTimeSeriesPlugin(r.pluginId)
-    );
+    // Group by dimension type, not by artificial panels
+    sortedKpiResults.forEach((kpiResult) => {
+      const { pluginId, results } = kpiResult;
+      if (!results[0]) return;
+
+      // Do not include time-series plugins in widgets
+      if (isTimeSeriesPlugin(pluginId)) return;
+
+      const dimension = results[0].dimensions;
+      if (!dimension) return;
+
+      // Determine component type based on dimension
+      let componentType: string;
+      if (dimension.kanban) {
+        componentType = 'kanban';
+      } else if (dimension.status) {
+        if (pluginId === 'time_in_status') {
+          componentType = 'status-time';
+        } else if (pluginId === 'sla_by_status' || pluginId === 'sla_by_status_excl_clone') {
+          componentType = 'sla-status';
+        } else {
+          componentType = 'status-open';
+        }
+      } else if (dimension.priority && pluginId === 'sla_by_priority') {
+        componentType = 'sla-priority';
+      } else if (dimension.priority) {
+        componentType = 'other-priority'; // open_tickets_by_priority
+      } else if (dimension.assignee || dimension.team) {
+        componentType = 'assignee'; // Team dimension uses same rendering as assignee
+      } else if (dimension.bucket) {
+        componentType = 'cycle-time-histogram'; // cycle_time_histogram and aging_wip both use ChartCard histogram renderer
+      } else {
+        componentType = 'main';
+      }
+
+      // Create widget key based on plugin ID (individual plugins, not panels)
+      const widgetKey = `plugin-${pluginId}`;
+      if (!mapping[widgetKey]) {
+        mapping[widgetKey] = { kpis: [], component: componentType };
+      }
+      mapping[widgetKey].kpis.push(kpiResult);
+    });
+
+    return mapping;
   }, [sortedKpiResults]);
 
-  // Helper function to extract value from Jira select fields
-  const extractSelectFieldValue = (field: any): string | null => {
-    if (!field) return null;
-    if (typeof field === 'string') return field;
-    if (typeof field === 'object' && field.value) return field.value;
-    return null;
-  };
+  // Filter widget order to only include plugins that exist and have data
+  const orderedWidgets = useMemo(() => {
+    return widgetOrder
+      .filter(id => {
+        // Only include individual plugins that exist in the mapping
+        if (id.startsWith('plugin-')) {
+          const widget = widgetOrderMapping[id];
+          return widget && widget.kpis.length > 0;
+        }
+        return false; // No more artificial panels
+      })
+      .map(id => ({
+        id,
+        ...widgetOrderMapping[id]
+      }));
+  }, [widgetOrder, widgetOrderMapping]);
+
 
   const filterOptions = useMemo(() => {
     const issueOwnerTeamField = getIssueOwnerTeamField();
-    const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>(), issueOwnerTeam: new Set<string>() };
+    const customFields = localConfig.getCustomExtractFields();
+    
+    const options: Record<string, Set<string>> = { 
+      project: new Set<string>(), 
+      assignee: new Set<string>(), 
+      priority: new Set<string>(), 
+      issueType: new Set<string>(), 
+      status: new Set<string>(), 
+      component: new Set<string>(), 
+      label: new Set<string>(), 
+      issueOwnerTeam: new Set<string>() 
+    };
+
+    // Pre-initialize sets for custom fields to ensure they exist even if empty
+    customFields.forEach(cf => {
+      if (!options[cf.fieldId]) {
+        options[cf.fieldId] = new Set<string>();
+      }
+    });
+
     if (masterDatasetInfo?.issues) {
       masterDatasetInfo.issues.forEach((i: any) => {
         const f = i.fields || {};
@@ -747,13 +876,29 @@ export function KpiDashboard() {
           const teamValue = extractSelectFieldValue(f[issueOwnerTeamField]);
           if (teamValue) {
             options.issueOwnerTeam.add(teamValue);
-            console.log(`[Filter Debug] Issue ${i.key} has Issue Owner Team (${issueOwnerTeamField}): ${teamValue}`);
           }
         }
+
+        // Dynamically collect unique values from user-defined custom fields
+        customFields.forEach(cf => {
+          // Skip if it's the Issue Owner Team field as it's already handled above
+          if (cf.fieldId === issueOwnerTeamField) return;
+          
+          const val = extractSelectFieldValue(f[cf.fieldId]);
+          if (val) {
+            options[cf.fieldId].add(val);
+          }
+        });
       });
     }
-    console.log(`[Filter Debug] Total unique Issue Owner Teams: ${options.issueOwnerTeam.size}`, Array.from(options.issueOwnerTeam));
-    return { project: Array.from(options.project).sort(), assignee: Array.from(options.assignee).sort(), priority: Array.from(options.priority).sort(), issueType: Array.from(options.issueType).sort(), status: Array.from(options.status).sort(), component: Array.from(options.component).sort(), label: Array.from(options.label).sort(), issueOwnerTeam: Array.from(options.issueOwnerTeam).sort() };
+
+    // Convert sets to sorted arrays
+    const result: Record<string, string[]> = {};
+    Object.entries(options).forEach(([key, set]) => {
+      result[key] = Array.from(set).sort();
+    });
+    
+    return result;
   }, [masterDatasetInfo]);
 
   return (
@@ -834,7 +979,7 @@ export function KpiDashboard() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent data-period-section>
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -1134,10 +1279,18 @@ export function KpiDashboard() {
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
                     { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
-                  ].filter(f => f.options.length >= 1).map(filter => (
+                    // Dynamically append user-defined custom fields
+                    ...localConfig.getCustomExtractFields()
+                      .filter(cf => cf.role !== 'storyPoints' && cf.role !== 'issueOwnerTeam')
+                      .map(cf => ({
+                        label: cf.label,
+                        key: cf.fieldId,
+                        options: filterOptions[cf.fieldId] || []
+                      }))
+                  ].filter(f => f.options && f.options.length >= 1).map(filter => (
                     <div key={filter.key} className="space-y-1.5 no-print">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
-                      <Popover>
+                      <Popover onOpenChange={(open) => !open && setFilterSearchQuery("")}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
@@ -1153,30 +1306,46 @@ export function KpiDashboard() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[200px] p-0" align="start">
-                          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+                          <div className="p-2 border-b border-slate-100 dark:border-slate-800 space-y-2">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-2.5 h-3 w-3 text-slate-400" />
+                              <Input
+                                placeholder={`Search ${filter.label}...`}
+                                className="h-7 pl-7 text-[10px] bg-slate-50 dark:bg-slate-900 border-none focus-visible:ring-1 focus-visible:ring-emerald-500/50"
+                                value={filterSearchQuery}
+                                onChange={(e) => setFilterSearchQuery(e.target.value)}
+                              />
+                            </div>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="w-full h-7 text-[10px] justify-start px-2"
+                              className="w-full h-7 text-[10px] justify-start px-2 hover:bg-slate-100 dark:hover:bg-slate-800"
                               onClick={() => handleUpdatePendingFilter(filter.key, 'all')}
                             >
-                              Clear All
+                              Clear Selection
                             </Button>
                           </div>
-                          <div className="max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
-                            {filter.options.map(opt => (
-                              <div
-                                key={opt}
-                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdatePendingFilter(filter.key, opt);
-                                }}
-                              >
-                                <Checkbox checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
-                                <span className="text-xs truncate">{opt}</span>
+                          <div className="max-h-[250px] overflow-y-auto p-1 custom-scrollbar">
+                            {filter.options
+                              .filter(opt => !filterSearchQuery || String(opt).toLowerCase().includes(filterSearchQuery.toLowerCase()))
+                              .map(opt => (
+                                <div
+                                  key={opt}
+                                  className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUpdatePendingFilter(filter.key, opt);
+                                  }}
+                                >
+                                  <Checkbox checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
+                                  <span className="text-xs truncate">{opt}</span>
+                                </div>
+                              ))}
+                            {filter.options.filter(opt => !filterSearchQuery || String(opt).toLowerCase().includes(filterSearchQuery.toLowerCase())).length === 0 && (
+                              <div className="py-4 px-2 text-center text-[10px] text-slate-400 italic">
+                                No matches found
                               </div>
-                            ))}
+                            )}
                           </div>
                         </PopoverContent>
                       </Popover>
@@ -1221,10 +1390,22 @@ export function KpiDashboard() {
 
               {Object.keys(jqlFilters.stagingFilters).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {(Object.entries(jqlFilters.stagingFilters) as [string, string[]][]).map(([key, values]) => (
-                    values.map(val => (
+                  {(Object.entries(jqlFilters.stagingFilters) as [string, string[]][]).map(([key, values]) => {
+                    // Determine display label for the filter key
+                    const getDisplayKey = (k: string) => {
+                      if (k === 'issueOwnerTeam') return 'Team';
+                      if (k.startsWith('customfield_')) {
+                        const cf = localConfig.getCustomExtractFields().find(f => f.fieldId === k);
+                        return cf ? cf.label : k;
+                      }
+                      // Capitalize first letter of standard keys
+                      return k.charAt(0).toUpperCase() + k.slice(1);
+                    };
+                    const displayKey = getDisplayKey(key);
+
+                    return values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
-                        <span className="text-slate-400">{key}:</span> {val}
+                        <span className="text-slate-400">{displayKey}:</span> {val}
                         <span
                           className="flex items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
                           onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }}
@@ -1232,8 +1413,8 @@ export function KpiDashboard() {
                           <X className="h-2.5 w-2.5" />
                         </span>
                       </Badge>
-                    ))
-                  ))}
+                    ));
+                  })}
                 </div>
               )}
             </div>
@@ -1244,711 +1425,1138 @@ export function KpiDashboard() {
       {kpiResults.length > 0 && (<>
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-emerald-500" />
-              Metrics Overview
-            </h3>
-
-            <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'grid' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-              >
-                Grid View
-              </Button>
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('table')}
-                className={`h-7 text-[10px] uppercase tracking-wider font-bold transition-all ${viewMode === 'table' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-              >
-                Table View
-              </Button>
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportKpis}
-              className="h-8 text-[10px] uppercase tracking-wider font-bold border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+            <button
+              onClick={() => toggleWidgetCollapse('metrics-overview')}
+              className="flex items-center gap-2 group text-left"
+              aria-expanded={!collapsedWidgets.has('metrics-overview')}
             >
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Export CSV
-            </Button>
+              <Activity className="h-5 w-5 text-emerald-500 shrink-0" />
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                Metrics Overview
+              </h3>
+              {!collapsedWidgets.has('metrics-overview')
+                ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+              <span className="text-xs text-slate-400 font-normal ml-1">
+                {!collapsedWidgets.has('metrics-overview') ? '' : `(${sortedKpiResults.reduce((acc, r) => acc + r.results.length, 0)} rows)`}
+              </span>
+            </button>
 
-            {Array.from(hiddenDimensions).some(k => mainKpis.some(mk => k === `${mk.pluginId}|`)) && (
-              <Button variant="ghost" size="sm" onClick={() => {
-                setHiddenDimensions((prev: Set<string>) => {
-                  const next = new Set(prev);
-                  mainKpis.forEach(mk => next.delete(`${mk.pluginId}|`));
-                  return next;
-                });
-              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                <RotateCw className="h-3 w-3 mr-1" /> Restore All Widgets
+            {!collapsedWidgets.has('metrics-overview') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportKpis}
+                className="h-8 text-[10px] uppercase tracking-wider font-bold border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Export CSV
               </Button>
             )}
           </div>
-          {viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
-              {mainKpis.map((kpi) => kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                if (hiddenDimensions.has(`${kpi.pluginId}|`)) return null;
-                const titleKey = `${kpi.pluginId}|${result.name}`;
-                return (
-                  <KpiErrorBoundary key={`${kpi.pluginId}-${idx}`} name={result.name}>
-                    <KpiCard
-                      result={result}
-                      pluginId={kpi.pluginId}
-                      onHide={() => toggleDimension(kpi.pluginId, '')}
-                      onClick={result.ticketKeys ? () => {
-                        handleDrillDown(result.ticketKeys || [], result.name);
-                      } : undefined}
-                      customTitle={widgetTitles[titleKey]}
-                      onTitleChange={(newTitle) => {
-                        setWidgetTitles(prev => {
-                          const next = { ...prev };
-                          if (newTitle) next[titleKey] = newTitle;
-                          else delete next[titleKey];
-                          return next;
-                        });
-                      }}
-                    />
-                  </KpiErrorBoundary>
-                );
-              }))}
-            </div>
-          ) : (
-            <KpiDataTable
-              results={tableKpiResults}
-              onDrillDown={handleDrillDown}
-            />
-          )}
+          <AnimatePresence initial={false}>
+            {!collapsedWidgets.has('metrics-overview') && (
+              <motion.div
+                key="metrics-table"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                style={{ overflow: 'hidden' }}
+              >
+                <KpiDataTable
+                  results={sortedKpiResults}
+                  onDrillDown={handleDrillDown}
+                  getPluginName={getPluginName}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {statusKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
-                  <button
-                    onClick={() => setStatusTimePanelExpanded(!statusTimePanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={statusTimePanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={statusTimePanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {statusTimePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('time_in_status|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('time_in_status|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {statusTimePanelExpanded && (
-              <CardContent>
-              <div className="space-y-3">{statusKpis.map((kpi) => {
-                const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`));
-                const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
-
-                return visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                  <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-blue-500 hover:underline"
-                          onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                        >
-                          {result.name}
-                        </span>
-                        <button
-                          onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                          title="Hide bar"
-                        >
-                          <EyeOff className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
-                    </div>
-                    <div
-                      className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-blue-400 transition-all"
-                      onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                    >
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500"
-                        style={{ width: `${(result.value / maxVal) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ));
-              })}</div>
-            </CardContent>
-            )}
-          </Card>
-        )}
-
-        {openTicketsByStatusKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
-                  <button
-                    onClick={() => setOpenTicketsByStatusPanelExpanded(!openTicketsByStatusPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={openTicketsByStatusPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={openTicketsByStatusPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {openTicketsByStatusPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {openTicketsByStatusPanelExpanded && (
-              <CardContent>
-              {/* Age Legend */}
-              <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-slate-500" />
-                  <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-amber-500" />
-                  <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-emerald-400" />
-                  <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {(() => {
-                  // Group results by status
-                  const statusGroups: Record<string, KpiCalcResult['results'][0][]> = {};
-
-                  openTicketsByStatusKpis.forEach((kpi) => {
-                    kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
-                      const status = result.dimensions?.status || 'Unknown';
-                      if (!statusGroups[status]) {
-                        statusGroups[status] = [];
-                      }
-                      statusGroups[status].push(result);
-                    });
-                  });
-
-                  // Color mapping for age categories
-                  const ageColors: Record<string, string> = {
-                    'existing': 'bg-slate-500',
-                    'last_week': 'bg-amber-500',
-                    'this_week': 'bg-emerald-400',
-                  };
-
-                  return Object.entries(statusGroups).map(([status, results]) => {
-                    const visibleResults = results.filter((r) => !hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
-                    if (visibleResults.length === 0) return null;
-
-                    const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
-                    const maxVal = Math.max(...visibleResults.map((r) => r.value));
-
-                    return (
-                      <div key={status} className="space-y-2 group">
-                        {/* Status Header */}
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                              onClick={() => {
-                                // Gather all ticket keys for this status across all age categories
-                                const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
-                                handleDrillDown(allTicketKeys, `Status: ${status} (All)`);
-                              }}
-                              title="Click to see all tickets for this status"
-                            >
-                              {status}
-                            </span>
-                            <span className="text-xs text-slate-500 dark:text-slate-400">({totalValue} tickets)</span>
-                          </div>
-                          <button
-                            onClick={() => {
-                              // Hide all age categories for this status
-                              const dimsToAdd = [`open_tickets_by_status|${status}-existing`, `open_tickets_by_status|${status}-last_week`, `open_tickets_by_status|${status}-this_week`];
-                              setHiddenDimensions((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                dimsToAdd.forEach(d => next.add(d));
-                                return next;
-                              });
-                            }}
-                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                            title="Hide this status"
-                          >
-                            <EyeOff className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-
-                        {/* Stacked/Segmented Bar */}
-                        <div className="space-y-1">
-                          <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
-                            {visibleResults
-                              .sort((a, b) => {
-                                // Sort by age: existing → last_week → this_week
-                                const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                return ageA - ageB;
-                              })
-                              .map((result, idx) => {
-                                const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
-                                const ageCategory = result.dimensions?.ageCategory as string;
-                                const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-
-                                return (
-                                  <div
-                                    key={idx}
-                                    className={`${colorClass} hover:opacity-80 transition-opacity cursor-pointer`}
-                                    style={{ width: `${width}%` }}
-                                    onClick={() => handleDrillDown(result.ticketKeys || [], `${status} (${result.dimensions?.ageCategory})`)}
-                                    title={`${result.dimensions?.ageCategory}: ${result.value} tickets`}
-                                  />
-                                );
-                              })}
-                          </div>
-
-                          {/* Age Category Breakdown */}
-                          <div className="flex gap-2 flex-wrap">
-                            {visibleResults
-                              .sort((a, b) => {
-                                const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                return ageA - ageB;
-                              })
-                              .map((result, idx) => {
-                                const ageCategory = result.dimensions?.ageCategory as string;
-                                const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-
-                                return (
-                                  <div key={idx} className="flex items-center gap-1 text-xs">
-                                    <div className={`w-2 h-2 rounded ${colorClass}`} />
-                                    <span className="text-slate-600 dark:text-slate-400">
-                                      {result.dimensions?.ageCategory === 'this_week' ? 'This week' :
-                                       result.dimensions?.ageCategory === 'last_week' ? '1 week' : '2+ weeks'}: {result.value}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-              </CardContent>
-            )}
-          </Card>
-        )}
-
-        {distributionKpis.length > 0 && (
+        {/* Ordered Widgets Section - follows widget display order */}
+        {orderedWidgets.length > 0 && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-purple-400" />
-                Distribution Analysis
-              </h3>
-              <button
-                onClick={() => setDistributionPanelExpanded(!distributionPanelExpanded)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                title={distributionPanelExpanded ? "Collapse" : "Expand"}
-                aria-label={distributionPanelExpanded ? "Collapse section" : "Expand section"}
-              >
-                {distributionPanelExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-            </div>
-            {distributionPanelExpanded && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {distributionKpis.map((kpi) => (
-                <Card key={kpi.pluginId} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                  <CardHeader>
-                    <CardTitle className="text-md flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-purple-400" />
-                      {kpi.results[0].name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {(() => {
-                        // Custom sort for buckets based on plugin
-                        let bucketOrder: string[] = [];
-                        if (kpi.pluginId === 'cycle_time_histogram') {
-                          bucketOrder = ['< 4h', '4-8h (1d)', '8-16h (2d)', '16-40h (1w)', '40-80h (2w)', '> 80h (2w+)'];
-                        } else if (kpi.pluginId === 'aging_wip') {
-                          bucketOrder = ['< 1 day', '1-3 days', '3-7 days', '1-2 weeks', '2-4 weeks', '> 4 weeks'];
-                        }
-
-                        const sortedResults = [...kpi.results].sort((a, b) => {
-                          const aIdx = bucketOrder.indexOf(a.dimensions?.bucket || '');
-                          const bIdx = bucketOrder.indexOf(b.dimensions?.bucket || '');
-                          if (aIdx === -1 || bIdx === -1) return 0;
-                          return aIdx - bIdx;
-                        });
-
-                        const maxVal = Math.max(...sortedResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
-
-                        return sortedResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                          <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                            <div className="flex items-center justify-between text-sm">
-                              <span
-                                className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-purple-500 hover:underline"
-                                onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                              >
-                                {result.dimensions?.bucket || result.name}
-                              </span>
-                              <span className="font-mono font-semibold text-purple-400">{result.value} {result.unit}</span>
-                            </div>
-                            <div
-                              className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-purple-400 transition-all"
-                              onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                            >
-                              <div
-                                className="h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-500"
-                                style={{ width: `${(result.value / maxVal) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            )}
-          </div>
-        )}
-
-        {slaPriorityKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
-                  <button
-                    onClick={() => setPrioritySlaPanelExpanded(!prioritySlaPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={prioritySlaPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={prioritySlaPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {prioritySlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_priority|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('sla_by_priority|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {prioritySlaPanelExpanded && (
-              <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">{slaPriorityKpis.map((kpi) => [...kpi.results].sort((a, b) => (a.dimensions?.priority || '').localeCompare(b.dimensions?.priority || '', undefined, { numeric: true })).map((result: KpiCalcResult['results'][0], idx: number) => {
-                if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.priority}`)) return null;
-                const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
-                return (
-                  <div
-                    key={`${kpi.pluginId}-${idx}`}
-                    className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
-                    onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`) : undefined}
-                  >
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.priority || ''); }}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                      title="Hide widget"
-                    >
-                      <EyeOff className="h-3 w-3" />
-                    </button>
-                    <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.priority}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
-                    {result.details && (
-                      <div className="space-y-1 mt-2">
-                        <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Target')?.value || '-'}h</span></div>
-                        <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: any) => d.label === 'Total')?.value || 0}</span></div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }))}</div>
-            </CardContent>
-            )}
-          </Card>
-        )}
-
-        {otherPriorityKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2">
-                    <Ticket className="h-5 w-5 text-amber-500" />
-                    Tickets by Priority
-                  </CardTitle>
-                  <button
-                    onClick={() => setOtherPriorityPanelExpanded(!otherPriorityPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={otherPriorityPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={otherPriorityPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {otherPriorityPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {otherPriorityKpis.some(kpi => Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`))) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      otherPriorityKpis.forEach(kpi => {
-                        next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
-                      });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {otherPriorityPanelExpanded && (
-              <CardContent>
-                <div className="space-y-4">{otherPriorityKpis.map((kpi) => {
-                  const visibleResults = kpi.results
-                    .filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`))
-                    .sort((a, b) => {
-                      const pA = a.dimensions?.priority || a.name;
-                      const pB = b.dimensions?.priority || b.name;
-                      return pA.localeCompare(pB, undefined, { numeric: true, sensitivity: 'base' });
-                    });
-                  const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
-
-                  return (
-                    <div key={kpi.pluginId} className="space-y-3">
-                      {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                        <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                          <div className="flex items-center justify-between text-sm">
+            {orderedWidgets.map((widget) => {
+              switch (widget.component) {
+                case 'status-time':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`status-time-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              <span
-                                className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
-                                onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`)}
-                              >
-                                {result.dimensions?.priority || result.name}
-                              </span>
+                              <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
                               <button
-                                onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
-                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                title="Hide bar"
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
                               >
-                                <EyeOff className="h-3 w-3" />
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                               </button>
                             </div>
-                            <span className="font-mono font-bold text-amber-500">{result.value} {result.unit}</span>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`)) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
                           </div>
-                          <div
-                            className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-amber-400 transition-all"
-                            onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.priority}`)}
-                          >
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-700"
-                              style={{ width: `${(result.value / maxVal) * 100}%` }}
-                            />
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
+                          {!kpi.results || kpi.results.length === 0 ? (
+                            <div className="text-center py-8 text-slate-400 dark:text-slate-600">
+                              <Timer className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                              <p className="text-sm">No turnaround time data available</p>
+                              <p className="text-xs mt-1">This plugin requires resolved tickets with status transitions.</p>
+                            </div>
+                          ) : (
+                            <>
+                              {(() => {
+                                const maxValue = Math.max(...kpi.results.map(r => r.value), 1);
+                                return (
+                                  <div className="space-y-3">{kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                                    const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
+                                    if (hiddenDimensions.has(dimKey)) return null;
+
+                                    return (
+                                      <div key={idx} className="space-y-1 group">
+                                        <div className="flex items-center justify-between text-sm">
+                                          <div className="flex items-center gap-2">
+                                            <span
+                                              className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                              onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                            >
+                                              {result.name}
+                                            </span>
+                                            <button
+                                              onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
+                                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                            >
+                                              <EyeOff className="h-3.5 w-3.5" />
+                                            </button>
+                                          </div>
+                                          <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
+                                        </div>
+                                        <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                          <div
+                                            className="absolute h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                                            style={{ width: `${(result.value / maxValue) * 100}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}</div>
+                                );
+                              })()}
+                              {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`)) && (
+                                <div className="text-xs text-slate-400 italic">
+                                  {Array.from(hiddenDimensions).filter(k => k.startsWith(`${kpi.pluginId}|`)).length} status(es) hidden
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                }) : null;
+
+                case 'status-open':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`status-open-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                        <CardContent>
+                        {/* Age Legend */}
+                        <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-slate-500" />
+                            <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-amber-500" />
+                            <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-emerald-400" />
+                            <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  );
-                })}</div>
-              </CardContent>
-            )}
-          </Card>
-        )}
 
-        {slaStatusKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-emerald-400" />SLA by Status</CardTitle>
-                  <button
-                    onClick={() => setStatusSlaPanelExpanded(!statusSlaPanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={statusSlaPanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={statusSlaPanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {statusSlaPanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('sla_by_status|') || k.startsWith('sla_by_status_excl_clone|')) next.delete(k); });
-                      return next;
+                        <div className="space-y-3">
+                          {(() => {
+                            // Group results by status
+                            const statusGroups: Record<string, KpiCalcResult['results'][0][]> = {};
+
+                            kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
+                              const status = result.dimensions?.status || 'Unknown';
+                              if (!statusGroups[status]) {
+                                statusGroups[status] = [];
+                              }
+                              statusGroups[status].push(result);
+                            });
+
+                            // Color mapping for age categories
+                            const ageColors: Record<string, string> = {
+                              'existing': 'bg-slate-500',
+                              'last_week': 'bg-amber-500',
+                              'this_week': 'bg-emerald-400',
+                            };
+
+                            return Object.entries(statusGroups).map(([status, results]) => {
+                              const visibleResults = results.filter((r) => !hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
+                              if (visibleResults.length === 0) return null;
+
+                              const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+                              const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
+                              const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
+                              const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
+
+                              return (
+                                <div key={status} className="space-y-2 group">
+                                  {/* Status Header */}
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span
+                                        className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => {
+                                          // Gather all ticket keys for this status across all age categories
+                                          const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
+                                          handleDrillDown(allTicketKeys, `Status: ${status} (All)`);
+                                        }}
+                                        title="Click to see all tickets for this status"
+                                      >
+                                        {status}
+                                      </span>
+                                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
+
+                                      <div className="flex items-center gap-1.5 ml-2">
+                                        {existingCount > 0 && (
+                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title="2+ weeks old">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                            <span>{existingCount}</span>
+                                          </Badge>
+                                        )}
+                                        {lastWeekCount > 0 && (
+                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title="1 week old">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                            <span>{lastWeekCount}</span>
+                                          </Badge>
+                                        )}
+                                        {thisWeekCount > 0 && (
+                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title="This week">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                            <span>{thisWeekCount}</span>
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        // Hide all age categories for this status
+                                        const dimsToAdd = [`open_tickets_by_status|${status}-existing`, `open_tickets_by_status|${status}-last_week`, `open_tickets_by_status|${status}-this_week`];
+                                        setHiddenDimensions((prev: Set<string>) => {
+                                          const next = new Set(prev);
+                                          dimsToAdd.forEach(d => next.add(d));
+                                          return next;
+                                        });
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      title="Hide this status"
+                                    >
+                                      <EyeOff className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+
+                                  {/* Stacked/Segmented Bar */}
+                                  <div className="space-y-1">
+                                    <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
+                                      {visibleResults
+                                        .sort((a, b) => {
+                                          // Sort by age: existing → last_week → this_week
+                                          const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                          const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                          const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                          return ageA - ageB;
+                                        })
+                                        .map((result, idx) => {
+                                          const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
+                                          const ageCategory = result.dimensions?.ageCategory as string;
+                                          const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+                                          const ageLabel = ageCategory === 'existing' ? '2+ weeks' : ageCategory === 'last_week' ? '1 week' : 'This week';
+
+                                          return (
+                                            <div
+                                              key={idx}
+                                              className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
+                                              style={{ width: `${width}%` }}
+                                              onClick={() => handleDrillDown(result.ticketKeys || [], `${status} (${result.dimensions?.ageCategory})`)}
+                                              title={`${ageLabel}: ${result.value} ticket(s)`}
+                                            >
+                                              {result.value > 0 && width >= 6 ? result.value : null}
+                                            </div>
+                                          );
+                                        })}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                        {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${r.dimensions?.status}-${r.dimensions.ageCategory}` : r.dimensions?.status || r.name}`)) && (
+                          <div className="text-xs text-slate-400 italic mt-2">
+                            {Array.from(hiddenDimensions).filter(k => k.startsWith('open_tickets_by_status|')).length} age category(es) hidden
+                          </div>
+                        )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                }) : null;
+
+                case 'sla-priority':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`sla-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
+                          <div className="space-y-3">
+                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                              const dimKey = `${kpi.pluginId}|${result.dimensions?.priority || result.name}`;
+                              if (hiddenDimensions.has(dimKey)) return null;
+
+                              const priority = result.dimensions?.priority || result.name;
+                              const priorityColor: Record<string, string> = {
+                                'Highest': 'bg-red-500',
+                                'High': 'bg-orange-500',
+                                'Medium': 'bg-amber-500',
+                                'Low': 'bg-blue-500',
+                                'Lowest': 'bg-cyan-500',
+                              };
+
+                              return (
+                                <div key={idx} className="space-y-1 group">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                      >
+                                        {result.name}
+                                      </span>
+                                      <Badge className="text-[9px] py-0 h-3.5 px-1.5 border border-slate-300 dark:border-slate-600">
+                                        {result.comparison?.label || 'No Target'}
+                                      </Badge>
+                                      <button
+                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                                  </div>
+                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="absolute h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-300"
+                                      style={{ width: `${(result.value / Math.max(result.value, result.comparison?.value || 1)) * 100}%` }}
+                                    />
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 text-center">{result.value}h vs {result.comparison?.value || 'N/A'}h target</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                }) : null;
+
+                case 'other-priority':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`other-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2">
+                                <TrendingUp className="h-5 w-5 text-cyan-400" />
+                                {getPluginName(kpi.pluginId)}
+                              </CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                        <CardContent>
+                          {/* Age Legend */}
+                          <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                              {kpi.pluginId.includes('closed') ? 'Closed Timeframe:' : 'Age Groups:'}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-slate-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
+                                {kpi.pluginId.includes('closed') ? '2+ weeks ago' : '2+ weeks'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-amber-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
+                                {kpi.pluginId.includes('closed') ? 'Last week' : '1 week'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-emerald-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
+                                This week
+                              </span>
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            {(() => {
+                              // Group results by priority
+                              const priorityGroups: Record<string, KpiCalcResult['results'][0][]> = {};
+
+                              kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
+                                const priority = result.dimensions?.priority || 'Unknown';
+                                if (!priorityGroups[priority]) {
+                                  priorityGroups[priority] = [];
+                                }
+                                priorityGroups[priority].push(result);
+                              });
+
+                              // Color mapping for age categories
+                              const ageColors: Record<string, string> = {
+                                'existing': 'bg-slate-500',
+                                'last_week': 'bg-amber-500',
+                                'this_week': 'bg-emerald-400',
+                              };
+
+                              return Object.entries(priorityGroups).map(([priority, results]) => {
+                                const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority ? `${priority}-${r.dimensions.ageCategory}` : priority}`));
+                                if (visibleResults.length === 0) return null;
+
+                                const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+                                const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
+                                const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
+                                const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
+                                const existingLabel = kpi.pluginId.includes('closed') ? '2+ weeks ago' : '2+ weeks old';
+                                const lastWeekLabel = kpi.pluginId.includes('closed') ? 'Last week' : '1 week old';
+                                const thisWeekLabel = kpi.pluginId.includes('closed') ? 'This week' : 'This week';
+
+                                return (
+                                  <div key={priority} className="space-y-2 group">
+                                    {/* Priority Header */}
+                                    <div className="flex items-center justify-between text-sm">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span
+                                          className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                          onClick={() => {
+                                            // Gather all ticket keys for this priority across all age categories
+                                            const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
+                                            handleDrillDown(allTicketKeys, `Priority: ${priority} (All)`);
+                                          }}
+                                          title="Click to see all tickets for this priority"
+                                        >
+                                          {priority}
+                                        </span>
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
+
+                                        <div className="flex items-center gap-1.5 ml-2">
+                                          {existingCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title={existingLabel}>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                              <span>{existingCount}</span>
+                                            </Badge>
+                                          )}
+                                          {lastWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title={lastWeekLabel}>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                              <span>{lastWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                          {thisWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title={thisWeekLabel}>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                              <span>{thisWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          // Hide all age categories for this priority
+                                          const dimsToAdd = [`${kpi.pluginId}|${priority}-existing`, `${kpi.pluginId}|${priority}-last_week`, `${kpi.pluginId}|${priority}-this_week`];
+                                          setHiddenDimensions((prev: Set<string>) => {
+                                            const next = new Set(prev);
+                                            dimsToAdd.forEach(d => next.add(d));
+                                            return next;
+                                          });
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                        title="Hide this priority"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+
+                                    {/* Stacked/Segmented Bar */}
+                                    <div className="space-y-1">
+                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
+                                        {visibleResults
+                                          .sort((a, b) => {
+                                            // Sort by age: existing → last_week → this_week
+                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                            return ageA - ageB;
+                                          })
+                                          .map((result, idx) => {
+                                            const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
+                                            const ageCategory = result.dimensions?.ageCategory as string;
+                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+                                            const ageLabel = ageCategory === 'existing' ? existingLabel : ageCategory === 'last_week' ? lastWeekLabel : thisWeekLabel;
+
+                                            return (
+                                              <div
+                                                key={idx}
+                                                className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
+                                                style={{ width: `${width}%` }}
+                                                onClick={() => handleDrillDown(result.ticketKeys || [], `${priority} (${result.dimensions?.ageCategory})`)}
+                                                title={`${ageLabel}: ${result.value} ticket(s)`}
+                                              >
+                                                {result.value > 0 && width >= 6 ? result.value : null}
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}                          </div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                }) : null;
+
+                case 'sla-status':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`sla-status-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2">
+                                <Target className="h-5 w-5 text-emerald-400" />
+                                {kpi.pluginId === 'sla_by_status_excl_clone' ? 'SLA by Status (Excl. Clones)' : 'SLA by Status'}
+                              </CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                        <CardContent>
+                          <div className="space-y-3">
+                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                              const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
+                              if (hiddenDimensions.has(dimKey)) return null;
+
+                              const status = result.dimensions?.status || result.name;
+                              const statusColor: Record<string, string> = {
+                                'Done': 'bg-emerald-500',
+                                'Closed': 'bg-slate-500',
+                                'Resolved': 'bg-blue-500',
+                                'In Progress': 'bg-blue-600',
+                                'To Do': 'bg-gray-500',
+                                'In Review': 'bg-purple-500',
+                              };
+
+                              return (
+                                <div key={idx} className="space-y-1 group">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
+                                      >
+                                        {result.name}
+                                      </span>
+                                      <Badge className="text-[9px] py-0 h-3.5 px-1.5 border border-slate-300 dark:border-slate-600">
+                                        {result.comparison?.label || 'No Target'}
+                                      </Badge>
+                                      <button
+                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
+                                  </div>
+                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="absolute h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                                      style={{ width: `${(result.value / Math.max(result.value, result.comparison?.value || 1)) * 100}%` }}
+                                    />
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 text-center">{result.value}h vs {result.comparison?.value || 'N/A'}h target</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`)) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} status(es) hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                }) : null;
+
+                case 'assignee':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+                    return (
+                      <Card key={`assignee-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2">
+                                <UserCheck className="h-5 w-5 text-indigo-400" />
+                                {getPluginName(kpi.pluginId)}
+                              </CardTitle>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
+                              <Button variant="ghost" size="sm" onClick={() => {
+                                setHiddenDimensions((prev: Set<string>) => {
+                                  const next = new Set(prev);
+                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
+                                  return next;
+                                });
+                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
+                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
+                              </Button>
+                            )}
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
+                          {/* Age Legend */}
+                          <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-slate-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-amber-500" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-emerald-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            {(() => {
+                              // Group results by assignee or team
+                              const isTeam = kpi.pluginId === 'open_tickets_by_issue_owner_team';
+                              const dimensionKey = isTeam ? 'team' : 'assignee';
+                              const groups: Record<string, KpiCalcResult['results'][0][]> = {};
+
+                              kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
+                                const key = result.dimensions?.[dimensionKey] || 'Unknown';
+                                if (!groups[key]) {
+                                  groups[key] = [];
+                                }
+                                groups[key].push(result);
+                              });
+
+                              // Color mapping for age categories
+                              const ageColors: Record<string, string> = {
+                                'existing': 'bg-slate-500',
+                                'last_week': 'bg-amber-500',
+                                'this_week': 'bg-emerald-400',
+                              };
+
+                              return Object.entries(groups).map(([key, results]) => {
+                                const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] ? `${key}-${r.dimensions.ageCategory}` : key}`));
+                                if (visibleResults.length === 0) return null;
+
+                                const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
+                                const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
+                                const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
+                                const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
+
+                                return (
+                                  <div key={key} className="space-y-2 group">
+                                    {/* Assignee/Team Header */}
+                                    <div className="flex items-center justify-between text-sm">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span
+                                          className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                                          onClick={() => {
+                                            // Gather all ticket keys for this assignee/team across all age categories
+                                            const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
+                                            handleDrillDown(allTicketKeys, `${isTeam ? 'Team' : 'Assignee'}: ${key} (All)`);
+                                          }}
+                                          title={`Click to see all tickets for this ${isTeam ? 'team' : 'assignee'}`}
+                                        >
+                                          {key}
+                                        </span>
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
+
+                                        <div className="flex items-center gap-1.5 ml-2">
+                                          {existingCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title="2+ weeks old">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                              <span>{existingCount}</span>
+                                            </Badge>
+                                          )}
+                                          {lastWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title="1 week old">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                              <span>{lastWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                          {thisWeekCount > 0 && (
+                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title="This week">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                              <span>{thisWeekCount}</span>
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          // Hide all age categories for this assignee/team
+                                          const dimsToAdd = [`${kpi.pluginId}|${key}-existing`, `${kpi.pluginId}|${key}-last_week`, `${kpi.pluginId}|${key}-this_week`];
+                                          setHiddenDimensions((prev: Set<string>) => {
+                                            const next = new Set(prev);
+                                            dimsToAdd.forEach(d => next.add(d));
+                                            return next;
+                                          });
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
+                                        title={`Hide this ${isTeam ? 'team' : 'assignee'}`}
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+
+                                    {/* Stacked/Segmented Bar */}
+                                    <div className="space-y-1">
+                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
+                                        {visibleResults
+                                          .sort((a, b) => {
+                                            // Sort by age: existing → last_week → this_week
+                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
+                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
+                                            return ageA - ageB;
+                                          })
+                                          .map((result, idx) => {
+                                            const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
+                                            const ageCategory = result.dimensions?.ageCategory as string;
+                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
+                                            const ageLabel = ageCategory === 'existing' ? '2+ weeks' : ageCategory === 'last_week' ? '1 week' : 'This week';
+
+                                            return (
+                                              <div
+                                                key={idx}
+                                                className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
+                                                style={{ width: `${width}%` }}
+                                                onClick={() => handleDrillDown(result.ticketKeys || [], `${key} (${result.dimensions?.ageCategory})`)}
+                                                title={`${ageLabel}: ${result.value} ticket(s)`}
+                                              >
+                                                {result.value > 0 && width >= 6 ? result.value : null}
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}                          </div>
+                          {kpi.results.some((r: KpiCalcResult['results'][0]) => {
+                            const dimensionKey = kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team' : 'assignee';
+                            return hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] || r.name}`);
+                          }) && (
+                            <div className="text-xs text-slate-400 italic">
+                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} {kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team(s)' : 'assignee(s)'} hidden
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                }) : null;
+
+                case 'kanban':
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
+                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
+
+                    // Group results by status (columns), then assignee (cards) with age breakdown
+                    interface AgeInfo { count: number; keys: string[] }
+                    interface AssigneeData {
+                      assignee: string;
+                      totalTickets: number;
+                      allKeys: string[];
+                      ageBreakdown: Record<'this_week' | 'last_week' | 'existing', AgeInfo>;
+                    }
+                    const statusMap: Record<string, Record<string, AssigneeData>> = {};
+                    let totalKanbanTickets = 0;
+
+                    kpi.results.forEach((res: any) => {
+                      const status = res.dimensions?.status || 'Unknown';
+                      const assignee = res.dimensions?.assignee || 'Unassigned';
+                      const ageCategory = res.dimensions?.ageCategory || 'existing';
+                      const keys = res.ticketKeys || [];
+                      const val = res.value || 0;
+
+                      if (!statusMap[status]) statusMap[status] = {};
+                      if (!statusMap[status][assignee]) {
+                        statusMap[status][assignee] = {
+                          assignee,
+                          totalTickets: 0,
+                          allKeys: [],
+                          ageBreakdown: {
+                            this_week: { count: 0, keys: [] },
+                            last_week: { count: 0, keys: [] },
+                            existing: { count: 0, keys: [] },
+                          },
+                        };
+                      }
+
+                      const data = statusMap[status][assignee];
+                      data.totalTickets += val;
+                      data.allKeys.push(...keys);
+                      if (data.ageBreakdown[ageCategory as 'this_week' | 'last_week' | 'existing']) {
+                        data.ageBreakdown[ageCategory as 'this_week' | 'last_week' | 'existing'].count += val;
+                        data.ageBreakdown[ageCategory as 'this_week' | 'last_week' | 'existing'].keys.push(...keys);
+                      }
+
+                      totalKanbanTickets += val;
                     });
-                  }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-              <CardDescription className="text-slate-600 dark:text-slate-400">Compliance with per-status SLA targets. Assignee comments reset the clock.</CardDescription>
-            </CardHeader>
-            {statusSlaPanelExpanded && (
-              <CardContent className="space-y-8">
-                {slaStatusKpis.map((kpi) => (
-                  <div key={kpi.pluginId} className="space-y-3">
-                    {slaStatusKpis.length > 1 && (
-                      <div className="flex items-center gap-2 px-1">
-                        <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider py-0 h-4">
-                          {kpi.pluginId === 'sla_by_status_excl_clone' ? 'Excl. Clones' : 'Standard'}
-                        </Badge>
-                        <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print-grid-3">
-                      {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                        if (hiddenDimensions.has(`${kpi.pluginId}|${result.dimensions?.status}`)) return null;
-                        const isClickable = result.ticketKeys && result.ticketKeys.length > 0;
-                        return (
-                          <div
-                            key={`${kpi.pluginId}-${idx}`}
-                            className={`rounded-lg bg-gray-50 dark:bg-slate-800/50 p-4 relative group transition-all ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800' : ''}`}
-                            onClick={isClickable ? () => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.status}`) : undefined}
-                          >
-                            <button
-                              onClick={(e) => { e.stopPropagation(); toggleDimension(kpi.pluginId, result.dimensions?.status || ''); }}
-                              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                              title="Hide widget"
-                            >
-                              <EyeOff className="h-3 w-3" />
-                            </button>
-                            <div className="flex items-center justify-between mb-2"><Badge variant="outline" className="text-xs">{result.dimensions?.status}</Badge><span className={`text-lg font-bold ${result.value >= 80 ? 'text-emerald-400' : result.value >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{result.value.toFixed(1)}{result.unit || '%'}</span></div>
-                            {result.details && (
-                              <div className="space-y-1 mt-2">
-                                <div className="flex justify-between text-xs text-slate-500"><span>Target:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Target')?.value || '-'}h</span></div>
-                                <div className="flex justify-between text-xs text-slate-500"><span>Within SLA:</span><span className="font-mono">{result.details.find((d: any) => d.label === 'Within SLA')?.value || 0}/{result.details.find((d: any) => d.label === 'Total')?.value || 0}</span></div>
+
+                    return (
+                      <Card key={`kanban-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden shadow-sm">
+                        <CardHeader className="bg-slate-50/50 dark:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="flex items-center gap-2 text-lg font-bold">
+                                <Columns className="h-5 w-5 text-indigo-500" />
+                                {getPluginName(kpi.pluginId)}
+                              </CardTitle>
+                              <Badge className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-none font-mono text-xs">
+                                {totalKanbanTickets} open tickets
+                              </Badge>
+                              <button
+                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 ml-1"
+                                title={isExpanded ? "Collapse" : "Expand"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </button>
+                            </div>
+
+                            {/* Age Breakdown Legend */}
+                            {isExpanded && (
+                              <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2.5 h-2.5 rounded bg-emerald-400 shadow-xs" />
+                                  <span>This week</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2.5 h-2.5 rounded bg-amber-500 shadow-xs" />
+                                  <span>1 week old</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2.5 h-2.5 rounded bg-slate-500 shadow-xs" />
+                                  <span>2+ weeks old</span>
+                                </div>
                               </div>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            )}
-          </Card>
-        )}
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent className="p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto pb-2">
+                              {Object.entries(statusMap).map(([status, assigneeObj]) => {
+                                const assigneeItems = Object.values(assigneeObj);
+                                const columnTotal = assigneeItems.reduce((sum, item) => sum + item.totalTickets, 0);
+                                const allStatusKeys = assigneeItems.flatMap(item => item.allKeys);
 
-        {assigneeKpis.length > 0 && (
-          <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="flex items-center gap-2">
-                    <UserCheck className="h-5 w-5 text-indigo-400" />
-                    Tickets by Assignee
-                  </CardTitle>
-                  <button
-                    onClick={() => setAssigneePanelExpanded(!assigneePanelExpanded)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                    title={assigneePanelExpanded ? "Collapse" : "Expand"}
-                    aria-label={assigneePanelExpanded ? "Collapse section" : "Expand section"}
-                  >
-                    {assigneePanelExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-                {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_assignee|')) && (
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setHiddenDimensions((prev: Set<string>) => {
-                      const next = new Set(prev);
-                      next.forEach(k => { if (k.startsWith('open_tickets_by_assignee|')) next.delete(k); });
-                      return next;
-                    });
-                  }} className="h-7 text-[10px] text-indigo-400 hover:text-indigo-500 hover:bg-indigo-500/10">
-                    <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {assigneePanelExpanded && (
-              <CardContent>
-                <div className="space-y-4">{assigneeKpis.map((kpi) => {
-                  const visibleResults = kpi.results.filter((r: KpiCalcResult['results'][0]) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.assignee || r.name}`));
-                  const maxVal = Math.max(...visibleResults.map((r: KpiCalcResult['results'][0]) => r.value), 1);
+                                return (
+                                  <div key={status} className="bg-slate-100/70 dark:bg-slate-800/50 rounded-xl p-3 flex flex-col min-w-[260px] border border-slate-200/60 dark:border-slate-700/50 shadow-sm">
+                                    {/* Status Column Header */}
+                                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200 dark:border-slate-700/80 px-1">
+                                      <span
+                                        className="font-bold text-sm text-slate-800 dark:text-slate-200 cursor-pointer hover:text-indigo-500 hover:underline flex items-center gap-1.5"
+                                        onClick={() => handleDrillDown(allStatusKeys, `Status: ${status} (All Assignees)`)}
+                                        title="Click to drill down all tickets in this status"
+                                      >
+                                        <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block shadow-xs" />
+                                        {status}
+                                      </span>
+                                      <Badge variant="secondary" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-mono text-xs shadow-xs px-2 py-0.5">
+                                        {columnTotal}
+                                      </Badge>
+                                    </div>
 
-                  return (
-                    <div key={kpi.pluginId} className="space-y-3">
-                      {visibleResults.map((result: KpiCalcResult['results'][0], idx: number) => (
-                        <div key={`${kpi.pluginId}-${idx}`} className="space-y-1 group">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-blue-500 hover:underline"
-                                onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
-                              >
-                                {result.dimensions?.assignee || result.name}
-                              </span>
-                              <button
-                                onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.assignee || result.name)}
-                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                title="Hide bar"
-                              >
-                                <EyeOff className="h-3 w-3" />
-                              </button>
+                                    {/* Assignee Cards List */}
+                                    <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[420px] pr-1">
+                                      {assigneeItems
+                                        .sort((a, b) => b.totalTickets - a.totalTickets)
+                                        .map((item, idx) => (
+                                          <div
+                                            key={idx}
+                                            className="group bg-white dark:bg-slate-900/90 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/10 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs hover:border-indigo-500/40 dark:hover:border-indigo-500/40 transition-all cursor-pointer flex flex-col gap-2.5"
+                                            onClick={() => handleDrillDown(item.allKeys, `Assignee: ${item.assignee} (${status})`)}
+                                            title={`Drill down all ${item.totalTickets} ticket(s) for ${item.assignee}`}
+                                          >
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                <Users className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-500 shrink-0 transition-colors" />
+                                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 truncate">
+                                                  {item.assignee}
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-1 shrink-0">
+                                                {item.ageBreakdown.existing.count > 0 && (
+                                                  <span className="text-[10px] font-mono text-slate-500 flex items-center gap-0.5 ml-0.5" title="2+ weeks old">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                                    {item.ageBreakdown.existing.count}
+                                                  </span>
+                                                )}
+                                                {item.ageBreakdown.last_week.count > 0 && (
+                                                  <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 flex items-center gap-0.5 ml-0.5" title="1 week old">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                                    {item.ageBreakdown.last_week.count}
+                                                  </span>
+                                                )}
+                                                {item.ageBreakdown.this_week.count > 0 && (
+                                                  <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 ml-0.5" title="This week">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                    {item.ageBreakdown.this_week.count}
+                                                  </span>
+                                                )}
+                                                <Badge variant="outline" className="text-[10px] ml-1 bg-slate-50 dark:bg-slate-800 font-mono group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 group-hover:border-indigo-300 dark:group-hover:border-indigo-800 transition-colors" title="Total tickets">
+                                                  {item.totalTickets}
+                                                </Badge>
+                                              </div>
+                                            </div>
+
+                                            {/* Segmented Age Bar */}
+                                            <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex gap-0.5 shadow-inner">
+                                              {item.ageBreakdown.this_week.count > 0 && (
+                                                <div
+                                                  title={`This week: ${item.ageBreakdown.this_week.count} ticket(s)`}
+                                                  className="bg-emerald-400 h-full transition-opacity hover:opacity-80"
+                                                  style={{ width: `${(item.ageBreakdown.this_week.count / item.totalTickets) * 100}%` }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDrillDown(item.ageBreakdown.this_week.keys, `Assignee: ${item.assignee} (${status}) [This week]`);
+                                                  }}
+                                                />
+                                              )}
+                                              {item.ageBreakdown.last_week.count > 0 && (
+                                                <div
+                                                  title={`1 week old: ${item.ageBreakdown.last_week.count} ticket(s)`}
+                                                  className="bg-amber-500 h-full transition-opacity hover:opacity-80"
+                                                  style={{ width: `${(item.ageBreakdown.last_week.count / item.totalTickets) * 100}%` }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDrillDown(item.ageBreakdown.last_week.keys, `Assignee: ${item.assignee} (${status}) [1 week]`);
+                                                  }}
+                                                />
+                                              )}
+                                              {item.ageBreakdown.existing.count > 0 && (
+                                                <div
+                                                  title={`2+ weeks old: ${item.ageBreakdown.existing.count} ticket(s)`}
+                                                  className="bg-slate-500 h-full transition-opacity hover:opacity-80"
+                                                  style={{ width: `${(item.ageBreakdown.existing.count / item.totalTickets) * 100}%` }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDrillDown(item.ageBreakdown.existing.keys, `Assignee: ${item.assignee} (${status}) [2+ weeks]`);
+                                                  }}
+                                                />
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                            <span className="font-mono font-bold text-indigo-400">{result.value} {result.unit}</span>
-                          </div>
-                          <div
-                            className="h-2.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden cursor-pointer hover:ring-1 hover:ring-indigo-400 transition-all"
-                            onClick={() => handleDrillDown(result.ticketKeys || [], `${result.name} - ${result.dimensions?.assignee}`)}
-                          >
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all duration-700"
-                              style={{ width: `${(result.value / maxVal) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  }) : null;
+
+                case 'cycle-time-histogram':
+                  return widget.kpis.length > 0 ? (
+                    <div key={`cycle-time-histogram-wrapper-${widget.kpis[0].pluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
+                      <ChartCard
+                        config={{
+                          id: `cycle-time-histogram-${widget.kpis[0].pluginId}`,
+                          type: 'bar',
+                          kpiId: widget.kpis[0].pluginId,
+                          width: 'lg',
+                          height: 'md',
+                          jqlFilter: { enabled: false, query: '', mode: 'override' }
+                        }}
+                        kpiResults={kpiResults}
+                        hiddenDimensions={hiddenDimensions}
+                        toggleDimension={toggleDimension}
+                        onRemove={handleRemoveChart}
+                        onChange={handleUpdateChart}
+                        onMoveUp={handleMoveChart ? (id) => handleMoveChart(id, 'up') : undefined}
+                        onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
+                        onClick={handleDrillDown}
+                        theme={theme as any}
+                        calculateWidgetJql={calculateWidgetJql}
+                      />
                     </div>
-                  );
-                })}</div>
-              </CardContent>
-            )}
-          </Card>
+                  ) : null;
+
+                default:
+                  return null;
+              }
+            })}
+          </div>
         )}
+
 
         {/* Chart Section */}
         {kpiResults.length > 0 && (
@@ -2072,7 +2680,12 @@ export function KpiDashboard() {
           >
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-full shadow-2xl p-1.5 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 px-3">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                <div
+                  className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
+                  onClick={() => {
+                    document.querySelector('[data-period-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
                   <Calendar className="h-3.5 w-3.5 text-emerald-500" />
                   {dateFrom && dateTo ? `${new Date(dateFrom).toLocaleDateString()} - ${new Date(dateTo).toLocaleDateString()}` : 'No Period'}
                 </div>

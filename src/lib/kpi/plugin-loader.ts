@@ -24,7 +24,9 @@ import slaByStatusExclClonePlugin from './plugins/builtin/sla/sla-by-status-excl
 import timeInStatusPlugin from './plugins/builtin/turnaround/time-in-status';
 import throughputPlugin from './plugins/builtin/throughput/throughput';
 import openTicketsByPriorityPlugin from './plugins/builtin/throughput/open-tickets-by-priority';
+import closedTicketsByPriorityPlugin from './plugins/builtin/throughput/closed-tickets-by-priority';
 import openTicketsByStatusPlugin from './plugins/builtin/throughput/open-tickets-by-status';
+import openTicketsKanbanPlugin from './plugins/builtin/throughput/open-tickets-kanban';
 import resolutionRatePlugin from './plugins/builtin/quality/resolution-rate';
 import reassignmentPlugin from './plugins/builtin/quality/reassignment';
 import openTicketsByAssigneePlugin from './plugins/builtin/assignee/open-tickets-by-assignee';
@@ -73,7 +75,9 @@ export class PluginLoader {
       // Throughput plugins
       throughputPlugin,
       openTicketsByPriorityPlugin,
+      closedTicketsByPriorityPlugin,
       openTicketsByStatusPlugin,
+      openTicketsKanbanPlugin,
 
       // Quality plugins
       resolutionRatePlugin,

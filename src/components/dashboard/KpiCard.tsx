@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,9 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area, ReferenceLine, Brush
+  AreaChart, Area, ReferenceLine, ReferenceArea
 } from 'recharts';
-import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings, Pencil, Check, X as XIcon, ZoomOut, ZoomIn } from 'lucide-react';
+import { EyeOff, Edit2, Zap, TrendingUp, CheckCircle2, Clock, Calendar, Target, AlertTriangle, BarChart3, Loader2, Download, Trash2, ChevronUp, ChevronDown, Settings, Pencil, Check, X as XIcon } from 'lucide-react';
 import {
   Tooltip as UITooltip,
   TooltipContent,
@@ -32,6 +32,14 @@ import {
   isTimeSeriesPlugin,
   getRecommendedChartType
 } from '@/lib/chart-data-utils';
+
+// @MX:NOTE: Age category colors for open tickets visualization
+// Green (fresh) → Orange (aging) → Red (stale)
+const AGE_CATEGORY_COLORS = {
+  'this_week': '#22c55e',    // green-500
+  'last_week': '#f59e0b',    // amber-500
+  'existing': '#ef4444',     // red-500
+} as const;
 import { toPng } from 'html-to-image';
 import { toast } from 'sonner';
 import { Label } from '@/components/ui/label';
@@ -272,33 +280,58 @@ export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitl
                 </Badge>
               )}
             </div>
-            {/* Weekly Breakdown Section */}
-            {result.details && result.details.some((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => ['This Week', 'Previous Week'].includes(d.label)) && (
-              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
-                {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'This Week') && (
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">This Week</p>
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
-                      {(() => {
-                        const d = result.details.find((det: any) => det.label === 'This Week');
-                        return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
-                      })()}
-                      <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
-                    </p>
-                  </div>
-                )}
-                {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'Previous Week') && (
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Prev. Week</p>
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
-                      {(() => {
-                        const d = result.details.find((det: any) => det.label === 'Previous Week');
-                        return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
-                      })()}
-                      <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
-                    </p>
-                  </div>
-                )}
+            {/* Weekly Breakdown Section - Age Categories */}
+            {result.details && result.details.some((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) =>
+              ['This Week', '1 week old', '2+ weeks old', 'Previous Week'].includes(d.label)) && (
+              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-2">Age Breakdown</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === 'This Week') && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: AGE_CATEGORY_COLORS.this_week }} />
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">This Week</p>
+                      </div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                        {(() => {
+                          const d = result.details.find((det: any) => det.label === 'This Week');
+                          return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
+                        })()}
+                        <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
+                      </p>
+                    </div>
+                  )}
+                  {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === '1 week old' || d.label === 'Previous Week') && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: AGE_CATEGORY_COLORS.last_week }} />
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">1 Week</p>
+                      </div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                        {(() => {
+                          const d = result.details.find((det: any) => det.label === '1 week old' || det.label === 'Previous Week');
+                          return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
+                        })()}
+                        <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
+                      </p>
+                    </div>
+                  )}
+                  {result.details.find((d: NonNullable<KpiCalcResult['results'][0]['details']>[0]) => d.label === '2+ weeks old') && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: AGE_CATEGORY_COLORS.existing }} />
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">2+ Weeks</p>
+                      </div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                        {(() => {
+                          const d = result.details.find((det: any) => det.label === '2+ weeks old');
+                          return d?.value && d.value % 1 !== 0 ? d.value.toFixed(2) : d?.value;
+                        })()}
+                        <span className="text-[10px] ml-0.5 font-normal opacity-70">{result.unit}</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -343,8 +376,73 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
   const displayTitle = config.customTitle || 'Chart Visualization';
 
-  // Zoom/Pan state for time series charts
-  const [zoomDomain, setZoomDomain] = useState<{ start?: number; end?: number } | null>(null);
+  // Simple zoom state for time series charts (drag to zoom)
+  const [zoomState, setZoomState] = useState<{
+    leftIndex: number | null;
+    rightIndex: number | null;
+    refAreaLeft: number | undefined;
+    refAreaRight: number | undefined;
+  }>({
+    leftIndex: null,
+    rightIndex: null,
+    refAreaLeft: undefined,
+    refAreaRight: undefined,
+  });
+
+  const resetZoom = useCallback(() => {
+    setZoomState({
+      leftIndex: null,
+      rightIndex: null,
+      refAreaLeft: undefined,
+      refAreaRight: undefined,
+    });
+  }, []);
+
+  const handleZoom = useCallback(() => {
+    setZoomState(prev => {
+      const { refAreaLeft, refAreaRight } = prev;
+
+      if (refAreaLeft === undefined || refAreaRight === undefined || refAreaLeft === refAreaRight) {
+        return {
+          ...prev,
+          refAreaLeft: undefined,
+          refAreaRight: undefined,
+        };
+      }
+
+      // Ensure left < right
+      let leftIndex = Math.min(refAreaLeft, refAreaRight);
+      let rightIndex = Math.max(refAreaLeft, refAreaRight);
+
+      return {
+        ...prev,
+        refAreaLeft: undefined,
+        refAreaRight: undefined,
+        leftIndex,
+        rightIndex,
+      };
+    });
+  }, []);
+
+  const handleMouseDown = useCallback((e: any) => {
+    if (e && e.activeTooltipIndex !== undefined) {
+      setZoomState(prev => ({
+        ...prev,
+        refAreaLeft: e.activeTooltipIndex,
+      }));
+    }
+  }, []);
+
+  const handleMouseMove = useCallback((e: any) => {
+    if (e && e.activeTooltipIndex !== undefined) {
+      setZoomState(prev => {
+        if (prev.refAreaLeft !== undefined) {
+          return { ...prev, refAreaRight: e.activeTooltipIndex };
+        }
+        return prev;
+      });
+    }
+  }, []);
 
   const handleStartTitleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -441,16 +539,23 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     masterDatasetInfo?.issues?.length
   ]);
 
+  const effectiveChartType = useMemo(() => {
+    if (isTimeSeries && (config.type === 'bar' || config.type === 'pie')) {
+      return 'line';
+    }
+    return config.type;
+  }, [isTimeSeries, config.type]);
+
   const selectedKpiData = useMemo(() => {
     if (!config.kpiId) return null;
-    switch (config.type) {
+    switch (effectiveChartType) {
       case 'bar':  return transformForBarChart(effectiveResults, config.kpiId);
       case 'pie':  return transformForPieChart(effectiveResults, config.kpiId);
       case 'line':
       case 'area': return transformForLineChart(effectiveResults, config.kpiId);
       default:     return [];
     }
-  }, [config.kpiId, config.type, effectiveResults]);
+  }, [config.kpiId, effectiveChartType, effectiveResults]);
 
   const handleLegendClick = (e: any) => {
     const dimensionName = e.id || e.value;
@@ -669,7 +774,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
       );
     };
 
-    switch (config.type) {
+    switch (effectiveChartType) {
       case 'bar': {
         const hasMultipleSeriesBar = kpi?.results && kpi.results.length > 1 &&
           kpi.results.every((r: KpiCalcResult['results'][0]) => r.timeSeries && r.timeSeries.length > 0);
@@ -745,7 +850,37 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
         }
 
         const visibleBarData = selectedKpiData.filter(d => !hiddenDimensions.has(`${config.kpiId}|${d.name}`));
-        const hasWeeklyLayers = visibleBarData.some(d => (d.thisWeek && d.thisWeek !== 0) || (d.prevWeek && d.prevWeek !== 0));
+
+        // @MX:NOTE: Determine stacked age-breakdown rendering based solely on transformed chart data
+        // @MX:REASON: Checking kpi.results.details was too broad — it matched any KPI that reports age
+        // labels in its details (e.g. total open-tickets), incorrectly suppressing the plain
+        // <Bar dataKey="value"> and rendering bars for undefined fields instead (blank chart).
+        // transformForBarChart is the single source of truth for which fields exist in the data.
+        const hasWeeklyLayers = visibleBarData.some(d =>
+          d.thisWeek !== undefined ||
+          d.prevWeek !== undefined ||
+          d.existing !== undefined
+        );
+
+        // Debug logging
+        if (process.env.NODE_ENV === 'development' && config.kpiId?.includes('open_tickets_by')) {
+          const firstItem = visibleBarData[0];
+          console.log('[ChartCard] Detailed data structure:', {
+            kpiId: config.kpiId,
+            visibleBarDataCount: visibleBarData.length,
+            firstItemKeys: Object.keys(firstItem || {}),
+            firstItemValues: Object.values(firstItem || {}),
+            firstItemRaw: firstItem,
+            hasWeeklyLayers,
+            shouldRenderAgeBreakdownBars: hasWeeklyLayers,
+            chartHeight,
+            barConfig: {
+              dataKey: 'value',
+              dataKeyExistsInFirstItem: 'value' in (firstItem || {}),
+              valueOfFirstItem: firstItem?.value
+            }
+          });
+        }
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
@@ -757,74 +892,94 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {...tooltipStyle}
                 content={<CustomBarTooltip />}
               />
-              {(hasWeeklyLayers || selectedKpiData.length > 1) && (
-                <Legend 
-                  onClick={handleLegendClick} 
-                  cursor="pointer" 
+              {hasWeeklyLayers && (
+                <Legend
+                  onClick={handleLegendClick}
+                  cursor="pointer"
                   formatter={renderLegend}
                   verticalAlign="top"
                   align="right"
                   wrapperStyle={{ paddingBottom: '20px' }}
                   payload={[
-                    ...selectedKpiData.map((d, idx) => ({
-                      value: d.name,
+                    {
+                      value: 'This Week',
                       type: 'rect' as any,
-                      id: d.name,
-                      color: d.fill || CHART_COLORS[idx % CHART_COLORS.length]
-                    }))
+                      id: 'This Week',
+                      color: AGE_CATEGORY_COLORS.this_week
+                    },
+                    {
+                      value: '1 week old',
+                      type: 'rect' as any,
+                      id: '1 week old',
+                      color: AGE_CATEGORY_COLORS.last_week
+                    },
+                    {
+                      value: '2+ weeks old',
+                      type: 'rect' as any,
+                      id: '2+ weeks old',
+                      color: AGE_CATEGORY_COLORS.existing
+                    }
                   ]}
                 />
               )}
-              {/* @MX:ANCHOR: Bar Chart (Standard) */}
-              <Bar 
-                dataKey="value" 
-                name="Total Period" 
-                radius={[4, 4, 0, 0]} 
-                hide={hiddenDimensions.has(`${config.kpiId}|Total Period`)}
-                cursor="pointer"
-                onClick={(data) => {
-                  if (data && data.ticketKeys) {
-                    onClick(data.ticketKeys, data.name || 'Total Period');
-                  }
-                }}
-              >
-                {visibleBarData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]}
-                    fillOpacity={entry.isComplete === false ? 0.4 : 1}
-                  />
-                ))}
-              </Bar>
+              {!hasWeeklyLayers && (
+                <Bar
+                  dataKey="value"
+                  name="Total"
+                  fill="#3b82f6"
+                  hide={hiddenDimensions.has(`${config.kpiId}|Total`)}
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, data.name);
+                    }
+                  }}
+                />
+              )}
+              {/* @MX:NOTE: Bars must be direct children of BarChart - no Fragment wrapper */}
+              {/* @MX:REASON: Recharts scans direct children to register series; a Fragment wrapping */}
+              {/* makes the <Bar> components invisible to Recharts, so nothing renders. */}
               {hasWeeklyLayers && (
-                <>
-                  <Bar 
-                    dataKey="thisWeek" 
-                    name="This Week" 
-                    fill="#3b82f6" 
-                    radius={[4, 4, 0, 0]} 
-                    hide={hiddenDimensions.has(`${config.kpiId}|This Week`)}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "This Week");
-                      }
-                    }}
-                  />
-                  <Bar 
-                    dataKey="prevWeek" 
-                    name="Prev Week" 
-                    fill="#94a3b8" 
-                    radius={[4, 4, 0, 0]} 
-                    hide={hiddenDimensions.has(`${config.kpiId}|Prev Week`)}
-                    cursor="pointer"
-                    onClick={(data) => {
-                      if (data && data.ticketKeys) {
-                        onClick(data.ticketKeys, "Prev Week");
-                      }
-                    }}
-                  />
-                </>
+                <Bar
+                  dataKey="existing"
+                  name="2+ weeks old"
+                  fill={AGE_CATEGORY_COLORS.existing}
+                  stackId="ageBreakdown"
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, "2+ weeks old");
+                    }
+                  }}
+                />
+              )}
+              {hasWeeklyLayers && (
+                <Bar
+                  dataKey="prevWeek"
+                  name="1 week old"
+                  fill={AGE_CATEGORY_COLORS.last_week}
+                  stackId="ageBreakdown"
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, "1 week old");
+                    }
+                  }}
+                />
+              )}
+              {hasWeeklyLayers && (
+                <Bar
+                  dataKey="thisWeek"
+                  name="This Week"
+                  fill={AGE_CATEGORY_COLORS.this_week}
+                  stackId="ageBreakdown"
+                  cursor="pointer"
+                  onClick={(data) => {
+                    if (data && data.ticketKeys) {
+                      onClick(data.ticketKeys, "This Week");
+                    }
+                  }}
+                />
               )}
             </BarChart>
           </ResponsiveContainer>
@@ -856,17 +1011,30 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             return dataPoint;
           });
 
-          // Filter data based on zoom domain
-          const zoomedData = zoomDomain && zoomDomain.end !== undefined
-            ? mergedData.slice(zoomDomain.start, zoomDomain.end + 1)
+          // @MX:ANCHOR: Line Chart Rendering
+          // Filter data based on zoom state
+          const zoomedData = zoomState.leftIndex !== null && zoomState.rightIndex !== null
+            ? mergedData.slice(zoomState.leftIndex, zoomState.rightIndex + 1)
             : mergedData;
 
-          // @MX:ANCHOR: Line Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <LineChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 80 }}>
+              <LineChart
+                data={zoomedData}
+                margin={{ top: 20, right: 60, left: 20, bottom: 80 }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleZoom}
+              >
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
+                <XAxis
+                  dataKey="name"
+                  className="text-xs"
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                  interval="preserveStartEnd"
+                />
                 <YAxis className="text-xs" />
                 <Tooltip
                   {...tooltipStyle}
@@ -880,24 +1048,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   align="right"
                   wrapperStyle={{ paddingBottom: '20px' }}
                 />
-                <Brush
-                  dataKey="name"
-                  height={30}
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
-                  fillOpacity={0.3}
-                  data={mergedData}
-                  onChange={(brushState: any) => {
-                    if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
-                      setZoomDomain({
-                        start: brushState.startIndex,
-                        end: brushState.endIndex
-                      });
-                    } else {
-                      setZoomDomain(null);
-                    }
-                  }}
-                />
+                {zoomState.refAreaLeft !== undefined && zoomState.refAreaRight !== undefined && (
+                  <ReferenceArea
+                    x1={mergedData[zoomState.refAreaLeft]?.name}
+                    x2={mergedData[zoomState.refAreaRight]?.name}
+                    stroke="none"
+                    fillOpacity={0.3}
+                    fill="purple"
+                  />
+                )}
                 {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                   const color = CHART_COLORS[idx % CHART_COLORS.length];
                   return (
@@ -962,13 +1121,20 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
-        const zoomedData = zoomDomain && zoomDomain.end !== undefined
-          ? selectedKpiData.slice(zoomDomain.start, zoomDomain.end + 1)
-          : selectedKpiData;
+        const visibleData = selectedKpiData || [];
+        const zoomedData = zoomState.leftIndex !== null && zoomState.rightIndex !== null
+          ? visibleData.slice(zoomState.leftIndex, zoomState.rightIndex + 1)
+          : visibleData;
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <LineChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <LineChart
+              data={zoomedData}
+              margin={{ top: 20, right: 60, left: 20, bottom: 50 }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleZoom}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -976,6 +1142,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {...tooltipStyle}
                 content={<CustomLineAreaTooltip />}
               />
+              {zoomState.refAreaLeft !== undefined && zoomState.refAreaRight !== undefined && (
+                <ReferenceArea
+                  x1={visibleData[zoomState.refAreaLeft]?.name}
+                  x2={visibleData[zoomState.refAreaRight]?.name}
+                  stroke="none"
+                  fillOpacity={0.3}
+                  fill="purple"
+                />
+              )}
               {/* @MX:ANCHOR: Line Chart (Standard) */}
               <Line
                 type="monotone"
@@ -1024,24 +1199,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   }}
                 />
               )}
-              <Brush
-                dataKey="name"
-                height={30}
-                stroke="#3b82f6"
-                fill="#3b82f6"
-                fillOpacity={0.3}
-                data={selectedKpiData}
-                onChange={(brushState: any) => {
-                  if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
-                    setZoomDomain({
-                      start: brushState.startIndex,
-                      end: brushState.endIndex
-                    });
-                  } else {
-                    setZoomDomain(null);
-                  }
-                }}
-              />
             </LineChart>
           </ResponsiveContainer>
         );
@@ -1069,10 +1226,21 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             return dataPoint;
           });
 
+          // Filter data based on zoom state
+          const zoomedData = zoomState.leftIndex !== null && zoomState.rightIndex !== null
+            ? mergedData.slice(zoomState.leftIndex, zoomState.rightIndex + 1)
+            : mergedData;
+
           // @MX:ANCHOR: Area Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <AreaChart data={mergedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+              <AreaChart
+                data={zoomedData}
+                margin={{ top: 20, right: 60, left: 20, bottom: 50 }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleZoom}
+              >
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
@@ -1088,6 +1256,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   align="right"
                   wrapperStyle={{ paddingBottom: '20px' }}
                 />
+                {zoomState.refAreaLeft !== undefined && zoomState.refAreaRight !== undefined && (
+                  <ReferenceArea
+                    x1={mergedData[zoomState.refAreaLeft]?.name}
+                    x2={mergedData[zoomState.refAreaRight]?.name}
+                    stroke="none"
+                    fillOpacity={0.3}
+                    fill="purple"
+                  />
+                )}
                 {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => (
                   <Area
                     key={result.name || idx}
@@ -1130,36 +1307,25 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     />
                   );
                 })}
-                <Brush
-                  dataKey="name"
-                  height={30}
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
-                  fillOpacity={0.3}
-                  data={mergedData}
-                  onChange={(brushState: any) => {
-                    if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
-                      setZoomDomain({
-                        start: brushState.startIndex,
-                        end: brushState.endIndex
-                      });
-                    } else {
-                      setZoomDomain(null);
-                    }
-                  }}
-                />
               </AreaChart>
             </ResponsiveContainer>
           );
         }
 
-        const zoomedData = zoomDomain && zoomDomain.end !== undefined
-          ? selectedKpiData.slice(zoomDomain.start, zoomDomain.end + 1)
-          : selectedKpiData;
+        const visibleData = selectedKpiData || [];
+        const zoomedData = zoomState.leftIndex !== null && zoomState.rightIndex !== null
+          ? visibleData.slice(zoomState.leftIndex, zoomState.rightIndex + 1)
+          : visibleData;
 
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={zoomedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <AreaChart
+              data={zoomedData}
+              margin={{ top: 20, right: 60, left: 20, bottom: 50 }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleZoom}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1167,6 +1333,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {...tooltipStyle}
                 content={<CustomLineAreaTooltip />}
               />
+              {zoomState.refAreaLeft !== undefined && zoomState.refAreaRight !== undefined && (
+                <ReferenceArea
+                  x1={visibleData[zoomState.refAreaLeft]?.name}
+                  x2={visibleData[zoomState.refAreaRight]?.name}
+                  stroke="none"
+                  fillOpacity={0.3}
+                  fill="purple"
+                />
+              )}
               {/* @MX:ANCHOR: Area Chart (Standard) */}
               <Area 
                 type="monotone" 
@@ -1200,24 +1375,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   }}
                 />
               )}
-              <Brush
-                dataKey="name"
-                height={30}
-                stroke="#3b82f6"
-                fill="#3b82f6"
-                fillOpacity={0.3}
-                data={selectedKpiData}
-                onChange={(brushState: any) => {
-                  if (brushState && brushState.startIndex !== undefined && brushState.endIndex !== undefined) {
-                    setZoomDomain({
-                      start: brushState.startIndex,
-                      end: brushState.endIndex
-                    });
-                  } else {
-                    setZoomDomain(null);
-                  }
-                }}
-              />
             </AreaChart>
           </ResponsiveContainer>
         );
@@ -1354,6 +1511,20 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {/* Zoom control for time-series charts */}
+            {isTimeSeries && (zoomState.leftIndex !== null || zoomState.rightIndex !== null) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetZoom}
+                data-export-ignore="true"
+                className="text-purple-500 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-500/10 h-8 px-2 text-xs"
+                aria-label="Reset zoom"
+                title="Reset zoom to show all data"
+              >
+                ↺ Reset Zoom
+              </Button>
+            )}
             {config.kpiId && (
               <Button
                 variant="ghost"
@@ -1394,35 +1565,6 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 >
                   <ChevronDown className="h-4 w-4" />
                 </Button>
-              )}
-              {/* Zoom/Pan controls for time series charts */}
-              {isTimeSeries && (
-                <>
-                  {zoomDomain ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setZoomDomain(null)}
-                      data-export-ignore="true"
-                      className="text-purple-500 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-500/10 h-8 w-8 p-0"
-                      aria-label="Reset zoom"
-                      title="Reset zoom to show all data"
-                    >
-                      <ZoomOut className="h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled
-                      data-export-ignore="true"
-                      className="text-slate-300 dark:text-slate-600 h-8 w-8 p-0"
-                      aria-label="Zoom not available"
-                    >
-                      <ZoomIn className="h-4 w-4" />
-                    </Button>
-                  )}
-                </>
               )}
             </div>
             <Popover open={jqlSettingsOpen} onOpenChange={setJqlSettingsOpen}>
@@ -1516,7 +1658,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           <div className="w-[140px]">
             <Label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Chart Type</Label>
             <Select
-              value={config.type}
+              value={effectiveChartType}
               onValueChange={(type: 'bar' | 'line' | 'pie' | 'area') => onChange(config.id, { ...config, type })}
               disabled={!config.kpiId}
             >
@@ -1524,9 +1666,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="bar">Bar Chart</SelectItem>
+                {!isTimeSeries && <SelectItem value="bar">Bar Chart</SelectItem>}
                 <SelectItem value="line">Line Chart</SelectItem>
-                <SelectItem value="pie">Pie Chart</SelectItem>
+                {!isTimeSeries && <SelectItem value="pie">Pie Chart</SelectItem>}
                 <SelectItem value="area">Area Chart</SelectItem>
               </SelectContent>
             </Select>

@@ -81,6 +81,13 @@ export interface StorageConfig {
 
 // --- Implementation ---
 
+export interface CustomExtractField {
+  id: string;
+  fieldId: string;
+  label: string;
+  role?: 'storyPoints' | 'issueOwnerTeam' | 'custom';
+}
+
 export interface SavedJql {
   id: string;
   name: string;
@@ -94,6 +101,7 @@ export interface DashboardState {
   dashboardJql?: string;
   dateFrom?: string;
   dateTo?: string;
+  collapsedWidgets?: string[];
 }
 
 export interface DashboardPreset {
@@ -107,9 +115,10 @@ export interface DashboardPreset {
   hiddenDimensions: string[];
   // @MX:NOTE: Custom widget title overrides — key format: "pluginId|resultName" for KpiCards, chart ID for ChartCards (stored in chart.customTitle)
   widgetTitles?: Record<string, string>;
+  collapsedWidgets?: string[];
 }
 
-const KEYS = {
+export const KEYS = {
   jira: 'cfg_jira_connections',
   pg: 'cfg_pg_connections',
   plugins: 'cfg_kpi_plugins',
@@ -119,12 +128,19 @@ const KEYS = {
   jql: 'cfg_saved_jqls',
   dashboardJql: 'cfg_dashboard_jqls',
   etlUpdateOnly: 'cfg_etl_update_only',
+  customExtractFields: 'cfg_custom_extract_fields',
   dashboardState: 'cfg_dashboard_state',
   presets: 'cfg_dashboard_presets',
   // Submenu visibility states
   showDataCenterSubmenu: 'cfg_show_data_center_submenu',
   showKpiAnalyticsSubmenu: 'cfg_show_kpi_analytics_submenu',
   showSettingsSubmenu: 'cfg_show_settings_submenu',
+  // Plugin and Widget display states
+  favoritePlugins: 'cfg_favorite_plugins',
+  activePlugins: 'cfg_active_plugins',
+  collapsedGroups: 'cfg_collapsed_plugin_groups',
+  widgetOrder: 'widget_display_order',
+  theme: 'jira-etl-theme',
 };
 
 // @MX:ANCHOR: DEFAULT_SETTINGS
@@ -227,6 +243,49 @@ export const localConfig = {
   getEtlUpdateOnly: () => get<boolean>(KEYS.etlUpdateOnly, false),
   saveEtlUpdateOnly: (val: boolean) => set(KEYS.etlUpdateOnly, val),
 
+  getCustomExtractFields: () => {
+    const fields = get<CustomExtractField[] | null>(KEYS.customExtractFields, null);
+    if (fields === null) {
+      // Pre-seed defaults on first load
+      return [
+        { id: 'default-sp', fieldId: 'customfield_10002', label: 'Story Points', role: 'storyPoints' as const },
+        { id: 'default-team', fieldId: 'customfield_10132', label: 'Issue Owner Team', role: 'issueOwnerTeam' as const }
+      ] satisfies CustomExtractField[];
+    }
+    return fields;
+  },
+  saveCustomExtractFields: (fields: CustomExtractField[]) => set(KEYS.customExtractFields, fields),
+
+  getFavoritePlugins: () => get<string[]>(KEYS.favoritePlugins, []),
+  saveFavoritePlugins: (plugins: string[]) => set(KEYS.favoritePlugins, plugins),
+
+  getActivePlugins: () => get<string[]>(KEYS.activePlugins, []),
+  saveActivePlugins: (plugins: string[]) => {
+    set(KEYS.activePlugins, plugins);
+    if (isBrowser) {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: KEYS.activePlugins,
+        newValue: JSON.stringify(plugins),
+        storageArea: localStorage,
+      }));
+    }
+  },
+
+  getCollapsedGroups: () => get<string[]>(KEYS.collapsedGroups, []),
+  saveCollapsedGroups: (groups: string[]) => set(KEYS.collapsedGroups, groups),
+
+  getWidgetOrder: () => get<string[]>(KEYS.widgetOrder, []),
+  saveWidgetOrder: (order: string[]) => set(KEYS.widgetOrder, order),
+
+  getTheme: () => {
+    if (!isBrowser) return 'light';
+    return localStorage.getItem(KEYS.theme) || 'light';
+  },
+  saveTheme: (theme: string) => {
+    if (!isBrowser) return;
+    localStorage.setItem(KEYS.theme, theme);
+  },
+
   getDashboardState: (connectionId: string) => {
     const states = get<Record<string, DashboardState>>(KEYS.dashboardState, {});
     return states[connectionId] || null;
@@ -251,7 +310,7 @@ export const localConfig = {
 
   exportConfig: () => {
     const data: any = {
-      version: '1.1',
+      version: '1.2',
       exportedAt: new Date().toISOString(),
       jiraConnections: localConfig.getJiraConnections(),
       pgConnections: localConfig.getPgConnections(),
@@ -261,7 +320,13 @@ export const localConfig = {
       savedJqls: localConfig.getSavedJqls(),
       dashboardJqls: localConfig.getDashboardJqls(),
       etlUpdateOnly: localConfig.getEtlUpdateOnly(),
+      customExtractFields: localConfig.getCustomExtractFields(),
       activeConnectionId: localConfig.getActiveConnectionId(),
+      favoritePlugins: localConfig.getFavoritePlugins(),
+      activePlugins: localConfig.getActivePlugins(),
+      collapsedGroups: localConfig.getCollapsedGroups(),
+      widgetOrder: localConfig.getWidgetOrder(),
+      theme: localConfig.getTheme(),
       // Raw dumps for complex/nested objects
       dashboardStates: get(KEYS.dashboardState, {}),
       presets: get(KEYS.presets, {}),
@@ -285,7 +350,13 @@ export const localConfig = {
       if (data.savedJqls) localConfig.saveJqls(data.savedJqls);
       if (data.dashboardJqls) localConfig.saveDashboardJqls(data.dashboardJqls);
       if (data.etlUpdateOnly !== undefined) localConfig.saveEtlUpdateOnly(data.etlUpdateOnly);
+      if (data.customExtractFields) localConfig.saveCustomExtractFields(data.customExtractFields);
       if (data.activeConnectionId) localConfig.setActiveConnectionId(data.activeConnectionId);
+      if (data.favoritePlugins) localConfig.saveFavoritePlugins(data.favoritePlugins);
+      if (data.activePlugins) localConfig.saveActivePlugins(data.activePlugins);
+      if (data.collapsedGroups) localConfig.saveCollapsedGroups(data.collapsedGroups);
+      if (data.widgetOrder) localConfig.saveWidgetOrder(data.widgetOrder);
+      if (data.theme) localConfig.saveTheme(data.theme);
       
       if (data.dashboardStates) set(KEYS.dashboardState, data.dashboardStates);
       if (data.presets) set(KEYS.presets, data.presets);

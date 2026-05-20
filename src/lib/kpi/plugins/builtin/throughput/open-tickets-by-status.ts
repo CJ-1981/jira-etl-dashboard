@@ -3,22 +3,8 @@
  * Number of non-resolved tickets for each status value, broken down by ticket age
  */
 
-import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
-import { isIssueDone } from '../../../engine-utils';
-
-// @MX:NOTE: Age categories for open tickets analysis
-// @MX:REASON: Provides insight into ticket freshness and backlog age distribution
-type AgeCategory = 'this_week' | 'last_week' | 'existing';
-
-function getAgeCategory(createdDate: Date, referenceDate: Date): AgeCategory {
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const ageMs = referenceDate.getTime() - createdDate.getTime();
-  const weeksOld = Math.floor(ageMs / msPerWeek);
-
-  if (weeksOld === 0) return 'this_week';
-  if (weeksOld === 1) return 'last_week';
-  return 'existing';
-}
+import type { KpiPlugin, KpiContext, KpiResult, AgeCategory } from '../../../types';
+import { isIssueDone, getAgeCategory, AGE_ORDER } from '../../../engine-utils';
 
 const openTicketsByStatusPlugin: KpiPlugin = {
   id: 'open_tickets_by_status',
@@ -33,7 +19,7 @@ const openTicketsByStatusPlugin: KpiPlugin = {
   unit: 'tickets',
 
   calculate(context: KpiContext): KpiResult[] {
-    const referenceDate = new Date(); // Use current date for age calculation
+    const referenceDate = context.period?.end ?? new Date(); // Use period end date for consistent age calculation
     const openIssues = context.issues.filter((i) => !isIssueDone(i));
 
     // Group tickets by status and age category
@@ -105,17 +91,29 @@ const openTicketsByStatusPlugin: KpiPlugin = {
       }
     }
 
-    // Sort results by status, then by age category (existing → last_week → this_week)
-    const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-    return results.sort((a, b) => {
+    // Sort results by total status count (descending), then by age category (existing → last_week → this_week)
+    const statusTotals = Object.fromEntries(
+      Object.entries(statusAgeGroups).map(([status, groups]) => [
+        status,
+        groups.existing.size + groups.last_week.size + groups.this_week.size
+      ])
+    );
+
+    const sortedResults = results.sort((a, b) => {
       const statusA = a.dimensions?.status || '';
       const statusB = b.dimensions?.status || '';
-      const ageA = ageOrder[a.dimensions?.ageCategory as AgeCategory] ?? 999;
-      const ageB = ageOrder[b.dimensions?.ageCategory as AgeCategory] ?? 999;
+      const totalA = statusTotals[statusA] || 0;
+      const totalB = statusTotals[statusB] || 0;
+      const ageA = AGE_ORDER[a.dimensions?.ageCategory as AgeCategory] ?? 999;
+      const ageB = AGE_ORDER[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
+      if (totalA !== totalB) return totalB - totalA; // Descending total count
       if (statusA !== statusB) return statusA.localeCompare(statusB);
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
+
+    // Return sorted results (no reversal needed - Recharts handles order correctly)
+    return sortedResults;
   },
 };
 

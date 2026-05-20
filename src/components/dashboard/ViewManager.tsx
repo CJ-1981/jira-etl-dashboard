@@ -32,6 +32,7 @@ export function ViewManager() {
     kpiCardConfigs,
     hiddenDimensions,
     widgetTitles,
+    collapsedWidgets,
     
     savedViews,
     setSavedViews,
@@ -50,6 +51,7 @@ export function ViewManager() {
     setKpiCardConfigs,
     setHiddenDimensions,
     setWidgetTitles,
+    setCollapsedWidgets,
   } = useAppStore();
 
   const [loading, setLoading] = useState(false);
@@ -70,6 +72,7 @@ export function ViewManager() {
       kpiCardConfigs,
       hiddenDimensions: Array.from(hiddenDimensions),
       widgetTitles,
+      collapsedWidgets: Array.from(collapsedWidgets),
     };
   };
 
@@ -86,6 +89,7 @@ export function ViewManager() {
       setKpiCardConfigs(state.kpiCardConfigs || []);
       setHiddenDimensions(new Set(state.hiddenDimensions || []));
       setWidgetTitles(state.widgetTitles || {});
+      setCollapsedWidgets(new Set(state.collapsedWidgets || []));
       
       setActiveView(view);
       setIsViewModified(false);

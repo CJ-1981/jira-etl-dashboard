@@ -1,15 +1,15 @@
 /**
- * Open Tickets by Priority Plugin
- * Number of non-resolved tickets for each priority level, broken down by ticket age
+ * Closed Tickets by Priority Plugin
+ * Number of resolved tickets for each priority level, broken down by when they were closed
  */
 
 import type { KpiPlugin, KpiContext, KpiResult, AgeCategory } from '../../../types';
 import { isIssueDone, getAgeCategory, AGE_ORDER, getPriorityOrder } from '../../../engine-utils';
 
-const openTicketsByPriorityPlugin: KpiPlugin = {
-  id: 'open_tickets_by_priority',
-  name: 'Open Tickets by Priority',
-  description: 'Number of non-resolved tickets for each priority level, broken down by ticket age.',
+const closedTicketsByPriorityPlugin: KpiPlugin = {
+  id: 'closed_tickets_by_priority',
+  name: 'Closed Tickets by Priority',
+  description: 'Number of resolved tickets for each priority level, broken down by when they were closed.',
   category: 'builtin',
   domain: 'throughput',
   version: '2.0.0',
@@ -20,12 +20,12 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
 
   calculate(context: KpiContext): KpiResult[] {
     const referenceDate = context.period?.end ?? new Date(); // Use period end date for consistent age calculation
-    const openIssues = context.issues.filter((i) => !isIssueDone(i));
+    const closedIssues = context.issues.filter((i) => isIssueDone(i));
 
     // Group tickets by priority and age category
     const priorityAgeGroups: Record<string, Record<AgeCategory, Set<string>>> = {};
 
-    for (const issue of openIssues) {
+    for (const issue of closedIssues) {
       const priority = issue.priority || 'Unassigned';
       if (!priorityAgeGroups[priority]) {
         priorityAgeGroups[priority] = {
@@ -35,7 +35,8 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
         };
       }
 
-      const ageCategory = getAgeCategory(issue.created, referenceDate);
+      const closedDate = issue.resolved || issue.updated;
+      const ageCategory = getAgeCategory(closedDate, referenceDate);
       priorityAgeGroups[priority][ageCategory].add(issue.key);
     }
 
@@ -57,7 +58,7 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
           ticketKeys: Array.from(ageGroups.existing),
           details: [
             { label: 'Priority', value: 0, unit: priority },
-            { label: 'Age', value: 0, unit: '2+ weeks old' },
+            { label: 'Age', value: 0, unit: 'Closed 2+ weeks ago' },
           ],
         });
       }
@@ -71,7 +72,7 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
           ticketKeys: Array.from(ageGroups.last_week),
           details: [
             { label: 'Priority', value: 0, unit: priority },
-            { label: 'Age', value: 0, unit: '1 week old' },
+            { label: 'Age', value: 0, unit: 'Closed 1 week ago' },
           ],
         });
       }
@@ -85,7 +86,7 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
           ticketKeys: Array.from(ageGroups.this_week),
           details: [
             { label: 'Priority', value: 0, unit: priority },
-            { label: 'Age', value: 0, unit: 'This week' },
+            { label: 'Age', value: 0, unit: 'Closed this week' },
           ],
         });
       }
@@ -99,17 +100,6 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
       const orderA = getPriorityOrder(priorityA);
       const orderB = getPriorityOrder(priorityB);
 
-      // Debug logging to check actual priority values
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Priority Sort] Priorities:', {
-          priorityA,
-          priorityB,
-          orderA,
-          orderB,
-          result: orderA - orderB
-        });
-      }
-
       const ageA = AGE_ORDER[a.dimensions?.ageCategory as AgeCategory] ?? 999;
       const ageB = AGE_ORDER[b.dimensions?.ageCategory as AgeCategory] ?? 999;
 
@@ -117,9 +107,8 @@ const openTicketsByPriorityPlugin: KpiPlugin = {
       return ageA - ageB; // Existing (0) → Last Week (1) → This Week (2)
     });
 
-    // Return sorted results (no reversal needed - Recharts handles order correctly)
     return sortedResults;
   },
 };
 
-export default openTicketsByPriorityPlugin;
+export default closedTicketsByPriorityPlugin;

@@ -99,6 +99,7 @@ model MasterTicket {
   status          String
   assignee        String?
   reporter        String?
+  issueOwnerTeam  String?  // Custom field for team assignment (customfield_10132)
   created         DateTime
   updated         DateTime
   resolved        DateTime?

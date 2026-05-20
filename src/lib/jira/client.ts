@@ -209,6 +209,77 @@ export class JiraClient {
   }
 
   /**
+   * Discover custom fields available in the Jira instance for a given JQL context.
+   *
+   * Strategy:
+   *   1. Run the user's JQL (maxResults=1, expand=names) — the `names` dict maps every
+   *      field ID that appears on that ticket to its human-readable label.
+   *   2. Filter to only `customfield_*` entries.
+   *   3. If JQL returns 0 results, fall back to GET /field and return all custom fields.
+   */
+  async discoverCustomFields(
+    jql: string
+  ): Promise<Array<{ fieldId: string; name: string; type: string }>> {
+    // Step 1 — try to get names from a real ticket in context
+    if (jql.trim()) {
+      try {
+        const searchBody = {
+          jql: jql.trim(),
+          maxResults: 1,
+          fields: ['*all'],
+          expand: ['names'],
+        };
+        const searchRes = await fetch(this.buildUrl('/search'), {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify(searchBody),
+        });
+
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const names: Record<string, string> = searchData.names || {};
+          const customEntries = Object.entries(names).filter(([id]) => id.startsWith('customfield_'));
+
+          if (customEntries.length > 0) {
+            // Get schema info to include field type (best-effort)
+            const schemaMap: Record<string, string> = {};
+            if (searchData.issues?.[0]?.fields) {
+              // Types aren't in names; derive from schema in response if present
+            }
+            return customEntries.map(([fieldId, name]) => ({
+              fieldId,
+              name,
+              type: schemaMap[fieldId] || 'custom',
+            }));
+          }
+        }
+      } catch (_) {
+        // fall through to fallback
+      }
+    }
+
+    // Step 2 — fallback: GET /field filtered to custom fields
+    const fieldsRes = await fetch(this.buildUrl('/field'), {
+      headers: this.getHeaders(),
+    });
+
+    if (!fieldsRes.ok) {
+      throw new Error(`Failed to fetch field list: ${fieldsRes.status} ${fieldsRes.statusText}`);
+    }
+
+    const allFields: Array<{ id: string; name: string; custom: boolean; schema?: { type: string } }> =
+      await fieldsRes.json();
+
+    return allFields
+      .filter(f => f.custom && f.id.startsWith('customfield_'))
+      .map(f => ({
+        fieldId: f.id,
+        name: f.name,
+        type: f.schema?.type || 'custom',
+      }));
+  }
+
+  /**
    * Get a single issue by key (for testing access to specific issues)
    */
   async getIssue(issueKey: string): Promise<JiraIssue | null> {
@@ -331,6 +402,7 @@ export class JiraClient {
     options: {
       maxResults?: number;
       expand?: string[];
+      customFieldIds?: string[];
       onProgress?: (progress: number, total: number) => void;
       delayMs?: number;
       maxRequestsPerMinute?: number;
@@ -342,6 +414,7 @@ export class JiraClient {
     const {
       maxResults = 100,
       expand = ['changelog'],
+      customFieldIds = [],
       onProgress,
       delayMs = 0,
       maxRequestsPerMinute = 60,
@@ -367,13 +440,18 @@ export class JiraClient {
         }
       }
 
+      const baseFields = ['summary', 'issuetype', 'priority', 'status', 'assignee', 'reporter',
+                 'created', 'updated', 'resolutiondate', 'duedate',
+                 this.fieldMapping.storyPointsField, this.fieldMapping.issueOwnerTeamField,
+                 'labels', 'components', 'comment'];
+
+      // Append user-defined custom field IDs (deduplicated)
+      const allFields = [...new Set([...baseFields, ...customFieldIds])];
+
       const requestBody: Record<string, unknown> = {
         jql,
         maxResults,
-        fields: ['summary', 'issuetype', 'priority', 'status', 'assignee', 'reporter',
-                 'created', 'updated', 'resolutiondate', 'duedate',
-                 this.fieldMapping.storyPointsField, this.fieldMapping.issueOwnerTeamField,
-                 'labels', 'components', 'comment'],
+        fields: allFields,
       };
 
       if (safeExpand.length > 0) {
@@ -529,12 +607,26 @@ export class JiraClient {
 /**
  * Extract value from a Jira select field
  * Jira select fields return either a string or an object: { value: string, id: string, self: string }
+ * Multi-user fields return an array of user objects: [{ displayName: string, ... }]
  */
-export function extractSelectFieldValue(field: string | { value: string } | undefined | null): string | null {
+export function extractSelectFieldValue(field: any): string | null {
   if (!field) return null;
   if (typeof field === 'string') return field;
-  if (typeof field === 'object' && 'value' in field) return field.value;
-  return null;
+  
+  // Handle arrays (e.g., multi-select fields, user list fields)
+  if (Array.isArray(field)) {
+    return field
+      .map((item) => extractSelectFieldValue(item))
+      .filter(Boolean)
+      .join(', ');
+  }
+  
+  // Handle objects (Jira returns objects for select, user, and complex fields)
+  if (typeof field === 'object') {
+    return field.value || field.displayName || field.name || field.key || null;
+  }
+  
+  return String(field);
 }
 
 /**
@@ -544,6 +636,8 @@ export function transformIssue(issue: JiraIssue) {
   const transitions = extractTransitions(issue);
 
   // Extract Issue Owner Team value from select field object
+  // @MX:NOTE: Use hardcoded customfield_10132 for Issue Owner Team (LTIC)
+  // @MX:REASON: Custom Jira field that varies by instance; use REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD env var to override
   const issueOwnerTeam = extractSelectFieldValue(issue.fields.customfield_10132);
 
   return {

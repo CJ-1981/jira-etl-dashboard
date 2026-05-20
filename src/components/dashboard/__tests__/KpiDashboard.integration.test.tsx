@@ -78,6 +78,11 @@ vi.mock('@/lib/config/local-store', () => ({
   localConfig: {
     getDashboardJqls: vi.fn(() => []),
     saveDashboardJqls: vi.fn(),
+    getCustomExtractFields: vi.fn(() => [
+      { id: 'default-sp', fieldId: 'customfield_10002', label: 'Story Points', role: 'storyPoints' },
+      { id: 'default-team', fieldId: 'customfield_10132', label: 'Issue Owner Team', role: 'issueOwnerTeam' }
+    ]),
+    getKpiPlugins: vi.fn(() => []),
   },
 }));
 
@@ -103,6 +108,8 @@ describe('KpiDashboard - Integration Tests', () => {
     setGlobalFilters: vi.fn(),
     hiddenDimensions: new Set(), // Component expects Set with .has() method
     setHiddenDimensions: vi.fn(),
+    collapsedWidgets: new Set(),
+    setCollapsedWidgets: vi.fn(),
     dashboardCharts: [],
     setDashboardCharts: vi.fn(),
     dashboardJqlQuery: '',

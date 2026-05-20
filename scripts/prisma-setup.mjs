@@ -82,8 +82,6 @@ if (!databaseUrl) {
 }
 
 const isPostgres = databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://');
-const sourceSchema = isPostgres ? 'schema.postgresql.prisma' : 'schema.sqlite.prisma';
-const targetSchema = 'schema.prisma';
 
 console.log(`> Target Database: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
 
@@ -136,19 +134,28 @@ try {
 }
 
 // 5. Unconditionally synchronize Prisma schema (prisma db push)
-if (!isPostgres) {
+// Skip in CI environments since database synchronization isn't needed for linting/type-checking/tests
+if (!isPostgres && !process.env.CI) {
   const sqlitePathMatch = databaseUrl.match(/file:(.+)/);
   if (sqlitePathMatch) {
     // Always push schema changes for SQLite to ensure database is in sync
     console.log('> Synchronizing SQLite database schema...');
     try {
-      execSync('npx prisma db push --skip-generate', { stdio: 'inherit', cwd: rootDir });
+      // Set DATABASE_URL environment variable for this command
+      const env = { ...process.env, DATABASE_URL: databaseUrl };
+      execSync('npx prisma db push --skip-generate', {
+        stdio: 'inherit',
+        cwd: rootDir,
+        env
+      });
       console.log('✓ Database schema synchronized');
     } catch (error) {
       console.error('✗ Failed to synchronize database schema', error);
       process.exit(1);
     }
   }
+} else if (process.env.CI) {
+  console.log('> Skipping database synchronization in CI environment');
 }
 
 console.log('--- Setup Complete ---\n');

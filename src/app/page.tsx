@@ -70,6 +70,7 @@ export default function Home() {
 
   const loadMasterDataset = useCallback(async (connectionId: string, config: any, signal?: AbortSignal) => {
     if (!connectionId) return;
+    let isMounted = true;
     setIsLoadingDb(true);
     try {
       const res = await fetch(`/api/jira/master/${connectionId}`, {
@@ -79,6 +80,7 @@ export default function Home() {
         signal
       });
       const data = await res.json();
+      if (!isMounted) return;
       if (data.success && data.data) {
         setMasterDatasetInfo({
           totalExtracted: data.data.totalExtracted,
@@ -98,8 +100,9 @@ export default function Home() {
       if (e.name === 'AbortError') return;
       console.error('Failed to auto-load master dataset:', e);
     } finally {
-      setIsLoadingDb(false);
+      if (isMounted) setIsLoadingDb(false);
     }
+    return () => { isMounted = false; };
   }, []);
 
   const initialMountRef = useRef(false);
@@ -237,7 +240,8 @@ export default function Home() {
     } else {
       if (isDev) console.log('[App] Master dataset date range not available yet');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConnectionId, mounted, masterDatasetInfo]);
 
   useEffect(() => {
@@ -442,7 +446,12 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="kpi" className="space-y-6">
-            <Tabs value={kpiSubTab} onValueChange={setKpiSubTab} className="space-y-6">
+            {/* @MX:NOTE: Enable smooth scroll to top on sub-tab switch for better UX */}
+            {/* @MX:REASON: Ensures users are returned to the top of the viewport when navigating between analytics views */}
+            <Tabs value={kpiSubTab} onValueChange={(value) => {
+              setKpiSubTab(value);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }} className="space-y-6">
               {showKpiAnalyticsSubmenu && (
                 <div className="flex justify-center no-print sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
                   <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
