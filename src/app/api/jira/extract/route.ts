@@ -232,7 +232,10 @@ export async function POST(request: Request) {
       try {
         await (db as any).ticketSnapshot.createMany({ data: snapshotData });
       } catch (err) {
-        for (const data of snapshotData) { await (db as any).ticketSnapshot.create({ data }); }
+        // createMany may not support all drivers — fall back to a single transaction
+        await (db as any).$transaction(
+          snapshotData.map((data: any) => (db as any).ticketSnapshot.create({ data }))
+        );
       }
 
       const snapshots = await (db as any).ticketSnapshot.findMany({ 
@@ -263,77 +266,86 @@ export async function POST(request: Request) {
         try {
           await (db as any).ticketTransition.createMany({ data: transitionData });
         } catch (err) {
-          for (const data of transitionData) { await (db as any).ticketTransition.create({ data }); }
+          await (db as any).$transaction(
+            transitionData.map((data: any) => (db as any).ticketTransition.create({ data }))
+          );
         }
       }
 
-      // 2. Update Master Dataset in smaller batches to avoid lock contention
-      for (const issue of chunk) {
+      // 2. Update Master Dataset — batch all upserts into ONE transaction per chunk
+      //    Individual prisma.upsert() calls each open their own SQLite write transaction,
+      //    causing lock contention and P1008 socket timeouts on large datasets.
+      const masterRows = chunk.map(issue => {
         const fields = issue.fields || {};
         const existingUpdated = existingMap.get(issue.key);
-        
+
         if (existingUpdated) {
           const jiraUpdated = fields.updated ? new Date(fields.updated) : new Date();
-          if (existingUpdated.getTime() === jiraUpdated.getTime()) {
-            unchangedCount++;
-          } else {
-            updatedCount++;
-          }
+          if (existingUpdated.getTime() === jiraUpdated.getTime()) unchangedCount++;
+          else updatedCount++;
         } else {
           addedCount++;
         }
 
         const rawSp = (fields as any)[storyPointsFieldKey];
-        const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
+        const storyPoints = typeof rawSp === 'number' ? rawSp
+          : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
 
-        const updatePayload: any = {
+        const issueOwnerTeam = (fields && teamFieldKey in fields && (fields as any)[teamFieldKey] !== undefined)
+          ? extractSelectFieldValue((fields as any)[teamFieldKey]) || null
+          : null;
+
+        return {
+          connectionRef,
+          jiraKey: issue.key,
           summary: fields.summary || 'No Summary',
           issueType: fields.issuetype?.name || 'Task',
           priority: fields.priority?.name || 'Medium',
           status: fields.status?.name || 'Unknown',
           assignee: fields.assignee?.displayName || 'Unassigned',
           reporter: fields.reporter?.displayName || 'Unknown',
+          issueOwnerTeam,
+          created: fields.created ? new Date(fields.created) : new Date(),
           updated: fields.updated ? new Date(fields.updated) : new Date(),
           resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
           dueDate: fields.duedate ? new Date(fields.duedate) : null,
-          storyPoints: storyPoints,
+          storyPoints,
           labels: JSON.stringify(fields.labels || []),
           components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
           rawData: JSON.stringify(issue),
-          lastUpdatedAt: new Date()
+          lastUpdatedAt: new Date(),
         };
+      });
 
-        if (fields && teamFieldKey in fields && (fields as any)[teamFieldKey] !== undefined) {
-          updatePayload.issueOwnerTeam = extractSelectFieldValue((fields as any)[teamFieldKey]) || null;
-        }
-
-        await (db as any).masterTicket.upsert({
-          where: { connectionRef_jiraKey: { connectionRef: connectionRef, jiraKey: issue.key } },
-          create: {
-            connectionRef: connectionRef,
-            jiraKey: issue.key,
-            summary: fields.summary || 'No Summary',
-            issueType: fields.issuetype?.name || 'Task',
-            priority: fields.priority?.name || 'Medium',
-            status: fields.status?.name || 'Unknown',
-            assignee: fields.assignee?.displayName || 'Unassigned',
-            reporter: fields.reporter?.displayName || 'Unknown',
-            // @MX:NOTE: Hardcoded custom field dependency for issueOwnerTeam mapping
-            // @MX:WARN: Fragile custom field mapping; requires schema alignment across Jira instances
-            // @MX:REASON: Extracts configured owner team custom field to populate issueOwnerTeam column
-            issueOwnerTeam: extractSelectFieldValue((fields as any)?.[teamFieldKey]) || null,
-            created: fields.created ? new Date(fields.created) : new Date(),
-            updated: fields.updated ? new Date(fields.updated) : new Date(),
-            resolved: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
-            dueDate: fields.duedate ? new Date(fields.duedate) : null,
-            storyPoints: storyPoints,
-            labels: JSON.stringify(fields.labels || []),
-            components: JSON.stringify(fields.components?.map((c: any) => c.name) || []),
-            rawData: JSON.stringify(issue),
-          },
-          update: updatePayload
-        });
-      }
+      // Execute all upserts in a single transaction — O(1) lock acquisitions vs O(N)
+      await (db as any).$transaction(
+        masterRows.map(row =>
+          (db as any).masterTicket.upsert({
+            where: { connectionRef_jiraKey: { connectionRef: row.connectionRef, jiraKey: row.jiraKey } },
+            create: {
+              ...row,
+              firstSeenAt: new Date(),
+            },
+            update: {
+              summary: row.summary,
+              issueType: row.issueType,
+              priority: row.priority,
+              status: row.status,
+              assignee: row.assignee,
+              reporter: row.reporter,
+              issueOwnerTeam: row.issueOwnerTeam,
+              updated: row.updated,
+              resolved: row.resolved,
+              dueDate: row.dueDate,
+              storyPoints: row.storyPoints,
+              labels: row.labels,
+              components: row.components,
+              rawData: row.rawData,
+              lastUpdatedAt: row.lastUpdatedAt,
+            },
+          })
+        )
+      );
     }
 
     // Deletion detection
