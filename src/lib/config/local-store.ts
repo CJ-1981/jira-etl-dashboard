@@ -246,9 +246,9 @@ export const localConfig = {
     if (fields === null) {
       // Pre-seed defaults on first load
       return [
-        { id: 'default-sp', fieldId: 'customfield_10002', label: 'Story Points', role: 'storyPoints' },
-        { id: 'default-team', fieldId: 'customfield_10132', label: 'Issue Owner Team', role: 'issueOwnerTeam' }
-      ];
+        { id: 'default-sp', fieldId: 'customfield_10002', label: 'Story Points', role: 'storyPoints' as const },
+        { id: 'default-team', fieldId: 'customfield_10132', label: 'Issue Owner Team', role: 'issueOwnerTeam' as const }
+      ] satisfies CustomExtractField[];
     }
     return fields;
   },
