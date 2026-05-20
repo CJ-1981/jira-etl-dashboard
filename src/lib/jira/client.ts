@@ -331,6 +331,7 @@ export class JiraClient {
     options: {
       maxResults?: number;
       expand?: string[];
+      customFieldIds?: string[];
       onProgress?: (progress: number, total: number) => void;
       delayMs?: number;
       maxRequestsPerMinute?: number;
@@ -342,6 +343,7 @@ export class JiraClient {
     const {
       maxResults = 100,
       expand = ['changelog'],
+      customFieldIds = [],
       onProgress,
       delayMs = 0,
       maxRequestsPerMinute = 60,
@@ -367,13 +369,18 @@ export class JiraClient {
         }
       }
 
+      const baseFields = ['summary', 'issuetype', 'priority', 'status', 'assignee', 'reporter',
+                 'created', 'updated', 'resolutiondate', 'duedate',
+                 this.fieldMapping.storyPointsField, this.fieldMapping.issueOwnerTeamField,
+                 'labels', 'components', 'comment'];
+
+      // Append user-defined custom field IDs (deduplicated)
+      const allFields = [...new Set([...baseFields, ...customFieldIds])];
+
       const requestBody: Record<string, unknown> = {
         jql,
         maxResults,
-        fields: ['summary', 'issuetype', 'priority', 'status', 'assignee', 'reporter',
-                 'created', 'updated', 'resolutiondate', 'duedate',
-                 this.fieldMapping.storyPointsField, this.fieldMapping.issueOwnerTeamField,
-                 'labels', 'components', 'comment'],
+        fields: allFields,
       };
 
       if (safeExpand.length > 0) {

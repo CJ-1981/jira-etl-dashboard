@@ -81,6 +81,13 @@ export interface StorageConfig {
 
 // --- Implementation ---
 
+export interface CustomExtractField {
+  id: string;
+  fieldId: string;
+  label: string;
+  role?: 'storyPoints' | 'issueOwnerTeam' | 'custom';
+}
+
 export interface SavedJql {
   id: string;
   name: string;
@@ -119,6 +126,7 @@ export const KEYS = {
   jql: 'cfg_saved_jqls',
   dashboardJql: 'cfg_dashboard_jqls',
   etlUpdateOnly: 'cfg_etl_update_only',
+  customExtractFields: 'cfg_custom_extract_fields',
   dashboardState: 'cfg_dashboard_state',
   presets: 'cfg_dashboard_presets',
   // Submenu visibility states
@@ -233,6 +241,19 @@ export const localConfig = {
   getEtlUpdateOnly: () => get<boolean>(KEYS.etlUpdateOnly, false),
   saveEtlUpdateOnly: (val: boolean) => set(KEYS.etlUpdateOnly, val),
 
+  getCustomExtractFields: () => {
+    const fields = get<CustomExtractField[] | null>(KEYS.customExtractFields, null);
+    if (fields === null) {
+      // Pre-seed defaults on first load
+      return [
+        { id: 'default-sp', fieldId: 'customfield_10002', label: 'Story Points', role: 'storyPoints' },
+        { id: 'default-team', fieldId: 'customfield_10132', label: 'Issue Owner Team', role: 'issueOwnerTeam' }
+      ];
+    }
+    return fields;
+  },
+  saveCustomExtractFields: (fields: CustomExtractField[]) => set(KEYS.customExtractFields, fields),
+
   getFavoritePlugins: () => get<string[]>(KEYS.favoritePlugins, []),
   saveFavoritePlugins: (plugins: string[]) => set(KEYS.favoritePlugins, plugins),
 
@@ -297,6 +318,7 @@ export const localConfig = {
       savedJqls: localConfig.getSavedJqls(),
       dashboardJqls: localConfig.getDashboardJqls(),
       etlUpdateOnly: localConfig.getEtlUpdateOnly(),
+      customExtractFields: localConfig.getCustomExtractFields(),
       activeConnectionId: localConfig.getActiveConnectionId(),
       favoritePlugins: localConfig.getFavoritePlugins(),
       activePlugins: localConfig.getActivePlugins(),
@@ -326,6 +348,7 @@ export const localConfig = {
       if (data.savedJqls) localConfig.saveJqls(data.savedJqls);
       if (data.dashboardJqls) localConfig.saveDashboardJqls(data.dashboardJqls);
       if (data.etlUpdateOnly !== undefined) localConfig.saveEtlUpdateOnly(data.etlUpdateOnly);
+      if (data.customExtractFields) localConfig.saveCustomExtractFields(data.customExtractFields);
       if (data.activeConnectionId) localConfig.setActiveConnectionId(data.activeConnectionId);
       if (data.favoritePlugins) localConfig.saveFavoritePlugins(data.favoritePlugins);
       if (data.activePlugins) localConfig.saveActivePlugins(data.activePlugins);

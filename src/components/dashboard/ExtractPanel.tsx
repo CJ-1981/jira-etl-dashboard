@@ -18,12 +18,17 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
-  Download, RefreshCw, Server, RotateCw, Clock, HardDrive, LayoutGrid, Trash2, Search, X, ExternalLink, CheckCircle2, Loader2, Save
+  Download, RefreshCw, Server, RotateCw, Clock, HardDrive, LayoutGrid, Trash2, Search, X, ExternalLink, CheckCircle2, Loader2, Save, Plus, Tag
 } from 'lucide-react';
-import { localConfig, JiraConnection, SavedJql } from '@/lib/config/local-store';
+import { localConfig, JiraConnection, SavedJql, CustomExtractField } from '@/lib/config/local-store';
+import { DEFAULT_FIELD_CONFIG } from '@/lib/jira/field-config';
 import { PollingStatus } from '@/types/dashboard';
 import { useAppStore } from '@/store/app-store';
 import { AppSettings } from '@/lib/config/local-store';
+
+// Resolve built-in custom field IDs (client-side safe — uses static defaults)
+const getStoryPointsFieldId = () => DEFAULT_FIELD_CONFIG.storyPointsField;
+const getIssueOwnerTeamFieldId = () => DEFAULT_FIELD_CONFIG.issueOwnerTeamField;
 
 export const ExtractPanel = React.memo(function ExtractPanel() {
   const {
@@ -93,6 +98,17 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOption, setSortOption] = useState('default');
+
+  // Custom extract fields state
+  const [customFields, setCustomFields] = useState<CustomExtractField[]>([]);
+  const [newFieldId, setNewFieldId] = useState('');
+  const [newFieldLabel, setNewFieldLabel] = useState('');
+  const [showCustomFields, setShowCustomFields] = useState(false);
+
+  // Load custom extract fields
+  useEffect(() => {
+    setCustomFields(localConfig.getCustomExtractFields());
+  }, []);
 
   // Load polling status
   useEffect(() => {
@@ -168,6 +184,9 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         dateTo: dateTo || undefined,
         saveExtraction: saveThisExtraction,
         updateOnly,
+        customFieldIds: customFields.map(f => f.fieldId),
+        storyPointsFieldId: customFields.find(f => f.role === 'storyPoints')?.fieldId,
+        issueOwnerTeamFieldId: customFields.find(f => f.role === 'issueOwnerTeam')?.fieldId,
         storageConfig
       };
       if (daysBack) body.daysBack = daysBack;
@@ -503,6 +522,128 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
               checked={updateOnly} 
               onCheckedChange={setUpdateOnly} 
             />
+          </div>
+
+          {/* Custom Extract Fields */}
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+              onClick={() => setShowCustomFields(!showCustomFields)}
+            >
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-violet-400" />
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Custom Extract Fields</span>
+                {customFields.length > 0 && (
+                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400">
+                    {customFields.length}
+                  </Badge>
+                )}
+              </div>
+              <svg
+                className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${showCustomFields ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showCustomFields && (
+              <div className="p-3 space-y-3 border-t border-slate-200 dark:border-slate-700 animate-in slide-in-from-top-1 duration-200">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Define custom Jira field IDs (e.g. <code className="text-violet-500 bg-violet-50 dark:bg-violet-500/10 px-1 rounded">customfield_12345</code>) to include in extraction.
+                </p>
+
+                {/* User-defined custom fields */}
+                {customFields.length > 0 && (
+                  <div className="space-y-1.5">
+                    {customFields.map((field) => (
+                      <div
+                        key={field.id}
+                        className="flex items-center gap-2 py-1.5 px-2.5 rounded-md bg-violet-50/50 dark:bg-violet-500/5 border border-violet-200/50 dark:border-violet-500/15 group"
+                      >
+                        <code className="text-xs font-mono text-violet-600 dark:text-violet-400 shrink-0">{field.fieldId}</code>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">—</span>
+                        <span className="text-xs text-slate-700 dark:text-slate-300 truncate flex-1">{field.label}</span>
+                        {field.role === 'storyPoints' && <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-amber-400/30 text-amber-500 dark:text-amber-400 shrink-0">Story Points</Badge>}
+                        {field.role === 'issueOwnerTeam' && <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-blue-400/30 text-blue-500 dark:text-blue-400 shrink-0">Issue Owner Team</Badge>}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = customFields.filter(f => f.id !== field.id);
+                            setCustomFields(updated);
+                            localConfig.saveCustomExtractFields(updated);
+                            toast.success(`Removed field: ${field.label}`);
+                          }}
+                          className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add new field form */}
+                <div className="flex flex-col gap-2 border-t border-slate-200 dark:border-slate-700 pt-2">
+                  <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="customfield_12345"
+                    value={newFieldId}
+                    onChange={(e) => setNewFieldId(e.target.value)}
+                    className="h-8 text-xs font-mono bg-white dark:bg-slate-900 flex-1"
+                  />
+                  <Input
+                    placeholder="Display label"
+                    value={newFieldLabel}
+                    onChange={(e) => setNewFieldLabel(e.target.value)}
+                    className="h-8 text-xs bg-white dark:bg-slate-900 flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2.5 text-xs border-violet-500/30 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 shrink-0"
+                    onClick={() => {
+                      const trimmedId = newFieldId.trim();
+                      const trimmedLabel = newFieldLabel.trim();
+                      if (!trimmedId) { toast.error('Field ID is required'); return; }
+                      if (!trimmedLabel) { toast.error('Display label is required'); return; }
+                      if (customFields.some(f => f.fieldId === trimmedId)) {
+                        toast.error('This field ID is already added');
+                        return;
+                      }
+                      const newField: CustomExtractField = {
+                        id: `cf-${Date.now()}`,
+                        fieldId: trimmedId,
+                        label: trimmedLabel,
+                        role: (document.getElementById('newFieldRole') as HTMLSelectElement)?.value as any || undefined,
+                      };
+                      if (newField.role === 'none') newField.role = undefined;
+                      const updated = [...customFields, newField];
+                      setCustomFields(updated);
+                      localConfig.saveCustomExtractFields(updated);
+                      setNewFieldId('');
+                      setNewFieldLabel('');
+                      toast.success(`Added custom field: ${trimmedLabel}`);
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    id="newFieldRole"
+                    className="h-7 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded px-2 w-full max-w-[200px]"
+                  >
+                    <option value="none">No special role (Normal custom field)</option>
+                    <option value="storyPoints">Map to Story Points</option>
+                    <option value="issueOwnerTeam">Map to Issue Owner Team</option>
+                  </select>
+                  <span className="text-[10px] text-slate-500">Optional: Maps this field to built-in KPI logic</span>
+                </div>
+              </div>
+              </div>
+            )}
           </div>
 
           <Separator className="bg-slate-200 dark:bg-slate-800" />

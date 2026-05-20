@@ -57,18 +57,19 @@ async function backfillIssueOwnerTeam() {
           continue;
         }
 
-        // @MX:NOTE: Hardcoded custom field mapping for issueOwnerTeam extraction
+        // @MX:NOTE: Environment-configured custom field mapping for issueOwnerTeam extraction
         // @MX:WARN: Hardcoded field IDs (customfield_10132) are fragile and can break across different Jira instances
         // @MX:REASON: Maps Jira custom field contract for owner-team; ensure field ID matches target instance schema
-        const customfield_10132 = rawData?.fields?.customfield_10132;
+        const teamFieldKey = process.env.REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD || 'customfield_10132';
+        const teamFieldValue = rawData?.fields?.[teamFieldKey];
         let issueOwnerTeam = null;
 
-        if (customfield_10132) {
+        if (teamFieldValue) {
           // Handle both string and object formats
-          if (typeof customfield_10132 === 'string') {
-            issueOwnerTeam = customfield_10132;
-          } else if (typeof customfield_10132 === 'object' && customfield_10132?.value) {
-            issueOwnerTeam = customfield_10132.value;
+          if (typeof teamFieldValue === 'string') {
+            issueOwnerTeam = teamFieldValue;
+          } else if (typeof teamFieldValue === 'object' && teamFieldValue?.value) {
+            issueOwnerTeam = teamFieldValue.value;
           }
         }
 
@@ -81,7 +82,7 @@ async function backfillIssueOwnerTeam() {
           console.log(`[${ticket.jiraKey}] ✓ Set to: ${issueOwnerTeam}`);
         } else {
           skipped++;
-          console.log(`[${ticket.jiraKey}] - No customfield_10132 value`);
+          console.log(`[${ticket.jiraKey}] - No ${teamFieldKey} value`);
         }
       } catch (err) {
         console.error(`[${ticket.jiraKey}] Error:`, err.message);

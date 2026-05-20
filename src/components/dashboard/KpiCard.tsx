@@ -1121,9 +1121,20 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
+        const visibleData = selectedKpiData || [];
+        const zoomedData = zoomState.leftIndex !== null && zoomState.rightIndex !== null
+          ? visibleData.slice(zoomState.leftIndex, zoomState.rightIndex + 1)
+          : visibleData;
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <LineChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <LineChart
+              data={zoomedData}
+              margin={{ top: 20, right: 60, left: 20, bottom: 50 }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleZoom}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1131,6 +1142,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {...tooltipStyle}
                 content={<CustomLineAreaTooltip />}
               />
+              {zoomState.refAreaLeft !== undefined && zoomState.refAreaRight !== undefined && (
+                <ReferenceArea
+                  x1={visibleData[zoomState.refAreaLeft]?.name}
+                  x2={visibleData[zoomState.refAreaRight]?.name}
+                  stroke="none"
+                  fillOpacity={0.3}
+                  fill="purple"
+                />
+              )}
               {/* @MX:ANCHOR: Line Chart (Standard) */}
               <Line
                 type="monotone"
@@ -1206,10 +1226,21 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             return dataPoint;
           });
 
+          // Filter data based on zoom state
+          const zoomedData = zoomState.leftIndex !== null && zoomState.rightIndex !== null
+            ? mergedData.slice(zoomState.leftIndex, zoomState.rightIndex + 1)
+            : mergedData;
+
           // @MX:ANCHOR: Area Chart Rendering
           return (
             <ResponsiveContainer width="100%" height={chartHeight}>
-              <AreaChart data={mergedData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+              <AreaChart
+                data={zoomedData}
+                margin={{ top: 20, right: 60, left: 20, bottom: 50 }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleZoom}
+              >
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
                 <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
@@ -1225,6 +1256,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   align="right"
                   wrapperStyle={{ paddingBottom: '20px' }}
                 />
+                {zoomState.refAreaLeft !== undefined && zoomState.refAreaRight !== undefined && (
+                  <ReferenceArea
+                    x1={mergedData[zoomState.refAreaLeft]?.name}
+                    x2={mergedData[zoomState.refAreaRight]?.name}
+                    stroke="none"
+                    fillOpacity={0.3}
+                    fill="purple"
+                  />
+                )}
                 {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => (
                   <Area
                     key={result.name || idx}
@@ -1272,9 +1312,20 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
           );
         }
 
+        const visibleData = selectedKpiData || [];
+        const zoomedData = zoomState.leftIndex !== null && zoomState.rightIndex !== null
+          ? visibleData.slice(zoomState.leftIndex, zoomState.rightIndex + 1)
+          : visibleData;
+
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={selectedKpiData} margin={{ top: 20, right: 60, left: 20, bottom: 50 }}>
+            <AreaChart
+              data={zoomedData}
+              margin={{ top: 20, right: 60, left: 20, bottom: 50 }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleZoom}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis dataKey="name" className="text-xs" angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
               <YAxis className="text-xs" />
@@ -1282,6 +1333,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {...tooltipStyle}
                 content={<CustomLineAreaTooltip />}
               />
+              {zoomState.refAreaLeft !== undefined && zoomState.refAreaRight !== undefined && (
+                <ReferenceArea
+                  x1={visibleData[zoomState.refAreaLeft]?.name}
+                  x2={visibleData[zoomState.refAreaRight]?.name}
+                  stroke="none"
+                  fillOpacity={0.3}
+                  fill="purple"
+                />
+              )}
               {/* @MX:ANCHOR: Area Chart (Standard) */}
               <Area 
                 type="monotone" 

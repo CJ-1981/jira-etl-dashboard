@@ -335,6 +335,36 @@ export function transformForLineChart(
   ];
 }
 
+// Timed cache for plugin lookups to avoid synchronous localStorage performance penalties during re-renders
+let cachedPlugins: any[] | null = null;
+let lastCacheTime = 0;
+const CACHE_DURATION_MS = 5000; // Cache for 5 seconds
+
+function getCachedPlugins(): any[] {
+  if (typeof window === 'undefined') return [];
+  const now = Date.now();
+  if (cachedPlugins && (now - lastCacheTime < CACHE_DURATION_MS)) {
+    return cachedPlugins;
+  }
+  try {
+    const localPlugins = localStorage.getItem(KEYS.plugins);
+    cachedPlugins = localPlugins ? JSON.parse(localPlugins) : [];
+    lastCacheTime = now;
+  } catch (error) {
+    console.error('Error reading plugins from localStorage for time-series check:', error);
+    cachedPlugins = [];
+  }
+  return cachedPlugins || [];
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEYS.plugins) {
+      cachedPlugins = null;
+    }
+  });
+}
+
 /**
  * Check if a KPI is a time-series plugin
  */
@@ -368,12 +398,7 @@ export function isTimeSeriesPlugin(pluginId: string): boolean {
   // Also check plugin category/timeInterval from plugin registry
   if (typeof window !== 'undefined') {
     try {
-      const allPlugins: any[] = [];
-      // Check both localStorage and API for plugins
-      const localPlugins = localStorage.getItem(KEYS.plugins);
-      if (localPlugins) {
-        allPlugins.push(...JSON.parse(localPlugins));
-      }
+      const allPlugins = getCachedPlugins();
 
       // Check if plugin has time-series category or interval
       const plugin = allPlugins.find((p: any) => p.id === normalizedId);

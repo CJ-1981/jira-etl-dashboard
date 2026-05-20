@@ -20,6 +20,9 @@ export async function POST(request: Request) {
       rateLimit, 
       generalSettings,
       customPlugins,
+      customFieldIds,
+      storyPointsFieldId,
+      issueOwnerTeamFieldId,
       jql, 
       dateFrom, 
       dateTo, 
@@ -53,11 +56,17 @@ export async function POST(request: Request) {
       }
     }
 
+    const storyPointsFieldKey = storyPointsFieldId || getStoryPointsField();
+    const teamFieldKey = issueOwnerTeamFieldId || getIssueOwnerTeamField();
+
     const client = new JiraClient({
       baseUrl: jiraCredentials.baseUrl,
       email: jiraCredentials.email,
       apiToken: jiraCredentials.apiToken,
       projectKeys: jiraCredentials.projectKeys ? jiraCredentials.projectKeys.split(',') : [],
+    }, {
+      storyPointsField: storyPointsFieldKey,
+      issueOwnerTeamField: teamFieldKey
     });
 
     // Normalize baseUrl
@@ -103,6 +112,7 @@ export async function POST(request: Request) {
     const issues = await client.extractIssues(finalJql, {
       maxResults: rateLimit?.batchSize || 50,
       expand: ['changelog'],
+      customFieldIds: customFieldIds || [],
       delayMs: rateLimit?.delayMs || 0,
       backoffStrategy: rateLimit?.backoffStrategy || 'none',
       onProgress: (progress, total) => {
@@ -197,7 +207,7 @@ export async function POST(request: Request) {
       // 1. Store Snapshots
       const snapshotData = chunk.map((issue) => {
         const fields = issue.fields || {};
-        const rawSp = (fields as any)[getStoryPointsField()];
+        const rawSp = (fields as any)[storyPointsFieldKey];
         const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
 
         return {
@@ -273,10 +283,9 @@ export async function POST(request: Request) {
           addedCount++;
         }
 
-        const rawSp = (fields as any)[getStoryPointsField()];
+        const rawSp = (fields as any)[storyPointsFieldKey];
         const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
 
-        const teamFieldKey = getIssueOwnerTeamField();
         const updatePayload: any = {
           summary: fields.summary || 'No Summary',
           issueType: fields.issuetype?.name || 'Task',
