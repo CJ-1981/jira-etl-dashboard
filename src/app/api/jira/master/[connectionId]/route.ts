@@ -46,8 +46,9 @@ export async function POST(
           labels: true,
           components: true,
           lastUpdatedAt: true,
-          // Only include rawData when explicitly requested (expensive)
-          ...(includeRawData ? { rawData: true } : {}),
+          // Always fetch rawData — needed to restore arbitrary custom fields
+          // (e.g. customfield_10032, customfield_10627) in the lightweight path.
+          rawData: true,
         }
       });
 
@@ -62,15 +63,34 @@ export async function POST(
         });
       }
 
-      // Reconstruct lightweight issue objects for the UI without full rawData
+      // Reconstruct lightweight issue objects for the UI
       const reconstructedIssues = masterTickets.map((ticket: any) => {
         if (includeRawData && ticket.rawData) {
           try { return JSON.parse(ticket.rawData); } catch { /* fall through */ }
         }
-        // Build a minimal Jira-shaped issue from stored columns
+
+        // Extract every customfield_* from rawData so user-defined fields
+        // (e.g. customfield_10032, customfield_10627) are not silently dropped.
+        const rawCustomFields: Record<string, unknown> = {};
+        if (ticket.rawData) {
+          try {
+            const raw = JSON.parse(ticket.rawData);
+            if (raw.fields) {
+              for (const [k, v] of Object.entries(raw.fields as Record<string, unknown>)) {
+                if (k.startsWith('customfield_')) rawCustomFields[k] = v;
+              }
+            }
+          } catch { /* ignore parse errors */ }
+        }
+
+        // Build a minimal Jira-shaped issue from stored columns,
+        // with raw custom fields as the base so none are lost.
         return {
           key: ticket.jiraKey,
           fields: {
+            // Spread all raw customfields first
+            ...rawCustomFields,
+            // Then override with authoritative column-backed values
             summary: ticket.summary,
             issuetype: { name: ticket.issueType },
             priority: { name: ticket.priority },
@@ -82,6 +102,9 @@ export async function POST(
             resolutiondate: ticket.resolved?.toISOString() || null,
             duedate: ticket.dueDate?.toISOString() || null,
             storyPoints: ticket.storyPoints,
+            customfield_10002: ticket.storyPoints,
+            customfield_10132: ticket.issueOwnerTeam ?? null,
+            issueOwnerTeam: ticket.issueOwnerTeam ?? null,
             labels: (() => { try { return JSON.parse(ticket.labels || '[]'); } catch { return []; } })(),
             components: (() => { try { return JSON.parse(ticket.components || '[]').map((n: string) => ({ name: n })); } catch { return []; } })(),
           }

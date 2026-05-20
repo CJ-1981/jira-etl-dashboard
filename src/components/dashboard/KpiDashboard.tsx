@@ -18,6 +18,7 @@ import { KpiDataTable } from './KpiDataTable';
 import { KpiErrorBoundary } from './KpiErrorBoundary';
 import { ViewManager } from './ViewManager';
 import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
+import { extractSelectFieldValue } from '@/lib/jira/client';
 import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -137,6 +138,7 @@ export function KpiDashboard() {
   // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
+  const [filterSearchQuery, setFilterSearchQuery] = useState("");
 
   // Drill-down state extracted to useDrillDown hook
   const { drillDownKeys, drillDownTitle, isDrillDownOpen, openDrillDown, closeDrillDown } = useDrillDown();
@@ -836,17 +838,28 @@ export function KpiDashboard() {
   }, [widgetOrder, widgetOrderMapping]);
 
 
-  // Helper function to extract value from Jira select fields
-  const extractSelectFieldValue = (field: any): string | null => {
-    if (!field) return null;
-    if (typeof field === 'string') return field;
-    if (typeof field === 'object' && field.value) return field.value;
-    return null;
-  };
-
   const filterOptions = useMemo(() => {
     const issueOwnerTeamField = getIssueOwnerTeamField();
-    const options = { project: new Set<string>(), assignee: new Set<string>(), priority: new Set<string>(), issueType: new Set<string>(), status: new Set<string>(), component: new Set<string>(), label: new Set<string>(), issueOwnerTeam: new Set<string>() };
+    const customFields = localConfig.getCustomExtractFields();
+    
+    const options: Record<string, Set<string>> = { 
+      project: new Set<string>(), 
+      assignee: new Set<string>(), 
+      priority: new Set<string>(), 
+      issueType: new Set<string>(), 
+      status: new Set<string>(), 
+      component: new Set<string>(), 
+      label: new Set<string>(), 
+      issueOwnerTeam: new Set<string>() 
+    };
+
+    // Pre-initialize sets for custom fields to ensure they exist even if empty
+    customFields.forEach(cf => {
+      if (!options[cf.fieldId]) {
+        options[cf.fieldId] = new Set<string>();
+      }
+    });
+
     if (masterDatasetInfo?.issues) {
       masterDatasetInfo.issues.forEach((i: any) => {
         const f = i.fields || {};
@@ -863,13 +876,29 @@ export function KpiDashboard() {
           const teamValue = extractSelectFieldValue(f[issueOwnerTeamField]);
           if (teamValue) {
             options.issueOwnerTeam.add(teamValue);
-            console.log(`[Filter Debug] Issue ${i.key} has Issue Owner Team (${issueOwnerTeamField}): ${teamValue}`);
           }
         }
+
+        // Dynamically collect unique values from user-defined custom fields
+        customFields.forEach(cf => {
+          // Skip if it's the Issue Owner Team field as it's already handled above
+          if (cf.fieldId === issueOwnerTeamField) return;
+          
+          const val = extractSelectFieldValue(f[cf.fieldId]);
+          if (val) {
+            options[cf.fieldId].add(val);
+          }
+        });
       });
     }
-    console.log(`[Filter Debug] Total unique Issue Owner Teams: ${options.issueOwnerTeam.size}`, Array.from(options.issueOwnerTeam));
-    return { project: Array.from(options.project).sort(), assignee: Array.from(options.assignee).sort(), priority: Array.from(options.priority).sort(), issueType: Array.from(options.issueType).sort(), status: Array.from(options.status).sort(), component: Array.from(options.component).sort(), label: Array.from(options.label).sort(), issueOwnerTeam: Array.from(options.issueOwnerTeam).sort() };
+
+    // Convert sets to sorted arrays
+    const result: Record<string, string[]> = {};
+    Object.entries(options).forEach(([key, set]) => {
+      result[key] = Array.from(set).sort();
+    });
+    
+    return result;
   }, [masterDatasetInfo]);
 
   return (
@@ -1250,10 +1279,18 @@ export function KpiDashboard() {
                     { label: 'Component', key: 'component', options: filterOptions.component },
                     { label: 'Label', key: 'label', options: filterOptions.label },
                     { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
-                  ].filter(f => f.options.length >= 1).map(filter => (
+                    // Dynamically append user-defined custom fields
+                    ...localConfig.getCustomExtractFields()
+                      .filter(cf => cf.role !== 'storyPoints' && cf.role !== 'issueOwnerTeam')
+                      .map(cf => ({
+                        label: cf.label,
+                        key: cf.fieldId,
+                        options: filterOptions[cf.fieldId] || []
+                      }))
+                  ].filter(f => f.options && f.options.length >= 1).map(filter => (
                     <div key={filter.key} className="space-y-1.5 no-print">
                       <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
-                      <Popover>
+                      <Popover onOpenChange={(open) => !open && setFilterSearchQuery("")}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
@@ -1269,30 +1306,46 @@ export function KpiDashboard() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[200px] p-0" align="start">
-                          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+                          <div className="p-2 border-b border-slate-100 dark:border-slate-800 space-y-2">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-2.5 h-3 w-3 text-slate-400" />
+                              <Input
+                                placeholder={`Search ${filter.label}...`}
+                                className="h-7 pl-7 text-[10px] bg-slate-50 dark:bg-slate-900 border-none focus-visible:ring-1 focus-visible:ring-emerald-500/50"
+                                value={filterSearchQuery}
+                                onChange={(e) => setFilterSearchQuery(e.target.value)}
+                              />
+                            </div>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="w-full h-7 text-[10px] justify-start px-2"
+                              className="w-full h-7 text-[10px] justify-start px-2 hover:bg-slate-100 dark:hover:bg-slate-800"
                               onClick={() => handleUpdatePendingFilter(filter.key, 'all')}
                             >
-                              Clear All
+                              Clear Selection
                             </Button>
                           </div>
-                          <div className="max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
-                            {filter.options.map(opt => (
-                              <div
-                                key={opt}
-                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdatePendingFilter(filter.key, opt);
-                                }}
-                              >
-                                <Checkbox checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
-                                <span className="text-xs truncate">{opt}</span>
+                          <div className="max-h-[250px] overflow-y-auto p-1 custom-scrollbar">
+                            {filter.options
+                              .filter(opt => !filterSearchQuery || String(opt).toLowerCase().includes(filterSearchQuery.toLowerCase()))
+                              .map(opt => (
+                                <div
+                                  key={opt}
+                                  className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUpdatePendingFilter(filter.key, opt);
+                                  }}
+                                >
+                                  <Checkbox checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
+                                  <span className="text-xs truncate">{opt}</span>
+                                </div>
+                              ))}
+                            {filter.options.filter(opt => !filterSearchQuery || String(opt).toLowerCase().includes(filterSearchQuery.toLowerCase())).length === 0 && (
+                              <div className="py-4 px-2 text-center text-[10px] text-slate-400 italic">
+                                No matches found
                               </div>
-                            ))}
+                            )}
                           </div>
                         </PopoverContent>
                       </Popover>
@@ -1337,10 +1390,22 @@ export function KpiDashboard() {
 
               {Object.keys(jqlFilters.stagingFilters).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {(Object.entries(jqlFilters.stagingFilters) as [string, string[]][]).map(([key, values]) => (
-                    values.map(val => (
+                  {(Object.entries(jqlFilters.stagingFilters) as [string, string[]][]).map(([key, values]) => {
+                    // Determine display label for the filter key
+                    const getDisplayKey = (k: string) => {
+                      if (k === 'issueOwnerTeam') return 'Team';
+                      if (k.startsWith('customfield_')) {
+                        const cf = localConfig.getCustomExtractFields().find(f => f.fieldId === k);
+                        return cf ? cf.label : k;
+                      }
+                      // Capitalize first letter of standard keys
+                      return k.charAt(0).toUpperCase() + k.slice(1);
+                    };
+                    const displayKey = getDisplayKey(key);
+
+                    return values.map(val => (
                       <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
-                        <span className="text-slate-400">{key}:</span> {val}
+                        <span className="text-slate-400">{displayKey}:</span> {val}
                         <span
                           className="flex items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
                           onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }}
@@ -1348,8 +1413,8 @@ export function KpiDashboard() {
                           <X className="h-2.5 w-2.5" />
                         </span>
                       </Badge>
-                    ))
-                  ))}
+                    ));
+                  })}
                 </div>
               )}
             </div>

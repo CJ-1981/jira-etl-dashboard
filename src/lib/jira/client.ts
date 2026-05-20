@@ -607,12 +607,26 @@ export class JiraClient {
 /**
  * Extract value from a Jira select field
  * Jira select fields return either a string or an object: { value: string, id: string, self: string }
+ * Multi-user fields return an array of user objects: [{ displayName: string, ... }]
  */
-export function extractSelectFieldValue(field: string | { value: string } | undefined | null): string | null {
+export function extractSelectFieldValue(field: any): string | null {
   if (!field) return null;
   if (typeof field === 'string') return field;
-  if (typeof field === 'object' && 'value' in field) return field.value;
-  return null;
+  
+  // Handle arrays (e.g., multi-select fields, user list fields)
+  if (Array.isArray(field)) {
+    return field
+      .map((item) => extractSelectFieldValue(item))
+      .filter(Boolean)
+      .join(', ');
+  }
+  
+  // Handle objects (Jira returns objects for select, user, and complex fields)
+  if (typeof field === 'object') {
+    return field.value || field.displayName || field.name || field.key || null;
+  }
+  
+  return String(field);
 }
 
 /**
