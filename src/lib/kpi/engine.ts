@@ -15,106 +15,6 @@ import { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldVal
 export type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition };
 export { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone };
 
-// ─── Field accessor map for O(1) lookup ───────────────────────────────────────
-// Replaces the if/else chain in the global filter application below.
-const FIELD_ACCESSORS: Record<string, (t: TransformedIssue) => string | string[]> = {
-  assignee: (t) => t.assignee,
-  priority: (t) => t.priority || 'None',
-  issueType: (t) => t.issueType,
-  status: (t) => t.status,
-  statusCategory: (t) => t.statusCategory,
-  reporter: (t) => t.reporter,
-  project: (t) => t.project,
-  component: (t) => t.components,
-  label: (t) => t.labels,
-  issueOwnerTeam: (t) => t.issueOwnerTeam || 'Unassigned',
-};
-
-// ─── Weekly Cache ──────────────────────────────────────────────────────────────
-
-/**
- * @MX:NOTE: Weekly issue cache to prevent redundant filtering across plugin calculations
- * @MX:REASON: Weekly breakdown was running O(n²) - once per plugin. This cache ensures
- * we only filter issues by week once per calculation batch.
- */
-interface WeeklyCacheEntry {
-  thisWeek: JiraIssue[];
-  lastWeek: JiraIssue[];
-  thisWeekStart: Date;
-  thisWeekEnd: Date;
-  lastWeekStart: Date;
-  lastWeekEnd: Date;
-}
-
-class WeeklyIssueCache {
-  private cache = new Map<string, WeeklyCacheEntry>();
-  private maxEntries = 5; // Keep last 5 calculation contexts
-
-  private getCacheKey(issues: JiraIssue[], globalFilters?: Record<string, string[]>): string {
-    // Create a key based on issue count and filter signature
-    const filterKey = globalFilters ? JSON.stringify(Object.keys(globalFilters).sort()) : 'no-filters';
-    return `${issues.length}:${filterKey}`;
-  }
-
-  get(
-    issues: JiraIssue[],
-    globalFilters?: Record<string, string[]>
-  ): WeeklyCacheEntry | undefined {
-    const key = this.getCacheKey(issues, globalFilters);
-    return this.cache.get(key);
-  }
-
-  set(
-    issues: JiraIssue[],
-    globalFilters: Record<string, string[]> | undefined,
-    entry: WeeklyCacheEntry
-  ): void {
-    const key = this.getCacheKey(issues, globalFilters);
-
-    // Evict oldest entries if cache is full
-    if (this.cache.size >= this.maxEntries) {
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.cache.delete(firstKey);
-      }
-    }
-
-    this.cache.set(key, entry);
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-}
-
-// Module-level singleton cache
-const weeklyIssueCache = new WeeklyIssueCache();
-
-// ─── Preprocessed data for calculateAll() batch ────────────────────────────────
-
-interface Preprocessed {
-  /** Issues filtered by global filters AND period (for each plugin's main context) */
-  periodFilteredIssues: JiraIssue[];
-  /** Pre-transformed issues for the period */
-  transformed: TransformedIssue[];
-  /** Week boundary dates */
-  weekBoundaries: { thisWeekStart: Date; thisWeekEnd: Date; lastWeekStart: Date; lastWeekEnd: Date };
-  /** This week's filtered issues */
-  thisWeekIssues: JiraIssue[];
-  /** Last week's filtered issues */
-  lastWeekIssues: JiraIssue[];
-  /** This week's transformed issues */
-  thisWeekTransformed: TransformedIssue[];
-  /** Last week's transformed issues */
-  lastWeekTransformed: TransformedIssue[];
-  /** Previous period filtered issues */
-  prevPeriodIssues: JiraIssue[];
-  /** Previous period transformed issues */
-  prevPeriodTransformed: TransformedIssue[];
-  /** Previous period boundaries */
-  prevPeriod: { start: Date; end: Date };
-}
-
 // ─── KPI Engine ──────────────────────────────────────────────────────────────
 
 export class KpiEngine {
@@ -223,9 +123,8 @@ export class KpiEngine {
     });
   }
 
-/**
+  /**
    * Run a specific KPI calculation
-   * @param _preprocessed - When provided (from calculateAll()), skips filter + transform + weekly precomputation
    */
   calculate(
     pluginId: string,
@@ -234,145 +133,71 @@ export class KpiEngine {
     period: { start: Date; end: Date },
     slaTargets?: Record<string, number>,
     globalFilters?: Record<string, string[]>,
-    useAnyoneCommentsForSla?: boolean,
-    _preprocessed?: Preprocessed
+    useAnyoneCommentsForSla?: boolean
   ): KpiResult[] {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) throw new Error(`KPI plugin not found: ${pluginId}`);
 
-    let processedIssues: JiraIssue[];
-    let filteredIssues: JiraIssue[];
-    let transformed: TransformedIssue[];
-    let thisWeekIssues: JiraIssue[];
-    let lastWeekIssues: JiraIssue[];
-    let thisWeekTransformed: TransformedIssue[];
-    let lastWeekTransformed: TransformedIssue[];
-    let prevPeriodIssues: JiraIssue[];
-    let prevPeriodTransformed: TransformedIssue[];
-    let prevPeriod: { start: Date; end: Date };
-
-    if (_preprocessed) {
-      // @MX:OPT: Use pre-computed data from calculateAll() — avoid redundant filter/transform/weekly
-      filteredIssues = _preprocessed.periodFilteredIssues;
-      transformed = _preprocessed.transformed;
-      thisWeekIssues = _preprocessed.thisWeekIssues;
-      lastWeekIssues = _preprocessed.lastWeekIssues;
-      thisWeekTransformed = _preprocessed.thisWeekTransformed;
-      lastWeekTransformed = _preprocessed.lastWeekTransformed;
-      prevPeriodIssues = _preprocessed.prevPeriodIssues;
-      prevPeriodTransformed = _preprocessed.prevPeriodTransformed;
-      prevPeriod = _preprocessed.prevPeriod;
-      processedIssues = issues; // not used in precomputed path but referenced for compatibility
-    } else {
-      // 1. Apply global filters to all issues first
-      processedIssues = issues;
-      if (globalFilters && Object.keys(globalFilters).length > 0) {
-        processedIssues = issues.filter(issue => {
-          const transformed = transformIssueForKpi(issue);
-          for (const [key, values] of Object.entries(globalFilters)) {
-            if (!values || values.length === 0) continue;
-            
-            if (key === 'jql') {
-              let matchesAllJql = true;
-              for (const query of values) {
-                const result = applyFilter([transformed], query);
-                if (result.length === 0) {
-                  matchesAllJql = false;
-                  break;
-                }
+    // 1. Apply global filters to all issues first
+    let processedIssues = issues;
+    if (globalFilters && Object.keys(globalFilters).length > 0) {
+      processedIssues = issues.filter(issue => {
+        const transformed = transformIssueForKpi(issue);
+        for (const [key, values] of Object.entries(globalFilters)) {
+          if (!values || values.length === 0) continue;
+          
+          if (key === 'jql') {
+            let matchesAllJql = true;
+            for (const query of values) {
+              const result = applyFilter([transformed], query);
+              if (result.length === 0) {
+                matchesAllJql = false;
+                break;
               }
-              if (!matchesAllJql) return false;
-              continue;
             }
-
-            const accessor = FIELD_ACCESSORS[key];
-            let issueValue: string | string[] = accessor
-              ? accessor(transformed)
-              : extractSelectFieldValue((issue.fields as any)[key]) || 'None';
-
-            const lowerValues = values.map(v => v.toLowerCase());
-            const match = Array.isArray(issueValue) 
-              ? issueValue.some(v => lowerValues.includes(v.toLowerCase()))
-              : lowerValues.includes(String(issueValue || '').toLowerCase());
-              
-            if (!match) return false;
+            if (!matchesAllJql) return false;
+            continue;
           }
-          return true;
-        });
-        console.log(`[KPI Engine] Filters reduced issues from ${issues.length} to ${processedIssues.length}`);
-      }
 
-      // 2. Filter issues to those relevant for the period
-      filteredIssues = this.filterIssuesByPeriod(processedIssues, period);
+          let issueValue: string | string[] = '';
+          if (key === 'assignee') issueValue = transformed.assignee;
+          else if (key === 'priority') issueValue = transformed.priority || 'None';
+          else if (key === 'issueType') issueValue = transformed.issueType;
+          else if (key === 'status') issueValue = transformed.status;
+          else if (key === 'statusCategory') issueValue = transformed.statusCategory;
+          else if (key === 'reporter') issueValue = transformed.reporter;
+          else if (key === 'project') issueValue = transformed.project;
+          else if (key === 'component') issueValue = transformed.components;
+          else if (key === 'label') issueValue = transformed.labels;
+          else if (key === 'issueOwnerTeam') issueValue = transformed.issueOwnerTeam || 'Unassigned';
+          else {
+            // Fallback for unknown keys (dynamic custom fields)
+            // Use extractSelectFieldValue to handle select, user, and multi-value fields
+            issueValue = extractSelectFieldValue((issue.fields as any)[key]) || 'None';
+          }
 
-      // 3. Transform issues for this period
-      transformed = filteredIssues.map(transformIssueForKpi);
+          const lowerValues = values.map(v => v.toLowerCase());
+          const match = Array.isArray(issueValue) 
+            ? issueValue.some(v => lowerValues.includes(v.toLowerCase()))
+            : lowerValues.includes(String(issueValue || '').toLowerCase());
+            
+          if (!match) return false;
+        }
+        return true;
+      });
+      console.log(`[KPI Engine] Filters reduced issues from ${issues.length} to ${processedIssues.length}`);
+    }
 
-      // 4. Weekly breakdown
-      const now = new Date();
-      const thisWeekStart = new Date(now);
-      const day = thisWeekStart.getDay();
-      const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
-      thisWeekStart.setDate(diff);
-      thisWeekStart.setHours(0, 0, 0, 0);
-
-      const thisWeekEnd = new Date(thisWeekStart);
-      thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
-
-      const lastWeekStart = new Date(thisWeekStart);
-      lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-
-      const lastWeekEnd = new Date(thisWeekStart);
-
-      const cachedWeekly = weeklyIssueCache.get(processedIssues, globalFilters);
-
-      if (cachedWeekly) {
-        thisWeekIssues = cachedWeekly.thisWeek;
-        lastWeekIssues = cachedWeekly.lastWeek;
-      } else {
-        thisWeekIssues = processedIssues.filter(i => {
-          const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
-          return d >= thisWeekStart && d < thisWeekEnd;
-        });
-
-        lastWeekIssues = processedIssues.filter(i => {
-          const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
-          return d >= lastWeekStart && d < lastWeekEnd;
-        });
-
-        weeklyIssueCache.set(processedIssues, globalFilters, {
-          thisWeek: thisWeekIssues,
-          lastWeek: lastWeekIssues,
-          thisWeekStart,
-          thisWeekEnd,
-          lastWeekStart,
-          lastWeekEnd,
-        });
-      }
-
-      thisWeekTransformed = thisWeekIssues.map(transformIssueForKpi);
-      lastWeekTransformed = lastWeekIssues.map(transformIssueForKpi);
-
-      // Previous period comparison
-      const currentDuration = period.end.getTime() - period.start.getTime();
-      prevPeriod = {
-        start: new Date(period.start.getTime() - currentDuration),
-        end: new Date(period.end.getTime() - currentDuration)
-      };
-      prevPeriodIssues = this.filterIssuesByPeriod(processedIssues, prevPeriod);
-      prevPeriodTransformed = prevPeriodIssues.map(transformIssueForKpi);
-}
-
-    // ── Build context and run calculation ──────────────────────────────────────
+    // 2. Filter issues to those relevant for the period
+    const filteredIssues = this.filterIssuesByPeriod(processedIssues, period);
 
     const context: KpiContext = {
-      issues: transformed,
+      issues: filteredIssues.map(transformIssueForKpi),
       holidays: {
         dates: new Set(),
         regions: holidays.regions,
         workStartHour: holidays.workStartHour || 9,
         workEndHour: holidays.workEndHour || 17,
-        slaTargetHours: holidays.slaTargetHours,
         isHoliday: () => false,
         isWorkingDay: () => true,
       },
@@ -382,38 +207,49 @@ export class KpiEngine {
       globalFilters,
     };
 
+    // Debug logging to verify context is built correctly
     console.log(`[KPI Engine] Calculating ${pluginId} with useAnyoneCommentsForSla:`, useAnyoneCommentsForSla);
 
     const currentResults = plugin.calculate(context);
     const currentResultsArray = Array.isArray(currentResults) ? currentResults : [currentResults];
 
-    const weekBoundaries = _preprocessed
-      ? _preprocessed.weekBoundaries
-      : (() => {
-          const now = new Date();
-          const tws = new Date(now);
-          const day = tws.getDay();
-          const diff = tws.getDate() - day + (day === 0 ? -6 : 1);
-          tws.setDate(diff);
-          tws.setHours(0, 0, 0, 0);
-          const twe = new Date(tws); twe.setDate(twe.getDate() + 7);
-          const lws = new Date(tws); lws.setDate(lws.getDate() - 7);
-          const lwe = new Date(tws);
-          return { thisWeekStart: tws, thisWeekEnd: twe, lastWeekStart: lws, lastWeekEnd: lwe };
-        })();
+    // 3. Weekly breakdown for all cards
+    const now = new Date();
+    // Current week start (Monday)
+    const thisWeekStart = new Date(now);
+    const day = thisWeekStart.getDay();
+    const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
+    thisWeekStart.setDate(diff);
+    thisWeekStart.setHours(0, 0, 0, 0);
 
-    // ── Weekly breakdown ──────────────────────────────────────────────────────
+    const thisWeekEnd = new Date(thisWeekStart);
+    thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
+
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    
+    const lastWeekEnd = new Date(thisWeekStart);
+
+    const thisWeekIssues = processedIssues.filter(i => {
+      const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
+      return d >= thisWeekStart && d < thisWeekEnd;
+    });
+
+    const lastWeekIssues = processedIssues.filter(i => {
+      const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
+      return d >= lastWeekStart && d < lastWeekEnd;
+    });
 
     const thisWeekContext: KpiContext = {
       ...context,
-      issues: thisWeekTransformed,
-      period: { start: weekBoundaries.thisWeekStart, end: weekBoundaries.thisWeekEnd }
+      issues: thisWeekIssues.map(transformIssueForKpi),
+      period: { start: thisWeekStart, end: thisWeekEnd }
     };
 
     const lastWeekContext: KpiContext = {
       ...context,
-      issues: lastWeekTransformed,
-      period: { start: weekBoundaries.lastWeekStart, end: weekBoundaries.lastWeekEnd }
+      issues: lastWeekIssues.map(transformIssueForKpi),
+      period: { start: lastWeekStart, end: lastWeekEnd }
     };
 
     try {
@@ -423,16 +259,18 @@ export class KpiEngine {
       const lastWeekResultsArray = Array.isArray(lastWeekResults) ? lastWeekResults : [lastWeekResults];
 
       currentResultsArray.forEach(res => {
-        const matchResult = (resultSet: KpiResult[]) => resultSet.find(r => {
-          if (res.dimensions && r.dimensions) {
-            const resKeys = Object.keys(res.dimensions);
-            const rKeys = Object.keys(r.dimensions);
-            if (resKeys.length !== rKeys.length) return false;
-            const dimsMatch = resKeys.every(k => res.dimensions![k] === r.dimensions![k]);
-            return dimsMatch && r.name === res.name;
-          }
-          return r.name === res.name;
-        });
+        // Find matching result in weekly sets (match by dimensions first, then name)
+        const matchResult = (resultSet: KpiResult[]) => {
+          return resultSet.find(r => {
+            if (res.dimensions && r.dimensions) {
+              const resKeys = Object.keys(res.dimensions);
+              const rKeys = Object.keys(r.dimensions);
+              if (resKeys.length !== rKeys.length) return false;
+              return resKeys.every(k => res.dimensions![k] === r.dimensions![k]);
+            }
+            return r.name === res.name;
+          });
+        };
 
         const tw = matchResult(thisWeekResultsArray);
         const lw = matchResult(lastWeekResultsArray);
@@ -441,6 +279,8 @@ export class KpiEngine {
           res.details = res.details || [];
           if (tw) res.details.push({ label: 'This Week', value: tw.value, unit: tw.unit });
           if (lw) res.details.push({ label: 'Previous Week', value: lw.value, unit: lw.unit });
+
+          // Update comparison for all cards to be Week-over-Week
           if (tw && lw) {
             res.comparison = {
               value: lw.value,
@@ -454,21 +294,32 @@ export class KpiEngine {
       console.warn(`Weekly breakdown failed for ${pluginId}:`, e);
     }
 
-    // ── Previous period comparison ────────────────────────────────────────────
+    // 4. Comparison logic
+    // Only run if not already set by weekly breakdown (overview cards)
+    const currentDuration = period.end.getTime() - period.start.getTime();
+    const prevPeriod = {
+      start: new Date(period.start.getTime() - currentDuration),
+      end: new Date(period.end.getTime() - currentDuration)
+    };
+    const prevFilteredIssues = this.filterIssuesByPeriod(processedIssues, prevPeriod);
+    const prevContext: KpiContext = {
+      ...context,
+      issues: prevFilteredIssues.map(transformIssueForKpi),
+      period: prevPeriod,
+    };
 
     try {
-      const previousResults = plugin.calculate({
-        ...context,
-        issues: prevPeriodTransformed,
-        period: prevPeriod,
-      });
+      const previousResults = plugin.calculate(prevContext);
       const previousResultsArray = Array.isArray(previousResults) ? previousResults : [previousResults];
       return currentResultsArray.map(res => {
+        // If we already have a comparison (e.g. from weekly breakdown), keep it
         if (res.comparison) return res;
 
         const prevRes = previousResultsArray.find(p => {
           const nameMatch = p.name === res.name;
           if (!nameMatch) return false;
+          
+          // Match dimensions if present
           if (res.dimensions || p.dimensions) {
             const resDims = res.dimensions || {};
             const pDims = p.dimensions || {};
@@ -477,9 +328,10 @@ export class KpiEngine {
             if (resKeys.length !== pKeys.length) return false;
             return resKeys.every(k => resDims[k] === pDims[k]);
           }
+          
           return true;
         });
-
+        
         if (prevRes && typeof prevRes.value === 'number') {
           const change = res.value - prevRes.value;
           return {
@@ -500,8 +352,6 @@ export class KpiEngine {
 
   /**
    * Run all registered KPI calculations
-   * @MX:OPT: Pre-computes filter results, transform, and weekly breakdown once per batch
-   * @MX:OPT: Passes preprocessed data to each calculate() call to avoid N× redundant work
    */
   calculateAll(
     issues: JiraIssue[],
@@ -509,114 +359,12 @@ export class KpiEngine {
     period: { start: Date; end: Date },
     slaTargets?: Record<string, number>,
     globalFilters?: Record<string, string[]>,
-    useAnyoneCommentsForSla?: boolean,
-    pluginIds?: string[]
+    useAnyoneCommentsForSla?: boolean
   ): Record<string, KpiResult[]> {
-    // ── Determine which plugins to calculate ────────────────────────────
-    const targetIds = (pluginIds && pluginIds.length > 0)
-      ? pluginIds.filter(id => this.plugins.has(id))
-      : Array.from(this.plugins.keys());
-
-    if (targetIds.length === 0) return {};
-
-    // ── Pre-compute once for entire batch ────────────────────────────────────
-    let processedIssues = issues;
-    if (globalFilters && Object.keys(globalFilters).length > 0) {
-      processedIssues = issues.filter(issue => {
-        const transformed = transformIssueForKpi(issue);
-        for (const [key, values] of Object.entries(globalFilters)) {
-          if (!values || values.length === 0) continue;
-          if (key === 'jql') {
-            if (!values.every(query => applyFilter([transformed], query).length > 0)) return false;
-            continue;
-          }
-          const accessor = FIELD_ACCESSORS[key];
-          const issueValue: string | string[] = accessor
-            ? accessor(transformed)
-            : extractSelectFieldValue((issue.fields as any)[key]) || 'None';
-          const lowerValues = values.map(v => v.toLowerCase());
-          const match = Array.isArray(issueValue)
-            ? issueValue.some(v => lowerValues.includes(v.toLowerCase()))
-            : lowerValues.includes(String(issueValue || '').toLowerCase());
-          if (!match) return false;
-        }
-        return true;
-      });
-      console.log(`[KPI Engine] Filters reduced issues from ${issues.length} to ${processedIssues.length}`);
-    }
-
-    const periodFilteredIssues = this.filterIssuesByPeriod(processedIssues, period);
-    const transformed = periodFilteredIssues.map(transformIssueForKpi);
-
-    // Weekly breakdown (computed once, shared across all plugins)
-    const now = new Date();
-    const thisWeekStart = new Date(now);
-    const day = thisWeekStart.getDay();
-    const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
-    thisWeekStart.setDate(diff);
-    thisWeekStart.setHours(0, 0, 0, 0);
-    const thisWeekEnd = new Date(thisWeekStart); thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
-    const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-    const lastWeekEnd = new Date(thisWeekStart);
-    const weekBoundaries = { thisWeekStart, thisWeekEnd, lastWeekStart, lastWeekEnd };
-
-    const cachedWeekly = weeklyIssueCache.get(processedIssues, globalFilters);
-    let thisWeekIssues: JiraIssue[];
-    let lastWeekIssues: JiraIssue[];
-
-    if (cachedWeekly) {
-      thisWeekIssues = cachedWeekly.thisWeek;
-      lastWeekIssues = cachedWeekly.lastWeek;
-    } else {
-      thisWeekIssues = processedIssues.filter(i => {
-        const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
-        return d >= thisWeekStart && d < thisWeekEnd;
-      });
-      lastWeekIssues = processedIssues.filter(i => {
-        const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
-        return d >= lastWeekStart && d < lastWeekEnd;
-      });
-      weeklyIssueCache.set(processedIssues, globalFilters, {
-        thisWeek: thisWeekIssues,
-        lastWeek: lastWeekIssues,
-        thisWeekStart,
-        thisWeekEnd,
-        lastWeekStart,
-        lastWeekEnd,
-      });
-    }
-
-    const thisWeekTransformed = thisWeekIssues.map(transformIssueForKpi);
-    const lastWeekTransformed = lastWeekIssues.map(transformIssueForKpi);
-
-    // Previous period
-    const currentDuration = period.end.getTime() - period.start.getTime();
-    const prevPeriod = {
-      start: new Date(period.start.getTime() - currentDuration),
-      end: new Date(period.end.getTime() - currentDuration)
-    };
-    const prevPeriodIssues = this.filterIssuesByPeriod(processedIssues, prevPeriod);
-    const prevPeriodTransformed = prevPeriodIssues.map(transformIssueForKpi);
-
-    const preprocessed: Preprocessed = {
-      periodFilteredIssues,
-      transformed,
-      weekBoundaries,
-      thisWeekIssues,
-      lastWeekIssues,
-      thisWeekTransformed,
-      lastWeekTransformed,
-      prevPeriodIssues,
-      prevPeriodTransformed,
-      prevPeriod,
-    };
-
-    // ── Calculate each plugin with shared preprocessed data ──────────────────
     const results: Record<string, KpiResult[]> = {};
-    for (const id of targetIds) {
-      results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla, preprocessed);
+    for (const id of Array.from(this.plugins.keys())) {
+      results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla);
     }
-    weeklyIssueCache.clear();
     return results;
   }
 

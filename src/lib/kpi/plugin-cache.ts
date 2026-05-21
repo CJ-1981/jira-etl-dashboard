@@ -83,14 +83,6 @@ export class PluginCache {
     if (this.cache.size > this.maxEntries * 2) {
       this.cleanup();
     }
-    // Enforce hard cap after cleanup
-    if (this.cache.size > this.maxEntries) {
-      const keys = Array.from(this.cache.keys());
-      const toEvict = this.cache.size - this.maxEntries;
-      for (let i = 0; i < toEvict; i++) {
-        this.cache.delete(keys[i]);
-      }
-    }
   }
 
   /**
@@ -120,19 +112,11 @@ export class PluginCache {
   }
 
   /**
-   * Get the number of non-expired entries in the cache
-   * @returns Count of valid cached entries
+   * Get the number of entries in the cache
+   * @returns Count of cached entries
    */
   size(): number {
-    // Count only non-expired entries
-    const now = Date.now();
-    let count = 0;
-    for (const entry of this.cache.values()) {
-      if (now - entry.timestamp <= this.ttl) {
-        count++;
-      }
-    }
-    return count;
+    return this.cache.size;
   }
 
   /**
@@ -146,7 +130,7 @@ export class PluginCache {
     return {
       hits: this.hits,
       misses: this.misses,
-      size: this.size(),
+      size: this.cache.size,
       hitRate,
     };
   }

@@ -38,16 +38,9 @@ export async function POST(request: Request) {
         where: { connectionRef: connectionId },
         select: { rawData: true }
       });
-      // @MX:NOTE: Parse once per ticket, skip try/catch per iteration for better perf
-      const parsed: JiraIssue[] = [];
-      for (let i = 0; i < masterTickets.length; i++) {
-        const t = masterTickets[i];
-        try {
-          const obj = JSON.parse(t.rawData);
-          if (obj) parsed.push(obj as JiraIssue);
-        } catch { /* skip corrupt records */ }
-      }
-      typedIssues = parsed;
+      typedIssues = masterTickets.map((t: any) => {
+        try { return JSON.parse(t.rawData); } catch { return null; }
+      }).filter(Boolean) as JiraIssue[];
       console.log(`[KPI API] Loaded ${typedIssues.length} issues from DB for connection: ${connectionId}`);
     } else if (issues && Array.isArray(issues)) {
       typedIssues = issues as JiraIssue[];
@@ -100,16 +93,20 @@ export async function POST(request: Request) {
       pluginsToCalculate = engine.getAllPlugins().map(p => p.id);
     }
 
-    // @MX:OPT: Use calculateAll() which pre-computes filter + transform + weekly breakdown once per batch
-    results = engine.calculateAll(
-      typedIssues,
-      { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours },
-      { start, end },
-      effectiveSlaTargets,
-      globalFilters,
-      settings?.sla?.useAnyoneCommentsForSla,
-      pluginsToCalculate
-    );
+    // Calculate only the specified plugins
+    results = {};
+    for (const id of pluginsToCalculate) {
+      try {
+        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, effectiveSlaTargets, globalFilters, settings?.sla?.useAnyoneCommentsForSla);
+      } catch (err) {
+        results[id] = [{
+          name: `Error: ${id}`,
+          value: 0,
+          unit: '',
+          details: [{ label: 'Error', value: 0 }],
+        }];
+      }
+    }
 
     // Flatten results for easier consumption
     const flat = Object.entries(results).map(([pluginId, pluginResults]) => ({
