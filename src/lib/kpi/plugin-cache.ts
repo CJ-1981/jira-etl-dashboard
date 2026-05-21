@@ -112,11 +112,19 @@ export class PluginCache {
   }
 
   /**
-   * Get the number of entries in the cache
-   * @returns Count of cached entries
+   * Get the number of non-expired entries in the cache
+   * @returns Count of valid cached entries
    */
   size(): number {
-    return this.cache.size;
+    // Count only non-expired entries
+    const now = Date.now();
+    let count = 0;
+    for (const entry of this.cache.values()) {
+      if (now - entry.timestamp <= this.ttl) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**

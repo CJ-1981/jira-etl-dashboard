@@ -12,7 +12,11 @@
  * ```
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+
+// @MX:NOTE: Custom event for same-tab synchronization
+// @MX:REASON: Storage events only fire across tabs, not within the same tab
+const WIDGET_ORDER_CHANGE_EVENT = 'widget-order-change';
 
 // Widget type definitions
 export type WidgetType = 'kpi' | 'panel';
@@ -26,37 +30,19 @@ export interface WidgetDefinition {
 }
 
 export interface UseWidgetOrderResult {
-  /** Array of widget IDs in current display order */
   widgetOrder: string[];
-  /** Reorder widget from sourceIndex to destIndex */
   reorderWidget: (sourceIndex: number, destIndex: number) => void;
-  /** Toggle widget visibility (add if hidden, remove if visible) */
   toggleWidgetVisibility: (widgetId: string) => void;
-  /** Check if widget is currently visible */
   isWidgetVisible: (widgetId: string) => boolean;
-  /** Get all available widget definitions */
   getWidgetDefinitions: () => WidgetDefinition[];
-  /** Initialize widget order with default widgets */
   initializeWidgetOrder: (availableKpis: string[], excludeFilter?: (id: string) => boolean) => void;
 }
 
-/**
- * Hook for managing widget display order on the dashboard.
- *
- * @returns Widget order state and operations
- *
- * @remarks
- * - Manages both individual KPI widgets and panel section widgets
- * - Persists widget order to localStorage
- * - Provides default panel sections that can be toggled
- * - Individual KPIs are managed through active plugins
- */
 // @MX:NOTE: Main hook implementation for widget display order management
 // @MX:REASON: Centralizes widget ordering logic for both KPIs and panel sections
 export function useWidgetOrder(): UseWidgetOrderResult {
   const STORAGE_KEY = 'widget_display_order';
 
-  // Initialize from local storage or use empty array (no default panels)
   const [widgetOrder, setWidgetOrder] = useState<string[]>(() => {
     if (typeof window === 'undefined') return [];
 
@@ -64,11 +50,7 @@ export function useWidgetOrder(): UseWidgetOrderResult {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-
-        // Filter out any legacy panel IDs - only keep individual plugin IDs
-        const cleaned = parsed.filter((id: string) => !id.startsWith('panel-'));
-
-        return cleaned;
+        return parsed.filter((id: string) => !id.startsWith('panel-'));
       }
       return [];
     } catch (error) {
@@ -77,18 +59,65 @@ export function useWidgetOrder(): UseWidgetOrderResult {
     }
   });
 
-  // Persist to local storage on change
+  const isSelfWriting = useRef(false);
+  const isSyncing = useRef(false);
+
+  // Re-sync from localStorage whenever changes happen from other components
+  // @MX:NOTE: Uses both storage events (cross-tab) and custom events (same-tab)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    const syncFromStorage = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const cleaned = parsed.filter((id: string) => !id.startsWith('panel-'));
+          isSyncing.current = true;
+          setWidgetOrder(cleaned);
+          Promise.resolve().then(() => { isSyncing.current = false; });
+        }
+      } catch (error) {
+        console.error(`[useWidgetOrder] Failed to sync:`, error);
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && !isSelfWriting.current) {
+        syncFromStorage();
+      }
+    };
+
+    const handleCustomEvent = () => {
+      syncFromStorage();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener(WIDGET_ORDER_CHANGE_EVENT, handleCustomEvent);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener(WIDGET_ORDER_CHANGE_EVENT, handleCustomEvent);
+    };
+  }, []);
+
+  // Persist to local storage on change
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isSyncing.current) return;
+
     try {
+      isSelfWriting.current = true;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(widgetOrder));
+      window.dispatchEvent(new CustomEvent(WIDGET_ORDER_CHANGE_EVENT));
+      Promise.resolve().then(() => {
+        isSelfWriting.current = false;
+      });
     } catch (error) {
-      console.error(`Failed to save ${STORAGE_KEY} to localStorage:`, error);
+      isSelfWriting.current = false;
+      console.error(`[useWidgetOrder] Failed to save:`, error);
     }
   }, [widgetOrder]);
 
-  // Reorder widget by moving item from sourceIndex to destIndex
   const reorderWidget = useCallback((sourceIndex: number, destIndex: number) => {
     setWidgetOrder(prev => {
       const newOrder = [...prev];
@@ -98,39 +127,29 @@ export function useWidgetOrder(): UseWidgetOrderResult {
     });
   }, []);
 
-  // Toggle widget visibility (add if hidden, remove if visible)
   const toggleWidgetVisibility = useCallback((widgetId: string) => {
     setWidgetOrder(prev => {
       if (prev.includes(widgetId)) {
-        // Remove from visible widgets
         return prev.filter(id => id !== widgetId);
       } else {
-        // Add to visible widgets at the end
         return [...prev, widgetId];
       }
     });
   }, []);
 
-  // Check if widget is currently visible
   const isWidgetVisible = useCallback((widgetId: string) => {
     return widgetOrder.includes(widgetId);
   }, [widgetOrder]);
 
-  // Get all available widget definitions (no panels, only individual plugins)
   const getWidgetDefinitions = useCallback((): WidgetDefinition[] => {
     return [];
   }, []);
 
-  // Initialize widget order with available KPIs (filtering out time-series plugins)
   const initializeWidgetOrder = useCallback((availableKpis: string[], excludeFilter?: (id: string) => boolean) => {
     setWidgetOrder(prev => {
-      // Apply filter if provided (e.g., to exclude time-series plugins)
       const widgetKpis = excludeFilter ? availableKpis.filter(id => !excludeFilter(id)) : availableKpis;
-
-      // Add any new KPIs that aren't already in the order
       const existingKpis = prev.filter(id => !excludeFilter || !excludeFilter(id));
       const newKpis = widgetKpis.filter(id => !existingKpis.includes(id));
-
       return [...newKpis, ...existingKpis];
     });
   }, []);

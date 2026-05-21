@@ -844,11 +844,12 @@ describe('useKpiCalculations - React Query Integration', () => {
       () => {
         const queries = queryClient.getQueryCache().findAll();
         expect(queries.length).toBeGreaterThan(0);
+        // @MX:NOTE: Query key now uses serialized strings for stable comparison
         expect(queries[0].queryKey).toEqual([
           'kpi-results',
-          dateFrom,
-          dateTo,
-          filters,
+          dateFrom.toISOString(),
+          dateTo.toISOString(),
+          JSON.stringify(filters),
         ]);
       },
       { timeout: 3000 }
