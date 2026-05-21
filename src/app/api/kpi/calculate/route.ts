@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getKpiEngine } from '@/lib/kpi/engine';
+import { KpiEngine } from '@/lib/kpi/engine';
 import type { JiraIssue } from '@/lib/jira/client';
 import { getDb } from '@/lib/db';
 
@@ -14,16 +14,14 @@ export async function POST(request: Request) {
       connectionId, storageConfig,
     } = body;
 
-    const engine = getKpiEngine();
+    // Create fresh engine instance per request to avoid singleton mutation
+    const engine = new KpiEngine();
 
-    // Clear stale custom plugins from previous requests, then register fresh ones
-    engine.clearCustomPlugins();
-
-    // Register custom plugins if provided
+    // Register custom plugins if provided (only affects this request's engine instance)
     if (customPlugins && Array.isArray(customPlugins)) {
       for (const pluginDef of customPlugins) {
         try {
-          engine.registerCustomPlugin(pluginDef);
+          engine.register(pluginDef);
         } catch (err) {
           console.error(`Failed to register custom plugin ${pluginDef.id}:`, err);
         }
@@ -38,14 +36,21 @@ export async function POST(request: Request) {
         where: { connectionRef: connectionId },
         select: { rawData: true }
       });
-      // @MX:OPT: Parse once per ticket, skip try/catch per iteration for better perf
+      // @MX:NOTE: Parse once per ticket, using stricter type guard for safety
       const parsed: JiraIssue[] = [];
       for (let i = 0; i < masterTickets.length; i++) {
         const t = masterTickets[i];
         try {
           const obj = JSON.parse(t.rawData);
-          if (obj) parsed.push(obj as JiraIssue);
-        } catch { /* skip corrupt records */ }
+          // Stricter type guard: verify obj is a non-null object
+          if (typeof obj === "object" && obj !== null) {
+            parsed.push(obj as JiraIssue);
+          }
+        } catch (e) {
+          // Log parse failures with ticket identifier for debugging
+          const ticketId = (t as any).id || 'unknown';
+          console.warn(`[KPI API] Failed to parse ticket ${ticketId}:`, e);
+        }
       }
       typedIssues = parsed;
       console.log(`[KPI API] Loaded ${typedIssues.length} issues from DB for connection: ${connectionId}`);
@@ -100,7 +105,7 @@ export async function POST(request: Request) {
       pluginsToCalculate = engine.getAllPlugins().map(p => p.id);
     }
 
-    // @MX:OPT: Use calculateAll() which pre-computes filter + transform + weekly breakdown once per batch
+    // @MX:NOTE: Use calculateAll() which pre-computes filter + transform + weekly breakdown once per batch
     results = engine.calculateAll(
       typedIssues,
       { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours },

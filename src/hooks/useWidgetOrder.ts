@@ -75,7 +75,6 @@ export function useWidgetOrder(): UseWidgetOrderResult {
           const cleaned = parsed.filter((id: string) => !id.startsWith('panel-'));
           isSyncing.current = true;
           setWidgetOrder(cleaned);
-          Promise.resolve().then(() => { isSyncing.current = false; });
         }
       } catch (error) {
         console.error(`[useWidgetOrder] Failed to sync:`, error);
@@ -89,6 +88,8 @@ export function useWidgetOrder(): UseWidgetOrderResult {
     };
 
     const handleCustomEvent = () => {
+      // Early return when this instance is writing to prevent feedback loop
+      if (isSelfWriting.current) return;
       syncFromStorage();
     };
 
@@ -109,11 +110,12 @@ export function useWidgetOrder(): UseWidgetOrderResult {
       isSelfWriting.current = true;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(widgetOrder));
       window.dispatchEvent(new CustomEvent(WIDGET_ORDER_CHANGE_EVENT));
-      Promise.resolve().then(() => {
-        isSelfWriting.current = false;
-      });
+      // Synchronously clear flags after dispatch
+      isSelfWriting.current = false;
+      isSyncing.current = false;
     } catch (error) {
       isSelfWriting.current = false;
+      isSyncing.current = false;
       console.error(`[useWidgetOrder] Failed to save:`, error);
     }
   }, [widgetOrder]);

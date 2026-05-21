@@ -80,8 +80,13 @@ export class PluginCache {
       timestamp: Date.now(),
     });
 
-    if (this.cache.size > this.maxEntries * 2) {
-      this.cleanup();
+    this.cleanup();
+
+    // Enforce maxEntries by evicting oldest insertion-order entries
+    while (this.cache.size > this.maxEntries) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+      else break;
     }
   }
 
@@ -138,7 +143,7 @@ export class PluginCache {
     return {
       hits: this.hits,
       misses: this.misses,
-      size: this.cache.size,
+      size: this.size(),
       hitRate,
     };
   }

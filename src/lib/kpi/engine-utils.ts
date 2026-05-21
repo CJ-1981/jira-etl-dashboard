@@ -28,8 +28,9 @@ const TRANSFORM_CACHE_SIZE = 5000;
 // ─── Issue Transformation ───────────────────────────────────────────────────────
 
 export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
-  // @MX:NOTE: Use issue key as cache key - same key = same data within a batch
-  const cached = transformCache.get(issue.key);
+  // @MX:NOTE: Use composed key (issue.key + updated timestamp) to detect stale data
+  const cacheKey = `${issue.key}:${issue.fields.updated || ''}`;
+  const cached = transformCache.get(cacheKey);
   if (cached) return cached.issue;
   const transitions: StatusTransition[] = [];
   if (issue.changelog?.histories) {
@@ -116,7 +117,7 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
       transformCache.delete(firstKey);
     }
   }
-  transformCache.set(issue.key, { issue: result, timestamp: Date.now() });
+  transformCache.set(cacheKey, { issue: result, timestamp: Date.now() });
   return result;
 }
 

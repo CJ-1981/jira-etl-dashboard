@@ -78,7 +78,7 @@ export function useKpiCalculations(
    * Fetch KPI calculations from the API
    */
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
-    lastCalculationParamsRef.current = JSON.stringify({ dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), globalFilters, activeConnectionId });
+    // Update params ref AFTER successful response (moved from line 81)
     try {
       // AbortController for timeout (120s — server-side calculation may be heavy)
       const controller = new AbortController();
@@ -109,14 +109,24 @@ export function useKpiCalculations(
         return [];
       }
 
-      const data: KpiCalculateResponse = await response.json();
+      const data = await response.json() as KpiCalculateResponse;
 
-      if (!data.success || !data.results) {
-        console.error('[useKpiCalculations] Calculation failed:', data.error);
-        return [];
+      // Update params ref only after successful response
+      if (data.success && data.results) {
+        lastCalculationParamsRef.current = JSON.stringify({
+          dateFrom: dateFrom.toISOString(),
+          dateTo: dateTo.toISOString(),
+          globalFilters,
+          activeConnectionId,
+          region,
+          storageConfig,
+          customWidgets: customWidgets || []
+        });
+        return data.results;
       }
 
-      return data.results;
+      console.error('[useKpiCalculations] Calculation failed:', data.error);
+      return [];
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.error('[useKpiCalculations] Request timeout after 30 seconds');
@@ -131,8 +141,18 @@ export function useKpiCalculations(
   // Date objects and filter objects are serialized to strings for stable comparison
   const stableQueryKey = useMemo(() => {
     const filtersKey = globalFilters ? JSON.stringify(globalFilters) : 'empty';
-    return ['kpi-results', dateFrom.toISOString(), dateTo.toISOString(), filtersKey];
-  }, [dateFrom, dateTo, globalFilters]);
+    const customWidgetsKey = customWidgets ? JSON.stringify(customWidgets.sort()) : 'empty';
+    return [
+      'kpi-results',
+      activeConnectionId,
+      region,
+      storageConfig,
+      dateFrom.toISOString(),
+      dateTo.toISOString(),
+      filtersKey,
+      customWidgetsKey
+    ];
+  }, [activeConnectionId, region, storageConfig, dateFrom, dateTo, globalFilters, customWidgets]);
 
   /**
    * React Query for KPI data with caching
@@ -216,13 +236,21 @@ export function useKpiCalculations(
 
   // @MX:NOTE: Stable params serialization for polling comparison
   const currentParamsSerialized = useMemo(() =>
-    JSON.stringify({ dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), globalFilters, activeConnectionId }),
-    [dateFrom, dateTo, globalFilters, activeConnectionId]
+    JSON.stringify({
+      dateFrom: dateFrom.toISOString(),
+      dateTo: dateTo.toISOString(),
+      globalFilters,
+      activeConnectionId,
+      region,
+      storageConfig,
+      customWidgets: customWidgets || []
+    }),
+    [dateFrom, dateTo, globalFilters, activeConnectionId, region, storageConfig, customWidgets]
   );
 
   /**
    * Webhook polling setup (5-minute intervals)
-   * @MX:NOTE: Uses stable serialized params to avoid unnecessary polling triggers
+   * @MX:NOTE: Uses isCalculatingRef (not state) inside interval to avoid re-creating interval on every calc start/stop
    */
   useEffect(() => {
     // Only poll if webhooks are enabled in settings
@@ -234,13 +262,10 @@ export function useKpiCalculations(
       return;
     }
 
-    // Poll only when not currently calculating and params have changed
+    // Use isCalculatingRef.current (ref, not state) to check without causing re-renders
     pollingIntervalRef.current = setInterval(() => {
-      if (calculatingSet.size === 0) {
-        if (currentParamsSerialized !== lastCalculationParamsRef.current) {
-          lastCalculationParamsRef.current = currentParamsSerialized;
-          triggerCalculation();
-        }
+      if (isCalculatingRef.current.size === 0) {
+        triggerCalculation();
       }
     }, 300000); // 5 minutes
 
@@ -250,9 +275,10 @@ export function useKpiCalculations(
         pollingIntervalRef.current = null;
       }
     };
-    // @MX:NOTE: Intentionally NOT including triggerCalculation to avoid re-creating interval
+    // @MX:NOTE: Removed calculatingSet from deps — using isCalculatingRef inside interval instead
+    // This prevents the effect from re-running (and resetting the timer) on every calc start/stop
     // The function is accessed via ref and params changes are detected via serialized comparison
-  }, [settings?.webhooks?.enabled, pollingEnabled, currentParamsSerialized, calculatingSet]);
+  }, [settings?.webhooks?.enabled, pollingEnabled, currentParamsSerialized]);
 
   /**
    * Cleanup on unmount
@@ -271,7 +297,7 @@ export function useKpiCalculations(
   }, []);
 
   // @MX:NOTE: Convert Map to Record for custom widget results
-  // Uses size as dependency to avoid re-renders when Map contents haven't changed
+  // Uses Array.from(entries) as dependency to detect value changes when Map size stays the same
   const customWidgetResultsRecord: Record<string, unknown> = useMemo(() => {
     const record: Record<string, unknown> = {};
     if (customWidgetResults instanceof Map) {
@@ -285,8 +311,7 @@ export function useKpiCalculations(
       });
     }
     return record;
-    // @MX:NOTE: Using size as dependency to minimize re-renders
-  }, [customWidgetResults instanceof Map ? customWidgetResults.size : customWidgetResults]);
+  }, [customWidgetResults instanceof Map ? Array.from(customWidgetResults.entries()) : customWidgetResults]);
 
   const isCalculating = isQueryLoading || calculatingSet.size > 0;
 

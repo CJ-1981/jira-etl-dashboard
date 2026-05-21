@@ -5,6 +5,12 @@ import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-co
 import { getDb } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 
+// Constants for sizeBytes estimation
+// @MX:NOTE: These are heuristic estimates for storage sizing, not exact byte measurements
+const EST_FIELD_BYTES_PER_KEY = 50; // Average bytes per field key-value pair
+const EST_CHANGE_HISTORY_BYTES = 200; // Average bytes per changelog history entry
+const FIXED_OVERHEAD_BYTES = 100; // Fixed overhead per issue (metadata, etc.)
+
 export async function POST(request: Request) {
   try {
     let body;
@@ -184,11 +190,14 @@ export async function POST(request: Request) {
         dateFrom: effectiveDateFrom,
         dateTo: effectiveDateTo,
         autoSave: shouldSave,
+        // @MX:NOTE: This is a heuristic estimate for storage sizing, derived from field count and changelog length
+        // @MX:WARN: Semantic change from real byte length to estimate - this is an approximation, not exact measurement
+        // @MX:REASON: Calculating actual JSON.stringify() byte length on every issue is expensive; heuristics provide sufficient accuracy for capacity planning
         sizeBytes: issues.reduce((acc, issue) => {
           const fields = issue.fields || {};
-          const estFieldSize = Object.keys(fields).length * 50;
-          const changelogSize = (issue.changelog?.histories?.length ?? 0) * 200;
-          return acc + issue.key.length + estFieldSize + changelogSize + 100;
+          const estFieldSize = Object.keys(fields).length * EST_FIELD_BYTES_PER_KEY;
+          const changelogSize = (issue.changelog?.histories?.length ?? 0) * EST_CHANGE_HISTORY_BYTES;
+          return acc + issue.key.length + estFieldSize + changelogSize + FIXED_OVERHEAD_BYTES;
         }, 0),
         metadata: JSON.stringify({
           version: '1.3',
@@ -412,11 +421,12 @@ export async function POST(request: Request) {
 
       const whereClause: any = { connectionRef: connectionRef };
       if (Object.keys(dateFilter).length > 0) {
-        // Fetch issues created, resolved, or updated within the period
+        // Fetch issues created, resolved, or updated within the period, OR long-lived open tickets
         whereClause.OR = [
           { created: dateFilter },
           { resolved: dateFilter },
           { updated: dateFilter },
+          { created: { lte: dateFilter.lte }, resolution: null }, // long-lived open tickets
         ];
       }
 
@@ -427,7 +437,13 @@ export async function POST(request: Request) {
       
       const allIssues: any[] = [];
       for (const t of masterTickets) {
-        try { allIssues.push(JSON.parse(t.rawData)); } catch (e) { /* skip corrupt */ }
+        try {
+          allIssues.push(JSON.parse(t.rawData));
+        } catch (e) {
+          // Log parse failures with ticket identifier for debugging
+          const ticketId = (t as any).id || 'unknown';
+          console.warn(`[Extract API] Failed to parse ticket ${ticketId}:`, e);
+        }
       }
 
       const period = {

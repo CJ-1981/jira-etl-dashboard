@@ -14,14 +14,15 @@ const DATE_CACHE_SIZE = 10000; // Store up to 10k unique dates
  * @MX:REASON: Timezone-safe date formatting is expensive, cache results
  */
 export function toISODate(date: Date): string {
-  const ts = date.getTime();
+  // Use UTC midnight for day-level cache key (all times on same day hit the same cache entry)
+  const ts = getUTCMidnight(date);
 
   const cached = dateStringCache.get(ts);
   if (cached !== undefined) return cached;
 
   const result = date.toISOString().split('T')[0];
 
-  // LRU eviction
+  // FIFO eviction (insertion order, not true LRU)
   if (dateStringCache.size >= DATE_CACHE_SIZE) {
     const firstKey = dateStringCache.keys().next().value;
     if (firstKey !== undefined) {

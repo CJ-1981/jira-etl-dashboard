@@ -58,14 +58,13 @@ function getEasterSunday(year: number): Date {
 
 /**
  * Get all German holidays for a given year (memoized)
- * @MX:NOTE: Extended cache to include region combinations for better hit rates
+ * @MX:NOTE: Returns all national and regional holidays for the year
  */
 const holidayCache = new Map<string, GermanHoliday[]>();
 
-export function getGermanHolidays(year: number, regions: GermanState[] = []): GermanHoliday[] {
-  // @MX:NOTE: Cache key includes sorted regions for better cache hits across different region sets
-  const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'all';
-  const cacheKey = `${year}:${regionsKey}`;
+export function getGermanHolidays(year: number): GermanHoliday[] {
+  // @MX:NOTE: Simple per-year cache since regions parameter was removed
+  const cacheKey = `${year}`;
   const cached = holidayCache.get(cacheKey);
   if (cached) return cached;
 
@@ -139,7 +138,9 @@ export function getHolidayDateSet(
   for (let year = startYear; year <= endYear; year++) {
     const holidays = getGermanHolidays(year);
     for (const holiday of holidays) {
-      if (holiday.isNational || holiday.regions.some(r => regions.includes(r)) || regions.length === 0) {
+      // Include national holidays OR regional holidays that intersect with provided regions
+      // When regions is empty, only include national holidays (matches isGermanHoliday semantics)
+      if (holiday.isNational || (regions.length > 0 && holiday.regions.some(r => regions.includes(r)))) {
         const y = holiday.date.getFullYear();
         const m = String(holiday.date.getMonth() + 1).padStart(2, '0');
         const d = String(holiday.date.getDate()).padStart(2, '0');
@@ -194,7 +195,8 @@ function getBusinessHoursCacheKey(
   holidayDateSet?: Set<string>
 ): string {
   const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'none';
-  const holidayKey = holidayDateSet ? `set-${holidayDateSet.size}` : 'dynamic';
+  // Use sorted holiday dates to create a stable, unique cache key
+  const holidayKey = holidayDateSet ? `set-${Array.from(holidayDateSet).sort().join(',')}` : 'dynamic';
   return `${startDate.getTime()}-${endDate.getTime()}-${regionsKey}-${workStartHour}-${workEndHour}-${holidayKey}`;
 }
 
@@ -335,14 +337,24 @@ export function calculateBusinessHours(
         fullWeekStart.setDate(fullWeekStart.getDate() + firstPartialDays);
         const fullWeekEnd = new Date(fullWeekStart);
         fullWeekEnd.setDate(fullWeekEnd.getDate() + fullWeeks * 7 - 1);
-        if (holidayDateSet) {
-          for (const holidayStr of holidayDateSet) {
-            const holidayDate = new Date(holidayStr);
-            if (holidayDate >= fullWeekStart && holidayDate <= fullWeekEnd) {
-              const dow = holidayDate.getDay();
-              if (workDaysPerWeek.includes(dow)) {
-                totalMinutes -= hoursPerDay * 60;
-              }
+
+        // Derive holiday set if not provided
+        const holidaysToSubtract = holidayDateSet ?? (() => {
+          const startYear = fullWeekStart.getFullYear();
+          const endYear = fullWeekEnd.getFullYear();
+          return getHolidayDateSet(startYear, endYear, regions);
+        })();
+
+        // Convert Set to Array for iteration compatibility
+        const holidayArray = Array.from(holidaysToSubtract);
+        for (const holidayStr of holidayArray) {
+          // Parse YYYY-MM-DD as local date to avoid UTC midnight shift
+          const [y, m, d] = holidayStr.split('-').map(Number);
+          const holidayDate = new Date(y, m - 1, d);
+          if (holidayDate >= fullWeekStart && holidayDate <= fullWeekEnd) {
+            const dow = holidayDate.getDay();
+            if (workDaysPerWeek.includes(dow)) {
+              totalMinutes -= hoursPerDay * 60;
             }
           }
         }
@@ -464,8 +476,11 @@ export function calculateWorkingDays(
     // Subtract holidays in full weeks (approximate - iterate through known holidays)
     const fullWeekEnd = new Date(current);
     fullWeekEnd.setDate(fullWeekEnd.getDate() + firstWeekEnd + fullWeeks * 7 - 1);
-    for (const holidayStr of holidaySet) {
-      const holidayDate = new Date(holidayStr);
+    const holidayArray = Array.from(holidaySet);
+    for (const holidayStr of holidayArray) {
+      // Parse YYYY-MM-DD as local date to avoid UTC midnight shift
+      const [y, m, d] = holidayStr.split('-').map(Number);
+      const holidayDate = new Date(y, m - 1, d);
       const checkDate = new Date(current);
       checkDate.setDate(checkDate.getDate() + firstWeekEnd);
       if (holidayDate >= checkDate && holidayDate <= fullWeekEnd) {

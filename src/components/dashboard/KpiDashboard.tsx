@@ -394,38 +394,10 @@ export function KpiDashboard() {
     openDrillDown(keys, title);
   };
 
-  const { isLoading: calculating, refetch: runCalculation } = useQuery({
-    queryKey: ['kpis', activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, masterDatasetInfo?.issues?.length],
-    queryFn: async () => {
-      if (!activeConnectionId) return null;
-      const res = await fetch('/api/kpi/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connectionId: activeConnectionId,
-          issues: masterDatasetInfo?.issues || [],
-          dateFrom,
-          dateTo,
-          region,
-          globalFilters,
-          settings,
-          storageConfig
-        })
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Calculation failed');
-      return data.results.map((r: KpiCalcResult) => ({
-        ...r,
-        results: r.results.map((res: any) => ({
-          ...res,
-          unit: res.unit || '',
-          value: typeof res.value === 'number' ? res.value : 0
-        }))
-      }));
-    },
-    enabled: !!activeConnectionId && !!masterDatasetInfo?.issues,
-    refetchInterval: (settings as AppSettings)?.webhooks?.enabled ? 30000 : false, // Refetch every 30s if webhooks are enabled
-  });
+  // Use central hook's triggerCalculation for Recalculate button
+  // @MX:NOTE: Removed duplicate local useQuery (was unused by UI and didn't update Zustand)
+  const calculating = kpiCalculations.isCalculating;
+  const runCalculation = kpiCalculations.triggerCalculation;
 
   // @MX:NOTE: Calculate KPI results for a specific widget with custom JQL
   // @MX:REASON: Independent widget calculations allow side-by-side data comparison
@@ -695,16 +667,22 @@ export function KpiDashboard() {
     toast.success('KPIs exported to CSV');
   };
 
+  // @MX:NOTE: Uses ref to avoid feedback loop — triggerCalculation recreates when deps change,
+  // so including it in the dependency array would cause infinite re-calculation
+  const runCalculationRef = useRef(runCalculation);
+  runCalculationRef.current = runCalculation;
+
   useEffect(() => {
     // Only auto-calculate if user has previously initiated a calculation
     if (hasUserInitiatedCalc.current) {
-      runCalculation();
+      runCalculationRef.current();
     }
     // On first render, just mark as rendered - don't auto-calculate
     if (isFirstRender.current) {
       isFirstRender.current = false;
     }
-  }, [runCalculation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keyboard Shortcuts
   useEffect(() => {

@@ -34,7 +34,7 @@ const slaCompliancePlugin: KpiPlugin = {
 
     const withinSlaIssues = resolvedIssues.filter((issue) => {
       const hours = calculateBusinessHours(issue.created, issue.resolved!, {
-        regions: context.holidays.regions,
+        regions,
         workStartHour: context.holidays.workStartHour,
         workEndHour: context.holidays.workEndHour,
         workDaysPerWeek: context.holidays.workDaysPerWeek,
