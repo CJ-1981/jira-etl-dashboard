@@ -7,17 +7,18 @@
 
 import type { JiraIssue } from '../jira/client';
 import { calculateBusinessHours, calculateWorkingDays } from '../holidays/german-holidays';
+import { extractSelectFieldValue } from '../jira/client';
 import type { TransformedIssue, StatusTransition, AgeCategory } from './types';
+
+// ─── Transform Cache ────────────────────────────────────────────────────────────
+
+const transformCache = new WeakMap<JiraIssue, TransformedIssue>();
 
 // ─── Issue Transformation ───────────────────────────────────────────────────────
 
-/**
- * Transform JiraIssue to TransformedIssue for KPI calculations
- * Extracts and structures relevant fields from raw Jira API response
- * @MX:ANCHOR: Issue transformation logic
- * @MX:REASON: Central transformation logic used across all KPI calculations
- */
 export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
+  const cached = transformCache.get(issue);
+  if (cached) return cached;
   const transitions: StatusTransition[] = [];
   if (issue.changelog?.histories) {
     for (const history of issue.changelog.histories) {
@@ -69,7 +70,7 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     timeInStatus[issue.fields.status.name] = durationHours;
   }
 
-  return {
+  const result: TransformedIssue = {
     key: issue.key,
     project: (issue.fields as any)?.project?.name || (issue.fields as any)?.project?.key || issue.key.split('-')[0],
     summary: issue.fields?.summary || (issue as any).summary || 'No Summary',
@@ -79,7 +80,7 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     statusCategory: issue.fields?.status?.statusCategory?.name || (issue as any).statusCategory || 'Unknown',
     assignee: issue.fields?.assignee?.displayName || (issue as any).assignee || 'Unassigned',
     reporter: issue.fields?.reporter?.displayName || (issue as any).reporter || 'Unknown',
-    issueOwnerTeam: null, // Default, will be handled by engine if needed
+    issueOwnerTeam: extractSelectFieldValue((issue.fields as any)?.customfield_10132) || (issue.fields as any)?.issueOwnerTeam || (issue as any).issueOwnerTeam || null,
     created: new Date(issue.fields?.created || (issue as any).created || Date.now()),
     updated: new Date(issue.fields?.updated || (issue as any).updated || Date.now()),
     resolved: (issue.fields?.resolutiondate || (issue as any).resolved) ? new Date(issue.fields?.resolutiondate || (issue as any).resolved) : null,
@@ -96,6 +97,9 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
       }))
       .sort((a: { created: Date }, b: { created: Date }) => a.created.getTime() - b.created.getTime()),
   };
+
+  transformCache.set(issue, result);
+  return result;
 }
 
 // ─── Issue Status Helpers ────────────────────────────────────────────────────────

@@ -31,19 +31,17 @@ export interface CacheStats {
  */
 export class PluginCache {
   private cache: Map<string, CacheEntry>;
-  private ttl: number; // Time to live in milliseconds
+  private ttl: number;
   private hits: number;
   private misses: number;
+  private maxEntries: number;
 
-  /**
-   * Create a new plugin cache
-   * @param ttl - Time-to-live in milliseconds (default: 5 minutes)
-   */
-  constructor(ttl: number = 5 * 60 * 1000) {
+  constructor(ttl: number = 5 * 60 * 1000, maxEntries: number = 100) {
     this.cache = new Map();
     this.ttl = ttl;
     this.hits = 0;
     this.misses = 0;
+    this.maxEntries = maxEntries;
   }
 
   /**
@@ -82,8 +80,9 @@ export class PluginCache {
       timestamp: Date.now(),
     });
 
-    // Clean up old entries if cache grows too large
-    this.cleanup();
+    if (this.cache.size > this.maxEntries * 2) {
+      this.cleanup();
+    }
   }
 
   /**
