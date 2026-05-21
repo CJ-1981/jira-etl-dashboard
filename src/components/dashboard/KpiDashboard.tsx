@@ -92,6 +92,56 @@ import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 
+// ─── Resizable container that persists height to Zustand ──────────────────────
+function WidgetResizeContainer({
+  widgetId,
+  defaultHeight,
+  minHeight = 200,
+  className,
+  children,
+}: {
+  widgetId: string;
+  defaultHeight: number;
+  minHeight?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const widgetHeights = useAppStore((s) => s.widgetHeights);
+  const setWidgetHeights = useAppStore((s) => s.setWidgetHeights);
+  const savedHeight = widgetHeights[widgetId] ?? defaultHeight;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.round(entry.contentRect.height);
+        if (h >= minHeight) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = setTimeout(() => {
+            setWidgetHeights((prev) => ({ ...prev, [widgetId]: h }));
+          }, 500);
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [widgetId, minHeight, setWidgetHeights]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`resize-y overflow-hidden ${className || ''}`}
+      style={{ height: savedHeight, minHeight }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
 const JQL_PATTERNS = [
   { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
@@ -116,7 +166,8 @@ export function KpiDashboard() {
     kpiCardConfigs, setKpiCardConfigs,
     activeView, setIsViewModified, setActiveView,
     widgetTitles, setWidgetTitles,
-    collapsedWidgets, setCollapsedWidgets
+    collapsedWidgets, setCollapsedWidgets,
+    widgetHeights, setWidgetHeights
   } = useAppStore();
 
   const onPrint = () => window.print();
@@ -247,6 +298,7 @@ export function KpiDashboard() {
       kpiCardConfigs,
       hiddenDimensions: Array.from(hiddenDimensions),
       widgetTitles,
+      widgetHeights,
     };
 
     try {
@@ -296,8 +348,9 @@ export function KpiDashboard() {
     charts, 
     jqlQuery, 
     kpiCardConfigs, 
-    hiddenDimensions, 
+    hiddenDimensions,
     widgetTitles,
+    widgetHeights,
     setIsViewModified,
     setActiveView,
     storageConfig
@@ -2568,25 +2621,31 @@ export function KpiDashboard() {
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <div
-                            className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto resize-y min-h-[200px] max-h-[600px]"
-                            style={{ height: '400px' }}
+                          <WidgetResizeContainer
+                            widgetId={widget.kpis[0].pluginId}
+                            defaultHeight={400}
+                            minHeight={200}
+                            className="grid grid-cols-1 md:grid-cols-2 gap-4"
                           >
-                            {/* This Week */}
-                            <div className="space-y-3">
-                              <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">This Week</h4>
+                            {/* This Week — emerald/green header */}
+                            <div className="space-y-3 overflow-hidden flex flex-col">
+                              <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                                This Week
+                              </h4>
                               {(['opened', 'closed'] as const).map((activity) => {
                                 const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity);
                                 if (!result) return null;
-                                const color = activity === 'opened' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
-                                const bgColor = activity === 'opened' ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-rose-50 dark:bg-rose-950/30';
+                                // Opened = rose/red (alert), Closed = emerald/green (done)
+                                const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+                                const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
                                 return (
-                                  <div key={`this-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
-                                    <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor}`}>
+                                  <div key={`this-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
+                                    <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
                                       <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
                                       <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
                                     </div>
-                                    <div className="max-h-[150px] overflow-y-auto">
+                                    <div className="overflow-y-auto flex-1 min-h-0">
                                       {(result.ticketKeys || []).length === 0 && (
                                         <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
                                       )}
@@ -2598,16 +2657,12 @@ export function KpiDashboard() {
                                         const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
                                         const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
                                         return (
-                                          <div key={key} className="px-3 py-2 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
-                                            <div className="flex items-start justify-between gap-2 mb-0.5">
-                                              <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-mono font-bold text-blue-500 hover:underline">{key}</a>
-                                              <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
-                                            </div>
-                                            <p className="text-[11px] text-slate-700 dark:text-slate-300 line-clamp-1">{issue.fields?.summary || issue.summary}</p>
-                                            <div className="flex items-center gap-3 text-[9px] text-slate-400 mt-0.5">
-                                              <span>{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                              <span>{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
-                                            </div>
+                                          <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
+                                            <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
+                                            <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
+                                            <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                            <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                            <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
                                           </div>
                                         );
                                       })}
@@ -2617,21 +2672,24 @@ export function KpiDashboard() {
                               })}
                             </div>
 
-                            {/* Last Week */}
-                            <div className="space-y-3">
-                              <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Last Week</h4>
+                            {/* Last Week — amber header */}
+                            <div className="space-y-3 overflow-hidden flex flex-col">
+                              <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+                                Last Week
+                              </h4>
                               {(['opened', 'closed'] as const).map((activity) => {
                                 const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity);
                                 if (!result) return null;
-                                const color = activity === 'opened' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
-                                const bgColor = activity === 'opened' ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-rose-50 dark:bg-rose-950/30';
+                                const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+                                const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
                                 return (
-                                  <div key={`last-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
-                                    <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor}`}>
+                                  <div key={`last-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
+                                    <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
                                       <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
                                       <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
                                     </div>
-                                    <div className="max-h-[150px] overflow-y-auto">
+                                    <div className="overflow-y-auto flex-1 min-h-0">
                                       {(result.ticketKeys || []).length === 0 && (
                                         <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
                                       )}
@@ -2643,16 +2701,12 @@ export function KpiDashboard() {
                                         const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
                                         const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
                                         return (
-                                          <div key={key} className="px-3 py-2 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
-                                            <div className="flex items-start justify-between gap-2 mb-0.5">
-                                              <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-mono font-bold text-blue-500 hover:underline">{key}</a>
-                                              <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
-                                            </div>
-                                            <p className="text-[11px] text-slate-700 dark:text-slate-300 line-clamp-1">{issue.fields?.summary || issue.summary}</p>
-                                            <div className="flex items-center gap-3 text-[9px] text-slate-400 mt-0.5">
-                                              <span>{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                              <span>{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
-                                            </div>
+                                          <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
+                                            <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
+                                            <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
+                                            <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                            <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                            <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
                                           </div>
                                         );
                                       })}
@@ -2661,7 +2715,7 @@ export function KpiDashboard() {
                                 );
                               })}
                             </div>
-                          </div>
+                          </WidgetResizeContainer>
                         </CardContent>
                       </Card>
                     </div>
