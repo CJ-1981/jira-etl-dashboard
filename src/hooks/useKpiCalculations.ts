@@ -80,9 +80,9 @@ export function useKpiCalculations(
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
     lastCalculationParamsRef.current = JSON.stringify({ dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), globalFilters, activeConnectionId });
     try {
-      // AbortController for 30-second timeout
+      // AbortController for timeout (120s — server-side calculation may be heavy)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
 
       const response = await fetch('/api/kpi/calculate', {
         method: 'POST',

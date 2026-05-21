@@ -100,20 +100,16 @@ export async function POST(request: Request) {
       pluginsToCalculate = engine.getAllPlugins().map(p => p.id);
     }
 
-    // Calculate only the specified plugins
-    results = {};
-    for (const id of pluginsToCalculate) {
-      try {
-        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, effectiveSlaTargets, globalFilters, settings?.sla?.useAnyoneCommentsForSla);
-      } catch (err) {
-        results[id] = [{
-          name: `Error: ${id}`,
-          value: 0,
-          unit: '',
-          details: [{ label: 'Error', value: 0 }],
-        }];
-      }
-    }
+    // @MX:OPT: Use calculateAll() which pre-computes filter + transform + weekly breakdown once per batch
+    results = engine.calculateAll(
+      typedIssues,
+      { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours },
+      { start, end },
+      effectiveSlaTargets,
+      globalFilters,
+      settings?.sla?.useAnyoneCommentsForSla,
+      pluginsToCalculate
+    );
 
     // Flatten results for easier consumption
     const flat = Object.entries(results).map(([pluginId, pluginResults]) => ({
