@@ -92,6 +92,16 @@ import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 
+// ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
+const JQL_PATTERNS = [
+  { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
+  { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
+  { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
+  { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
+  { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' },
+  { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' },
+];
+
 export function KpiDashboard() {
   const {
     connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo,
@@ -384,7 +394,7 @@ export function KpiDashboard() {
     openDrillDown(keys, title);
   };
 
-  const { data: calculationData, isLoading: calculating, refetch: runCalculation } = useQuery({
+  const { isLoading: calculating, refetch: runCalculation } = useQuery({
     queryKey: ['kpis', activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, masterDatasetInfo?.issues?.length],
     queryFn: async () => {
       if (!activeConnectionId) return null;
@@ -416,12 +426,6 @@ export function KpiDashboard() {
     enabled: !!activeConnectionId && !!masterDatasetInfo?.issues,
     refetchInterval: (settings as AppSettings)?.webhooks?.enabled ? 30000 : false, // Refetch every 30s if webhooks are enabled
   });
-
-  useEffect(() => {
-    if (calculationData) {
-      setKpiResults(calculationData);
-    }
-  }, [calculationData, setKpiResults]);
 
   // @MX:NOTE: Calculate KPI results for a specific widget with custom JQL
   // @MX:REASON: Independent widget calculations allow side-by-side data comparison
@@ -470,16 +474,7 @@ export function KpiDashboard() {
         let value = '';
 
         // IMPORTANT: More specific patterns must come first!
-        const patterns = [
-          { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
-          { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
-          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
-          { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
-          { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' },
-          { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' }
-        ];
-
-        for (const pattern of patterns) {
+        for (const pattern of JQL_PATTERNS) {
           const match = query.match(pattern.regex);
           if (match) {
             field = match[1];
@@ -768,7 +763,17 @@ export function KpiDashboard() {
     });
   }, [kpiResults, pluginVisibility.activePlugins]);
 
-  const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !r.results[0]?.dimensions?.team && !r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
+  const mainKpis = useMemo(() =>
+    sortedKpiResults.filter((r: KpiCalcResult) =>
+      !r.results[0]?.dimensions?.status &&
+      !r.results[0]?.dimensions?.priority &&
+      !r.results[0]?.dimensions?.assignee &&
+      !r.results[0]?.dimensions?.team &&
+      !r.results[0]?.dimensions?.bucket &&
+      !isTimeSeriesPlugin(r.pluginId)
+    ),
+    [sortedKpiResults]
+  );
   // @MX:NOTE: Widget Order Mapping - Maps widget display order IDs to their corresponding KPI groups
   // @MX:REASON: Groups plugins by dimension type for organized dashboard rendering
   const widgetOrderMapping = useMemo(() => {

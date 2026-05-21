@@ -64,7 +64,9 @@ const DIMENSION_TYPE_LABELS: Record<string, string> = {
   none: '—',
 };
 
-export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTableProps) {
+// @MX:NOTE: Wrapped with React.memo to prevent unnecessary re-renders
+// @MX:REASON: Data table is expensive to render, only re-render when results change
+export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTableProps) {
   const { settings } = useAppStore();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'pluginId', desc: false }]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -454,4 +456,4 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
       </div>
     </div>
   );
-}
+});
