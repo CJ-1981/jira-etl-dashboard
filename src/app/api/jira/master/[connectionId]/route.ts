@@ -117,8 +117,8 @@ export async function POST(
         .map((d: string) => { const t = new Date(d).getTime(); return isNaN(t) ? null : t; })
         .filter((t: number | null): t is number => t !== null);
 
-      const oldestDate = dates.length > 0 ? new Date(Math.min(...dates)) : null;
-      const newestDate = dates.length > 0 ? new Date(Math.max(...dates)) : null;
+      const oldestDate = dates.length > 0 ? new Date(dates.reduce((a, b) => Math.min(a, b))) : null;
+      const newestDate = dates.length > 0 ? new Date(dates.reduce((a, b) => Math.max(a, b))) : null;
 
       return NextResponse.json({
         success: true,

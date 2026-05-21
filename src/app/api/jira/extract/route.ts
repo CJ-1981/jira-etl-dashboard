@@ -184,7 +184,12 @@ export async function POST(request: Request) {
         dateFrom: effectiveDateFrom,
         dateTo: effectiveDateTo,
         autoSave: shouldSave,
-        sizeBytes: Buffer.byteLength(JSON.stringify(issues)),
+        sizeBytes: issues.reduce((acc, issue) => {
+          const fields = issue.fields || {};
+          const estFieldSize = Object.keys(fields).length * 50;
+          const changelogSize = (issue.changelog?.histories?.length ?? 0) * 200;
+          return acc + issue.key.length + estFieldSize + changelogSize + 100;
+        }, 0),
         metadata: JSON.stringify({
           version: '1.3',
           extractParams: { jql: finalJql, dateFrom: effectiveDateFrom, dateTo: effectiveDateTo, daysBack },
@@ -395,15 +400,35 @@ export async function POST(request: Request) {
       console.log('[Extract API] Running KPI calculation...');
       const engine = getKpiEngine();
       
-      // Load and parse master tickets in chunks or at least be careful with memory
+      // Load and parse master tickets — filter by date range to reduce memory
+      const dateFilter: any = {};
+      if (effectiveDateFrom) {
+        dateFilter.gte = new Date(effectiveDateFrom);
+      }
+      if (effectiveDateTo) {
+        const endOfDateTo = new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999));
+        dateFilter.lte = endOfDateTo;
+      }
+
+      const whereClause: any = { connectionRef: connectionRef };
+      if (Object.keys(dateFilter).length > 0) {
+        // Fetch issues created, resolved, or updated within the period
+        whereClause.OR = [
+          { created: dateFilter },
+          { resolved: dateFilter },
+          { updated: dateFilter },
+        ];
+      }
+
       const masterTickets = await (db as any).masterTicket.findMany({ 
-        where: { connectionRef: connectionRef },
-        select: { rawData: true } // Only fetch rawData to save memory
+        where: whereClause,
+        select: { rawData: true }
       });
       
-      const allIssues = masterTickets.map((t: any) => {
-        try { return JSON.parse(t.rawData); } catch (e) { return null; }
-      }).filter(Boolean);
+      const allIssues: any[] = [];
+      for (const t of masterTickets) {
+        try { allIssues.push(JSON.parse(t.rawData)); } catch (e) { /* skip corrupt */ }
+      }
 
       const period = {
         start: effectiveDateFrom ? new Date(effectiveDateFrom) : new Date(0),

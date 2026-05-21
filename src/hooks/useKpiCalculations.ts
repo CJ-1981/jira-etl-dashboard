@@ -65,18 +65,20 @@ export function useKpiCalculations(
   const activeConnectionId = useAppStore((state) => state.activeConnectionId);
   const settings = useAppStore((state) => state.settings);
   const region = useAppStore((state) => state.region);
-  const masterIssues = useAppStore((state) => state.masterDatasetInfo?.issues);
+  const storageConfig = useAppStore((state) => state.storageConfig);
 
   // Local state
   const [pollingEnabled, setPollingEnabledState] = useState(true);
   const [calculatingSet, setCalculatingSet] = useState<Set<string>>(new Set());
   const isCalculatingRef = useRef<Set<string>>(new Set());
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCalculationParamsRef = useRef<string>('');
 
   /**
    * Fetch KPI calculations from the API
    */
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
+    lastCalculationParamsRef.current = JSON.stringify({ dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), globalFilters, activeConnectionId });
     try {
       // AbortController for 30-second timeout
       const controller = new AbortController();
@@ -89,12 +91,13 @@ export function useKpiCalculations(
         },
         body: JSON.stringify({
           activeConnectionId,
+          connectionId: activeConnectionId,
+          storageConfig,
           dateFrom: dateFrom.toISOString(),
           dateTo: dateTo.toISOString(),
           region,
           globalFilters,
           customWidgets: customWidgets || [],
-          issues: masterIssues || [],
         }),
         signal: controller.signal,
       });
@@ -122,7 +125,7 @@ export function useKpiCalculations(
       }
       return [];
     }
-  }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, masterIssues]);
+  }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, storageConfig]);
 
   /**
    * React Query for KPI data with caching
@@ -217,12 +220,16 @@ export function useKpiCalculations(
       return;
     }
 
-    // Poll only when not currently calculating
+    // Poll only when not currently calculating and params have changed
     pollingIntervalRef.current = setInterval(() => {
       if (calculatingSet.size === 0) {
-        triggerCalculation();
+        const currentParams = JSON.stringify({ dateFrom, dateTo, globalFilters, activeConnectionId });
+        if (currentParams !== lastCalculationParamsRef.current) {
+          lastCalculationParamsRef.current = currentParams;
+          triggerCalculation();
+        }
       }
-    }, 30000); // 30 seconds
+    }, 300000); // 5 minutes
 
     return () => {
       if (pollingIntervalRef.current) {

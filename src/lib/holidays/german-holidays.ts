@@ -57,9 +57,14 @@ function getEasterSunday(year: number): Date {
 }
 
 /**
- * Get all German holidays for a given year
+ * Get all German holidays for a given year (memoized)
  */
+const holidayCache = new Map<number, GermanHoliday[]>();
+
 export function getGermanHolidays(year: number): GermanHoliday[] {
+  const cached = holidayCache.get(year);
+  if (cached) return cached;
+
   const easter = getEasterSunday(year);
 
   const addDays = (date: Date, days: number): Date => {
@@ -85,7 +90,7 @@ export function getGermanHolidays(year: number): GermanHoliday[] {
     regions,
   });
 
-  return [
+  const holidays: GermanHoliday[] = [
     // National holidays (all states)
     fixed(1, 1, 'Neujahr', 'New Year\'s Day', true),
     fixed(5, 1, 'Tag der Arbeit', 'Labour Day', true),
@@ -111,6 +116,33 @@ export function getGermanHolidays(year: number): GermanHoliday[] {
     fixed(11, 1, 'Allerheiligen', 'All Saints\' Day', false, [GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.NW, GERMAN_STATES.RP, GERMAN_STATES.SL]),
     fromEaster(60, 'Fronleichnam', 'Corpus Christi', false, [GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.HE, GERMAN_STATES.NW, GERMAN_STATES.RP, GERMAN_STATES.SL]),
   ];
+
+  holidayCache.set(year, holidays);
+  return holidays;
+}
+
+/**
+ * Pre-compute a Set of holiday date strings (YYYY-MM-DD) for a year range and regions.
+ * Used by SLA plugin to avoid per-issue holiday calendar traversal.
+ */
+export function getHolidayDateSet(
+  startYear: number,
+  endYear: number,
+  regions: GermanState[] = []
+): Set<string> {
+  const dates = new Set<string>();
+  for (let year = startYear; year <= endYear; year++) {
+    const holidays = getGermanHolidays(year);
+    for (const holiday of holidays) {
+      if (holiday.isNational || holiday.regions.some(r => regions.includes(r)) || regions.length === 0) {
+        const y = holiday.date.getFullYear();
+        const m = String(holiday.date.getMonth() + 1).padStart(2, '0');
+        const d = String(holiday.date.getDate()).padStart(2, '0');
+        dates.add(`${y}-${m}-${d}`);
+      }
+    }
+  }
+  return dates;
 }
 
 /**
@@ -155,14 +187,25 @@ export function calculateBusinessHours(
     workStartHour?: number;
     workEndHour?: number;
     workDaysPerWeek?: number[];
+    holidayDateSet?: Set<string>;
   } = {}
 ): number {
   const {
     regions = [],
     workStartHour = 9,
     workEndHour = 17,
-    workDaysPerWeek = [1, 2, 3, 4, 5], // Mon-Fri
+    workDaysPerWeek = [1, 2, 3, 4, 5],
+    holidayDateSet,
   } = options;
+
+  const isHoliday = holidayDateSet
+    ? (date: Date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return holidayDateSet.has(`${y}-${m}-${d}`);
+      }
+    : (date: Date) => !!isGermanHoliday(date, regions);
 
   const hoursPerDay = workEndHour - workStartHour;
   let totalMinutes = 0;
@@ -171,7 +214,7 @@ export function calculateBusinessHours(
 
   while (current <= endDate) {
     const dayOfWeek = current.getDay();
-    if (workDaysPerWeek.includes(dayOfWeek) && !isGermanHoliday(current, regions)) {
+    if (workDaysPerWeek.includes(dayOfWeek) && !isHoliday(current)) {
       // Calculate overlapping hours on this working day
       const dayStart = new Date(current);
       dayStart.setHours(workStartHour, 0, 0, 0);

@@ -53,6 +53,9 @@ model TicketSnapshot {
   labels          String   // JSON array stored as string
   components      String?  // JSON array stored as string
   transitions     TicketTransition[]
+
+  @@index([etlRunId])
+  @@index([etlRunId, jiraKey])
 }
 
 model TicketTransition {
@@ -63,6 +66,8 @@ model TicketTransition {
   toStatus        String
   author          String?
   occurredAt      DateTime
+
+  @@index([ticketSnapshotId])
 }
 
 model KpiResult {
@@ -83,6 +88,7 @@ model KpiResult {
   @@index([kpiId])
   @@index([periodStart, periodEnd])
   @@index([calculatedAt])
+  @@index([etlRunId])
 }
 
 // Master ticket collection - accumulates all tickets ever extracted for KPI calculations

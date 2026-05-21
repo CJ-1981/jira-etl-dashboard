@@ -3,7 +3,7 @@
  * Percentage of tickets resolved within the configured SLA target (business hours)
  */
 
-import { calculateBusinessHours } from '../../../../holidays/german-holidays';
+import { calculateBusinessHours, getHolidayDateSet } from '../../../../holidays/german-holidays';
 import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
 
 const slaCompliancePlugin: KpiPlugin = {
@@ -19,11 +19,18 @@ const slaCompliancePlugin: KpiPlugin = {
   unit: '%',
 
   calculate(context: KpiContext): KpiResult[] {
-    const slaTargetHours = context.holidays.slaTargetHours || 40; // Use configured target, default to 40
+    const slaTargetHours = context.holidays.slaTargetHours || 40;
     const resolvedIssues = context.issues.filter((i) => i.resolved);
     if (resolvedIssues.length === 0) {
       return [{ name: 'SLA Compliance Rate', value: 0, unit: '%' }];
     }
+
+    const regions = context.holidays.regions || [];
+
+    const allDates = resolvedIssues.flatMap(i => [i.created, i.resolved!]).filter(Boolean);
+    const minDate = allDates.reduce((a, b) => a < b ? a : b);
+    const maxDate = allDates.reduce((a, b) => a > b ? a : b);
+    const holidaySet = getHolidayDateSet(minDate.getFullYear(), maxDate.getFullYear(), regions);
 
     const withinSlaIssues = resolvedIssues.filter((issue) => {
       const hours = calculateBusinessHours(issue.created, issue.resolved!, {
@@ -31,6 +38,7 @@ const slaCompliancePlugin: KpiPlugin = {
         workStartHour: context.holidays.workStartHour,
         workEndHour: context.holidays.workEndHour,
         workDaysPerWeek: context.holidays.workDaysPerWeek,
+        holidayDateSet: holidaySet,
       });
       return hours <= slaTargetHours;
     });
