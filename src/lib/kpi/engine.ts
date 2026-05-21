@@ -508,8 +508,16 @@ export class KpiEngine {
     period: { start: Date; end: Date },
     slaTargets?: Record<string, number>,
     globalFilters?: Record<string, string[]>,
-    useAnyoneCommentsForSla?: boolean
+    useAnyoneCommentsForSla?: boolean,
+    pluginIds?: string[]
   ): Record<string, KpiResult[]> {
+    // ── Determine which plugins to calculate ────────────────────────────
+    const targetIds = (pluginIds && pluginIds.length > 0)
+      ? pluginIds.filter(id => this.plugins.has(id))
+      : Array.from(this.plugins.keys());
+
+    if (targetIds.length === 0) return {};
+
     // ── Pre-compute once for entire batch ────────────────────────────────────
     let processedIssues = issues;
     if (globalFilters && Object.keys(globalFilters).length > 0) {
@@ -604,7 +612,7 @@ export class KpiEngine {
 
     // ── Calculate each plugin with shared preprocessed data ──────────────────
     const results: Record<string, KpiResult[]> = {};
-    for (const id of Array.from(this.plugins.keys())) {
+    for (const id of targetIds) {
       results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla, preprocessed);
     }
     weeklyIssueCache.clear();
