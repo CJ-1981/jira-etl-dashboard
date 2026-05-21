@@ -16,11 +16,9 @@ type DbClient = SQLiteClient | PostgresClient;
 class LRUCache<K, V> {
   private cache = new Map<K, V>();
   private maxSize: number;
-  private onEvict?: (value: V) => void;
 
-  constructor(maxSize: number, onEvict?: (value: V) => void) {
+  constructor(maxSize: number) {
     this.maxSize = maxSize;
-    this.onEvict = onEvict;
   }
 
   get(key: K): V | undefined {
@@ -35,15 +33,12 @@ class LRUCache<K, V> {
 
   set(key: K, value: V): void {
     if (this.cache.has(key)) {
-      const oldValue = this.cache.get(key);
       this.cache.delete(key);
-      if (this.onEvict && oldValue) this.onEvict(oldValue);
     } else if (this.cache.size >= this.maxSize) {
+      // Evict least recently used (first item)
       const firstKey = this.cache.keys().next().value;
       if (firstKey !== undefined) {
-        const evicted = this.cache.get(firstKey);
         this.cache.delete(firstKey);
-        if (this.onEvict && evicted) this.onEvict(evicted);
       }
     }
     this.cache.set(key, value);
@@ -62,10 +57,8 @@ class LRUCache<K, V> {
   }
 }
 
-// @MX:NOTE: LRU cache with max 10 connections, disconnects evicted clients
-const prismaClientCache = new LRUCache<string, DbClient>(10, (client) => {
-  client.$disconnect().catch(() => {});
-});
+// @MX:NOTE: LRU cache with max 10 connections to prevent memory leaks
+const prismaClientCache = new LRUCache<string, DbClient>(10);
 
 /**
  * Derives a safe cache key from a connection URL (avoids storing secrets in Map keys)

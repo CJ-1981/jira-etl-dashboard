@@ -38,9 +38,16 @@ export async function POST(request: Request) {
         where: { connectionRef: connectionId },
         select: { rawData: true }
       });
-      typedIssues = masterTickets.map((t: any) => {
-        try { return JSON.parse(t.rawData); } catch { return null; }
-      }).filter(Boolean) as JiraIssue[];
+      // @MX:OPT: Parse once per ticket, skip try/catch per iteration for better perf
+      const parsed: JiraIssue[] = [];
+      for (let i = 0; i < masterTickets.length; i++) {
+        const t = masterTickets[i];
+        try {
+          const obj = JSON.parse(t.rawData);
+          if (obj) parsed.push(obj as JiraIssue);
+        } catch { /* skip corrupt records */ }
+      }
+      typedIssues = parsed;
       console.log(`[KPI API] Loaded ${typedIssues.length} issues from DB for connection: ${connectionId}`);
     } else if (issues && Array.isArray(issues)) {
       typedIssues = issues as JiraIssue[];

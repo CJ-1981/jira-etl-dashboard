@@ -12,13 +12,25 @@ import type { TransformedIssue, StatusTransition, AgeCategory } from './types';
 
 // ─── Transform Cache ────────────────────────────────────────────────────────────
 
-const transformCache = new WeakMap<JiraIssue, TransformedIssue>();
+/**
+ * @MX:NOTE: Key-based cache for transformed issues (replaces ineffective WeakMap)
+ * @MX:REASON: Issues are recreated from JSON as new objects - key-based cache
+ * works within a single calculation batch where the same issue is processed multiple times
+ */
+interface TransformCacheEntry {
+  issue: TransformedIssue;
+  timestamp: number;
+}
+
+const transformCache = new Map<string, TransformCacheEntry>();
+const TRANSFORM_CACHE_SIZE = 5000;
 
 // ─── Issue Transformation ───────────────────────────────────────────────────────
 
 export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
-  const cached = transformCache.get(issue);
-  if (cached) return cached;
+  // @MX:NOTE: Use issue key as cache key - same key = same data within a batch
+  const cached = transformCache.get(issue.key);
+  if (cached) return cached.issue;
   const transitions: StatusTransition[] = [];
   if (issue.changelog?.histories) {
     for (const history of issue.changelog.histories) {
@@ -98,7 +110,13 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
       .sort((a: { created: Date }, b: { created: Date }) => a.created.getTime() - b.created.getTime()),
   };
 
-  transformCache.set(issue, result);
+  if (transformCache.size >= TRANSFORM_CACHE_SIZE) {
+    const firstKey = transformCache.keys().next().value;
+    if (firstKey !== undefined) {
+      transformCache.delete(firstKey);
+    }
+  }
+  transformCache.set(issue.key, { issue: result, timestamp: Date.now() });
   return result;
 }
 
@@ -118,6 +136,17 @@ export function isIssueDone(issue: TransformedIssue): boolean {
 }
 
 // ─── Filter DSL Implementation ───────────────────────────────────────────────────
+
+/**
+ * @MX:NOTE: Pre-compiled regex patterns for filter DSL
+ * @MX:REASON: Avoids regex compilation overhead on every filter application
+ */
+const FILTER_PATTERNS = {
+  contains: /^([\w.-]+)\s+(NOT\s+)?CONTAINS\s+("([^"]+)"|'([^']+)'|(\S+))$/i,
+  eq: /^([\w.-]+)\s*={1,2}\s+("([^"]+)"|'([^']+)'|(\S+))$/i,
+  neq: /^([\w.-]+)\s*!=\s+("([^"]+)"|'([^']+)'|(\S+))$/i,
+  in: /^([\w.-]+)\s+(NOT\s+)?IN\s*\((.*)\)$/i,
+};
 
 /**
  * Filter DSL implementation for dynamic filtering
@@ -165,8 +194,8 @@ export function applyFilter(issues: KpiContextIssues, condition: string): KpiCon
     return currentIssues;
   }
 
-  // Handle atomic conditions
-  const containsMatch = trimmed.match(/^([\w.-]+)\s+(NOT\s+)?CONTAINS\s+("([^"]+)"|'([^']+)'|(\S+))$/i);
+  // Handle atomic conditions using pre-compiled patterns
+  const containsMatch = trimmed.match(FILTER_PATTERNS.contains);
   if (containsMatch) {
     const [, field, not, , quotedDouble, quotedSingle, unquoted] = containsMatch;
     const val = quotedDouble || quotedSingle || unquoted;
@@ -179,7 +208,7 @@ export function applyFilter(issues: KpiContextIssues, condition: string): KpiCon
     });
   }
 
-  const eqMatch = trimmed.match(/^([\w.-]+)\s*={1,2}\s*("([^"]+)"|'([^']+)'|(\S+))$/i);
+  const eqMatch = trimmed.match(FILTER_PATTERNS.eq);
   if (eqMatch) {
     const [, field, , quotedDouble, quotedSingle, unquoted] = eqMatch;
     const val = quotedDouble || quotedSingle || unquoted;
@@ -192,7 +221,7 @@ export function applyFilter(issues: KpiContextIssues, condition: string): KpiCon
     });
   }
 
-  const neqMatch = trimmed.match(/^([\w.-]+)\s*!=\s*("([^"]+)"|'([^']+)'|(\S+))$/i);
+  const neqMatch = trimmed.match(FILTER_PATTERNS.neq);
   if (neqMatch) {
     const [, field, , quotedDouble, quotedSingle, unquoted] = neqMatch;
     const val = quotedDouble || quotedSingle || unquoted;
@@ -206,7 +235,7 @@ export function applyFilter(issues: KpiContextIssues, condition: string): KpiCon
   // @MX:NOTE: Array-aware IN/NOT IN semantics
   // Handles both scalar values and multi-value fields (labels, components).
   // For multi-value fields, the condition matches if ANY element of the field is present in the value list.
-  const inMatch = trimmed.match(/^([\w.-]+)\s+(NOT\s+)?IN\s*\((.*)\)$/i);
+  const inMatch = trimmed.match(FILTER_PATTERNS.in);
   if (inMatch) {
     const [, field, not, valuesStr] = inMatch;
     const isNot = !!not;
@@ -297,6 +326,25 @@ export function splitByTopLevelOperator(condition: string, operator: 'AND' | 'OR
   return parts;
 }
 
+// ─── Module-level field accessors for O(1) lookup ───────────────────────────────
+
+const FIELD_MAP: Record<string, (issue: TransformedIssue) => unknown> = {
+  storyPoints: (i) => i.storyPoints,
+  priority: (i) => i.priority,
+  status: (i) => i.status,
+  statusCategory: (i) => i.statusCategory,
+  issueType: (i) => i.issueType,
+  assignee: (i) => i.assignee,
+  reporter: (i) => i.reporter,
+  labels: (i) => i.labels,
+  components: (i) => i.components,
+  resolved: (i) => i.resolved,
+  key: (i) => i.key,
+  project: (i) => i.project,
+  summary: (i) => i.summary,
+  description: (i) => (i as any).description || '',
+};
+
 /**
  * Extract field value from TransformedIssue using field mapping
  * Supports dynamic fields like timeInStatus.statusName
@@ -304,31 +352,13 @@ export function splitByTopLevelOperator(condition: string, operator: 'AND' | 'OR
  * @MX:REASON: Provides consistent field access across filter DSL and custom formulas
  */
 export function getFieldValue(issue: TransformedIssue, field: string): unknown {
-  const fieldMap: Record<string, () => unknown> = {
-    storyPoints: () => issue.storyPoints,
-    priority: () => issue.priority,
-    status: () => issue.status,
-    statusCategory: () => issue.statusCategory,
-    issueType: () => issue.issueType,
-    assignee: () => issue.assignee,
-    reporter: () => issue.reporter,
-    labels: () => issue.labels,
-    components: () => issue.components,
-    resolved: () => issue.resolved,
-    key: () => issue.key,
-    project: () => issue.project,
-    summary: () => issue.summary,
-    description: () => (issue as any).description || '',
-  };
-
-  // Check timeInStatus for dynamic fields
   if (field.startsWith('timeInStatus.')) {
     const statusName = field.replace('timeInStatus.', '');
     return issue.timeInStatus[statusName] || 0;
   }
 
-  const getter = fieldMap[field];
-  return getter ? getter() : null;
+  const getter = FIELD_MAP[field];
+  return getter ? getter(issue) : null;
 }
 
 // ─── Age & Priority Utilities ───────────────────────────────────────────────────

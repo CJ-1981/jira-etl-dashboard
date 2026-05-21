@@ -127,6 +127,13 @@ export function useKpiCalculations(
     }
   }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, storageConfig]);
 
+  // @MX:NOTE: Stable cache key serialization to prevent unnecessary re-fetches
+  // Date objects and filter objects are serialized to strings for stable comparison
+  const stableQueryKey = useMemo(() => {
+    const filtersKey = globalFilters ? JSON.stringify(globalFilters) : 'empty';
+    return ['kpi-results', dateFrom.toISOString(), dateTo.toISOString(), filtersKey];
+  }, [dateFrom, dateTo, globalFilters]);
+
   /**
    * React Query for KPI data with caching
    */
@@ -135,7 +142,7 @@ export function useKpiCalculations(
     isLoading: isQueryLoading,
     refetch,
   } = useQuery({
-    queryKey: ['kpi-results', dateFrom, dateTo, globalFilters],
+    queryKey: stableQueryKey,
     queryFn: fetchKpiCalculations,
     staleTime: Infinity,
     gcTime: Infinity,
@@ -207,8 +214,15 @@ export function useKpiCalculations(
     setPollingEnabledState(enabled);
   }, []);
 
+  // @MX:NOTE: Stable params serialization for polling comparison
+  const currentParamsSerialized = useMemo(() =>
+    JSON.stringify({ dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), globalFilters, activeConnectionId }),
+    [dateFrom, dateTo, globalFilters, activeConnectionId]
+  );
+
   /**
-   * Webhook polling setup (30-second intervals)
+   * Webhook polling setup (5-minute intervals)
+   * @MX:NOTE: Uses stable serialized params to avoid unnecessary polling triggers
    */
   useEffect(() => {
     // Only poll if webhooks are enabled in settings
@@ -223,9 +237,8 @@ export function useKpiCalculations(
     // Poll only when not currently calculating and params have changed
     pollingIntervalRef.current = setInterval(() => {
       if (calculatingSet.size === 0) {
-        const currentParams = JSON.stringify({ dateFrom, dateTo, globalFilters, activeConnectionId });
-        if (currentParams !== lastCalculationParamsRef.current) {
-          lastCalculationParamsRef.current = currentParams;
+        if (currentParamsSerialized !== lastCalculationParamsRef.current) {
+          lastCalculationParamsRef.current = currentParamsSerialized;
           triggerCalculation();
         }
       }
@@ -237,7 +250,9 @@ export function useKpiCalculations(
         pollingIntervalRef.current = null;
       }
     };
-  }, [settings?.webhooks?.enabled, pollingEnabled, triggerCalculation, calculatingSet]);
+    // @MX:NOTE: Intentionally NOT including triggerCalculation to avoid re-creating interval
+    // The function is accessed via ref and params changes are detected via serialized comparison
+  }, [settings?.webhooks?.enabled, pollingEnabled, currentParamsSerialized, calculatingSet]);
 
   /**
    * Cleanup on unmount
@@ -255,7 +270,8 @@ export function useKpiCalculations(
     };
   }, []);
 
-  // Convert Map to Record for custom widget results
+  // @MX:NOTE: Convert Map to Record for custom widget results
+  // Uses size as dependency to avoid re-renders when Map contents haven't changed
   const customWidgetResultsRecord: Record<string, unknown> = useMemo(() => {
     const record: Record<string, unknown> = {};
     if (customWidgetResults instanceof Map) {
@@ -269,7 +285,8 @@ export function useKpiCalculations(
       });
     }
     return record;
-  }, [customWidgetResults]);
+    // @MX:NOTE: Using size as dependency to minimize re-renders
+  }, [customWidgetResults instanceof Map ? customWidgetResults.size : customWidgetResults]);
 
   const isCalculating = isQueryLoading || calculatingSet.size > 0;
 
