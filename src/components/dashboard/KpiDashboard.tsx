@@ -805,6 +805,8 @@ export function KpiDashboard() {
         componentType = 'assignee'; // Team dimension uses same rendering as assignee
       } else if (dimension.bucket) {
         componentType = 'cycle-time-histogram'; // cycle_time_histogram and aging_wip both use ChartCard histogram renderer
+      } else if (dimension.activity) {
+        componentType = 'ticket-list'; // weekly_ticket_list plugin
       } else {
         componentType = 'main';
       }
@@ -2547,6 +2549,116 @@ export function KpiDashboard() {
                         theme={theme as any}
                         calculateWidgetJql={calculateWidgetJql}
                       />
+                    </div>
+                  ) : null;
+
+                case 'ticket-list':
+                  return widget.kpis.length > 0 ? (
+                    <div key={`ticket-list-${widget.kpis[0].pluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
+                      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Ticket className="h-4 w-4 text-blue-500" />
+                            Weekly Ticket Overview
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div
+                            className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto resize-y min-h-[200px] max-h-[600px]"
+                            style={{ height: '400px' }}
+                          >
+                            {/* This Week */}
+                            <div className="space-y-3">
+                              <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">This Week</h4>
+                              {(['opened', 'closed'] as const).map((activity) => {
+                                const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity);
+                                if (!result) return null;
+                                const color = activity === 'opened' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+                                const bgColor = activity === 'opened' ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-rose-50 dark:bg-rose-950/30';
+                                return (
+                                  <div key={`this-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                                    <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor}`}>
+                                      <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
+                                      <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
+                                    </div>
+                                    <div className="max-h-[150px] overflow-y-auto">
+                                      {(result.ticketKeys || []).length === 0 && (
+                                        <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
+                                      )}
+                                      {(result.ticketKeys || []).map((key) => {
+                                        const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
+                                        if (!issue) return null;
+                                        const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
+                                        const baseUrl = activeConnection?.baseUrl || '';
+                                        const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+                                        const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+                                        return (
+                                          <div key={key} className="px-3 py-2 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
+                                            <div className="flex items-start justify-between gap-2 mb-0.5">
+                                              <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-mono font-bold text-blue-500 hover:underline">{key}</a>
+                                              <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
+                                            </div>
+                                            <p className="text-[11px] text-slate-700 dark:text-slate-300 line-clamp-1">{issue.fields?.summary || issue.summary}</p>
+                                            <div className="flex items-center gap-3 text-[9px] text-slate-400 mt-0.5">
+                                              <span>{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                              <span>{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Last Week */}
+                            <div className="space-y-3">
+                              <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Last Week</h4>
+                              {(['opened', 'closed'] as const).map((activity) => {
+                                const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity);
+                                if (!result) return null;
+                                const color = activity === 'opened' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+                                const bgColor = activity === 'opened' ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-rose-50 dark:bg-rose-950/30';
+                                return (
+                                  <div key={`last-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                                    <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor}`}>
+                                      <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
+                                      <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
+                                    </div>
+                                    <div className="max-h-[150px] overflow-y-auto">
+                                      {(result.ticketKeys || []).length === 0 && (
+                                        <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
+                                      )}
+                                      {(result.ticketKeys || []).map((key) => {
+                                        const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
+                                        if (!issue) return null;
+                                        const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
+                                        const baseUrl = activeConnection?.baseUrl || '';
+                                        const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+                                        const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+                                        return (
+                                          <div key={key} className="px-3 py-2 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
+                                            <div className="flex items-start justify-between gap-2 mb-0.5">
+                                              <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-mono font-bold text-blue-500 hover:underline">{key}</a>
+                                              <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
+                                            </div>
+                                            <p className="text-[11px] text-slate-700 dark:text-slate-300 line-clamp-1">{issue.fields?.summary || issue.summary}</p>
+                                            <div className="flex items-center gap-3 text-[9px] text-slate-400 mt-0.5">
+                                              <span>{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                              <span>{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
                     </div>
                   ) : null;
 
