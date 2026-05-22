@@ -118,21 +118,16 @@ export function ViewManager() {
       if (data.success) {
         setSavedViews(data.views);
 
-        // Reset active view before restoring to avoid stale view ID from previous connection
-        if (restoreViewId) {
-          setActiveView(null);
-        }
-
         // Restore the saved view if requested
         if (restoreViewId) {
           const viewToRestore = data.views.find((v: DashboardView) => v.id === restoreViewId);
-          if (viewToRestore && !activeView) {
+          if (viewToRestore) {
             loadView(viewToRestore);
             return;
           }
         }
 
-        // If there's a default view and no active view, load it
+        // If there's a default view and no active view (or we're on initial load), load it
         const defaultView = data.views.find((v: DashboardView) => v.isDefault);
         if (defaultView && !activeView) {
           loadView(defaultView);

@@ -314,6 +314,32 @@ export function KpiDashboard() {
   const lastSaveRequestId = useRef(0);
 
   // @MX:NOTE: Saved View change detection and auto-save logic
+  // @MX:REASON - Normalize data before comparison to prevent false positives from Set/Array ordering
+  const normalizeViewData = (data: any) => {
+    return JSON.stringify(data, (key, value) => {
+      if (value instanceof Set) {
+        // Sort Set elements for consistent serialization
+        return Array.from(value).sort();
+      }
+      if (Array.isArray(value)) {
+        // Sort arrays of strings/numbers for consistency
+        if (value.length > 0 && typeof value[0] === 'string') {
+          return value.sort();
+        }
+      }
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        // Sort object keys for consistent serialization
+        const sortedKeys = Object.keys(value).sort();
+        const sortedObj: any = {};
+        sortedKeys.forEach(k => {
+          sortedObj[k] = value[k];
+        });
+        return sortedObj;
+      }
+      return value;
+    });
+  };
+
   useEffect(() => {
     if (!activeView) {
       setIsViewModified(false);
@@ -334,9 +360,9 @@ export function KpiDashboard() {
 
     try {
       const savedData = JSON.parse(activeView.data);
-      
-      // Deep comparison via stringification
-      const isModified = JSON.stringify(currentData) !== JSON.stringify(savedData);
+
+      // Deep comparison via normalized stringification
+      const isModified = normalizeViewData(currentData) !== normalizeViewData(savedData);
       setIsViewModified(isModified);
 
       // Auto-save logic
@@ -353,7 +379,7 @@ export function KpiDashboard() {
               })
             });
             const data = await res.json();
-            
+
             // Only update state if this is still the latest request
             if (data.success && requestId === lastSaveRequestId.current) {
               setActiveView(data.view);
@@ -2685,15 +2711,32 @@ export function KpiDashboard() {
                                               const issue = issueMap.get(key);
                                               if (!issue) return null;
                                               const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
+                                              const summaryText = issue.fields?.summary || issue.summary || '';
                                               return (
-                                                <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
-                                                  <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
-                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
-                                                  <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
-                                                  <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                  <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
-                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
-                                                </div>
+                                                <TooltipProvider key={key}>
+                                                  <UITooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
+                                                        <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
+                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
+                                                        <span className="text-slate-700 dark:text-slate-300 truncate" title={summaryText}>{summaryText}</span>
+                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.status?.name || issue.status}</Badge>
+                                                      </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" hideArrow={true} className="max-w-md p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xl">
+                                                      <div className="space-y-1">
+                                                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-1">{key}</p>
+                                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{summaryText}</p>
+                                                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                                        </div>
+                                                      </div>
+                                                    </TooltipContent>
+                                                  </UITooltip>
+                                                </TooltipProvider>
                                               );
                                             })}
                                           </div>
@@ -2727,15 +2770,32 @@ export function KpiDashboard() {
                                               const issue = issueMap.get(key);
                                               if (!issue) return null;
                                               const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
+                                              const summaryText = issue.fields?.summary || issue.summary || '';
                                               return (
-                                                <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
-                                                  <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
-                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
-                                                  <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
-                                                  <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                  <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
-                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
-                                                </div>
+                                                <TooltipProvider key={key}>
+                                                  <UITooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
+                                                        <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
+                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
+                                                        <span className="text-slate-700 dark:text-slate-300 truncate" title={summaryText}>{summaryText}</span>
+                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.status?.name || issue.status}</Badge>
+                                                      </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" hideArrow={true} className="max-w-md p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xl">
+                                                      <div className="space-y-1">
+                                                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-1">{key}</p>
+                                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{summaryText}</p>
+                                                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                                        </div>
+                                                      </div>
+                                                    </TooltipContent>
+                                                  </UITooltip>
+                                                </TooltipProvider>
                                               );
                                             })}
                                           </div>
