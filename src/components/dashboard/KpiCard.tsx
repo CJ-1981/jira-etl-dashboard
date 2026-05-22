@@ -55,7 +55,7 @@ import {
 } from '@/components/ui/select';
 
 // ─── KPI Card (Single Widget) ────────────────────────────────────────────────
-export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitleChange }: {
+interface KpiCardProps {
   result: {
     name: string;
     value: number;
@@ -71,7 +71,11 @@ export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitl
   // @MX:NOTE: Per-view custom widget title support
   customTitle?: string;
   onTitleChange?: (newTitle: string) => void;
-}) {
+}
+
+// @MX:NOTE: Wrapped with React.memo to prevent unnecessary re-renders
+// @MX:REASON: KpiCard is expensive due to chart rendering, only re-render when result changes
+export const KpiCard = React.memo(function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitleChange }: KpiCardProps) {
   const { settings } = useAppStore();
   const alertConfig = settings?.alerts?.thresholds?.[pluginId];
 
@@ -341,7 +345,7 @@ export function KpiCard({ result, pluginId, onHide, onClick, customTitle, onTitl
       </CardContent>
     </Card>
   );
-}
+});
 
 // ─── Chart Card (Configurable Chart Component) ────────────────────────────────
 

@@ -104,6 +104,10 @@ interface AppState {
   collapsedWidgets: Set<string>;
   setCollapsedWidgets: (widgets: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
 
+  // @MX:ANCHOR: Widget Heights
+  widgetHeights: Record<string, number>;
+  setWidgetHeights: (heights: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>)) => void;
+
   // @MX:ANCHOR: Widget Display Order
   // @MX:NOTE: Controls the order of widgets (individual KPIs and panel sections) on the dashboard.
   widgetDisplayOrder: string[];
@@ -222,6 +226,11 @@ export const useAppStore = create<AppState>((set) => ({
   collapsedWidgets: new Set(),
   setCollapsedWidgets: (widgets) => set((state) => ({
     collapsedWidgets: new Set(typeof widgets === 'function' ? widgets(new Set(state.collapsedWidgets)) : widgets)
+  })),
+
+  widgetHeights: {},
+  setWidgetHeights: (heights) => set((state) => ({
+    widgetHeights: typeof heights === 'function' ? heights(state.widgetHeights) : heights
   })),
 
   // @MX:ANCHOR: Widget Display Order

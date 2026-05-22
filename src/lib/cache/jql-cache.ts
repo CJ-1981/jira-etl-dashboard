@@ -54,7 +54,6 @@ function hashJql(context: CalculationContext): string {
 
 class JqlCache {
   private cache: Map<string, CacheEntry> = new Map();
-  private accessOrder: string[] = [];
   private config: JqlCacheConfig;
 
   constructor(config: Partial<JqlCacheConfig> = {}) {
@@ -73,13 +72,12 @@ class JqlCache {
     const now = Date.now();
     if (now - entry.timestamp > this.config.ttlMs) {
       this.cache.delete(key);
-      this.accessOrder = this.accessOrder.filter(k => k !== key);
       return null;
     }
 
-    // Update access order (LRU)
-    this.accessOrder = this.accessOrder.filter(k => k !== key);
-    this.accessOrder.push(key);
+    // Update access order (LRU): delete and re-insert to move to end
+    this.cache.delete(key);
+    this.cache.set(key, entry);
 
     return entry.results;
   }
@@ -88,33 +86,28 @@ class JqlCache {
     const key = hashJql(context);
     const now = Date.now();
 
-    // If already exists, update and move to end
+    // If already exists, delete first to move to end (Map preserves insertion order)
     if (this.cache.has(key)) {
-      this.accessOrder = this.accessOrder.filter(k => k !== key);
-    } else {
-      // Evict oldest if at capacity
-      if (this.cache.size >= this.config.maxEntries) {
-        const oldestKey = this.accessOrder.shift();
-        if (oldestKey) {
-          this.cache.delete(oldestKey);
-        }
+      this.cache.delete(key);
+    } else if (this.cache.size >= this.config.maxEntries) {
+      // Evict oldest (first entry in Map)
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey) {
+        this.cache.delete(oldestKey);
       }
     }
 
     this.cache.set(key, { results, timestamp: now });
-    this.accessOrder.push(key);
   }
 
   clear(): void {
     this.cache.clear();
-    this.accessOrder = [];
   }
 
-  // Get cache statistics for debugging
   getStats(): { size: number; keys: string[] } {
     return {
       size: this.cache.size,
-      keys: this.accessOrder,
+      keys: Array.from(this.cache.keys()),
     };
   }
 }

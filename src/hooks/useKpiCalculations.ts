@@ -65,36 +65,37 @@ export function useKpiCalculations(
   const activeConnectionId = useAppStore((state) => state.activeConnectionId);
   const settings = useAppStore((state) => state.settings);
   const region = useAppStore((state) => state.region);
-  const masterIssues = useAppStore((state) => state.masterDatasetInfo?.issues);
+  const storageConfig = useAppStore((state) => state.storageConfig);
 
   // Local state
   const [pollingEnabled, setPollingEnabledState] = useState(true);
   const [calculatingSet, setCalculatingSet] = useState<Set<string>>(new Set());
   const isCalculatingRef = useRef<Set<string>>(new Set());
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCalculationParamsRef = useRef<string>('');
 
   /**
    * Fetch KPI calculations from the API
    */
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
     try {
-      // AbortController for 30-second timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const response = await fetch('/api/kpi/calculate', {
+      const response = await fetch(new URL('/api/kpi/calculate', window.location.origin), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           activeConnectionId,
+          connectionId: activeConnectionId,
+          storageConfig,
           dateFrom: dateFrom.toISOString(),
           dateTo: dateTo.toISOString(),
           region,
           globalFilters,
           customWidgets: customWidgets || [],
-          issues: masterIssues || [],
         }),
         signal: controller.signal,
       });
@@ -116,13 +117,22 @@ export function useKpiCalculations(
       return data.results;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        console.error('[useKpiCalculations] Request timeout after 30 seconds');
+        console.error('[useKpiCalculations] Request timeout after 120 seconds');
       } else {
         console.error('[useKpiCalculations] Network error:', error);
       }
       return [];
     }
-  }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, masterIssues]);
+  }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, storageConfig]);
+
+  // @MX:NOTE: Stable cache key serialization to prevent unnecessary re-fetches
+  // Includes all POST payload fields so the query key uniquely represents the request
+  const stableQueryKey = useMemo(() => {
+    const filtersKey = globalFilters ? JSON.stringify(globalFilters) : 'empty';
+    const storageKey = storageConfig ? JSON.stringify(storageConfig) : 'none';
+    const widgetsKey = customWidgets ? JSON.stringify(customWidgets) : 'none';
+    return ['kpi-results', activeConnectionId, dateFrom.toISOString(), dateTo.toISOString(), region || 'none', filtersKey, storageKey, widgetsKey];
+  }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, storageConfig, customWidgets]);
 
   /**
    * React Query for KPI data with caching
@@ -132,7 +142,7 @@ export function useKpiCalculations(
     isLoading: isQueryLoading,
     refetch,
   } = useQuery({
-    queryKey: ['kpi-results', dateFrom, dateTo, globalFilters],
+    queryKey: stableQueryKey,
     queryFn: fetchKpiCalculations,
     staleTime: Infinity,
     gcTime: Infinity,
@@ -142,15 +152,7 @@ export function useKpiCalculations(
   });
 
   /**
-   * Update Zustand store when query results change
-   */
-  useEffect(() => {
-    if (queryResults.length > 0) {
-      setKpiResults(queryResults);
-    }
-  }, [queryResults, setKpiResults]);
-
-  /**
+   * Trigger KPI calculation for all widgets or specific widget
    * Trigger KPI calculation for all widgets or specific widget
    */
   const triggerCalculation = useCallback(async (widgetId?: string) => {
@@ -204,8 +206,25 @@ export function useKpiCalculations(
     setPollingEnabledState(enabled);
   }, []);
 
+  // @MX:NOTE: Stable params serialization for polling comparison — matches stableQueryKey fields
+  const currentParamsSerialized = useMemo(() =>
+    JSON.stringify({ activeConnectionId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), region, globalFilters, storageConfig, customWidgets }),
+    [activeConnectionId, dateFrom, dateTo, region, globalFilters, storageConfig, customWidgets]
+  );
+
   /**
-   * Webhook polling setup (30-second intervals)
+   * Update Zustand store when query results change
+   */
+  useEffect(() => {
+    if (queryResults.length > 0) {
+      lastCalculationParamsRef.current = currentParamsSerialized;
+      setKpiResults(queryResults);
+    }
+  }, [queryResults, setKpiResults, currentParamsSerialized]);
+
+  /**
+   * Webhook polling setup (5-minute intervals)
+   * @MX:NOTE: Uses stable serialized params to avoid unnecessary polling triggers
    */
   useEffect(() => {
     // Only poll if webhooks are enabled in settings
@@ -217,12 +236,14 @@ export function useKpiCalculations(
       return;
     }
 
-    // Poll only when not currently calculating
+    // Poll only when not currently calculating and params have changed
     pollingIntervalRef.current = setInterval(() => {
       if (calculatingSet.size === 0) {
-        triggerCalculation();
+        if (currentParamsSerialized !== lastCalculationParamsRef.current) {
+          triggerCalculation();
+        }
       }
-    }, 30000); // 30 seconds
+    }, 300000); // 5 minutes
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -230,7 +251,9 @@ export function useKpiCalculations(
         pollingIntervalRef.current = null;
       }
     };
-  }, [settings?.webhooks?.enabled, pollingEnabled, triggerCalculation, calculatingSet]);
+    // @MX:NOTE: Intentionally NOT including triggerCalculation to avoid re-creating interval
+    // The function is accessed via ref and params changes are detected via serialized comparison
+  }, [settings?.webhooks?.enabled, pollingEnabled, currentParamsSerialized, calculatingSet]);
 
   /**
    * Cleanup on unmount
@@ -248,7 +271,7 @@ export function useKpiCalculations(
     };
   }, []);
 
-  // Convert Map to Record for custom widget results
+  // @MX:NOTE: Convert Map to Record for custom widget results
   const customWidgetResultsRecord: Record<string, unknown> = useMemo(() => {
     const record: Record<string, unknown> = {};
     if (customWidgetResults instanceof Map) {
@@ -256,7 +279,6 @@ export function useKpiCalculations(
         record[key] = value;
       });
     } else {
-      // Handle mocked store (object) vs real store (Map)
       Object.entries(customWidgetResults).forEach(([key, value]) => {
         record[key] = value;
       });

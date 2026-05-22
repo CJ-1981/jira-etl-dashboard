@@ -10,84 +10,109 @@ import type { JiraIssue } from '../jira/client';
 import { extractSelectFieldValue } from '../jira/client';
 import { PluginLoader } from './plugin-loader';
 import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
+import { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone } from './engine-utils';
 
-// ─── Legacy Type Aliases for Backward Compatibility ────────────────────────────
-
-// Re-export types from types.ts for backward compatibility
 export type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition };
+export { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone };
 
-// ─── Transform ───────────────────────────────────────────────────────────────
+// ─── Field accessor map for O(1) lookup ───────────────────────────────────────
+// Replaces the if/else chain in the global filter application below.
+const FIELD_ACCESSORS: Record<string, (t: TransformedIssue) => string | string[]> = {
+  assignee: (t) => t.assignee,
+  priority: (t) => t.priority || 'None',
+  issueType: (t) => t.issueType,
+  status: (t) => t.status,
+  statusCategory: (t) => t.statusCategory,
+  reporter: (t) => t.reporter,
+  project: (t) => t.project,
+  component: (t) => t.components,
+  label: (t) => t.labels,
+  issueOwnerTeam: (t) => t.issueOwnerTeam || 'Unassigned',
+};
 
-function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
-  const transitions: StatusTransition[] = [];
-  if (issue.changelog?.histories) {
-    for (const history of issue.changelog.histories) {
-      for (const item of history.items) {
-        if (item.field === 'status') {
-          transitions.push({
-            fromStatus: item.fromString || null,
-            toStatus: item.toString || 'Unknown',
-            author: history.author?.displayName || 'Unknown',
-            occurredAt: new Date(history.created),
-          });
-        }
-      }
-    }
-  }
-
-  // Sort transitions chronologically (Jira returns changelog in reverse order)
-  transitions.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-
-  // Calculate time in each status
-  const timeInStatus: Record<string, number> = {};
-  for (let i = 0; i < transitions.length; i++) {
-    const endTime = transitions[i + 1]
-      ? transitions[i + 1].occurredAt.getTime()
-      : Date.now();
-    const durationHours = (endTime - transitions[i].occurredAt.getTime()) / (1000 * 60 * 60);
-    const status = transitions[i].toStatus;
-    timeInStatus[status] = (timeInStatus[status] || 0) + durationHours;
-  }
-
-  return {
-    key: issue.key,
-    project: (issue.fields as any)?.project?.name || (issue.fields as any)?.project?.key || issue.key.split('-')[0],
-    summary: issue.fields?.summary || (issue as any).summary || 'No Summary',
-    issueType: issue.fields?.issuetype?.name || (issue as any).issueType || 'Task',
-    priority: issue.fields?.priority?.name || (issue as any).priority || null,
-    status: issue.fields?.status?.name || (issue as any).status || 'Unknown',
-    statusCategory: issue.fields?.status?.statusCategory?.name || (issue as any).statusCategory || 'Unknown',
-    assignee: issue.fields?.assignee?.displayName || (issue as any).assignee || 'Unassigned',
-    reporter: issue.fields?.reporter?.displayName || (issue as any).reporter || 'Unknown',
-    issueOwnerTeam: extractSelectFieldValue((issue.fields as any)?.customfield_10132) || (issue.fields as any)?.issueOwnerTeam || (issue as any).issueOwnerTeam || null,
-    created: new Date(issue.fields?.created || (issue as any).created || Date.now()),
-    updated: new Date(issue.fields?.updated || (issue as any).updated || Date.now()),
-    resolved: (issue.fields?.resolutiondate || (issue as any).resolved) ? new Date(issue.fields?.resolutiondate || (issue as any).resolved) : null,
-    dueDate: (issue.fields?.duedate || (issue as any).dueDate) ? new Date(issue.fields?.duedate || (issue as any).dueDate) : null,
-    storyPoints: (issue.fields as any)?.customfield_10002 || (issue as any).storyPoints || null,
-    labels: issue.fields?.labels || (issue as any).labels || [],
-    components: issue.fields?.components?.map((c) => c.name) || (issue as any).components || [],
-    transitions,
-    timeInStatus,
-    comments: ((issue.fields as any)?.comment?.comments || [])
-      .map((c: { author?: { displayName?: string }; created: string | number | Date }) => ({
-        author: c.author?.displayName || 'Unknown',
-        created: new Date(c.created),
-      }))
-      .sort((a: { created: Date }, b: { created: Date }) => a.created.getTime() - b.created.getTime()),
-  };
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Weekly Cache ──────────────────────────────────────────────────────────────
 
 /**
- * Robust check if an issue is considered "Done" or "Resolved"
+ * @MX:NOTE: Weekly issue cache to prevent redundant filtering across plugin calculations
+ * @MX:REASON: Weekly breakdown was running O(n²) - once per plugin. This cache ensures
+ * we only filter issues by week once per calculation batch.
  */
-export function isIssueDone(issue: TransformedIssue): boolean {
-  if (issue.resolved) return true;
-  const status = (issue.status || '').toLowerCase();
-  const category = (issue.statusCategory || '').toLowerCase();
-  return category === 'done' || ['done', 'closed', 'resolved', 'completed', 'close', 'ready to close'].includes(status);
+interface WeeklyCacheEntry {
+  thisWeek: JiraIssue[];
+  lastWeek: JiraIssue[];
+  thisWeekStart: Date;
+  thisWeekEnd: Date;
+  lastWeekStart: Date;
+  lastWeekEnd: Date;
+}
+
+class WeeklyIssueCache {
+  private cache = new Map<string, WeeklyCacheEntry>();
+  private maxEntries = 5; // Keep last 5 calculation contexts
+
+  private getCacheKey(issues: JiraIssue[], globalFilters?: Record<string, string[]>): string {
+    // Create a key based on issue count and filter signature
+    const filterKey = globalFilters ? JSON.stringify(Object.keys(globalFilters).sort()) : 'no-filters';
+    return `${issues.length}:${filterKey}`;
+  }
+
+  get(
+    issues: JiraIssue[],
+    globalFilters?: Record<string, string[]>
+  ): WeeklyCacheEntry | undefined {
+    const key = this.getCacheKey(issues, globalFilters);
+    return this.cache.get(key);
+  }
+
+  set(
+    issues: JiraIssue[],
+    globalFilters: Record<string, string[]> | undefined,
+    entry: WeeklyCacheEntry
+  ): void {
+    const key = this.getCacheKey(issues, globalFilters);
+
+    // Evict oldest entries if cache is full
+    if (this.cache.size >= this.maxEntries) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
+      }
+    }
+
+    this.cache.set(key, entry);
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+// Module-level singleton cache
+const weeklyIssueCache = new WeeklyIssueCache();
+
+// ─── Preprocessed data for calculateAll() batch ────────────────────────────────
+
+interface Preprocessed {
+  /** Issues filtered by global filters AND period (for each plugin's main context) */
+  periodFilteredIssues: JiraIssue[];
+  /** Pre-transformed issues for the period */
+  transformed: TransformedIssue[];
+  /** Week boundary dates */
+  weekBoundaries: { thisWeekStart: Date; thisWeekEnd: Date; lastWeekStart: Date; lastWeekEnd: Date };
+  /** This week's filtered issues */
+  thisWeekIssues: JiraIssue[];
+  /** Last week's filtered issues */
+  lastWeekIssues: JiraIssue[];
+  /** This week's transformed issues */
+  thisWeekTransformed: TransformedIssue[];
+  /** Last week's transformed issues */
+  lastWeekTransformed: TransformedIssue[];
+  /** Previous period filtered issues */
+  prevPeriodIssues: JiraIssue[];
+  /** Previous period transformed issues */
+  prevPeriodTransformed: TransformedIssue[];
+  /** Previous period boundaries */
+  prevPeriod: { start: Date; end: Date };
 }
 
 // ─── KPI Engine ──────────────────────────────────────────────────────────────
@@ -128,6 +153,18 @@ export class KpiEngine {
 
   unregister(pluginId: string) {
     this.plugins.delete(pluginId);
+  }
+
+  clearCustomPlugins(): void {
+    const toDelete: string[] = [];
+    for (const [id, plugin] of this.plugins) {
+      if (plugin.pluginType === 'custom' || plugin.category === 'custom') {
+        toDelete.push(id);
+      }
+    }
+    for (const id of toDelete) {
+      this.plugins.delete(id);
+    }
   }
 
   getPlugin(pluginId: string): KpiPlugin | undefined {
@@ -186,8 +223,9 @@ export class KpiEngine {
     });
   }
 
-  /**
+/**
    * Run a specific KPI calculation
+   * @param _preprocessed - When provided (from calculateAll()), skips filter + transform + weekly precomputation
    */
   calculate(
     pluginId: string,
@@ -196,71 +234,145 @@ export class KpiEngine {
     period: { start: Date; end: Date },
     slaTargets?: Record<string, number>,
     globalFilters?: Record<string, string[]>,
-    useAnyoneCommentsForSla?: boolean
+    useAnyoneCommentsForSla?: boolean,
+    _preprocessed?: Preprocessed
   ): KpiResult[] {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) throw new Error(`KPI plugin not found: ${pluginId}`);
 
-    // 1. Apply global filters to all issues first
-    let processedIssues = issues;
-    if (globalFilters && Object.keys(globalFilters).length > 0) {
-      processedIssues = issues.filter(issue => {
-        const transformed = transformIssueForKpi(issue);
-        for (const [key, values] of Object.entries(globalFilters)) {
-          if (!values || values.length === 0) continue;
-          
-          if (key === 'jql') {
-            let matchesAllJql = true;
-            for (const query of values) {
-              const result = applyFilter([transformed], query);
-              if (result.length === 0) {
-                matchesAllJql = false;
-                break;
-              }
-            }
-            if (!matchesAllJql) return false;
-            continue;
-          }
+    let processedIssues: JiraIssue[];
+    let filteredIssues: JiraIssue[];
+    let transformed: TransformedIssue[];
+    let thisWeekIssues: JiraIssue[];
+    let lastWeekIssues: JiraIssue[];
+    let thisWeekTransformed: TransformedIssue[];
+    let lastWeekTransformed: TransformedIssue[];
+    let prevPeriodIssues: JiraIssue[];
+    let prevPeriodTransformed: TransformedIssue[];
+    let prevPeriod: { start: Date; end: Date };
 
-          let issueValue: string | string[] = '';
-          if (key === 'assignee') issueValue = transformed.assignee;
-          else if (key === 'priority') issueValue = transformed.priority || 'None';
-          else if (key === 'issueType') issueValue = transformed.issueType;
-          else if (key === 'status') issueValue = transformed.status;
-          else if (key === 'statusCategory') issueValue = transformed.statusCategory;
-          else if (key === 'reporter') issueValue = transformed.reporter;
-          else if (key === 'project') issueValue = transformed.project;
-          else if (key === 'component') issueValue = transformed.components;
-          else if (key === 'label') issueValue = transformed.labels;
-          else if (key === 'issueOwnerTeam') issueValue = transformed.issueOwnerTeam || 'Unassigned';
-          else {
-            // Fallback for unknown keys (dynamic custom fields)
-            // Use extractSelectFieldValue to handle select, user, and multi-value fields
-            issueValue = extractSelectFieldValue((issue.fields as any)[key]) || 'None';
-          }
-
-          const lowerValues = values.map(v => v.toLowerCase());
-          const match = Array.isArray(issueValue) 
-            ? issueValue.some(v => lowerValues.includes(v.toLowerCase()))
-            : lowerValues.includes(String(issueValue || '').toLowerCase());
+    if (_preprocessed) {
+      // @MX:OPT: Use pre-computed data from calculateAll() — avoid redundant filter/transform/weekly
+      filteredIssues = _preprocessed.periodFilteredIssues;
+      transformed = _preprocessed.transformed;
+      thisWeekIssues = _preprocessed.thisWeekIssues;
+      lastWeekIssues = _preprocessed.lastWeekIssues;
+      thisWeekTransformed = _preprocessed.thisWeekTransformed;
+      lastWeekTransformed = _preprocessed.lastWeekTransformed;
+      prevPeriodIssues = _preprocessed.prevPeriodIssues;
+      prevPeriodTransformed = _preprocessed.prevPeriodTransformed;
+      prevPeriod = _preprocessed.prevPeriod;
+      processedIssues = issues; // not used in precomputed path but referenced for compatibility
+    } else {
+      // 1. Apply global filters to all issues first
+      processedIssues = issues;
+      if (globalFilters && Object.keys(globalFilters).length > 0) {
+        processedIssues = issues.filter(issue => {
+          const transformed = transformIssueForKpi(issue);
+          for (const [key, values] of Object.entries(globalFilters)) {
+            if (!values || values.length === 0) continue;
             
-          if (!match) return false;
-        }
-        return true;
-      });
-      console.log(`[KPI Engine] Filters reduced issues from ${issues.length} to ${processedIssues.length}`);
-    }
+            if (key === 'jql') {
+              let matchesAllJql = true;
+              for (const query of values) {
+                const result = applyFilter([transformed], query);
+                if (result.length === 0) {
+                  matchesAllJql = false;
+                  break;
+                }
+              }
+              if (!matchesAllJql) return false;
+              continue;
+            }
 
-    // 2. Filter issues to those relevant for the period
-    const filteredIssues = this.filterIssuesByPeriod(processedIssues, period);
+            const accessor = FIELD_ACCESSORS[key];
+            let issueValue: string | string[] = accessor
+              ? accessor(transformed)
+              : extractSelectFieldValue((issue.fields as any)[key]) || 'None';
+
+            const lowerValues = values.map(v => v.toLowerCase());
+            const match = Array.isArray(issueValue) 
+              ? issueValue.some(v => lowerValues.includes(v.toLowerCase()))
+              : lowerValues.includes(String(issueValue || '').toLowerCase());
+              
+            if (!match) return false;
+          }
+          return true;
+        });
+        console.log(`[KPI Engine] Filters reduced issues from ${issues.length} to ${processedIssues.length}`);
+      }
+
+      // 2. Filter issues to those relevant for the period
+      filteredIssues = this.filterIssuesByPeriod(processedIssues, period);
+
+      // 3. Transform issues for this period
+      transformed = filteredIssues.map(transformIssueForKpi);
+
+      // 4. Weekly breakdown
+      const now = new Date();
+      const thisWeekStart = new Date(now);
+      const day = thisWeekStart.getDay();
+      const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
+      thisWeekStart.setDate(diff);
+      thisWeekStart.setHours(0, 0, 0, 0);
+
+      const thisWeekEnd = new Date(thisWeekStart);
+      thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
+
+      const lastWeekStart = new Date(thisWeekStart);
+      lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+
+      const lastWeekEnd = new Date(thisWeekStart);
+
+      const cachedWeekly = weeklyIssueCache.get(processedIssues, globalFilters);
+
+      if (cachedWeekly) {
+        thisWeekIssues = cachedWeekly.thisWeek;
+        lastWeekIssues = cachedWeekly.lastWeek;
+      } else {
+        thisWeekIssues = processedIssues.filter(i => {
+          const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
+          return d >= thisWeekStart && d < thisWeekEnd;
+        });
+
+        lastWeekIssues = processedIssues.filter(i => {
+          const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
+          return d >= lastWeekStart && d < lastWeekEnd;
+        });
+
+        weeklyIssueCache.set(processedIssues, globalFilters, {
+          thisWeek: thisWeekIssues,
+          lastWeek: lastWeekIssues,
+          thisWeekStart,
+          thisWeekEnd,
+          lastWeekStart,
+          lastWeekEnd,
+        });
+      }
+
+      thisWeekTransformed = thisWeekIssues.map(transformIssueForKpi);
+      lastWeekTransformed = lastWeekIssues.map(transformIssueForKpi);
+
+      // Previous period comparison
+      const currentDuration = period.end.getTime() - period.start.getTime();
+      prevPeriod = {
+        start: new Date(period.start.getTime() - currentDuration),
+        end: new Date(period.end.getTime() - currentDuration)
+      };
+      prevPeriodIssues = this.filterIssuesByPeriod(processedIssues, prevPeriod);
+      prevPeriodTransformed = prevPeriodIssues.map(transformIssueForKpi);
+}
+
+    // ── Build context and run calculation ──────────────────────────────────────
 
     const context: KpiContext = {
-      issues: filteredIssues.map(transformIssueForKpi),
+      issues: transformed,
       holidays: {
         dates: new Set(),
         regions: holidays.regions,
         workStartHour: holidays.workStartHour || 9,
         workEndHour: holidays.workEndHour || 17,
+        slaTargetHours: holidays.slaTargetHours,
         isHoliday: () => false,
         isWorkingDay: () => true,
       },
@@ -270,49 +382,38 @@ export class KpiEngine {
       globalFilters,
     };
 
-    // Debug logging to verify context is built correctly
     console.log(`[KPI Engine] Calculating ${pluginId} with useAnyoneCommentsForSla:`, useAnyoneCommentsForSla);
 
     const currentResults = plugin.calculate(context);
     const currentResultsArray = Array.isArray(currentResults) ? currentResults : [currentResults];
 
-    // 3. Weekly breakdown for all cards
-    const now = new Date();
-    // Current week start (Monday)
-    const thisWeekStart = new Date(now);
-    const day = thisWeekStart.getDay();
-    const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
-    thisWeekStart.setDate(diff);
-    thisWeekStart.setHours(0, 0, 0, 0);
+    const weekBoundaries = _preprocessed
+      ? _preprocessed.weekBoundaries
+      : (() => {
+          const now = new Date();
+          const tws = new Date(now);
+          const day = tws.getDay();
+          const diff = tws.getDate() - day + (day === 0 ? -6 : 1);
+          tws.setDate(diff);
+          tws.setHours(0, 0, 0, 0);
+          const twe = new Date(tws); twe.setDate(twe.getDate() + 7);
+          const lws = new Date(tws); lws.setDate(lws.getDate() - 7);
+          const lwe = new Date(tws);
+          return { thisWeekStart: tws, thisWeekEnd: twe, lastWeekStart: lws, lastWeekEnd: lwe };
+        })();
 
-    const thisWeekEnd = new Date(thisWeekStart);
-    thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
-
-    const lastWeekStart = new Date(thisWeekStart);
-    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-    
-    const lastWeekEnd = new Date(thisWeekStart);
-
-    const thisWeekIssues = processedIssues.filter(i => {
-      const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
-      return d >= thisWeekStart && d < thisWeekEnd;
-    });
-
-    const lastWeekIssues = processedIssues.filter(i => {
-      const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
-      return d >= lastWeekStart && d < lastWeekEnd;
-    });
+    // ── Weekly breakdown ──────────────────────────────────────────────────────
 
     const thisWeekContext: KpiContext = {
       ...context,
-      issues: thisWeekIssues.map(transformIssueForKpi),
-      period: { start: thisWeekStart, end: thisWeekEnd }
+      issues: thisWeekTransformed,
+      period: { start: weekBoundaries.thisWeekStart, end: weekBoundaries.thisWeekEnd }
     };
 
     const lastWeekContext: KpiContext = {
       ...context,
-      issues: lastWeekIssues.map(transformIssueForKpi),
-      period: { start: lastWeekStart, end: lastWeekEnd }
+      issues: lastWeekTransformed,
+      period: { start: weekBoundaries.lastWeekStart, end: weekBoundaries.lastWeekEnd }
     };
 
     try {
@@ -322,18 +423,16 @@ export class KpiEngine {
       const lastWeekResultsArray = Array.isArray(lastWeekResults) ? lastWeekResults : [lastWeekResults];
 
       currentResultsArray.forEach(res => {
-        // Find matching result in weekly sets (match by dimensions first, then name)
-        const matchResult = (resultSet: KpiResult[]) => {
-          return resultSet.find(r => {
-            if (res.dimensions && r.dimensions) {
-              const resKeys = Object.keys(res.dimensions);
-              const rKeys = Object.keys(r.dimensions);
-              if (resKeys.length !== rKeys.length) return false;
-              return resKeys.every(k => res.dimensions![k] === r.dimensions![k]);
-            }
-            return r.name === res.name;
-          });
-        };
+        const matchResult = (resultSet: KpiResult[]) => resultSet.find(r => {
+          if (res.dimensions && r.dimensions) {
+            const resKeys = Object.keys(res.dimensions);
+            const rKeys = Object.keys(r.dimensions);
+            if (resKeys.length !== rKeys.length) return false;
+            const dimsMatch = resKeys.every(k => res.dimensions![k] === r.dimensions![k]);
+            return dimsMatch && r.name === res.name;
+          }
+          return r.name === res.name;
+        });
 
         const tw = matchResult(thisWeekResultsArray);
         const lw = matchResult(lastWeekResultsArray);
@@ -342,8 +441,6 @@ export class KpiEngine {
           res.details = res.details || [];
           if (tw) res.details.push({ label: 'This Week', value: tw.value, unit: tw.unit });
           if (lw) res.details.push({ label: 'Previous Week', value: lw.value, unit: lw.unit });
-
-          // Update comparison for all cards to be Week-over-Week
           if (tw && lw) {
             res.comparison = {
               value: lw.value,
@@ -357,32 +454,21 @@ export class KpiEngine {
       console.warn(`Weekly breakdown failed for ${pluginId}:`, e);
     }
 
-    // 4. Comparison logic
-    // Only run if not already set by weekly breakdown (overview cards)
-    const currentDuration = period.end.getTime() - period.start.getTime();
-    const prevPeriod = {
-      start: new Date(period.start.getTime() - currentDuration),
-      end: new Date(period.end.getTime() - currentDuration)
-    };
-    const prevFilteredIssues = this.filterIssuesByPeriod(processedIssues, prevPeriod);
-    const prevContext: KpiContext = {
-      ...context,
-      issues: prevFilteredIssues.map(transformIssueForKpi),
-      period: prevPeriod,
-    };
+    // ── Previous period comparison ────────────────────────────────────────────
 
     try {
-      const previousResults = plugin.calculate(prevContext);
+      const previousResults = plugin.calculate({
+        ...context,
+        issues: prevPeriodTransformed,
+        period: prevPeriod,
+      });
       const previousResultsArray = Array.isArray(previousResults) ? previousResults : [previousResults];
       return currentResultsArray.map(res => {
-        // If we already have a comparison (e.g. from weekly breakdown), keep it
         if (res.comparison) return res;
 
         const prevRes = previousResultsArray.find(p => {
           const nameMatch = p.name === res.name;
           if (!nameMatch) return false;
-          
-          // Match dimensions if present
           if (res.dimensions || p.dimensions) {
             const resDims = res.dimensions || {};
             const pDims = p.dimensions || {};
@@ -391,10 +477,9 @@ export class KpiEngine {
             if (resKeys.length !== pKeys.length) return false;
             return resKeys.every(k => resDims[k] === pDims[k]);
           }
-          
           return true;
         });
-        
+
         if (prevRes && typeof prevRes.value === 'number') {
           const change = res.value - prevRes.value;
           return {
@@ -415,6 +500,8 @@ export class KpiEngine {
 
   /**
    * Run all registered KPI calculations
+   * @MX:OPT: Pre-computes filter results, transform, and weekly breakdown once per batch
+   * @MX:OPT: Passes preprocessed data to each calculate() call to avoid N× redundant work
    */
   calculateAll(
     issues: JiraIssue[],
@@ -422,12 +509,114 @@ export class KpiEngine {
     period: { start: Date; end: Date },
     slaTargets?: Record<string, number>,
     globalFilters?: Record<string, string[]>,
-    useAnyoneCommentsForSla?: boolean
+    useAnyoneCommentsForSla?: boolean,
+    pluginIds?: string[]
   ): Record<string, KpiResult[]> {
-    const results: Record<string, KpiResult[]> = {};
-    for (const id of Array.from(this.plugins.keys())) {
-      results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla);
+    // ── Determine which plugins to calculate ────────────────────────────
+    const targetIds = (pluginIds && pluginIds.length > 0)
+      ? pluginIds.filter(id => this.plugins.has(id))
+      : Array.from(this.plugins.keys());
+
+    if (targetIds.length === 0) return {};
+
+    // ── Pre-compute once for entire batch ────────────────────────────────────
+    let processedIssues = issues;
+    if (globalFilters && Object.keys(globalFilters).length > 0) {
+      processedIssues = issues.filter(issue => {
+        const transformed = transformIssueForKpi(issue);
+        for (const [key, values] of Object.entries(globalFilters)) {
+          if (!values || values.length === 0) continue;
+          if (key === 'jql') {
+            if (!values.every(query => applyFilter([transformed], query).length > 0)) return false;
+            continue;
+          }
+          const accessor = FIELD_ACCESSORS[key];
+          const issueValue: string | string[] = accessor
+            ? accessor(transformed)
+            : extractSelectFieldValue((issue.fields as any)[key]) || 'None';
+          const lowerValues = values.map(v => v.toLowerCase());
+          const match = Array.isArray(issueValue)
+            ? issueValue.some(v => lowerValues.includes(v.toLowerCase()))
+            : lowerValues.includes(String(issueValue || '').toLowerCase());
+          if (!match) return false;
+        }
+        return true;
+      });
+      console.log(`[KPI Engine] Filters reduced issues from ${issues.length} to ${processedIssues.length}`);
     }
+
+    const periodFilteredIssues = this.filterIssuesByPeriod(processedIssues, period);
+    const transformed = periodFilteredIssues.map(transformIssueForKpi);
+
+    // Weekly breakdown (computed once, shared across all plugins)
+    const now = new Date();
+    const thisWeekStart = new Date(now);
+    const day = thisWeekStart.getDay();
+    const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
+    thisWeekStart.setDate(diff);
+    thisWeekStart.setHours(0, 0, 0, 0);
+    const thisWeekEnd = new Date(thisWeekStart); thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
+    const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const lastWeekEnd = new Date(thisWeekStart);
+    const weekBoundaries = { thisWeekStart, thisWeekEnd, lastWeekStart, lastWeekEnd };
+
+    const cachedWeekly = weeklyIssueCache.get(processedIssues, globalFilters);
+    let thisWeekIssues: JiraIssue[];
+    let lastWeekIssues: JiraIssue[];
+
+    if (cachedWeekly) {
+      thisWeekIssues = cachedWeekly.thisWeek;
+      lastWeekIssues = cachedWeekly.lastWeek;
+    } else {
+      thisWeekIssues = processedIssues.filter(i => {
+        const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
+        return d >= thisWeekStart && d < thisWeekEnd;
+      });
+      lastWeekIssues = processedIssues.filter(i => {
+        const d = i.fields?.created ? new Date(i.fields.created) : new Date((i as any).created);
+        return d >= lastWeekStart && d < lastWeekEnd;
+      });
+      weeklyIssueCache.set(processedIssues, globalFilters, {
+        thisWeek: thisWeekIssues,
+        lastWeek: lastWeekIssues,
+        thisWeekStart,
+        thisWeekEnd,
+        lastWeekStart,
+        lastWeekEnd,
+      });
+    }
+
+    const thisWeekTransformed = thisWeekIssues.map(transformIssueForKpi);
+    const lastWeekTransformed = lastWeekIssues.map(transformIssueForKpi);
+
+    // Previous period
+    const currentDuration = period.end.getTime() - period.start.getTime();
+    const prevPeriod = {
+      start: new Date(period.start.getTime() - currentDuration),
+      end: new Date(period.end.getTime() - currentDuration)
+    };
+    const prevPeriodIssues = this.filterIssuesByPeriod(processedIssues, prevPeriod);
+    const prevPeriodTransformed = prevPeriodIssues.map(transformIssueForKpi);
+
+    const preprocessed: Preprocessed = {
+      periodFilteredIssues,
+      transformed,
+      weekBoundaries,
+      thisWeekIssues,
+      lastWeekIssues,
+      thisWeekTransformed,
+      lastWeekTransformed,
+      prevPeriodIssues,
+      prevPeriodTransformed,
+      prevPeriod,
+    };
+
+    // ── Calculate each plugin with shared preprocessed data ──────────────────
+    const results: Record<string, KpiResult[]> = {};
+    for (const id of targetIds) {
+      results[id] = this.calculate(id, issues, holidays, period, slaTargets, globalFilters, useAnyoneCommentsForSla, preprocessed);
+    }
+    weeklyIssueCache.clear();
     return results;
   }
 
@@ -453,7 +642,10 @@ export class KpiEngine {
       calculate(context) {
         if (definition.language === 'javascript') {
           try {
-            const fn = new Function('context', definition.formula);
+            if (!(definition as any).__compiledFn) {
+              (definition as any).__compiledFn = new Function('context', definition.formula);
+            }
+            const fn = (definition as any).__compiledFn;
             const result = fn(context);
             if (Array.isArray(result) && result.length > 0 && typeof result[0].value !== 'undefined') {
               return result;
@@ -556,195 +748,6 @@ function executeCustomFormula(
   } catch {
     return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'Parse Error', value: 0 }] }];
   }
-}
-
-function applyFilter(issues: KpiContext['issues'], condition: string): KpiContext['issues'] {
-  const trimmed = condition.trim();
-  if (!trimmed || trimmed === 'true' || trimmed === '*') return issues;
-
-  // 1. Handle OR (lowest precedence)
-  const orParts = splitByTopLevelOperator(trimmed, 'OR');
-  if (orParts.length > 1) {
-    const results = orParts.map(p => applyFilter(issues, p));
-    const keys = new Set<string>();
-    const combinedIssues: TransformedIssue[] = [];
-    results.forEach(resList => {
-      resList.forEach(issue => {
-        if (!keys.has(issue.key)) {
-          keys.add(issue.key);
-          combinedIssues.push(issue);
-        }
-      });
-    });
-    return combinedIssues;
-  }
-
-  // 2. Handle AND
-  const andParts = splitByTopLevelOperator(trimmed, 'AND');
-  if (andParts.length > 1) {
-    let currentIssues = issues;
-    for (const part of andParts) {
-      currentIssues = applyFilter(currentIssues, part);
-    }
-    return currentIssues;
-  }
-
-  // Handle atomic conditions
-  const containsMatch = trimmed.match(/^([\w.-]+)\s+(NOT\s+)?CONTAINS\s+("([^"]+)"|'([^']+)'|(\S+))$/i);
-  if (containsMatch) {
-    const [, field, not, , quotedDouble, quotedSingle, unquoted] = containsMatch;
-    const val = quotedDouble || quotedSingle || unquoted;
-    const isNot = !!not;
-    const cleanVal = val.toLowerCase();
-    return issues.filter((issue) => {
-      const fieldValue = String(getFieldValue(issue, field) || '').toLowerCase();
-      const contains = fieldValue.includes(cleanVal);
-      return isNot ? !contains : contains;
-    });
-  }
-
-  const eqMatch = trimmed.match(/^([\w.-]+)\s*={1,2}\s*("([^"]+)"|'([^']+)'|(\S+))$/i);
-  if (eqMatch) {
-    const [, field, , quotedDouble, quotedSingle, unquoted] = eqMatch;
-    const val = quotedDouble || quotedSingle || unquoted;
-    const cleanVal = val.toLowerCase();
-    return issues.filter((issue) => {
-      const fieldValue = getFieldValue(issue, field);
-      if (cleanVal === 'true') return !!fieldValue;
-      if (cleanVal === 'false') return !fieldValue;
-      return String(fieldValue || '').toLowerCase() === cleanVal;
-    });
-  }
-
-  const neqMatch = trimmed.match(/^([\w.-]+)\s*!=\s*("([^"]+)"|'([^']+)'|(\S+))$/i);
-  if (neqMatch) {
-    const [, field, , quotedDouble, quotedSingle, unquoted] = neqMatch;
-    const val = quotedDouble || quotedSingle || unquoted;
-    const cleanVal = val.toLowerCase();
-    return issues.filter((issue) => {
-      const fieldValue = getFieldValue(issue, field);
-      return String(fieldValue || '').toLowerCase() !== cleanVal;
-    });
-  }
-
-  // @MX:NOTE: Array-aware IN/NOT IN semantics
-  // Handles both scalar values and multi-value fields (labels, components).
-  // For multi-value fields, the condition matches if ANY element of the field is present in the value list.
-  const inMatch = trimmed.match(/^([\w.-]+)\s+(NOT\s+)?IN\s*\((.*)\)$/i);
-  if (inMatch) {
-    const [, field, not, valuesStr] = inMatch;
-    const isNot = !!not;
-    
-    // Parse comma separated values respecting quotes
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    let quoteChar = '';
-    
-    for (let i = 0; i < valuesStr.length; i++) {
-      const char = valuesStr[i];
-      if ((char === '"' || char === "'") && (i === 0 || valuesStr[i-1] !== '\\')) {
-        if (!inQuotes) {
-          inQuotes = true;
-          quoteChar = char;
-        } else if (char === quoteChar) {
-          inQuotes = false;
-        } else {
-          current += char;
-        }
-      } else if (char === ',' && !inQuotes) {
-        values.push(current.trim().toLowerCase());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    if (current.trim()) values.push(current.trim().toLowerCase());
-
-    return issues.filter((issue) => {
-      const fieldValue = getFieldValue(issue, field);
-      
-      let isIn = false;
-      if (Array.isArray(fieldValue)) {
-        // If issue field is an array (e.g. labels, components), match if ANY element is in the values list
-        isIn = fieldValue.some(v => values.includes(String(v || '').toLowerCase()));
-      } else {
-        // Standard scalar comparison
-        isIn = values.includes(String(fieldValue || '').toLowerCase());
-      }
-      
-      return isNot ? !isIn : isIn;
-    });
-  }
-
-  return issues;
-}
-
-/**
- * Robust splitter that respects quotes
- */
-function splitByTopLevelOperator(condition: string, operator: 'AND' | 'OR'): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  let quoteChar = '';
-  
-  const op = operator.toUpperCase();
-  const search = ` ${op} `;
-  
-  for (let i = 0; i < condition.length; i++) {
-    const char = condition[i];
-    
-    // Handle quotes
-    if ((char === '"' || char === "'") && (i === 0 || condition[i-1] !== '\\')) {
-      if (!inQuotes) {
-        inQuotes = true;
-        quoteChar = char;
-      } else if (char === quoteChar) {
-        inQuotes = false;
-      }
-    }
-    
-    // Check for operator if not in quotes
-    if (!inQuotes && condition.substring(i).toUpperCase().startsWith(search)) {
-      parts.push(current.trim());
-      current = '';
-      i += search.length - 1; // Skip the operator
-    } else {
-      current += char;
-    }
-  }
-  
-  if (current) parts.push(current.trim());
-  return parts;
-}
-
-function getFieldValue(issue: TransformedIssue, field: string): unknown {
-  const fieldMap: Record<string, () => unknown> = {
-    storyPoints: () => issue.storyPoints,
-    priority: () => issue.priority,
-    status: () => issue.status,
-    statusCategory: () => issue.statusCategory,
-    issueType: () => issue.issueType,
-    assignee: () => issue.assignee,
-    reporter: () => issue.reporter,
-    labels: () => issue.labels,
-    components: () => issue.components,
-    resolved: () => issue.resolved,
-    key: () => issue.key,
-    project: () => issue.project,
-    summary: () => issue.summary,
-    description: () => (issue as any).description || '',
-  };
-
-  // Check timeInStatus for dynamic fields
-  if (field.startsWith('timeInStatus.')) {
-    const statusName = field.replace('timeInStatus.', '');
-    return issue.timeInStatus[statusName] || 0;
-  }
-
-  const getter = fieldMap[field];
-  return getter ? getter() : null;
 }
 
 // Singleton engine instance

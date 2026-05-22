@@ -121,7 +121,7 @@ export interface KpiPlugin<T = KpiResult | KpiResult[]> {
   isFavorite?: boolean;
 
   /** Visualization type hint for UI rendering */
-  visualization?: 'card' | 'horizontal_bar' | 'pie' | 'line';
+  visualization?: 'card' | 'horizontal_bar' | 'pie' | 'line' | 'list';
 
   /** Unit of measurement for the calculated value */
   unit: string;

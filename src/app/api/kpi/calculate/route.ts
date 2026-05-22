@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { KpiEngine } from '@/lib/kpi/engine';
+import { getKpiEngine } from '@/lib/kpi/engine';
 import type { JiraIssue } from '@/lib/jira/client';
+import { getDb } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
@@ -9,17 +10,14 @@ export async function POST(request: Request) {
       issues, pluginIds, holidays, period,
       dateFrom, dateTo, slaTargets,
       activePluginIds, customPlugins, globalFilters,
-      settings, region
+      settings, region,
+      connectionId, storageConfig,
     } = body;
 
-    if (!issues || !Array.isArray(issues)) {
-      return NextResponse.json(
-        { success: false, error: 'issues array is required' },
-        { status: 400 }
-      );
-    }
+    const engine = getKpiEngine();
 
-    const engine = new KpiEngine();
+    // Clear stale custom plugins from previous requests, then register fresh ones
+    engine.clearCustomPlugins();
 
     // Register custom plugins if provided
     if (customPlugins && Array.isArray(customPlugins)) {
@@ -30,6 +28,34 @@ export async function POST(request: Request) {
           console.error(`Failed to register custom plugin ${pluginDef.id}:`, err);
         }
       }
+    }
+
+    // Load issues from DB if connectionId is provided (avoids serializing issues in POST body)
+    let typedIssues: JiraIssue[];
+    if (connectionId && storageConfig && !issues) {
+      const db = getDb(storageConfig);
+      const masterTickets = await (db as any).masterTicket.findMany({
+        where: { connectionRef: connectionId },
+        select: { rawData: true }
+      });
+      // @MX:NOTE: Parse once per ticket, skip try/catch per iteration for better perf
+      const parsed: JiraIssue[] = [];
+      for (let i = 0; i < masterTickets.length; i++) {
+        const t = masterTickets[i];
+        try {
+          const obj = JSON.parse(t.rawData);
+          if (obj) parsed.push(obj as JiraIssue);
+        } catch { /* skip corrupt records */ }
+      }
+      typedIssues = parsed;
+      console.log(`[KPI API] Loaded ${typedIssues.length} issues from DB for connection: ${connectionId}`);
+    } else if (issues && Array.isArray(issues)) {
+      typedIssues = issues as JiraIssue[];
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Either issues array or connectionId + storageConfig is required' },
+        { status: 400 }
+      );
     }
 
     const start = dateFrom ? new Date(dateFrom) : new Date('2024-01-01');
@@ -54,8 +80,6 @@ export async function POST(request: Request) {
     const slaTargetHours = holidays?.slaTargetHours ?? settings?.general?.defaultSlaTargetHours ?? 40;
     const effectiveSlaTargets = slaTargets ?? settings?.sla?.statusTargets ?? {};
 
-    // Cast raw issues to JiraIssue format
-    const typedIssues = issues as JiraIssue[];
     console.log(`[KPI API] Starting calculation for ${typedIssues.length} issues.`);
     if (globalFilters) {
       console.log(`[KPI API] Applying global filters: ${JSON.stringify(globalFilters)}`);
@@ -76,20 +100,16 @@ export async function POST(request: Request) {
       pluginsToCalculate = engine.getAllPlugins().map(p => p.id);
     }
 
-    // Calculate only the specified plugins
-    results = {};
-    for (const id of pluginsToCalculate) {
-      try {
-        results[id] = engine.calculate(id, typedIssues, { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours }, { start, end }, effectiveSlaTargets, globalFilters, settings?.sla?.useAnyoneCommentsForSla);
-      } catch (err) {
-        results[id] = [{
-          name: `Error: ${id}`,
-          value: 0,
-          unit: '',
-          details: [{ label: 'Error', value: 0 }],
-        }];
-      }
-    }
+    // @MX:OPT: Use calculateAll() which pre-computes filter + transform + weekly breakdown once per batch
+    results = engine.calculateAll(
+      typedIssues,
+      { regions, workStartHour: workStart, workEndHour: workEnd, slaTargetHours },
+      { start, end },
+      effectiveSlaTargets,
+      globalFilters,
+      settings?.sla?.useAnyoneCommentsForSla,
+      pluginsToCalculate
+    );
 
     // Flatten results for easier consumption
     const flat = Object.entries(results).map(([pluginId, pluginResults]) => ({

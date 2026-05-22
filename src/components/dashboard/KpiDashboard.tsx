@@ -92,6 +92,91 @@ import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 
+// ─── Resizable container that persists height to Zustand ──────────────────────
+function WidgetResizeContainer({
+  widgetId,
+  defaultHeight,
+  minHeight = 200,
+  className,
+  children,
+}: {
+  widgetId: string;
+  defaultHeight: number;
+  minHeight?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const widgetHeights = useAppStore((s) => s.widgetHeights);
+  const setWidgetHeights = useAppStore((s) => s.setWidgetHeights);
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const startH = useRef(0);
+
+  const [localHeight, setLocalHeight] = useState(() =>
+    Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight))
+  );
+
+  const savedHeight = widgetHeights[widgetId];
+  useEffect(() => {
+    if (isDragging.current) return;
+    if (savedHeight !== undefined) {
+      setLocalHeight(Math.min(600, Math.max(minHeight, savedHeight)));
+    }
+  }, [savedHeight, minHeight]);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    startY.current = e.clientY;
+    startH.current = localHeight;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [localHeight]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    const delta = e.clientY - startY.current;
+    const next = Math.min(600, Math.max(minHeight, startH.current + delta));
+    setLocalHeight(next);
+  }, [minHeight]);
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    setWidgetHeights((prev) => ({ ...prev, [widgetId]: localHeight }));
+  }, [widgetId, localHeight, setWidgetHeights]);
+
+  return (
+    <div>
+      <div
+        className={className || ''}
+        style={{ height: localHeight, minHeight, overflow: 'hidden' }}
+      >
+        {children}
+      </div>
+      {/* Drag handle */}
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className="flex items-center justify-center h-5 cursor-row-resize group/handle"
+      >
+        <div className="w-8 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover/handle:bg-blue-400 dark:group-hover/handle:bg-blue-500 transition-colors" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
+const JQL_PATTERNS = [
+  { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
+  { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
+  { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
+  { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
+  { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' },
+  { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' },
+];
+
 export function KpiDashboard() {
   const {
     connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo,
@@ -106,12 +191,22 @@ export function KpiDashboard() {
     kpiCardConfigs, setKpiCardConfigs,
     activeView, setIsViewModified, setActiveView,
     widgetTitles, setWidgetTitles,
-    collapsedWidgets, setCollapsedWidgets
+    collapsedWidgets, setCollapsedWidgets,
+    widgetHeights, setWidgetHeights
   } = useAppStore();
 
   const onPrint = () => window.print();
   const isFirstRender = useRef(true);
   const hasUserInitiatedCalc = useRef(false);
+
+  // O(1) lookup for issue details by key (avoids O(N*M) in ticket list rendering)
+  const issueMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const issue of masterDatasetInfo?.issues || []) {
+      map.set(issue.key, issue);
+    }
+    return map;
+  }, [masterDatasetInfo?.issues]);
 
   // Toggle section collapse state in the global store
   const toggleWidgetCollapse = useCallback((pluginId: string) => {
@@ -179,7 +274,7 @@ export function KpiDashboard() {
         const customPlugins = localConfig.getKpiPlugins();
         let allPlugins = [...customPlugins];
         try {
-          const res = await fetch('/api/kpi/plugins');
+          const res = await fetch(new URL('/api/kpi/plugins', window.location.origin));
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (data.success && data.plugins) {
@@ -237,6 +332,7 @@ export function KpiDashboard() {
       kpiCardConfigs,
       hiddenDimensions: Array.from(hiddenDimensions),
       widgetTitles,
+      widgetHeights,
     };
 
     try {
@@ -286,8 +382,9 @@ export function KpiDashboard() {
     charts, 
     jqlQuery, 
     kpiCardConfigs, 
-    hiddenDimensions, 
+    hiddenDimensions,
     widgetTitles,
+    widgetHeights,
     setIsViewModified,
     setActiveView,
     storageConfig
@@ -384,11 +481,11 @@ export function KpiDashboard() {
     openDrillDown(keys, title);
   };
 
-  const { data: calculationData, isLoading: calculating, refetch: runCalculation } = useQuery({
+  const { isLoading: calculating, refetch: runCalculation } = useQuery({
     queryKey: ['kpis', activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, masterDatasetInfo?.issues?.length],
     queryFn: async () => {
       if (!activeConnectionId) return null;
-      const res = await fetch('/api/kpi/calculate', {
+      const res = await fetch(new URL('/api/kpi/calculate', window.location.origin), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -416,12 +513,6 @@ export function KpiDashboard() {
     enabled: !!activeConnectionId && !!masterDatasetInfo?.issues,
     refetchInterval: (settings as AppSettings)?.webhooks?.enabled ? 30000 : false, // Refetch every 30s if webhooks are enabled
   });
-
-  useEffect(() => {
-    if (calculationData) {
-      setKpiResults(calculationData);
-    }
-  }, [calculationData, setKpiResults]);
 
   // @MX:NOTE: Calculate KPI results for a specific widget with custom JQL
   // @MX:REASON: Independent widget calculations allow side-by-side data comparison
@@ -470,16 +561,7 @@ export function KpiDashboard() {
         let value = '';
 
         // IMPORTANT: More specific patterns must come first!
-        const patterns = [
-          { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
-          { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
-          { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
-          { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
-          { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' },
-          { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' }
-        ];
-
-        for (const pattern of patterns) {
+        for (const pattern of JQL_PATTERNS) {
           const match = query.match(pattern.regex);
           if (match) {
             field = match[1];
@@ -490,8 +572,7 @@ export function KpiDashboard() {
         }
 
         if (field && operator && value) {
-          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
-            // Support both flat (issue.summary) and nested (issue.fields.summary) issue shapes
+          filteredIssues = filteredIssues.filter((issue: any) => {
             const rawValue = issue[field] ?? issue.fields?.[field];
             let normalizedValue = rawValue;
             if (rawValue && typeof rawValue === 'object') {
@@ -522,14 +603,14 @@ export function KpiDashboard() {
         } else {
           // Fallback: full-text search across summary, key, description
           const queryLower = query.toLowerCase();
-          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
+          filteredIssues = filteredIssues.filter((issue: any) => {
             const text = `${issue.summary ?? issue.fields?.summary ?? ''} ${issue.key} ${issue.description ?? issue.fields?.description ?? ''}`.toLowerCase();
             return text.includes(queryLower);
           });
         }
       }
 
-      const res = await fetch('/api/kpi/calculate', {
+      const res = await fetch(new URL('/api/kpi/calculate', window.location.origin), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -768,7 +849,17 @@ export function KpiDashboard() {
     });
   }, [kpiResults, pluginVisibility.activePlugins]);
 
-  const mainKpis = sortedKpiResults.filter((r: KpiCalcResult) => !r.results[0]?.dimensions?.status && !r.results[0]?.dimensions?.priority && !r.results[0]?.dimensions?.assignee && !r.results[0]?.dimensions?.team && !r.results[0]?.dimensions?.bucket && !isTimeSeriesPlugin(r.pluginId));
+  const mainKpis = useMemo(() =>
+    sortedKpiResults.filter((r: KpiCalcResult) =>
+      !r.results[0]?.dimensions?.status &&
+      !r.results[0]?.dimensions?.priority &&
+      !r.results[0]?.dimensions?.assignee &&
+      !r.results[0]?.dimensions?.team &&
+      !r.results[0]?.dimensions?.bucket &&
+      !isTimeSeriesPlugin(r.pluginId)
+    ),
+    [sortedKpiResults]
+  );
   // @MX:NOTE: Widget Order Mapping - Maps widget display order IDs to their corresponding KPI groups
   // @MX:REASON: Groups plugins by dimension type for organized dashboard rendering
   const widgetOrderMapping = useMemo(() => {
@@ -805,6 +896,8 @@ export function KpiDashboard() {
         componentType = 'assignee'; // Team dimension uses same rendering as assignee
       } else if (dimension.bucket) {
         componentType = 'cycle-time-histogram'; // cycle_time_histogram and aging_wip both use ChartCard histogram renderer
+      } else if (dimension.activity) {
+        componentType = 'ticket-list'; // weekly_ticket_list plugin
       } else {
         componentType = 'main';
       }
@@ -2550,7 +2643,143 @@ export function KpiDashboard() {
                     </div>
                   ) : null;
 
-                default:
+                case 'ticket-list': {
+                    const tlPluginId = widget.kpis[0]?.pluginId;
+                    const tlCollapsed = collapsedWidgets.has(tlPluginId);
+                    const tlConn = connections.find((c: any) => c.id === activeConnectionId);
+                    const tlJiraBase = tlConn ? (tlConn.baseUrl?.startsWith('http') ? tlConn.baseUrl : `https://${tlConn.baseUrl}`) : '';
+                    return widget.kpis.length > 0 ? (
+                    <div key={`ticket-list-${tlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
+                      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <CardHeader className="pb-2">
+                          <button
+                            onClick={() => toggleWidgetCollapse(tlPluginId)}
+                            className="flex items-center gap-2 group text-left w-full"
+                            aria-expanded={!tlCollapsed}
+                          >
+                            <Ticket className="h-4 w-4 text-blue-500 shrink-0" />
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              Weekly Ticket Overview
+                            </CardTitle>
+                            {!tlCollapsed
+                              ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                              : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />}
+                            {tlCollapsed && (
+                              <span className="text-xs text-slate-400 font-normal ml-1">
+                                ({widget.kpis.reduce((acc, k) => acc + k.results.reduce((a, r) => a + (r.value as number), 0), 0)} tickets)
+                              </span>
+                            )}
+                          </button>
+                        </CardHeader>
+                        <AnimatePresence initial={false}>
+                          {!tlCollapsed && (
+                            <motion.div
+                              key="ticket-list-content"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2, ease: 'easeInOut' }}
+                              style={{ overflow: 'hidden' }}
+                            >
+                              <CardContent>
+                                <WidgetResizeContainer
+                                  widgetId={tlPluginId}
+                                  defaultHeight={400}
+                                  minHeight={200}
+                                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                                >
+                                  {/* This Week */}
+                                  <div className="space-y-3 overflow-hidden flex flex-col">
+                                    <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                                      This Week
+                                    </h4>
+                                    {(['opened', 'closed'] as const).map((activity) => {
+                                      const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity);
+                                      if (!result) return null;
+                                      const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+                                      const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
+                                      return (
+                                        <div key={`this-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
+                                          <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
+                                            <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
+                                            <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
+                                          </div>
+                                          <div className="overflow-y-auto flex-1 min-h-0">
+                                            {(result.ticketKeys || []).length === 0 && (
+                                              <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
+                                            )}
+                                            {(result.ticketKeys || []).map((key) => {
+                                              const issue = issueMap.get(key);
+                                              if (!issue) return null;
+                                              const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
+                                              return (
+                                                <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
+                                                  <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
+                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.priority?.name || issue.priority || '—'}</Badge>
+                                                  <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
+                                                  <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                                  <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Last Week */}
+                                  <div className="space-y-3 overflow-hidden flex flex-col">
+                                    <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+                                      Last Week
+                                    </h4>
+                                    {(['opened', 'closed'] as const).map((activity) => {
+                                      const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity);
+                                      if (!result) return null;
+                                      const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+                                      const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
+                                      return (
+                                        <div key={`last-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
+                                          <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
+                                            <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
+                                            <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
+                                          </div>
+                                          <div className="overflow-y-auto flex-1 min-h-0">
+                                            {(result.ticketKeys || []).length === 0 && (
+                                              <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
+                                            )}
+                                            {(result.ticketKeys || []).map((key) => {
+                                              const issue = issueMap.get(key);
+                                              if (!issue) return null;
+                                              const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
+                                              return (
+                                                <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
+                                                  <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
+                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.priority?.name || issue.priority || '—'}</Badge>
+                                                  <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
+                                                  <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
+                                                  <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                                  <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.status?.name || issue.status}</Badge>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </WidgetResizeContainer>
+                              </CardContent>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </Card>
+                    </div>
+                  ) : null;
+                  }
                   return null;
               }
             })}

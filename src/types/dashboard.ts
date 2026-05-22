@@ -95,4 +95,5 @@ export interface DashboardViewState {
   hiddenDimensions: string[];
   widgetTitles: Record<string, string>;
   collapsedWidgets?: string[];
+  widgetHeights?: Record<string, number>;
 }

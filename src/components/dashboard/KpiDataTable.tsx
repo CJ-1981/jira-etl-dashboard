@@ -64,7 +64,9 @@ const DIMENSION_TYPE_LABELS: Record<string, string> = {
   none: '—',
 };
 
-export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTableProps) {
+// @MX:NOTE: Wrapped with React.memo to prevent unnecessary re-renders
+// @MX:REASON: Data table is expensive to render, only re-render when results change
+export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTableProps) {
   const { settings } = useAppStore();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'pluginId', desc: false }]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -142,6 +144,7 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
   }, [data]);
 
   // @MX:WARN: Filter precedence: pluginFilter and dimTypeFilter are applied directly to the full dataset before TanStack global filter
+  // @MX:REASON: These filters narrow the dataset at source level, so TanStack globalFilter operates on a pre-filtered subset. Changing this order would break filter semantics where plugin/dimension filters act as hard constraints.
   const filteredData = useMemo(() => {
     return data.filter(row => {
       if (pluginFilter !== 'all' && row.pluginId !== pluginFilter) return false;
@@ -341,7 +344,6 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
     }),
   ];
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-table does not follow React Compiler memoization expectations, intentional
   const table = useReactTable({
     data: filteredData,
     columns,
@@ -454,4 +456,4 @@ export function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTab
       </div>
     </div>
   );
-}
+});

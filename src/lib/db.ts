@@ -5,9 +5,67 @@ import crypto from 'crypto';
 import { PrismaClient as SQLiteClient } from '../../prisma/generated/sqlite';
 // @ts-ignore
 import { PrismaClient as PostgresClient } from '../../prisma/generated/postgresql';
+
 // Use a global cache to avoid excessive client instantiation in serverless env
 type DbClient = SQLiteClient | PostgresClient;
-const prismaClientCache = new Map<string, DbClient>();
+
+/**
+ * @MX:NOTE: Simple LRU Cache implementation for Prisma clients
+ * @MX:REASON: Prevents unbounded memory growth with multiple database connections
+ */
+class LRUCache<K, V> {
+  private cache = new Map<K, V>();
+  private maxSize: number;
+  private onEvict?: (value: V) => void;
+
+  constructor(maxSize: number, onEvict?: (value: V) => void) {
+    this.maxSize = maxSize;
+    this.onEvict = onEvict;
+  }
+
+  get(key: K): V | undefined {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      // Move to end (most recently used)
+      this.cache.delete(key);
+      this.cache.set(key, value);
+    }
+    return value;
+  }
+
+  set(key: K, value: V): void {
+    if (this.cache.has(key)) {
+      const oldValue = this.cache.get(key);
+      this.cache.delete(key);
+      if (this.onEvict && oldValue) this.onEvict(oldValue);
+    } else if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey !== undefined) {
+        const evicted = this.cache.get(firstKey);
+        this.cache.delete(firstKey);
+        if (this.onEvict && evicted) this.onEvict(evicted);
+      }
+    }
+    this.cache.set(key, value);
+  }
+
+  has(key: K): boolean {
+    return this.cache.has(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  size(): number {
+    return this.cache.size;
+  }
+}
+
+// @MX:NOTE: LRU cache with max 10 connections, disconnects evicted clients
+const prismaClientCache = new LRUCache<string, DbClient>(10, (client) => {
+  client.$disconnect().catch(() => {});
+});
 
 /**
  * Derives a safe cache key from a connection URL (avoids storing secrets in Map keys)
@@ -116,9 +174,11 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
   validateDatabaseHost(effectiveUrl);
 
   // Check cache (using hashed URL as key to avoid storing secrets)
+  // @MX:NOTE: Uses LRU cache to prevent unbounded memory growth
   const safeKey = getSafeKey(effectiveUrl);
-  if (prismaClientCache.has(safeKey)) {
-    return prismaClientCache.get(safeKey)!;
+  const cached = prismaClientCache.get(safeKey);
+  if (cached !== undefined) {
+    return cached;
   }
 
   const provider = determineProvider(effectiveUrl);

@@ -31,19 +31,17 @@ export interface CacheStats {
  */
 export class PluginCache {
   private cache: Map<string, CacheEntry>;
-  private ttl: number; // Time to live in milliseconds
+  private ttl: number;
   private hits: number;
   private misses: number;
+  private maxEntries: number;
 
-  /**
-   * Create a new plugin cache
-   * @param ttl - Time-to-live in milliseconds (default: 5 minutes)
-   */
-  constructor(ttl: number = 5 * 60 * 1000) {
+  constructor(ttl: number = 5 * 60 * 1000, maxEntries: number = 100) {
     this.cache = new Map();
     this.ttl = ttl;
     this.hits = 0;
     this.misses = 0;
+    this.maxEntries = maxEntries;
   }
 
   /**
@@ -82,8 +80,17 @@ export class PluginCache {
       timestamp: Date.now(),
     });
 
-    // Clean up old entries if cache grows too large
-    this.cleanup();
+    if (this.cache.size > this.maxEntries * 2) {
+      this.cleanup();
+    }
+    // Enforce hard cap after cleanup
+    if (this.cache.size > this.maxEntries) {
+      const keys = Array.from(this.cache.keys());
+      const toEvict = this.cache.size - this.maxEntries;
+      for (let i = 0; i < toEvict; i++) {
+        this.cache.delete(keys[i]);
+      }
+    }
   }
 
   /**
@@ -113,11 +120,19 @@ export class PluginCache {
   }
 
   /**
-   * Get the number of entries in the cache
-   * @returns Count of cached entries
+   * Get the number of non-expired entries in the cache
+   * @returns Count of valid cached entries
    */
   size(): number {
-    return this.cache.size;
+    // Count only non-expired entries
+    const now = Date.now();
+    let count = 0;
+    for (const entry of this.cache.values()) {
+      if (now - entry.timestamp <= this.ttl) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
@@ -131,7 +146,7 @@ export class PluginCache {
     return {
       hits: this.hits,
       misses: this.misses,
-      size: this.cache.size,
+      size: this.size(),
       hitRate,
     };
   }

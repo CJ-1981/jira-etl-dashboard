@@ -52,6 +52,8 @@ export function ViewManager() {
     setHiddenDimensions,
     setWidgetTitles,
     setCollapsedWidgets,
+    widgetHeights,
+    setWidgetHeights,
   } = useAppStore();
 
   const [loading, setLoading] = useState(false);
@@ -73,6 +75,7 @@ export function ViewManager() {
       hiddenDimensions: Array.from(hiddenDimensions),
       widgetTitles,
       collapsedWidgets: Array.from(collapsedWidgets),
+      widgetHeights,
     };
   };
 
@@ -90,6 +93,7 @@ export function ViewManager() {
       setHiddenDimensions(new Set(state.hiddenDimensions || []));
       setWidgetTitles(state.widgetTitles || {});
       setCollapsedWidgets(new Set(state.collapsedWidgets || []));
+      setWidgetHeights(state.widgetHeights || {});
       
       setActiveView(view);
       setIsViewModified(false);
@@ -113,6 +117,11 @@ export function ViewManager() {
       const data = await res.json();
       if (data.success) {
         setSavedViews(data.views);
+
+        // Reset active view before restoring to avoid stale view ID from previous connection
+        if (restoreViewId) {
+          setActiveView(null);
+        }
 
         // Restore the saved view if requested
         if (restoreViewId) {

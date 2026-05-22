@@ -57,9 +57,18 @@ function getEasterSunday(year: number): Date {
 }
 
 /**
- * Get all German holidays for a given year
+ * Get all German holidays for a given year (memoized)
+ * @MX:NOTE: Extended cache to include region combinations for better hit rates
  */
-export function getGermanHolidays(year: number): GermanHoliday[] {
+const holidayCache = new Map<string, GermanHoliday[]>();
+
+export function getGermanHolidays(year: number, regions: GermanState[] = []): GermanHoliday[] {
+  // @MX:NOTE: Cache key includes sorted regions for better cache hits across different region sets
+  const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'all';
+  const cacheKey = `${year}:${regionsKey}`;
+  const cached = holidayCache.get(cacheKey);
+  if (cached) return cached;
+
   const easter = getEasterSunday(year);
 
   const addDays = (date: Date, days: number): Date => {
@@ -85,7 +94,7 @@ export function getGermanHolidays(year: number): GermanHoliday[] {
     regions,
   });
 
-  return [
+  const holidays: GermanHoliday[] = [
     // National holidays (all states)
     fixed(1, 1, 'Neujahr', 'New Year\'s Day', true),
     fixed(5, 1, 'Tag der Arbeit', 'Labour Day', true),
@@ -111,6 +120,34 @@ export function getGermanHolidays(year: number): GermanHoliday[] {
     fixed(11, 1, 'Allerheiligen', 'All Saints\' Day', false, [GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.NW, GERMAN_STATES.RP, GERMAN_STATES.SL]),
     fromEaster(60, 'Fronleichnam', 'Corpus Christi', false, [GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.HE, GERMAN_STATES.NW, GERMAN_STATES.RP, GERMAN_STATES.SL]),
   ];
+
+  // @MX:NOTE: Store in cache with region-aware key
+  holidayCache.set(cacheKey, holidays);
+  return holidays;
+}
+
+/**
+ * Pre-compute a Set of holiday date strings (YYYY-MM-DD) for a year range and regions.
+ * Used by SLA plugin to avoid per-issue holiday calendar traversal.
+ */
+export function getHolidayDateSet(
+  startYear: number,
+  endYear: number,
+  regions: GermanState[] = []
+): Set<string> {
+  const dates = new Set<string>();
+  for (let year = startYear; year <= endYear; year++) {
+    const holidays = getGermanHolidays(year);
+    for (const holiday of holidays) {
+      if (holiday.isNational || holiday.regions.some(r => regions.includes(r))) {
+        const y = holiday.date.getFullYear();
+        const m = String(holiday.date.getMonth() + 1).padStart(2, '0');
+        const d = String(holiday.date.getDate()).padStart(2, '0');
+        dates.add(`${y}-${m}-${d}`);
+      }
+    }
+  }
+  return dates;
 }
 
 /**
@@ -143,9 +180,31 @@ export function isWorkingDay(date: Date, regions: GermanState[] = []): boolean {
   return !isGermanHoliday(date, regions);
 }
 
+// @MX:NOTE: Business hours cache to avoid redundant calculations
+// Key format: `${startMs}-${endMs}-${regionsKey}-${workStartHour}-${workEndHour}`
+const businessHoursCache = new Map<string, number>();
+const BUSINESS_HOURS_CACHE_SIZE = 1000;
+
+function getBusinessHoursCacheKey(
+  startDate: Date,
+  endDate: Date,
+  regions: GermanState[],
+  workStartHour: number,
+  workEndHour: number,
+  holidayDateSet?: Set<string>
+): string {
+  const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'none';
+  const holidayKey = holidayDateSet
+    ? Array.from(holidayDateSet).sort().join(',')
+    : 'dynamic';
+  return `${startDate.getTime()}-${endDate.getTime()}-${regionsKey}-${workStartHour}-${workEndHour}-${holidayKey}`;
+}
+
 /**
  * Calculate business hours between two dates, excluding weekends and German holidays.
  * Default working hours: 09:00-17:00 (8 hours/day), configurable.
+ * @MX:NOTE: Optimized with mathematical calculation instead of day-by-day iteration
+ * @MX:REASON: O(n) to O(1) for typical date ranges, plus caching for repeated calls
  */
 export function calculateBusinessHours(
   startDate: Date,
@@ -155,54 +214,215 @@ export function calculateBusinessHours(
     workStartHour?: number;
     workEndHour?: number;
     workDaysPerWeek?: number[];
+    holidayDateSet?: Set<string>;
   } = {}
 ): number {
   const {
     regions = [],
     workStartHour = 9,
     workEndHour = 17,
-    workDaysPerWeek = [1, 2, 3, 4, 5], // Mon-Fri
+    workDaysPerWeek = [1, 2, 3, 4, 5],
+    holidayDateSet,
   } = options;
+
+  // Handle edge cases
+  if (startDate >= endDate) return 0;
+
+  // Check cache first
+  const cacheKey = getBusinessHoursCacheKey(startDate, endDate, regions, workStartHour, workEndHour, holidayDateSet);
+  const cached = businessHoursCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const isHoliday = holidayDateSet
+    ? (date: Date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return holidayDateSet.has(`${y}-${m}-${d}`);
+      }
+    : (date: Date) => !!isGermanHoliday(date, regions);
 
   const hoursPerDay = workEndHour - workStartHour;
   let totalMinutes = 0;
 
-  const current = new Date(startDate);
+  // @MX:NOTE: Optimization - use mathematical calculation for multi-day ranges
+  // instead of iterating day-by-day (which was O(n))
+  const startDayStart = new Date(startDate);
+  startDayStart.setHours(0, 0, 0, 0);
 
-  while (current <= endDate) {
-    const dayOfWeek = current.getDay();
-    if (workDaysPerWeek.includes(dayOfWeek) && !isGermanHoliday(current, regions)) {
-      // Calculate overlapping hours on this working day
-      const dayStart = new Date(current);
+  const endDayStart = new Date(endDate);
+  endDayStart.setHours(0, 0, 0, 0);
+
+  const isSameDay = startDayStart.getTime() === endDayStart.getTime();
+
+  if (isSameDay) {
+    // Single day calculation
+    const dayOfWeek = startDate.getDay();
+    if (workDaysPerWeek.includes(dayOfWeek) && !isHoliday(startDate)) {
+      const dayStart = new Date(startDate);
       dayStart.setHours(workStartHour, 0, 0, 0);
 
-      const dayEnd = new Date(current);
+      const dayEnd = new Date(startDate);
       dayEnd.setHours(workEndHour, 0, 0, 0);
 
       const effectiveStart = startDate > dayStart ? startDate : dayStart;
       const effectiveEnd = endDate < dayEnd ? endDate : dayEnd;
 
       if (effectiveStart < effectiveEnd) {
-        const diffMs = effectiveEnd.getTime() - effectiveStart.getTime();
-        totalMinutes += diffMs / (1000 * 60);
+        totalMinutes = (effectiveEnd.getTime() - effectiveStart.getTime()) / (1000 * 60);
       }
     }
-    // Move to start of next day
-    current.setDate(current.getDate() + 1);
-    current.setHours(0, 0, 0, 0);
+  } else {
+    // Multi-day calculation
+    // First day (partial)
+    const firstDayEnd = new Date(startDate);
+    firstDayEnd.setHours(workEndHour, 0, 0, 0);
+
+    const firstDayStart = new Date(startDate);
+    firstDayStart.setHours(workStartHour, 0, 0, 0);
+
+    const firstDayWeekDay = startDate.getDay();
+    if (workDaysPerWeek.includes(firstDayWeekDay) && !isHoliday(startDate)) {
+      const effectiveStart = startDate > firstDayStart ? startDate : firstDayStart;
+      if (effectiveStart < firstDayEnd) {
+        totalMinutes += (firstDayEnd.getTime() - effectiveStart.getTime()) / (1000 * 60);
+      }
+    }
+
+    // Last day (partial)
+    const lastDayStart = new Date(endDate);
+    lastDayStart.setHours(workStartHour, 0, 0, 0);
+
+    const lastDayEnd = new Date(endDate);
+    lastDayEnd.setHours(workEndHour, 0, 0, 0);
+
+    const lastDayWeekDay = endDate.getDay();
+    if (workDaysPerWeek.includes(lastDayWeekDay) && !isHoliday(endDate)) {
+      const effectiveEnd = endDate < lastDayEnd ? endDate : lastDayEnd;
+      if (lastDayStart < effectiveEnd) {
+        totalMinutes += (effectiveEnd.getTime() - lastDayStart.getTime()) / (1000 * 60);
+      }
+    }
+
+    // Middle days (full days - use mathematical approach to avoid day-by-day iteration)
+    const startDay = new Date(startDate);
+    startDay.setDate(startDay.getDate() + 1);
+    startDay.setHours(12, 0, 0, 0);
+
+    const endCheck = new Date(endDate);
+    endCheck.setHours(0, 0, 0, 0);
+
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const middleDays = Math.floor((endCheck.getTime() - startDay.getTime()) / oneDayMs);
+
+    if (middleDays > 7) {
+      // Mathematical approach: full weeks * working days, minus holidays
+      const startDow = startDay.getDay();
+      const firstPartialDays = Math.min(6 - startDow, middleDays); // days before first Sunday
+      for (let i = 0; i < firstPartialDays; i++) {
+        const checkDate = new Date(startDay);
+        checkDate.setDate(checkDate.getDate() + i);
+        const dow = checkDate.getDay();
+        if (workDaysPerWeek.includes(dow) && !isHoliday(checkDate)) {
+          totalMinutes += hoursPerDay * 60;
+        }
+      }
+
+      const remainingAfterFirst = middleDays - firstPartialDays;
+      const fullWeeks = Math.floor(remainingAfterFirst / 7);
+      if (fullWeeks > 0) {
+        totalMinutes += fullWeeks * workDaysPerWeek.length * hoursPerDay * 60;
+        // Subtract holidays in full weeks
+        const fullWeekStart = new Date(startDay);
+        fullWeekStart.setDate(fullWeekStart.getDate() + firstPartialDays);
+        const fullWeekEnd = new Date(fullWeekStart);
+        fullWeekEnd.setDate(fullWeekEnd.getDate() + fullWeeks * 7 - 1);
+        const fullWeekHolidaySet = holidayDateSet
+          ?? getHolidayDateSet(fullWeekStart.getFullYear(), fullWeekEnd.getFullYear(), regions);
+        for (const holidayStr of fullWeekHolidaySet) {
+          const [hy, hm, hd] = holidayStr.split('-').map(Number);
+          const holidayDate = new Date(hy, hm - 1, hd);
+          if (holidayDate >= fullWeekStart && holidayDate <= fullWeekEnd) {
+            const dow = holidayDate.getDay();
+            if (workDaysPerWeek.includes(dow)) {
+              totalMinutes -= hoursPerDay * 60;
+            }
+          }
+        }
+      }
+
+      const remainingAfterWeeks = remainingAfterFirst % 7;
+      const lastPartialStart = new Date(startDay);
+      lastPartialStart.setDate(lastPartialStart.getDate() + firstPartialDays + fullWeeks * 7);
+      for (let i = 0; i < remainingAfterWeeks; i++) {
+        const checkDate = new Date(lastPartialStart);
+        checkDate.setDate(checkDate.getDate() + i);
+        const dow = checkDate.getDay();
+        if (workDaysPerWeek.includes(dow) && !isHoliday(checkDate)) {
+          totalMinutes += hoursPerDay * 60;
+        }
+      }
+    } else {
+      // Short range: simple iteration
+      const current = new Date(startDay);
+      for (let i = 0; i < middleDays; i++) {
+        const dayOfWeek = current.getDay();
+        if (workDaysPerWeek.includes(dayOfWeek) && !isHoliday(current)) {
+          totalMinutes += hoursPerDay * 60;
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    }
   }
 
-  return Math.round((totalMinutes / 60) * 100) / 100;
+  const result = Math.round((totalMinutes / 60) * 100) / 100;
+
+  // Cache the result (with LRU eviction)
+  if (businessHoursCache.size >= BUSINESS_HOURS_CACHE_SIZE) {
+    const firstKey = businessHoursCache.keys().next().value;
+    if (firstKey !== undefined) {
+      businessHoursCache.delete(firstKey);
+    }
+  }
+  businessHoursCache.set(cacheKey, result);
+
+  return result;
+}
+
+// @MX:NOTE: Working days cache
+const workingDaysCache = new Map<string, number>();
+const WORKING_DAYS_CACHE_SIZE = 500;
+
+function getWorkingDaysCacheKey(
+  startDate: Date,
+  endDate: Date,
+  regions: GermanState[]
+): string {
+  const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'none';
+  return `${startDate.getTime()}-${endDate.getTime()}-${regionsKey}`;
 }
 
 /**
  * Calculate calendar days between two dates, excluding weekends and holidays
+ * @MX:NOTE: Optimized with mathematical approach and caching
  */
 export function calculateWorkingDays(
   startDate: Date,
   endDate: Date,
   regions: GermanState[] = []
 ): number {
+  if (startDate > endDate) return 0;
+
+  // Check cache
+  const cacheKey = getWorkingDaysCacheKey(startDate, endDate, regions);
+  const cached = workingDaysCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  // Get holidays in the range for faster lookup
+  const startYear = startDate.getFullYear();
+  const endYear = endDate.getFullYear();
+  const holidaySet = getHolidayDateSet(startYear, endYear, regions);
+
   let days = 0;
   const current = new Date(startDate);
   current.setHours(0, 0, 0, 0);
@@ -210,12 +430,99 @@ export function calculateWorkingDays(
   const end = new Date(endDate);
   end.setHours(0, 0, 0, 0);
 
-  while (current <= end) {
-    if (isWorkingDay(current, regions)) {
-      days++;
+  // @MX:NOTE: Optimization - calculate full weeks mathematically, only iterate remaining days
+  const oneDay = 24 * 60 * 60 * 1000;
+  const diffTime = end.getTime() - current.getTime();
+  const diffDays = Math.floor(diffTime / oneDay) + 1;
+
+  if (diffDays > 14) {
+    // For longer ranges, use mathematical approach
+    const startDayOfWeek = current.getDay(); // 0 = Sunday, 6 = Saturday
+
+    // Count working days in the first partial week
+    let firstWeekDays = 0;
+    const firstWeekEnd = Math.min(5 - startDayOfWeek + 1, diffDays); // Days until Saturday
+    for (let i = 0; i < firstWeekEnd && i < diffDays; i++) {
+      const checkDate = new Date(current);
+      checkDate.setDate(checkDate.getDate() + i);
+      const dow = checkDate.getDay();
+      if (dow >= 1 && dow <= 5) { // Monday to Friday
+        const y = checkDate.getFullYear();
+        const m = String(checkDate.getMonth() + 1).padStart(2, '0');
+        const d = String(checkDate.getDate()).padStart(2, '0');
+        if (!holidaySet.has(`${y}-${m}-${d}`)) {
+          firstWeekDays++;
+        }
+      }
     }
-    current.setDate(current.getDate() + 1);
+
+    // Count full weeks
+    const remainingDays = diffDays - firstWeekEnd;
+    const fullWeeks = Math.floor(remainingDays / 7);
+    const lastPartialWeekDays = remainingDays % 7;
+
+    // Each full week has 5 working days (minus holidays in those weeks)
+    let workingDaysInFullWeeks = fullWeeks * 5;
+
+    // Subtract holidays in full weeks (approximate - iterate through known holidays)
+    const fullWeekEnd = new Date(current);
+    fullWeekEnd.setDate(fullWeekEnd.getDate() + firstWeekEnd + fullWeeks * 7 - 1);
+    for (const holidayStr of holidaySet) {
+      const [hy, hm, hd] = holidayStr.split('-').map(Number);
+      const holidayDate = new Date(hy, hm - 1, hd);
+      const checkDate = new Date(current);
+      checkDate.setDate(checkDate.getDate() + firstWeekEnd);
+      if (holidayDate >= checkDate && holidayDate <= fullWeekEnd) {
+        const dow = holidayDate.getDay();
+        if (dow >= 1 && dow <= 5) {
+          workingDaysInFullWeeks--;
+        }
+      }
+    }
+
+    // Count days in last partial week
+    let lastWeekDays = 0;
+    const lastWeekStart = new Date(current);
+    lastWeekStart.setDate(lastWeekStart.getDate() + firstWeekEnd + fullWeeks * 7);
+    for (let i = 0; i < lastPartialWeekDays; i++) {
+      const checkDate = new Date(lastWeekStart);
+      checkDate.setDate(checkDate.getDate() + i);
+      const dow = checkDate.getDay();
+      if (dow >= 1 && dow <= 5) {
+        const y = checkDate.getFullYear();
+        const m = String(checkDate.getMonth() + 1).padStart(2, '0');
+        const d = String(checkDate.getDate()).padStart(2, '0');
+        if (!holidaySet.has(`${y}-${m}-${d}`)) {
+          lastWeekDays++;
+        }
+      }
+    }
+
+    days = firstWeekDays + workingDaysInFullWeeks + lastWeekDays;
+  } else {
+    // For shorter ranges, use simple iteration
+    while (current <= end) {
+      const dow = current.getDay();
+      if (dow >= 1 && dow <= 5) { // Monday to Friday
+        const y = current.getFullYear();
+        const m = String(current.getMonth() + 1).padStart(2, '0');
+        const d = String(current.getDate()).padStart(2, '0');
+        if (!holidaySet.has(`${y}-${m}-${d}`)) {
+          days++;
+        }
+      }
+      current.setDate(current.getDate() + 1);
+    }
   }
+
+  // Cache result (with LRU eviction)
+  if (workingDaysCache.size >= WORKING_DAYS_CACHE_SIZE) {
+    const firstKey = workingDaysCache.keys().next().value;
+    if (firstKey !== undefined) {
+      workingDaysCache.delete(firstKey);
+    }
+  }
+  workingDaysCache.set(cacheKey, days);
 
   return days;
 }
