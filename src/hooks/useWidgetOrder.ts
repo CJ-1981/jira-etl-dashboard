@@ -62,7 +62,7 @@ export function useWidgetOrder(): UseWidgetOrderResult {
   const isSelfWriting = useRef(false);
   const isSyncing = useRef(false);
   const widgetOrderRef = useRef<string[]>(widgetOrder);
-  widgetOrderRef.current = widgetOrder;
+  useEffect(() => { widgetOrderRef.current = widgetOrder; }, [widgetOrder]);
 
   // Re-sync from localStorage whenever changes happen from other components
   // @MX:NOTE: Uses both storage events (cross-tab) and custom events (same-tab)
