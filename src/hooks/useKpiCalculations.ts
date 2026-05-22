@@ -82,7 +82,7 @@ export function useKpiCalculations(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const response = await fetch('/api/kpi/calculate', {
+      const response = await fetch(new URL('/api/kpi/calculate', window.location.origin), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

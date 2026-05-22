@@ -241,7 +241,7 @@ export function KpiDashboard() {
         const customPlugins = localConfig.getKpiPlugins();
         let allPlugins = [...customPlugins];
         try {
-          const res = await fetch('/api/kpi/plugins');
+          const res = await fetch(new URL('/api/kpi/plugins', window.location.origin));
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (data.success && data.plugins) {
@@ -452,7 +452,7 @@ export function KpiDashboard() {
     queryKey: ['kpis', activeConnectionId, dateFrom, dateTo, globalFilters, region, settings, storageConfig, masterDatasetInfo?.issues?.length],
     queryFn: async () => {
       if (!activeConnectionId) return null;
-      const res = await fetch('/api/kpi/calculate', {
+      const res = await fetch(new URL('/api/kpi/calculate', window.location.origin), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -577,7 +577,7 @@ export function KpiDashboard() {
         }
       }
 
-      const res = await fetch('/api/kpi/calculate', {
+      const res = await fetch(new URL('/api/kpi/calculate', window.location.origin), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

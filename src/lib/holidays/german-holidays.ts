@@ -337,14 +337,14 @@ export function calculateBusinessHours(
         fullWeekStart.setDate(fullWeekStart.getDate() + firstPartialDays);
         const fullWeekEnd = new Date(fullWeekStart);
         fullWeekEnd.setDate(fullWeekEnd.getDate() + fullWeeks * 7 - 1);
-        if (holidayDateSet) {
-          for (const holidayStr of holidayDateSet) {
-            const holidayDate = new Date(holidayStr);
-            if (holidayDate >= fullWeekStart && holidayDate <= fullWeekEnd) {
-              const dow = holidayDate.getDay();
-              if (workDaysPerWeek.includes(dow)) {
-                totalMinutes -= hoursPerDay * 60;
-              }
+        const fullWeekHolidaySet = holidayDateSet
+          ?? getHolidayDateSet(fullWeekStart.getFullYear(), fullWeekEnd.getFullYear(), regions);
+        for (const holidayStr of fullWeekHolidaySet) {
+          const holidayDate = new Date(holidayStr);
+          if (holidayDate >= fullWeekStart && holidayDate <= fullWeekEnd) {
+            const dow = holidayDate.getDay();
+            if (workDaysPerWeek.includes(dow)) {
+              totalMinutes -= hoursPerDay * 60;
             }
           }
         }
