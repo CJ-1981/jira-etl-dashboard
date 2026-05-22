@@ -82,7 +82,7 @@ export function ViewManager() {
   const loadView = (view: DashboardView) => {
     try {
       const state = JSON.parse(view.data) as DashboardViewState;
-      
+
       setDateFrom(state.dateFrom || '');
       setDateTo(state.dateTo || '');
       setRegion(state.region || 'national');
@@ -93,8 +93,13 @@ export function ViewManager() {
       setHiddenDimensions(new Set(state.hiddenDimensions || []));
       setWidgetTitles(state.widgetTitles || {});
       setCollapsedWidgets(new Set(state.collapsedWidgets || []));
-      setWidgetHeights(state.widgetHeights || {});
-      
+
+      // Merge widget heights to preserve plugin config heights
+      setWidgetHeights((prev) => ({
+        ...prev, // Preserve existing heights (like plugin configs)
+        ...(state.widgetHeights || {}), // Override with saved view heights
+      }));
+
       setActiveView(view);
       setIsViewModified(false);
       setPopoverOpen(false);
