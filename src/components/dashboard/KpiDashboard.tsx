@@ -356,6 +356,8 @@ export function KpiDashboard() {
       kpiCardConfigs,
       hiddenDimensions: Array.from(hiddenDimensions),
       widgetTitles,
+      collapsedWidgets: Array.from(collapsedWidgets),
+      widgetHeights,
     };
 
     try {
@@ -396,17 +398,19 @@ export function KpiDashboard() {
       console.error('Failed to parse active view data:', e);
     }
   }, [
-    activeView?.id, 
+    activeView?.id,
     activeView?.autoSaveEnabled,
-    dateFrom, 
-    dateTo, 
-    region, 
-    globalFilters, 
-    charts, 
-    jqlQuery, 
-    kpiCardConfigs, 
-    hiddenDimensions, 
+    dateFrom,
+    dateTo,
+    region,
+    globalFilters,
+    charts,
+    jqlQuery,
+    kpiCardConfigs,
+    hiddenDimensions,
     widgetTitles,
+    collapsedWidgets,
+    widgetHeights,
     setIsViewModified,
     setActiveView,
     storageConfig
