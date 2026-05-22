@@ -191,7 +191,8 @@ export function KpiDashboard() {
     kpiCardConfigs, setKpiCardConfigs,
     activeView, setIsViewModified, setActiveView,
     widgetTitles, setWidgetTitles,
-    collapsedWidgets, setCollapsedWidgets
+    collapsedWidgets, setCollapsedWidgets,
+    widgetHeights, setWidgetHeights
   } = useAppStore();
 
   const onPrint = () => window.print();
