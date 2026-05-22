@@ -593,10 +593,10 @@ export class KpiEngine {
           try {
             let fn = compiledFnCache.get(definition);
             if (!fn) {
-              fn = new Function('context', definition.formula);
+              fn = new Function('context', definition.formula) as CompiledFunction;
               compiledFnCache.set(definition, fn);
             }
-            const result = fn(context);
+            const result = fn!(context);
             if (Array.isArray(result) && result.length > 0 && typeof result[0].value !== 'undefined') {
               return result;
             }
