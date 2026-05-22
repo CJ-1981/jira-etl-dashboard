@@ -5,6 +5,7 @@
  */
 
 import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
+import { getPriorityOrder } from '../../../engine-utils';
 
 /**
  * Compute Monday-based calendar week boundaries
@@ -65,33 +66,37 @@ const weeklyTicketListPlugin: KpiPlugin = {
       (i) => i.resolved && i.resolved >= lastWeekMonday && i.resolved <= lastWeekSunday
     );
 
+    // Sort each group by priority ascending (P0 → P3 → Lowest)
+    const sortByPriority = (issues: typeof context.issues) =>
+      [...issues].sort((a, b) => getPriorityOrder(a.priority ?? '') - getPriorityOrder(b.priority ?? ''));
+
     return [
       {
         name: 'This Week Opened',
         value: thisWeekOpened.length,
         unit: 'tickets',
-        ticketKeys: thisWeekOpened.map((i) => i.key),
+        ticketKeys: sortByPriority(thisWeekOpened).map((i) => i.key),
         dimensions: { week: 'this_week', activity: 'opened' },
       },
       {
         name: 'This Week Closed',
         value: thisWeekClosed.length,
         unit: 'tickets',
-        ticketKeys: thisWeekClosed.map((i) => i.key),
+        ticketKeys: sortByPriority(thisWeekClosed).map((i) => i.key),
         dimensions: { week: 'this_week', activity: 'closed' },
       },
       {
         name: 'Last Week Opened',
         value: lastWeekOpened.length,
         unit: 'tickets',
-        ticketKeys: lastWeekOpened.map((i) => i.key),
+        ticketKeys: sortByPriority(lastWeekOpened).map((i) => i.key),
         dimensions: { week: 'last_week', activity: 'opened' },
       },
       {
         name: 'Last Week Closed',
         value: lastWeekClosed.length,
         unit: 'tickets',
-        ticketKeys: lastWeekClosed.map((i) => i.key),
+        ticketKeys: sortByPriority(lastWeekClosed).map((i) => i.key),
         dimensions: { week: 'last_week', activity: 'closed' },
       },
     ];

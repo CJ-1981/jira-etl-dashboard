@@ -2659,6 +2659,7 @@ export function KpiDashboard() {
                                         return (
                                           <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
                                             <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
+                                            <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.priority?.name || issue.priority || '—'}</Badge>
                                             <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
                                             <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
                                             <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
@@ -2703,6 +2704,7 @@ export function KpiDashboard() {
                                         return (
                                           <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
                                             <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
+                                            <Badge variant="outline" className="text-[9px] h-3.5 py-0 shrink-0">{issue.fields?.priority?.name || issue.priority || '—'}</Badge>
                                             <span className="text-slate-700 dark:text-slate-300 truncate">{issue.fields?.summary || issue.summary}</span>
                                             <span className="text-slate-400 shrink-0 hidden sm:inline">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
                                             <span className="text-slate-400 shrink-0">{new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
