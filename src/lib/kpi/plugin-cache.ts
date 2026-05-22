@@ -83,6 +83,14 @@ export class PluginCache {
     if (this.cache.size > this.maxEntries * 2) {
       this.cleanup();
     }
+    // Enforce hard cap after cleanup
+    if (this.cache.size > this.maxEntries) {
+      const keys = Array.from(this.cache.keys());
+      const toEvict = this.cache.size - this.maxEntries;
+      for (let i = 0; i < toEvict; i++) {
+        this.cache.delete(keys[i]);
+      }
+    }
   }
 
   /**
@@ -138,7 +146,7 @@ export class PluginCache {
     return {
       hits: this.hits,
       misses: this.misses,
-      size: this.cache.size,
+      size: this.size(),
       hitRate,
     };
   }

@@ -144,6 +144,7 @@ export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillD
   }, [data]);
 
   // @MX:WARN: Filter precedence: pluginFilter and dimTypeFilter are applied directly to the full dataset before TanStack global filter
+  // @MX:REASON: These filters narrow the dataset at source level, so TanStack globalFilter operates on a pre-filtered subset. Changing this order would break filter semantics where plugin/dimension filters act as hard constraints.
   const filteredData = useMemo(() => {
     return data.filter(row => {
       if (pluginFilter !== 'all' && row.pluginId !== pluginFilter) return false;
@@ -343,7 +344,6 @@ export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillD
     }),
   ];
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-table does not follow React Compiler memoization expectations, intentional
   const table = useReactTable({
     data: filteredData,
     columns,

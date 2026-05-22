@@ -61,6 +61,8 @@ export function useWidgetOrder(): UseWidgetOrderResult {
 
   const isSelfWriting = useRef(false);
   const isSyncing = useRef(false);
+  const widgetOrderRef = useRef<string[]>(widgetOrder);
+  widgetOrderRef.current = widgetOrder;
 
   // Re-sync from localStorage whenever changes happen from other components
   // @MX:NOTE: Uses both storage events (cross-tab) and custom events (same-tab)
@@ -73,6 +75,9 @@ export function useWidgetOrder(): UseWidgetOrderResult {
         if (saved) {
           const parsed = JSON.parse(saved);
           const cleaned = parsed.filter((id: string) => !id.startsWith('panel-'));
+          // Skip setState if contents are identical to avoid unnecessary renders
+          const current = widgetOrderRef.current;
+          if (current.length === cleaned.length && current.every((id, i) => id === cleaned[i])) return;
           isSyncing.current = true;
           setWidgetOrder(cleaned);
           Promise.resolve().then(() => { isSyncing.current = false; });

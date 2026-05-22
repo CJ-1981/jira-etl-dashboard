@@ -118,6 +118,11 @@ export function ViewManager() {
       if (data.success) {
         setSavedViews(data.views);
 
+        // Reset active view before restoring to avoid stale view ID from previous connection
+        if (restoreViewId) {
+          setActiveView(null);
+        }
+
         // Restore the saved view if requested
         if (restoreViewId) {
           const viewToRestore = data.views.find((v: DashboardView) => v.id === restoreViewId);

@@ -78,9 +78,7 @@ export function useKpiCalculations(
    * Fetch KPI calculations from the API
    */
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
-    lastCalculationParamsRef.current = JSON.stringify({ dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), globalFilters, activeConnectionId });
     try {
-      // AbortController for timeout (120s — server-side calculation may be heavy)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
@@ -119,7 +117,7 @@ export function useKpiCalculations(
       return data.results;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        console.error('[useKpiCalculations] Request timeout after 30 seconds');
+        console.error('[useKpiCalculations] Request timeout after 120 seconds');
       } else {
         console.error('[useKpiCalculations] Network error:', error);
       }
@@ -128,11 +126,13 @@ export function useKpiCalculations(
   }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, storageConfig]);
 
   // @MX:NOTE: Stable cache key serialization to prevent unnecessary re-fetches
-  // Date objects and filter objects are serialized to strings for stable comparison
+  // Includes all POST payload fields so the query key uniquely represents the request
   const stableQueryKey = useMemo(() => {
     const filtersKey = globalFilters ? JSON.stringify(globalFilters) : 'empty';
-    return ['kpi-results', dateFrom.toISOString(), dateTo.toISOString(), filtersKey];
-  }, [dateFrom, dateTo, globalFilters]);
+    const storageKey = storageConfig ? JSON.stringify(storageConfig) : 'none';
+    const widgetsKey = customWidgets ? JSON.stringify(customWidgets) : 'none';
+    return ['kpi-results', activeConnectionId, dateFrom.toISOString(), dateTo.toISOString(), region || 'none', filtersKey, storageKey, widgetsKey];
+  }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, storageConfig, customWidgets]);
 
   /**
    * React Query for KPI data with caching
@@ -152,15 +152,7 @@ export function useKpiCalculations(
   });
 
   /**
-   * Update Zustand store when query results change
-   */
-  useEffect(() => {
-    if (queryResults.length > 0) {
-      setKpiResults(queryResults);
-    }
-  }, [queryResults, setKpiResults]);
-
-  /**
+   * Trigger KPI calculation for all widgets or specific widget
    * Trigger KPI calculation for all widgets or specific widget
    */
   const triggerCalculation = useCallback(async (widgetId?: string) => {
@@ -214,11 +206,21 @@ export function useKpiCalculations(
     setPollingEnabledState(enabled);
   }, []);
 
-  // @MX:NOTE: Stable params serialization for polling comparison
+  // @MX:NOTE: Stable params serialization for polling comparison — matches stableQueryKey fields
   const currentParamsSerialized = useMemo(() =>
-    JSON.stringify({ dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), globalFilters, activeConnectionId }),
-    [dateFrom, dateTo, globalFilters, activeConnectionId]
+    JSON.stringify({ activeConnectionId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), region, globalFilters, storageConfig, customWidgets }),
+    [activeConnectionId, dateFrom, dateTo, region, globalFilters, storageConfig, customWidgets]
   );
+
+  /**
+   * Update Zustand store when query results change
+   */
+  useEffect(() => {
+    if (queryResults.length > 0) {
+      lastCalculationParamsRef.current = currentParamsSerialized;
+      setKpiResults(queryResults);
+    }
+  }, [queryResults, setKpiResults, currentParamsSerialized]);
 
   /**
    * Webhook polling setup (5-minute intervals)
@@ -238,7 +240,6 @@ export function useKpiCalculations(
     pollingIntervalRef.current = setInterval(() => {
       if (calculatingSet.size === 0) {
         if (currentParamsSerialized !== lastCalculationParamsRef.current) {
-          lastCalculationParamsRef.current = currentParamsSerialized;
           triggerCalculation();
         }
       }
@@ -271,7 +272,6 @@ export function useKpiCalculations(
   }, []);
 
   // @MX:NOTE: Convert Map to Record for custom widget results
-  // Uses size as dependency to avoid re-renders when Map contents haven't changed
   const customWidgetResultsRecord: Record<string, unknown> = useMemo(() => {
     const record: Record<string, unknown> = {};
     if (customWidgetResults instanceof Map) {
@@ -279,14 +279,12 @@ export function useKpiCalculations(
         record[key] = value;
       });
     } else {
-      // Handle mocked store (object) vs real store (Map)
       Object.entries(customWidgetResults).forEach(([key, value]) => {
         record[key] = value;
       });
     }
     return record;
-    // @MX:NOTE: Using size as dependency to minimize re-renders
-  }, [customWidgetResults instanceof Map ? customWidgetResults.size : customWidgetResults]);
+  }, [customWidgetResults]);
 
   const isCalculating = isQueryLoading || calculatingSet.size > 0;
 

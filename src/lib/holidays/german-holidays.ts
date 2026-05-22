@@ -139,7 +139,7 @@ export function getHolidayDateSet(
   for (let year = startYear; year <= endYear; year++) {
     const holidays = getGermanHolidays(year);
     for (const holiday of holidays) {
-      if (holiday.isNational || holiday.regions.some(r => regions.includes(r)) || regions.length === 0) {
+      if (holiday.isNational || holiday.regions.some(r => regions.includes(r))) {
         const y = holiday.date.getFullYear();
         const m = String(holiday.date.getMonth() + 1).padStart(2, '0');
         const d = String(holiday.date.getDate()).padStart(2, '0');
@@ -194,7 +194,9 @@ function getBusinessHoursCacheKey(
   holidayDateSet?: Set<string>
 ): string {
   const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'none';
-  const holidayKey = holidayDateSet ? `set-${holidayDateSet.size}` : 'dynamic';
+  const holidayKey = holidayDateSet
+    ? Array.from(holidayDateSet).sort().join(',')
+    : 'dynamic';
   return `${startDate.getTime()}-${endDate.getTime()}-${regionsKey}-${workStartHour}-${workEndHour}-${holidayKey}`;
 }
 

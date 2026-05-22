@@ -38,7 +38,7 @@ export async function POST(request: Request) {
         where: { connectionRef: connectionId },
         select: { rawData: true }
       });
-      // @MX:OPT: Parse once per ticket, skip try/catch per iteration for better perf
+      // @MX:NOTE: Parse once per ticket, skip try/catch per iteration for better perf
       const parsed: JiraIssue[] = [];
       for (let i = 0; i < masterTickets.length; i++) {
         const t = masterTickets[i];

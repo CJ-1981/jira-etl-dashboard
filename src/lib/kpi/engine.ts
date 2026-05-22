@@ -428,7 +428,8 @@ export class KpiEngine {
             const resKeys = Object.keys(res.dimensions);
             const rKeys = Object.keys(r.dimensions);
             if (resKeys.length !== rKeys.length) return false;
-            return resKeys.every(k => res.dimensions![k] === r.dimensions![k]);
+            const dimsMatch = resKeys.every(k => res.dimensions![k] === r.dimensions![k]);
+            return dimsMatch && r.name === res.name;
           }
           return r.name === res.name;
         });

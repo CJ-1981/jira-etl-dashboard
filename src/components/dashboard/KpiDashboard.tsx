@@ -108,7 +108,7 @@ function WidgetResizeContainer({
 }) {
   const widgetHeights = useAppStore((s) => s.widgetHeights);
   const setWidgetHeights = useAppStore((s) => s.setWidgetHeights);
-  const savedHeight = widgetHeights[widgetId] ?? defaultHeight;
+  const savedHeight = Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight));
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -118,17 +118,18 @@ function WidgetResizeContainer({
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const h = Math.round(entry.contentRect.height);
-        if (h >= minHeight) {
-          clearTimeout(timeoutRef.current);
-          timeoutRef.current = setTimeout(() => {
-            setWidgetHeights((prev) => ({ ...prev, [widgetId]: h }));
-          }, 500);
-        }
+        const h = Math.min(600, Math.max(minHeight, Math.round(entry.contentRect.height)));
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+          setWidgetHeights((prev) => ({ ...prev, [widgetId]: h }));
+        }, 500);
       }
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(timeoutRef.current);
+      observer.disconnect();
+    };
   }, [widgetId, minHeight, setWidgetHeights]);
 
   return (
@@ -538,8 +539,7 @@ export function KpiDashboard() {
         }
 
         if (field && operator && value) {
-          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
-            // Support both flat (issue.summary) and nested (issue.fields.summary) issue shapes
+          filteredIssues = filteredIssues.filter((issue: any) => {
             const rawValue = issue[field] ?? issue.fields?.[field];
             let normalizedValue = rawValue;
             if (rawValue && typeof rawValue === 'object') {
@@ -570,7 +570,7 @@ export function KpiDashboard() {
         } else {
           // Fallback: full-text search across summary, key, description
           const queryLower = query.toLowerCase();
-          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
+          filteredIssues = filteredIssues.filter((issue: any) => {
             const text = `${issue.summary ?? issue.fields?.summary ?? ''} ${issue.key} ${issue.description ?? issue.fields?.description ?? ''}`.toLowerCase();
             return text.includes(queryLower);
           });

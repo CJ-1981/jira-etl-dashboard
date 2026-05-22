@@ -14,9 +14,10 @@ const DATE_CACHE_SIZE = 10000; // Store up to 10k unique dates
  * @MX:REASON: Timezone-safe date formatting is expensive, cache results
  */
 export function toISODate(date: Date): string {
-  const ts = date.getTime();
+  // Use UTC day key instead of millisecond timestamp to avoid cache misses for same-day different-times
+  const dayKey = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 
-  const cached = dateStringCache.get(ts);
+  const cached = dateStringCache.get(dayKey);
   if (cached !== undefined) return cached;
 
   const result = date.toISOString().split('T')[0];
@@ -29,7 +30,7 @@ export function toISODate(date: Date): string {
     }
   }
 
-  dateStringCache.set(ts, result);
+  dateStringCache.set(dayKey, result);
   return result;
 }
 
