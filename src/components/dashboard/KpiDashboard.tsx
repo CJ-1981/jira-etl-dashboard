@@ -147,7 +147,7 @@ function WidgetResizeContainer({
   }, [widgetId, localHeight, setWidgetHeights]);
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div>
       <div
         className={className || ''}
         style={{ height: localHeight, minHeight, overflow: 'hidden' }}
@@ -159,19 +159,7 @@ function WidgetResizeContainer({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 6,
-          cursor: 'row-resize',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-        }}
-        className="group/handle"
+        className="flex items-center justify-center h-5 cursor-row-resize group/handle"
       >
         <div className="w-8 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover/handle:bg-blue-400 dark:group-hover/handle:bg-blue-500 transition-colors" />
       </div>
