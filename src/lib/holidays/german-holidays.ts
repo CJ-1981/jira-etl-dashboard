@@ -340,7 +340,8 @@ export function calculateBusinessHours(
         const fullWeekHolidaySet = holidayDateSet
           ?? getHolidayDateSet(fullWeekStart.getFullYear(), fullWeekEnd.getFullYear(), regions);
         for (const holidayStr of fullWeekHolidaySet) {
-          const holidayDate = new Date(holidayStr);
+          const [hy, hm, hd] = holidayStr.split('-').map(Number);
+          const holidayDate = new Date(hy, hm - 1, hd);
           if (holidayDate >= fullWeekStart && holidayDate <= fullWeekEnd) {
             const dow = holidayDate.getDay();
             if (workDaysPerWeek.includes(dow)) {
@@ -467,7 +468,8 @@ export function calculateWorkingDays(
     const fullWeekEnd = new Date(current);
     fullWeekEnd.setDate(fullWeekEnd.getDate() + firstWeekEnd + fullWeeks * 7 - 1);
     for (const holidayStr of holidaySet) {
-      const holidayDate = new Date(holidayStr);
+      const [hy, hm, hd] = holidayStr.split('-').map(Number);
+      const holidayDate = new Date(hy, hm - 1, hd);
       const checkDate = new Date(current);
       checkDate.setDate(checkDate.getDate() + firstWeekEnd);
       if (holidayDate >= checkDate && holidayDate <= fullWeekEnd) {

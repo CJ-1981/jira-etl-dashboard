@@ -211,6 +211,15 @@ export function KpiDashboard() {
   const isFirstRender = useRef(true);
   const hasUserInitiatedCalc = useRef(false);
 
+  // O(1) lookup for issue details by key (avoids O(N*M) in ticket list rendering)
+  const issueMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const issue of masterDatasetInfo?.issues || []) {
+      map.set(issue.key, issue);
+    }
+    return map;
+  }, [masterDatasetInfo?.issues]);
+
   // Toggle section collapse state in the global store
   const toggleWidgetCollapse = useCallback((pluginId: string) => {
     setCollapsedWidgets(prev => {
@@ -2649,6 +2658,8 @@ export function KpiDashboard() {
                 case 'ticket-list': {
                     const tlPluginId = widget.kpis[0]?.pluginId;
                     const tlCollapsed = collapsedWidgets.has(tlPluginId);
+                    const tlConn = connections.find((c: any) => c.id === activeConnectionId);
+                    const tlJiraBase = tlConn ? (tlConn.baseUrl?.startsWith('http') ? tlConn.baseUrl : `https://${tlConn.baseUrl}`) : '';
                     return widget.kpis.length > 0 ? (
                     <div key={`ticket-list-${tlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
                       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
@@ -2711,12 +2722,9 @@ export function KpiDashboard() {
                                               <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
                                             )}
                                             {(result.ticketKeys || []).map((key) => {
-                                              const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
+                                              const issue = issueMap.get(key);
                                               if (!issue) return null;
-                                              const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
-                                              const baseUrl = activeConnection?.baseUrl || '';
-                                              const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-                                              const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+                                              const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
                                               return (
                                                 <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
                                                   <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
@@ -2756,12 +2764,9 @@ export function KpiDashboard() {
                                               <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
                                             )}
                                             {(result.ticketKeys || []).map((key) => {
-                                              const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
+                                              const issue = issueMap.get(key);
                                               if (!issue) return null;
-                                              const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
-                                              const baseUrl = activeConnection?.baseUrl || '';
-                                              const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-                                              const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+                                              const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
                                               return (
                                                 <div key={key} className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px]">
                                                   <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline shrink-0">{key}</a>
