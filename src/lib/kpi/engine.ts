@@ -11,7 +11,8 @@ import { extractSelectFieldValue } from '../jira/client';
 
 // @MX:NOTE: Module-level WeakMap to cache compiled JavaScript functions without mutating definitions
 // @MX:REASON: Prevents pollution of caller-provided objects and enables safe garbage collection
-const compiledFnCache = new WeakMap<object, Function>();
+type CompiledFunction = (context: KpiContext) => KpiResult | KpiResult[];
+const compiledFnCache = new WeakMap<object, CompiledFunction>();
 import { PluginLoader } from './plugin-loader';
 import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
 import { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone } from './engine-utils';

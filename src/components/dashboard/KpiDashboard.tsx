@@ -670,18 +670,15 @@ export function KpiDashboard() {
   // @MX:NOTE: Uses ref to avoid feedback loop — triggerCalculation recreates when deps change,
   // so including it in the dependency array would cause infinite re-calculation
   const runCalculationRef = useRef(runCalculation);
-  runCalculationRef.current = runCalculation;
+  useEffect(() => {
+    runCalculationRef.current = runCalculation;
+  });
 
   useEffect(() => {
-    // Only auto-calculate if user has previously initiated a calculation
-    if (hasUserInitiatedCalc.current) {
-      runCalculationRef.current();
-    }
     // On first render, just mark as rendered - don't auto-calculate
     if (isFirstRender.current) {
       isFirstRender.current = false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keyboard Shortcuts
