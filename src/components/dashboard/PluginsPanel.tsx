@@ -48,6 +48,81 @@ import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
+
+// ─── Resizable container that persists height to Zustand ────────────────────────
+function WidgetResizeContainer({
+  widgetId,
+  defaultHeight,
+  minHeight = 200,
+  className,
+  children,
+}: {
+  widgetId: string;
+  defaultHeight: number;
+  minHeight?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const widgetHeights = useAppStore((s) => s.widgetHeights);
+  const setWidgetHeights = useAppStore((s) => s.setWidgetHeights);
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const startH = useRef(0);
+
+  const [localHeight, setLocalHeight] = useState(() =>
+    Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight))
+  );
+
+  const savedHeight = widgetHeights[widgetId];
+  useEffect(() => {
+    if (isDragging.current) return;
+    if (savedHeight !== undefined) {
+      setLocalHeight(Math.min(600, Math.max(minHeight, savedHeight)));
+    }
+  }, [savedHeight, minHeight]);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    startY.current = e.clientY;
+    startH.current = localHeight;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [localHeight]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    const delta = e.clientY - startY.current;
+    const next = Math.min(600, Math.max(minHeight, startH.current + delta));
+    setLocalHeight(next);
+  }, [minHeight]);
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    setWidgetHeights((prev) => ({ ...prev, [widgetId]: localHeight }));
+  }, [widgetId, localHeight, setWidgetHeights]);
+
+  return (
+    <div>
+      <div
+        className={className || ''}
+        style={{ height: localHeight, minHeight, overflow: 'hidden' }}
+      >
+        {children}
+      </div>
+      {/* Drag handle */}
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className="flex items-center justify-center h-5 cursor-row-resize group/handle"
+      >
+        <div className="w-8 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover/handle:bg-blue-400 dark:group-hover/handle:bg-blue-500 transition-colors" />
+      </div>
+    </div>
+  );
+}
 import { isTimeSeriesPlugin } from '@/lib/chart-data-utils';
 
 const METRIC_TYPES = [
@@ -664,7 +739,12 @@ export function PluginsPanel() {
               </div>
             )}
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
-              <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
+              <WidgetResizeContainer
+                widgetId="kpi-plugin-registry"
+                defaultHeight={400}
+                minHeight={200}
+                className="space-y-6 overflow-y-auto pr-2 custom-scrollbar"
+              >
                 {Object.entries(filteredPlugins).map(([category, pluginList]) => (
                   <div key={category}>
                     <div
@@ -720,7 +800,7 @@ export function PluginsPanel() {
                     <p className="text-xs mt-1">Try different keywords or clear the search</p>
                   </div>
                 )}
-              </div>
+              </WidgetResizeContainer>
             )}
           </CardContent>
         </Card>
@@ -737,7 +817,12 @@ export function PluginsPanel() {
                 <p className="text-sm">No widgets to reorder</p>
               </div>
             ) : (
-              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
+              <WidgetResizeContainer
+                widgetId="widget-display-order"
+                defaultHeight={400}
+                minHeight={200}
+                className="space-y-2 overflow-y-auto pr-2 custom-scrollbar"
+              >
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -771,7 +856,7 @@ export function PluginsPanel() {
                       })}
                   </SortableContext>
                 </DndContext>
-              </div>
+              </WidgetResizeContainer>
             )}
           </CardContent>
         </Card>
