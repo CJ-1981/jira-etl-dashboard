@@ -108,9 +108,21 @@ function WidgetResizeContainer({
 }) {
   const widgetHeights = useAppStore((s) => s.widgetHeights);
   const setWidgetHeights = useAppStore((s) => s.setWidgetHeights);
-  const savedHeight = Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight));
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const isResizing = useRef(false);
+  const [localHeight, setLocalHeight] = useState(() =>
+    Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight))
+  );
+
+  // Sync from external state only when not actively resizing
+  const savedHeight = widgetHeights[widgetId];
+  useEffect(() => {
+    if (isResizing.current) return;
+    if (savedHeight !== undefined) {
+      setLocalHeight(Math.min(600, Math.max(minHeight, savedHeight)));
+    }
+  }, [savedHeight, minHeight]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -119,9 +131,12 @@ function WidgetResizeContainer({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const h = Math.min(600, Math.max(minHeight, Math.round(entry.contentRect.height)));
+        isResizing.current = true;
+        setLocalHeight(h);
         clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => {
           setWidgetHeights((prev) => ({ ...prev, [widgetId]: h }));
+          isResizing.current = false;
         }, 500);
       }
     });
@@ -136,7 +151,7 @@ function WidgetResizeContainer({
     <div
       ref={containerRef}
       className={`resize-y overflow-hidden ${className || ''}`}
-      style={{ height: savedHeight, minHeight }}
+      style={{ height: localHeight, minHeight }}
     >
       {children}
     </div>
