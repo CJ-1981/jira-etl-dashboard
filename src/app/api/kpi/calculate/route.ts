@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     if (customPlugins && Array.isArray(customPlugins)) {
       for (const pluginDef of customPlugins) {
         try {
-          engine.register(pluginDef);
+          engine.registerCustomPlugin(pluginDef);
         } catch (err) {
           console.error(`Failed to register custom plugin ${pluginDef.id}:`, err);
         }
