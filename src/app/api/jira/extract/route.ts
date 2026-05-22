@@ -426,7 +426,7 @@ export async function POST(request: Request) {
           { created: dateFilter },
           { resolved: dateFilter },
           { updated: dateFilter },
-          { created: { lte: dateFilter.lte }, resolution: null }, // long-lived open tickets
+          { created: { lte: dateFilter.lte }, resolved: null }, // long-lived open tickets
         ];
       }
 
