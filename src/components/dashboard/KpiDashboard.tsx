@@ -108,52 +108,73 @@ function WidgetResizeContainer({
 }) {
   const widgetHeights = useAppStore((s) => s.widgetHeights);
   const setWidgetHeights = useAppStore((s) => s.setWidgetHeights);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const isResizing = useRef(false);
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const startH = useRef(0);
+
   const [localHeight, setLocalHeight] = useState(() =>
     Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight))
   );
 
-  // Sync from external state only when not actively resizing
   const savedHeight = widgetHeights[widgetId];
   useEffect(() => {
-    if (isResizing.current) return;
+    if (isDragging.current) return;
     if (savedHeight !== undefined) {
       setLocalHeight(Math.min(600, Math.max(minHeight, savedHeight)));
     }
   }, [savedHeight, minHeight]);
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    startY.current = e.clientY;
+    startH.current = localHeight;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [localHeight]);
 
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const h = Math.min(600, Math.max(minHeight, Math.round(entry.contentRect.height)));
-        isResizing.current = true;
-        setLocalHeight(h);
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-          setWidgetHeights((prev) => ({ ...prev, [widgetId]: h }));
-          isResizing.current = false;
-        }, 500);
-      }
-    });
-    observer.observe(el);
-    return () => {
-      clearTimeout(timeoutRef.current);
-      observer.disconnect();
-    };
-  }, [widgetId, minHeight, setWidgetHeights]);
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    const delta = e.clientY - startY.current;
+    const next = Math.min(600, Math.max(minHeight, startH.current + delta));
+    setLocalHeight(next);
+  }, [minHeight]);
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    setWidgetHeights((prev) => ({ ...prev, [widgetId]: localHeight }));
+  }, [widgetId, localHeight, setWidgetHeights]);
 
   return (
-    <div
-      ref={containerRef}
-      className={`resize-y overflow-hidden ${className || ''}`}
-      style={{ height: localHeight, minHeight }}
-    >
-      {children}
+    <div style={{ position: 'relative' }}>
+      <div
+        className={className || ''}
+        style={{ height: localHeight, minHeight, overflow: 'hidden' }}
+      >
+        {children}
+      </div>
+      {/* Drag handle */}
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 6,
+          cursor: 'row-resize',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10,
+        }}
+        className="group/handle"
+      >
+        <div className="w-8 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover/handle:bg-blue-400 dark:group-hover/handle:bg-blue-500 transition-colors" />
+      </div>
     </div>
   );
 }
