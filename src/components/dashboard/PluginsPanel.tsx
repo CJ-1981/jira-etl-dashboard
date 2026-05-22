@@ -69,17 +69,18 @@ function WidgetResizeContainer({
   const startY = useRef(0);
   const startH = useRef(0);
 
+  const savedHeight = widgetHeights[widgetId];
   const [localHeight, setLocalHeight] = useState(() =>
-    Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight))
+    Math.min(600, Math.max(minHeight, savedHeight ?? defaultHeight))
   );
 
-  const savedHeight = widgetHeights[widgetId];
+  // Sync with saved height on mount and when savedHeight changes
   useEffect(() => {
     if (isDragging.current) return;
-    if (savedHeight !== undefined) {
+    if (savedHeight !== undefined && savedHeight !== localHeight) {
       setLocalHeight(Math.min(600, Math.max(minHeight, savedHeight)));
     }
-  }, [savedHeight, minHeight]);
+  }, [savedHeight, minHeight, localHeight]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -100,8 +101,11 @@ function WidgetResizeContainer({
     if (!isDragging.current) return;
     isDragging.current = false;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    setWidgetHeights((prev) => ({ ...prev, [widgetId]: localHeight }));
-  }, [widgetId, localHeight, setWidgetHeights]);
+    const finalHeight = Math.min(600, Math.max(minHeight, localHeight));
+    setWidgetHeights((prev) => ({ ...prev, [widgetId]: finalHeight }));
+    // Immediately update local state to ensure consistency
+    setLocalHeight(finalHeight);
+  }, [widgetId, localHeight, minHeight, setWidgetHeights]);
 
   return (
     <div>
