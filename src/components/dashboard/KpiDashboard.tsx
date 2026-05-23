@@ -2498,7 +2498,7 @@ export function KpiDashboard() {
                         </CardHeader>
                         {isExpanded && (
                           <CardContent className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto pb-2">
+                            <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 overflow-x-auto pb-2">
                               {Object.entries(statusMap).map(([status, assigneeObj]) => {
                                 const assigneeItems = Object.values(assigneeObj);
                                 const columnTotal = assigneeItems.reduce((sum, item) => sum + item.totalTickets, 0);
