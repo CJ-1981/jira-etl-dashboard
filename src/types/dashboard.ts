@@ -87,6 +87,7 @@ export interface DashboardView {
 export interface DashboardViewState {
   dateFrom: string;
   dateTo: string;
+  selectedPeriodPreset?: string; // Tracks which period preset was selected (e.g., '1Y', '30D', 'MAX')
   globalFilters: Record<string, string[]>;
   charts: ChartConfig[];
   dashboardJqlQuery: string;

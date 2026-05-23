@@ -49,8 +49,21 @@ const COLORS = {
   cyan: '#06b6d4',
   pink: '#ec4899',
   orange: '#f97316',
+  indigo: '#6366f1',
+  teal: '#14b8a6',
+  rose: '#f43f5e',
+  lime: '#84cc16',
+  sky: '#0ea5e9',
+  violet: '#8b5cf6',
+  fuchsia: '#d946ef',
+  yellow: '#eab308',
+  slate: '#64748b',
+  zinc: '#71717a',
+  neutral: '#737373',
+  stone: '#78716c',
 };
 
+// Expanded color palette for better distinction with many data sources
 export const CHART_COLORS = [
   COLORS.emerald,
   COLORS.blue,
@@ -60,7 +73,69 @@ export const CHART_COLORS = [
   COLORS.pink,
   COLORS.orange,
   COLORS.red,
+  COLORS.indigo,
+  COLORS.teal,
+  COLORS.rose,
+  COLORS.lime,
+  COLORS.sky,
+  COLORS.violet,
+  COLORS.fuchsia,
+  COLORS.yellow,
+  COLORS.slate,
+  // Add lighter/darker variants for even more distinction
+  '#059669', // darker emerald
+  '#2563eb', // darker blue
+  '#d97706', // darker amber
+  '#dc2626', // darker red
+  '#7c3aed', // darker purple
+  '#0891b2', // darker cyan
+  '#db2777', // darker pink
+  '#ea580c', // darker orange
 ];
+
+/**
+ * Get a unique color for a given index
+ * Uses the expanded palette first, then generates colors using HSL for uniqueness
+ */
+export function getUniqueColor(index: number): string {
+  if (index < CHART_COLORS.length) {
+    return CHART_COLORS[index];
+  }
+
+  // Generate a unique color using HSL color space
+  // We vary hue around the color wheel while keeping saturation and lightness constant
+  // for good perceptual distinction
+  const baseHue = (index * 137.508) % 360; // Golden angle approximation for even distribution
+  const saturation = 70; // Moderate saturation for visibility
+  const lightness = 55; // Medium lightness for good contrast
+
+  return `hsl(${baseHue}, ${saturation}%, ${lightness}%)`;
+}
+
+/**
+ * Get a unique dash array for line charts
+ * Returns different dash patterns to help distinguish series beyond just color
+ */
+export function getUniqueDashArray(index: number): string | undefined {
+  // First few series have solid lines (no dash)
+  if (index < CHART_COLORS.length / 2) {
+    return undefined;
+  }
+
+  // Generate dash patterns based on index
+  const patterns: string[] = [
+    '4 4',      // dash
+    '8 4',      // longer dash
+    '4 2 2 2',  // dot-dash
+    '8 2 2 2',  // long dash-dot
+    '4 4 2 4',  // dash-dot-dash
+    '12 4',     // very long dash
+    '2 2',      // dots
+    '6 2 2 2 2 2', // dash-dot-dot
+  ];
+
+  return patterns[(index - Math.floor(CHART_COLORS.length / 2)) % patterns.length];
+}
 
 /**
  * Get color based on value (for performance indicators)
@@ -133,7 +208,7 @@ export function transformForBarChart(
             prevWeek: 0,
             existing: 0,
             ticketKeys: [],
-            fill: CHART_COLORS[grouped.size % CHART_COLORS.length]
+            fill: getUniqueColor(grouped.size)
           });
         }
 
@@ -199,7 +274,7 @@ export function transformForBarChart(
       // but stick to health colors for performance metrics (SLA, speed)
       const color = isPerformanceMetric
         ? getColorForValue(result.value, result.unit)
-        : CHART_COLORS[index % CHART_COLORS.length];
+        : getUniqueColor(index);
 
       const dataPoint: ChartDataPoint = {
         name: dimensionName,
@@ -267,7 +342,7 @@ export function transformForPieChart(
     return {
       name: dimensionName,
       value: Number(result.value.toFixed(2)),
-      fill: CHART_COLORS[index % CHART_COLORS.length],
+      fill: getUniqueColor(index),
       unit: result.unit, // Pass unit for better formatting in Pie labels
       ticketKeys: (result as any).ticketKeys || [],
     };

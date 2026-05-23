@@ -28,6 +28,8 @@ import {
   transformForLineChart,
   formatChartValue,
   CHART_COLORS,
+  getUniqueColor,
+  getUniqueDashArray,
   getKpiOptions,
   isTimeSeriesPlugin,
   getRecommendedChartType
@@ -684,7 +686,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
             if (entry.dataKey.startsWith('series')) {
               const seriesMatch = entry.dataKey.match(/series(\d+)/);
               const seriesIndex = seriesMatch ? parseInt(seriesMatch[1]) : 0;
-              color = CHART_COLORS[seriesIndex % CHART_COLORS.length];
+              color = getUniqueColor(seriesIndex);
             }
 
             return (
@@ -828,7 +830,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     key={result.name || idx}
                     dataKey={`series${idx}`}
                     name={result.name}
-                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                    fill={getUniqueColor(idx)}
                     radius={[4, 4, 0, 0]}
                     hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
                     cursor="pointer"
@@ -842,7 +844,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     {mergedData.map((entry: any, index: number) => (
                       <Cell 
                         key={`cell-${index}`} 
-                        fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                        fill={getUniqueColor(idx)}
                         fillOpacity={entry.isComplete === false ? 0.4 : 1}
                       />
                     ))}
@@ -1062,7 +1064,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   />
                 )}
                 {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                  const color = CHART_COLORS[idx % CHART_COLORS.length];
+                  const color = getUniqueColor(idx);
+                  const dashArray = getUniqueDashArray(idx);
                   return (
                     <Line
                       key={result.name || idx}
@@ -1071,6 +1074,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                       name={result.name}
                       stroke={color}
                       strokeWidth={2}
+                      strokeDasharray={dashArray}
                       activeDot={{
                         onClick: (_e: any, payload: any) => {
                           const keys = payload.payload[`ticketKeys${idx}`];
@@ -1159,7 +1163,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
               <Line
                 type="monotone"
                 dataKey="value"
-                stroke="#3b82f6"
+                stroke={getUniqueColor(0)}
                 strokeWidth={2}
                 activeDot={{
                   onClick: (_e: any, payload: any) => {
@@ -1276,8 +1280,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     dataKey={`series${idx}`}
                     name={result.name}
                     stackId="1"
-                    stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                    stroke={getUniqueColor(idx)}
+                    fill={getUniqueColor(idx)}
                     fillOpacity={0.6}
                     hide={hiddenDimensions.has(`${config.kpiId}|${result.name}`)}
                     activeDot={{
@@ -1410,7 +1414,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 cursor="pointer"
               >
                 {visiblePieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill || CHART_COLORS[index % CHART_COLORS.length]} />
+                  <Cell key={`cell-${index}`} fill={entry.fill || getUniqueColor(index)} />
                 ))}
               </Pie>
               <Legend 

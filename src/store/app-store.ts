@@ -45,6 +45,9 @@ interface AppState {
   setDateTo: (date: string) => void;
   region: string;
   setRegion: (region: string) => void;
+  // @MX:NOTE: Tracks which period preset (7D, 30D, 1Y, MAX) is currently selected
+  selectedPeriodPreset: string | undefined;
+  setSelectedPeriodPreset: (preset: string | undefined) => void;
 
   // KPI Dashboard specific
   globalFilters: Record<string, string[]>;
@@ -152,12 +155,15 @@ export const useAppStore = create<AppState>((set) => ({
 
   dateFrom: '',
   setDateFrom: (date) => set({ dateFrom: date }),
-  
+
   dateTo: '',
   setDateTo: (date) => set({ dateTo: date }),
-  
+
   region: 'national',
   setRegion: (region) => set({ region }),
+
+  selectedPeriodPreset: undefined,
+  setSelectedPeriodPreset: (preset) => set({ selectedPeriodPreset: preset }),
 
   globalFilters: {},
   setGlobalFilters: (filters) => set({ globalFilters: filters }),

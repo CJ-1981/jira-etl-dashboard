@@ -26,6 +26,7 @@ export function ViewManager() {
     dateFrom,
     dateTo,
     region,
+    selectedPeriodPreset,
     globalFilters,
     dashboardCharts,
     dashboardJqlQuery,
@@ -33,18 +34,19 @@ export function ViewManager() {
     hiddenDimensions,
     widgetTitles,
     collapsedWidgets,
-    
+
     savedViews,
     setSavedViews,
     activeView,
     setActiveView,
     isViewModified,
     setIsViewModified,
-    
+
     // Actions to restore state
     setDateFrom,
     setDateTo,
     setRegion,
+    setSelectedPeriodPreset,
     setGlobalFilters,
     setDashboardCharts,
     setDashboardJqlQuery,
@@ -67,6 +69,7 @@ export function ViewManager() {
     return {
       dateFrom,
       dateTo,
+      selectedPeriodPreset,
       region,
       globalFilters,
       charts: dashboardCharts,
@@ -83,8 +86,45 @@ export function ViewManager() {
     try {
       const state = JSON.parse(view.data) as DashboardViewState;
 
-      setDateFrom(state.dateFrom || '');
-      setDateTo(state.dateTo || '');
+      // @MX:NOTE: When a period preset is active, recalculate dates based on current date
+      // This ensures the view stays valid across day boundaries
+      if (state.selectedPeriodPreset) {
+        const preset = state.selectedPeriodPreset;
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        const todayStr = today.toISOString().split('T')[0];
+
+        if (preset === 'MAX') {
+          // MAX preset: use the full available date range
+          // Note: This will be calculated by the dashboard component based on masterDatasetInfo
+          // For now, set to empty to trigger MAX detection logic in the dashboard
+          setDateFrom('');
+          setDateTo('');
+        } else {
+          // Parse preset label to get days (e.g., '7D' -> 7, '1Y' -> 365)
+          const daysMap: Record<string, number> = {
+            '7D': 7, '14D': 14, '30D': 30, '60D': 60,
+            '90D': 90, '180D': 180, '1Y': 365
+          };
+          const days = daysMap[preset];
+          if (days !== undefined) {
+            const targetStart = new Date(today);
+            targetStart.setDate(today.getDate() - days);
+            targetStart.setHours(0, 0, 0, 0);
+            setDateFrom(targetStart.toISOString().split('T')[0]);
+            setDateTo(todayStr);
+          } else {
+            // Unknown preset - fall back to saved dates
+            setDateFrom(state.dateFrom || '');
+            setDateTo(state.dateTo || '');
+          }
+        }
+      } else {
+        // No preset - use saved exact dates
+        setDateFrom(state.dateFrom || '');
+        setDateTo(state.dateTo || '');
+      }
+
       setRegion(state.region || 'national');
       setGlobalFilters(state.globalFilters || {});
       setDashboardCharts(state.charts || []);
@@ -99,6 +139,9 @@ export function ViewManager() {
         ...prev, // Preserve existing heights (like plugin configs)
         ...(state.widgetHeights || {}), // Override with saved view heights
       }));
+
+      // Restore the period preset state
+      setSelectedPeriodPreset(state.selectedPeriodPreset);
 
       setActiveView(view);
       setIsViewModified(false);

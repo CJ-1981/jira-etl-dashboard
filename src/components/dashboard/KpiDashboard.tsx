@@ -13,6 +13,7 @@ import {
   formatChartValue,
   isTimeSeriesPlugin,
   CHART_COLORS,
+  getUniqueColor,
 } from '@/lib/chart-data-utils';
 import { KpiDataTable } from './KpiDataTable';
 import { KpiErrorBoundary } from './KpiErrorBoundary';
@@ -132,6 +133,7 @@ export function KpiDashboard() {
   const {
     connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo,
     dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion,
+    selectedPeriodPreset, setSelectedPeriodPreset,
     activeConnectionId, settings, kpiResults, setKpiResults, storageConfig,
     globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions,
     dashboardCharts: charts, setDashboardCharts: setCharts,
@@ -265,15 +267,61 @@ export function KpiDashboard() {
 
   const lastSaveRequestId = useRef(0);
 
+  // @MX:NOTE: Detect which period preset is currently active based on dateFrom/dateTo
+  const getActivePeriodPreset = (): string | undefined => {
+    if (!dateFrom || !dateTo) return undefined;
+
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Check MAX preset
+    const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
+    const masterEnd = masterDatasetInfo?.dateRange?.to ? new Date(masterDatasetInfo.dateRange.to) : null;
+    const masterStartStr = masterStart ? new Date(masterStart).toISOString().split('T')[0] : null;
+    const maxEndStr = masterEnd ? new Date(masterEnd).toISOString().split('T')[0] : todayStr;
+
+    if (masterStartStr && dateFrom === masterStartStr && dateTo === maxEndStr) {
+      return 'MAX';
+    }
+
+    // Check other presets (only if not MAX and dateTo is today)
+    if (dateTo === todayStr) {
+      const presets = [
+        { label: '7D', days: 7 },
+        { label: '14D', days: 14 },
+        { label: '30D', days: 30 },
+        { label: '60D', days: 60 },
+        { label: '90D', days: 90 },
+        { label: '180D', days: 180 },
+        { label: '1Y', days: 365 },
+      ];
+
+      for (const preset of presets) {
+        const targetStart = new Date(today);
+        targetStart.setDate(today.getDate() - preset.days);
+        targetStart.setHours(0, 0, 0, 0);
+        const startStr = targetStart.toISOString().split('T')[0];
+        if (dateFrom === startStr) {
+          return preset.label;
+        }
+      }
+    }
+
+    return undefined; // Custom date range
+  };
+
   useEffect(() => {
     if (!activeView) {
       setIsViewModified(false);
       return;
     }
 
+    const selectedPeriodPreset = getActivePeriodPreset();
     const currentData = {
       dateFrom,
       dateTo,
+      selectedPeriodPreset,
       region,
       globalFilters,
       charts,
@@ -288,8 +336,22 @@ export function KpiDashboard() {
     try {
       const savedData = JSON.parse(activeView.data);
 
-      // Deep comparison via normalized stringification
-      const isModified = normalizeViewData(currentData) !== normalizeViewData(savedData);
+      // @MX:NOTE: When a period preset is active, compare presets instead of exact dates
+      // This prevents false positives when the day changes but the preset (e.g., "1Y") is still the same
+      const currentPreset = currentData.selectedPeriodPreset;
+      const savedPreset = savedData.selectedPeriodPreset;
+
+      let isModified: boolean;
+      if (currentPreset && savedPreset && currentPreset === savedPreset) {
+        // Same preset active - compare everything except dates (dates are derived from preset)
+        const { dateFrom: _1, dateTo: _2, selectedPeriodPreset: _3, ...currentWithoutDates } = currentData;
+        const { dateFrom: _4, dateTo: _5, selectedPeriodPreset: _6, ...savedWithoutDates } = savedData;
+        isModified = normalizeViewData(currentWithoutDates) !== normalizeViewData(savedWithoutDates);
+      } else {
+        // Different or custom date ranges - compare everything including dates
+        isModified = normalizeViewData(currentData) !== normalizeViewData(savedData);
+      }
+
       setIsViewModified(isModified);
 
       // Auto-save logic
@@ -1031,7 +1093,10 @@ export function KpiDashboard() {
                       <Input
                         type="date"
                         value={dateFrom || ''}
-                        onChange={(e) => setDateFrom(e.target.value)}
+                        onChange={(e) => {
+                          setDateFrom(e.target.value);
+                          setSelectedPeriodPreset(undefined);
+                        }}
                         className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
                       />
                     </div>
@@ -1043,7 +1108,10 @@ export function KpiDashboard() {
                       <Input
                         type="date"
                         value={dateTo || ''}
-                        onChange={(e) => setDateTo(e.target.value)}
+                        onChange={(e) => {
+                          setDateTo(e.target.value);
+                          setSelectedPeriodPreset(undefined);
+                        }}
                         className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
                       />
                     </div>
@@ -1123,6 +1191,7 @@ export function KpiDashboard() {
                           setDateFrom(startStr);
                           setDateTo(todayStr);
                         }
+                        setSelectedPeriodPreset(p.label);
                       }}
                       className={`h-8 px-3 text-[10px] font-bold transition-all ${isActive
                           ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20 border-transparent'
