@@ -46,6 +46,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
+import { useAppStore } from '@/store/app-store';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
 import { isTimeSeriesPlugin } from '@/lib/chart-data-utils';
@@ -967,8 +968,8 @@ export function PluginsPanel() {
                 {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
                   <div key={status} className="flex items-center gap-3">
                     <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
-                    <Input type="number" min="0" value={hours ?? ''} onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
+                    <Input type="number" min="0" value={(hours as number) ?? ''} onChange={(e) => {
+                      const val = e.target.value ? parseFloat(e.target.value) : 0;
                       const sla = settings.sla ?? {};
                       const statusTargets = sla.statusTargets ?? {};
                       setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
