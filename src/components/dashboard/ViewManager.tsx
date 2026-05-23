@@ -82,7 +82,7 @@ export function ViewManager() {
   const loadView = (view: DashboardView) => {
     try {
       const state = JSON.parse(view.data) as DashboardViewState;
-      
+
       setDateFrom(state.dateFrom || '');
       setDateTo(state.dateTo || '');
       setRegion(state.region || 'national');
@@ -93,8 +93,13 @@ export function ViewManager() {
       setHiddenDimensions(new Set(state.hiddenDimensions || []));
       setWidgetTitles(state.widgetTitles || {});
       setCollapsedWidgets(new Set(state.collapsedWidgets || []));
-      setWidgetHeights(state.widgetHeights || {});
-      
+
+      // Merge widget heights to preserve plugin config heights
+      setWidgetHeights((prev) => ({
+        ...prev, // Preserve existing heights (like plugin configs)
+        ...(state.widgetHeights || {}), // Override with saved view heights
+      }));
+
       setActiveView(view);
       setIsViewModified(false);
       setPopoverOpen(false);
@@ -118,23 +123,20 @@ export function ViewManager() {
       if (data.success) {
         setSavedViews(data.views);
 
-        // Reset active view before restoring to avoid stale view ID from previous connection
-        if (restoreViewId) {
-          setActiveView(null);
-        }
-
         // Restore the saved view if requested
         if (restoreViewId) {
           const viewToRestore = data.views.find((v: DashboardView) => v.id === restoreViewId);
-          if (viewToRestore && !activeView) {
+          if (viewToRestore) {
             loadView(viewToRestore);
             return;
           }
         }
 
-        // If there's a default view and no active view, load it
+        // If there's a default view and no active view (or we're on initial load), load it
         const defaultView = data.views.find((v: DashboardView) => v.isDefault);
-        if (defaultView && !activeView) {
+        // Verify activeView belongs to current connection (not stale from previous connection)
+        const isActiveViewValid = activeView?.id && data.views.some((v: DashboardView) => v.id === activeView.id);
+        if (defaultView && !isActiveViewValid) {
           loadView(defaultView);
         }
       }

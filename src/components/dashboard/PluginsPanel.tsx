@@ -48,6 +48,7 @@ import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
+import { WidgetResizeContainer } from './WidgetResizeContainer';
 import { isTimeSeriesPlugin } from '@/lib/chart-data-utils';
 
 const METRIC_TYPES = [
@@ -664,7 +665,12 @@ export function PluginsPanel() {
               </div>
             )}
             {loading ? <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-gray-100 dark:bg-slate-800" />)}</div> : (
-              <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
+              <WidgetResizeContainer
+                widgetId="kpi-plugin-registry"
+                defaultHeight={400}
+                minHeight={200}
+                className="space-y-6 overflow-y-auto pr-2 custom-scrollbar"
+              >
                 {Object.entries(filteredPlugins).map(([category, pluginList]) => (
                   <div key={category}>
                     <div
@@ -720,7 +726,7 @@ export function PluginsPanel() {
                     <p className="text-xs mt-1">Try different keywords or clear the search</p>
                   </div>
                 )}
-              </div>
+              </WidgetResizeContainer>
             )}
           </CardContent>
         </Card>
@@ -737,7 +743,12 @@ export function PluginsPanel() {
                 <p className="text-sm">No widgets to reorder</p>
               </div>
             ) : (
-              <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]">
+              <WidgetResizeContainer
+                widgetId="widget-display-order"
+                defaultHeight={400}
+                minHeight={200}
+                className="space-y-2 overflow-y-auto pr-2 custom-scrollbar"
+              >
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -771,7 +782,7 @@ export function PluginsPanel() {
                       })}
                   </SortableContext>
                 </DndContext>
-              </div>
+              </WidgetResizeContainer>
             )}
           </CardContent>
         </Card>
@@ -957,8 +968,8 @@ export function PluginsPanel() {
                 {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
                   <div key={status} className="flex items-center gap-3">
                     <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
-                    <Input type="number" min="0" value={hours ?? ''} onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
+                    <Input type="number" min="0" value={(hours as number) ?? ''} onChange={(e) => {
+                      const val = e.target.value ? parseFloat(e.target.value) : 0;
                       const sla = settings.sla ?? {};
                       const statusTargets = sla.statusTargets ?? {};
                       setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
