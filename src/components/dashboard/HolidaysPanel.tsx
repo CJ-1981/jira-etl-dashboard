@@ -20,23 +20,22 @@ import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 
 export function HolidaysPanel() {
-  const { region, setRegion } = useAppStore();
+  const { region, setRegion, settings } = useAppStore();
   // @MX:TODO: Add validation for year range and support for multiple regions
   const [year, setYear] = useState<number | undefined>(new Date().getFullYear());
   const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);
   const [loading, setLoading] = useState(false);
   const isMounted = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
-  
-  // @MX:WARN: Cleanup ref to prevent state updates on unmounted component
-  useEffect(() => { 
-    return () => { 
-      isMounted.current = false; 
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    }; 
-  }, []);
+
+  // @MX:ANCHOR: Initialize region from KPI Calculation Defaults on mount
+  // @MX:REASON: When user saves a preferred state in KPI Calculation Defaults, Holiday Calendar should use it
+  useEffect(() => {
+    const defaultRegion = settings?.general?.defaultHolidayState;
+    if (defaultRegion && defaultRegion !== region) {
+      setRegion(defaultRegion);
+    }
+  }, []); // Run once on mount
 
   /**
    * @MX:ANCHOR: loadHolidays
