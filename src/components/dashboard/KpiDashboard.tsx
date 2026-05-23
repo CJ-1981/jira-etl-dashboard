@@ -2497,14 +2497,14 @@ export function KpiDashboard() {
 
                                             {/* Segmented Age Bar */}
                                             <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex gap-0.5 shadow-inner">
-                                              {item.ageBreakdown.this_week.count > 0 && (
+                                              {item.ageBreakdown.existing.count > 0 && (
                                                 <div
-                                                  title={`This week: ${item.ageBreakdown.this_week.count} ticket(s)`}
-                                                  className="bg-emerald-400 h-full transition-opacity hover:opacity-80"
-                                                  style={{ width: `${(item.ageBreakdown.this_week.count / item.totalTickets) * 100}%` }}
+                                                  title={`2+ weeks old: ${item.ageBreakdown.existing.count} ticket(s)`}
+                                                  className="bg-slate-500 h-full transition-opacity hover:opacity-80"
+                                                  style={{ width: `${(item.ageBreakdown.existing.count / item.totalTickets) * 100}%` }}
                                                   onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleDrillDown(item.ageBreakdown.this_week.keys, `Assignee: ${item.assignee} (${status}) [This week]`);
+                                                    handleDrillDown(item.ageBreakdown.existing.keys, `Assignee: ${item.assignee} (${status}) [2+ weeks]`);
                                                   }}
                                                 />
                                               )}
@@ -2519,14 +2519,14 @@ export function KpiDashboard() {
                                                   }}
                                                 />
                                               )}
-                                              {item.ageBreakdown.existing.count > 0 && (
+                                              {item.ageBreakdown.this_week.count > 0 && (
                                                 <div
-                                                  title={`2+ weeks old: ${item.ageBreakdown.existing.count} ticket(s)`}
-                                                  className="bg-slate-500 h-full transition-opacity hover:opacity-80"
-                                                  style={{ width: `${(item.ageBreakdown.existing.count / item.totalTickets) * 100}%` }}
+                                                  title={`This week: ${item.ageBreakdown.this_week.count} ticket(s)`}
+                                                  className="bg-emerald-400 h-full transition-opacity hover:opacity-80"
+                                                  style={{ width: `${(item.ageBreakdown.this_week.count / item.totalTickets) * 100}%` }}
                                                   onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleDrillDown(item.ageBreakdown.existing.keys, `Assignee: ${item.assignee} (${status}) [2+ weeks]`);
+                                                    handleDrillDown(item.ageBreakdown.this_week.keys, `Assignee: ${item.assignee} (${status}) [This week]`);
                                                   }}
                                                 />
                                               )}
