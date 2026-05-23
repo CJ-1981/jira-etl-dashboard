@@ -134,7 +134,9 @@ export function ViewManager() {
 
         // If there's a default view and no active view (or we're on initial load), load it
         const defaultView = data.views.find((v: DashboardView) => v.isDefault);
-        if (defaultView && !activeView) {
+        // Verify activeView belongs to current connection (not stale from previous connection)
+        const isActiveViewValid = activeView?.id && data.views.some((v: DashboardView) => v.id === activeView.id);
+        if (defaultView && !isActiveViewValid) {
           loadView(defaultView);
         }
       }

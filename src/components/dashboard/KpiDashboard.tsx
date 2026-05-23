@@ -91,81 +91,7 @@ import { usePluginVisibility } from '@/hooks/usePluginVisibility';
 import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
-
-// ─── Resizable container that persists height to Zustand ────────────────────────
-function WidgetResizeContainer({
-  widgetId,
-  defaultHeight,
-  minHeight = 200,
-  className,
-  children,
-}: {
-  widgetId: string;
-  defaultHeight: number;
-  minHeight?: number;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const widgetHeights = useAppStore((s) => s.widgetHeights);
-  const setWidgetHeights = useAppStore((s) => s.setWidgetHeights);
-  const isDragging = useRef(false);
-  const startY = useRef(0);
-  const startH = useRef(0);
-
-  const [localHeight, setLocalHeight] = useState(() =>
-    Math.min(600, Math.max(minHeight, widgetHeights[widgetId] ?? defaultHeight))
-  );
-
-  const savedHeight = widgetHeights[widgetId];
-  useEffect(() => {
-    if (isDragging.current) return;
-    if (savedHeight !== undefined) {
-      setLocalHeight(Math.min(600, Math.max(minHeight, savedHeight)));
-    }
-  }, [savedHeight, minHeight]);
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    startY.current = e.clientY;
-    startH.current = localHeight;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [localHeight]);
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    const delta = e.clientY - startY.current;
-    const next = Math.min(600, Math.max(minHeight, startH.current + delta));
-    setLocalHeight(next);
-  }, [minHeight]);
-
-  const onPointerUp = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    setWidgetHeights((prev) => ({ ...prev, [widgetId]: localHeight }));
-  }, [widgetId, localHeight, setWidgetHeights]);
-
-  return (
-    <div>
-      <div
-        className={className || ''}
-        style={{ height: localHeight, minHeight, overflow: 'hidden' }}
-      >
-        {children}
-      </div>
-      {/* Drag handle */}
-      <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        className="flex items-center justify-center h-5 cursor-row-resize group/handle"
-      >
-        <div className="w-8 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover/handle:bg-blue-400 dark:group-hover/handle:bg-blue-500 transition-colors" />
-      </div>
-    </div>
-  );
-}
+import { WidgetResizeContainer } from './WidgetResizeContainer';
 
 // ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
 const JQL_PATTERNS = [
@@ -176,6 +102,31 @@ const JQL_PATTERNS = [
   { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' },
   { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' },
 ];
+
+// @MX:NOTE: Normalizes data for saved view change detection
+// @MX:REASON - Normalize data before comparison to prevent false positives from Set/Array ordering
+const normalizeViewData = (data: any) => {
+  return JSON.stringify(data, (key, value) => {
+    if (value instanceof Set) {
+      return Array.from(value).sort();
+    }
+    if (Array.isArray(value)) {
+      // Sort arrays of strings/numbers for consistency (copy first to avoid mutation)
+      if (value.length > 0 && (typeof value[0] === 'string' || typeof value[0] === 'number')) {
+        return [...value].sort();
+      }
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const sortedKeys = Object.keys(value).sort();
+      const sortedObj: any = {};
+      sortedKeys.forEach(k => {
+        sortedObj[k] = value[k];
+      });
+      return sortedObj;
+    }
+    return value;
+  });
+};
 
 export function KpiDashboard() {
   const {
@@ -313,33 +264,6 @@ export function KpiDashboard() {
   // Removed: setDashboardJqls and activePluginsOrder loading - now handled by useJqlFilters and usePluginVisibility hooks
 
   const lastSaveRequestId = useRef(0);
-
-  // @MX:NOTE: Saved View change detection and auto-save logic
-  // @MX:REASON - Normalize data before comparison to prevent false positives from Set/Array ordering
-  const normalizeViewData = (data: any) => {
-    return JSON.stringify(data, (key, value) => {
-      if (value instanceof Set) {
-        // Sort Set elements for consistent serialization
-        return Array.from(value).sort();
-      }
-      if (Array.isArray(value)) {
-        // Sort arrays of strings/numbers for consistency
-        if (value.length > 0 && typeof value[0] === 'string') {
-          return value.sort();
-        }
-      }
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        // Sort object keys for consistent serialization
-        const sortedKeys = Object.keys(value).sort();
-        const sortedObj: any = {};
-        sortedKeys.forEach(k => {
-          sortedObj[k] = value[k];
-        });
-        return sortedObj;
-      }
-      return value;
-    });
-  };
 
   useEffect(() => {
     if (!activeView) {
@@ -2712,14 +2636,16 @@ export function KpiDashboard() {
                                             {(result.ticketKeys || []).length === 0 && (
                                               <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
                                             )}
-                                            {(result.ticketKeys || []).map((key) => {
-                                              const issue = issueMap.get(key);
-                                              if (!issue) return null;
-                                              const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
-                                              const summaryText = issue.fields?.summary || issue.summary || '';
-                                              return (
-                                                <TooltipProvider key={key}>
-                                                  <UITooltip>
+                                            <TooltipProvider>
+                                              {(result.ticketKeys || []).map((key) => {
+                                                const issue = issueMap.get(key);
+                                                if (!issue) return null;
+                                                const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
+                                                const summaryText = issue.fields?.summary || issue.summary || '';
+                                                const createdDate = issue.fields?.created || issue.created;
+                                                const isValidDate = createdDate && !isNaN(new Date(createdDate).getTime());
+                                                return (
+                                                  <UITooltip key={key}>
                                                     <TooltipTrigger asChild>
                                                       <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
                                                         <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
@@ -2736,14 +2662,14 @@ export function KpiDashboard() {
                                                           <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
                                                           <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
                                                           <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {isValidDate ? new Date(createdDate).toLocaleDateString() : 'N/A'}</span>
                                                         </div>
                                                       </div>
                                                     </TooltipContent>
                                                   </UITooltip>
-                                                </TooltipProvider>
-                                              );
-                                            })}
+                                                );
+                                              })}
+                                            </TooltipProvider>
                                           </div>
                                         </div>
                                       );
@@ -2771,14 +2697,16 @@ export function KpiDashboard() {
                                             {(result.ticketKeys || []).length === 0 && (
                                               <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
                                             )}
-                                            {(result.ticketKeys || []).map((key) => {
-                                              const issue = issueMap.get(key);
-                                              if (!issue) return null;
-                                              const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
-                                              const summaryText = issue.fields?.summary || issue.summary || '';
-                                              return (
-                                                <TooltipProvider key={key}>
-                                                  <UITooltip>
+                                            <TooltipProvider>
+                                              {(result.ticketKeys || []).map((key) => {
+                                                const issue = issueMap.get(key);
+                                                if (!issue) return null;
+                                                const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
+                                                const summaryText = issue.fields?.summary || issue.summary || '';
+                                                const createdDate = issue.fields?.created || issue.created;
+                                                const isValidDate = createdDate && !isNaN(new Date(createdDate).getTime());
+                                                return (
+                                                  <UITooltip key={key}>
                                                     <TooltipTrigger asChild>
                                                       <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
                                                         <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
@@ -2795,14 +2723,14 @@ export function KpiDashboard() {
                                                           <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
                                                           <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
                                                           <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</span>
+                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {isValidDate ? new Date(createdDate).toLocaleDateString() : 'N/A'}</span>
                                                         </div>
                                                       </div>
                                                     </TooltipContent>
                                                   </UITooltip>
-                                                </TooltipProvider>
-                                              );
-                                            })}
+                                                );
+                                              })}
+                                            </TooltipProvider>
                                           </div>
                                         </div>
                                       );
