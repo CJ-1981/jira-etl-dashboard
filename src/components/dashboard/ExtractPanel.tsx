@@ -285,7 +285,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         const extractedCount = data.summary.totalExtracted;
 
         if (extractedCount === 0) {
-          toast.warning('Extraction returned 0 issues. This could be due to: invalid/expired API token, incorrect project key, or no issues in the date range. Try testing your connection and checking credentials.', { duration: 8000 });
+          toast('No issues found matching your criteria. Try adjusting your JQL query, date range, or project key.', { duration: 5000 });
         } else {
           const { added, updated, unchanged, deleted } = data.summary;
           const stats = [
@@ -1011,6 +1011,8 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                     <SelectItem value="default">Default Order</SelectItem>
                     <SelectItem value="key-asc">Key (A-Z)</SelectItem>
                     <SelectItem value="key-desc">Key (Z-A)</SelectItem>
+                    <SelectItem value="created-desc">Newest Created</SelectItem>
+                    <SelectItem value="created-asc">Oldest Created</SelectItem>
                     <SelectItem value="updated-desc">Newest Update</SelectItem>
                     <SelectItem value="updated-asc">Oldest Update</SelectItem>
                   </SelectContent>
@@ -1044,6 +1046,14 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                     return (a.key || '').localeCompare(b.key || '', undefined, { numeric: true });
                   } else if (sortOption === 'key-desc') {
                     return (b.key || '').localeCompare(a.key || '', undefined, { numeric: true });
+                  } else if (sortOption === 'created-desc') {
+                    const dateA = new Date(a.fields?.created || a.created || 0).getTime();
+                    const dateB = new Date(b.fields?.created || b.created || 0).getTime();
+                    return dateB - dateA;
+                  } else if (sortOption === 'created-asc') {
+                    const dateA = new Date(a.fields?.created || a.created || 0).getTime();
+                    const dateB = new Date(b.fields?.created || b.created || 0).getTime();
+                    return dateA - dateB;
                   } else if (sortOption === 'updated-desc') {
                     const dateA = new Date(a.fields?.updated || a.updated || a.fields?.created || a.created || 0).getTime();
                     const dateB = new Date(b.fields?.updated || b.updated || b.fields?.created || b.created || 0).getTime();
