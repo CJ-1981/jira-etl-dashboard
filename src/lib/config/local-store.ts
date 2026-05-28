@@ -34,7 +34,7 @@ export interface KpiPlugin {
   unit: string;
   formula: string | any;
   pluginType: 'custom' | 'builtin';
-  language?: 'dsl' | 'javascript';
+  language?: 'dsl';
   isActive: boolean;
 }
 
@@ -116,6 +116,78 @@ export interface DashboardPreset {
   // @MX:NOTE: Custom widget title overrides — key format: "pluginId|resultName" for KpiCards, chart ID for ChartCards (stored in chart.customTitle)
   widgetTitles?: Record<string, string>;
   collapsedWidgets?: string[];
+}
+
+// --- Crypto imports for credential encryption ---
+let _encryptModule: typeof import('@/lib/crypto/crypto-utils') | null = null;
+let _initPromise: Promise<void> | null = null;
+let _jiraCache: JiraConnection[] | null = null;
+let _pgCache: PgConnection[] | null = null;
+
+async function _ensureCrypto() {
+  if (!_encryptModule) {
+    _encryptModule = await import('@/lib/crypto/crypto-utils');
+  }
+}
+
+/**
+ * Initializes the credential cache by decrypting connections from localStorage.
+ * Must be called once at app startup before using getJiraConnections() or getPgConnections().
+ * Idempotent — subsequent calls are no-ops.
+ */
+async function initCredentialCache(): Promise<void> {
+  if (_initPromise) return _initPromise;
+
+  _initPromise = (async () => {
+    if (!isBrowser) return;
+
+    const rawJira = get<JiraConnection[]>(KEYS.jira, []);
+    const rawPg = get<PgConnection[]>(KEYS.pg, []);
+
+    await _ensureCrypto();
+    const { decrypt, isEncrypted } = _encryptModule!;
+
+    // Decrypt Jira API tokens
+    _jiraCache = [];
+    for (const c of rawJira) {
+      const conn = { ...c };
+      if (conn.apiToken && isEncrypted(conn.apiToken)) {
+        const decrypted = await decrypt(conn.apiToken);
+        if (decrypted !== null) conn.apiToken = decrypted;
+      }
+      _jiraCache.push(conn);
+    }
+
+    // Decrypt PG passwords
+    _pgCache = [];
+    for (const c of rawPg) {
+      const conn = { ...c };
+      if (conn.password && isEncrypted(conn.password)) {
+        const decrypted = await decrypt(conn.password);
+        if (decrypted !== null) conn.password = decrypted;
+      }
+      _pgCache.push(conn);
+    }
+  })();
+
+  return _initPromise;
+}
+
+async function _encryptField(value: string): Promise<string> {
+  if (!value) return value;
+  await _ensureCrypto();
+  return _encryptModule!.encrypt(value);
+}
+
+async function _decryptField(value: string): Promise<string> {
+  if (!value) return value;
+  await _ensureCrypto();
+  const { decrypt, isEncrypted } = _encryptModule!;
+  if (isEncrypted(value)) {
+    const decrypted = await decrypt(value);
+    if (decrypted !== null) return decrypted;
+  }
+  return value;
 }
 
 export const KEYS = {
@@ -200,11 +272,44 @@ function set<T>(key: string, value: T): void {
 }
 
 export const localConfig = {
-  getJiraConnections: () => get<JiraConnection[]>(KEYS.jira, []),
-  saveJiraConnections: (conns: JiraConnection[]) => set(KEYS.jira, conns),
+  /** Must be called once at app startup before reading encrypted connections. Idempotent. */
+  initCredentialCache,
 
-  getPgConnections: () => get<PgConnection[]>(KEYS.pg, []),
-  savePgConnections: (conns: PgConnection[]) => set(KEYS.pg, conns),
+  getJiraConnections: () => {
+    // Return decrypted cache if available; fall back to raw storage for SSR
+    if (_jiraCache) return _jiraCache;
+    return get<JiraConnection[]>(KEYS.jira, []);
+  },
+  saveJiraConnections: async (conns: JiraConnection[]) => {
+    // Update in-memory cache immediately
+    _jiraCache = conns;
+    // Encrypt API tokens before persisting to localStorage
+    await _ensureCrypto();
+    const encryptedConns = await Promise.all(
+      conns.map(async (c) => ({
+        ...c,
+        apiToken: c.apiToken ? await _encryptField(c.apiToken) : c.apiToken,
+      }))
+    );
+    // Fire-and-forget: schedule localStorage write after microtasks drain
+    set(KEYS.jira, encryptedConns);
+  },
+
+  getPgConnections: () => {
+    if (_pgCache) return _pgCache;
+    return get<PgConnection[]>(KEYS.pg, []);
+  },
+  savePgConnections: async (conns: PgConnection[]) => {
+    _pgCache = conns;
+    await _ensureCrypto();
+    const encryptedConns = await Promise.all(
+      conns.map(async (c) => ({
+        ...c,
+        password: c.password ? await _encryptField(c.password) : c.password,
+      }))
+    );
+    set(KEYS.pg, encryptedConns);
+  },
 
 
   getKpiPlugins: () => get<KpiPlugin[]>(KEYS.plugins, []),

@@ -52,6 +52,8 @@ model TicketSnapshot {
   storyPoints     Float?
   labels          String   // JSON array stored as string
   components      String?  // JSON array stored as string
+  rawData         String?  // Complete issue JSON (mirrors MasterTicket.rawData)
+  issueOwnerTeam  String?  // Custom field for team assignment (customfield_10132)
   transitions     TicketTransition[]
 
   @@index([etlRunId])

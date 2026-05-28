@@ -150,7 +150,6 @@ export function PluginsPanel() {
 
   // Unified Builder state
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [builderLanguage, setBuilderLanguage] = useState<'dsl' | 'javascript'>('dsl');
   const [builderData, setBuilderData] = useState({
     name: '',
     description: '',
@@ -418,19 +417,19 @@ export function PluginsPanel() {
 
   const handleCreate = () => {
     if (!builderData.name) { toast.error('Plugin Name is required'); return; }
-    let finalFormula = builderData.formula || (builderLanguage === 'dsl' ? generateFormula() : '');
+    let finalFormula = builderData.formula || generateFormula();
     if (!finalFormula) { toast.error('Formula/Code is required'); return; }
 
     try {
       const newPlugin: KpiPlugin = {
         id: `plugin-${Date.now()}`,
         name: builderData.name,
-        description: builderData.description || `Custom ${builderLanguage} plugin`,
+        description: builderData.description || 'Custom DSL plugin',
         category: builderData.category,
         unit: builderData.unit,
         formula: finalFormula,
         pluginType: 'custom',
-        language: builderLanguage,
+        language: 'dsl' as const,
         isActive: true
       };
       const current = localConfig.getKpiPlugins();
@@ -521,11 +520,7 @@ export function PluginsPanel() {
               <CardTitle className="flex items-center gap-2"><Wand2 className="h-5 w-5 text-emerald-400" /> Plugin Builder</CardTitle>
               <Button variant="outline" size="sm" className="border-slate-200 dark:border-slate-700" onClick={() => setBuilderOpen(false)}>Cancel</Button>
             </div>
-            <CardDescription className="text-slate-600 dark:text-slate-400">Build a custom KPI plugin using the visual builder or raw JavaScript code</CardDescription>
-            <div className="flex items-center gap-2 mt-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-md w-max">
-              <button onClick={() => setBuilderLanguage('dsl')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${builderLanguage === 'dsl' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Visual Builder (DSL)</button>
-              <button onClick={() => setBuilderLanguage('javascript')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${builderLanguage === 'javascript' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Code (JavaScript)</button>
-            </div>
+            <CardDescription className="text-slate-600 dark:text-slate-400">Build a custom KPI plugin using the visual formula builder</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -537,8 +532,7 @@ export function PluginsPanel() {
               <div className="space-y-2"><Label>Unit</Label><Input placeholder="hours, %, tickets" value={builderData.unit} onChange={(e) => setBuilderData({ ...builderData, unit: e.target.value })} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" /></div>
             </div>
             <Separator className="bg-slate-200 dark:bg-slate-700" />
-            {builderLanguage === 'dsl' ? (
-              <div className="space-y-6">
+            <div className="space-y-6">
                 <div className="space-y-3">
                   <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">Metric Type</Label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -565,22 +559,6 @@ export function PluginsPanel() {
                   <textarea className="w-full min-h-[60px] rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50" placeholder={generateFormula()} value={builderData.formula || generateFormula()} onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })} />
                 </div>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <Label className="text-base font-semibold text-emerald-600 dark:text-emerald-400">JavaScript Implementation</Label>
-                <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 mb-2 text-sm text-blue-800 dark:text-blue-300">
-                  <p className="font-semibold mb-1">Context signature:</p>
-                  <code className="bg-white/50 dark:bg-black/20 px-1 py-0.5 rounded text-xs">function calculate(context: {'{'} issues: JiraIssue[], period: {'{'}start, end{'}'}, holidays: ... {'}'}): number | KpiResult[]</code>
-                  <p className="mt-2 text-xs opacity-80">Return a number, or an array of result objects: <code>[{'{'} name: 'My KPI', value: 42, unit: 'hours' {'}'}]</code></p>
-                </div>
-                <textarea
-                  className="w-full min-h-[250px] rounded-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-4 text-sm text-emerald-400 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                  placeholder={`// Example: Count resolved bugs\n\nconst bugs = context.issues.filter(i => i.issueType === 'Bug' && i.resolved);\nreturn bugs.length;`}
-                  value={builderData.formula}
-                  onChange={(e) => setBuilderData({ ...builderData, formula: e.target.value })}
-                />
-              </div>
-            )}
             <div className="flex justify-end pt-2">
               <Button className="bg-emerald-600 hover:bg-emerald-700 w-auto min-w-[180px]" onClick={handleCreate} disabled={!builderData.name}>
                 <Save className="mr-2 h-4 w-4" />Save Plugin
@@ -691,7 +669,6 @@ export function PluginsPanel() {
                               <div className="flex items-center gap-2">
                                 <h4 className="font-semibold text-sm">{plugin.name}</h4>
                                 <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">{plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}</Badge>
-                                {plugin.language === 'javascript' && <Badge variant="outline" className="text-[10px] text-yellow-500 border-yellow-500/30 py-0 h-4 px-1.5">JS</Badge>}
                               </div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{plugin.description}</p>
                             </div>

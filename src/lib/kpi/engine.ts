@@ -9,10 +9,6 @@ import type { GermanState } from '../holidays/german-holidays';
 import type { JiraIssue } from '../jira/client';
 import { extractSelectFieldValue } from '../jira/client';
 
-// @MX:NOTE: Module-level WeakMap to cache compiled JavaScript functions without mutating definitions
-// @MX:REASON: Prevents pollution of caller-provided objects and enables safe garbage collection
-type CompiledFunction = (context: KpiContext) => KpiResult | KpiResult[];
-const compiledFnCache = new WeakMap<object, CompiledFunction>();
 import { PluginLoader } from './plugin-loader';
 import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
 import { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone } from './engine-utils';
@@ -579,8 +575,7 @@ export class KpiEngine {
     description: string;
     category: KpiPlugin['category'];
     unit: string;
-    formula: string; // DSL formula or JS code
-    language?: 'dsl' | 'javascript';
+    formula: string; // DSL formula
   }) {
     const customPlugin: KpiPlugin = {
       ...definition,
@@ -589,25 +584,6 @@ export class KpiEngine {
       pluginType: 'custom',
       isActive: true,
       calculate(context) {
-        if (definition.language === 'javascript') {
-          try {
-            let fn = compiledFnCache.get(definition);
-            if (!fn) {
-              fn = new Function('context', definition.formula) as CompiledFunction;
-              compiledFnCache.set(definition, fn);
-            }
-            const result = fn!(context);
-            if (Array.isArray(result) && result.length > 0 && typeof result[0].value !== 'undefined') {
-              return result;
-            }
-            return [{ name: definition.name, value: Number(result) || 0, unit: definition.unit }];
-          } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            console.error('Plugin JS error:', errorMessage);
-            return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'JS Error', value: 0 }] }];
-          }
-        }
-        // Parse and execute the custom formula
         return executeCustomFormula(definition.formula, context, definition);
       },
     };

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { localConfig } from '@/lib/config/local-store';
 import { JiraClient } from '@/lib/jira/client';
 
 export async function POST(request: Request) {
@@ -14,10 +14,9 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Get connection credentials
-    const connection = await (db as any).jiraConnection.findUnique({
-      where: { id: connectionId }
-    });
+    // Get connection credentials from localStorage
+    const connections = localConfig.getJiraConnections();
+    const connection = connections.find((c) => c.id === connectionId);
 
     if (!connection) {
       return NextResponse.json({

@@ -110,42 +110,52 @@ export default function Home() {
   useEffect(() => {
     if (!mounted) return;
 
-    // 1. Load config from local storage
-    const conns = localConfig.getJiraConnections();
-    setConnections(conns);
+    let aborter: AbortController | null = null;
 
-    const savedStorage = localConfig.getStorageConfig();
-    if (savedStorage) setStorageConfig(savedStorage);
+    const init = async () => {
+      // 0. Decrypt credentials cache before reading connections
+      await localConfig.initCredentialCache();
 
-    const savedActive = localConfig.getActiveConnectionId();
-    const savedSettings = localConfig.getSettings();
-    if (savedSettings) setSettings(savedSettings);
+      // 1. Load config from local storage
+      const conns = localConfig.getJiraConnections();
+      setConnections(conns);
 
-    // Load submenu visibility states
-    setShowDataCenterSubmenu(localConfig.getShowDataCenterSubmenu());
-    setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
-    setShowSettingsSubmenu(localConfig.getShowSettingsSubmenu());
+      const savedStorage = localConfig.getStorageConfig();
+      if (savedStorage) setStorageConfig(savedStorage);
 
-    // Start loading DB immediately if we have a saved connection
-    // Don't wait for activeConnectionId state to update
-    if (savedActive) {
-      initialMountRef.current = true;
-      const controller = new AbortController();
+      const savedActive = localConfig.getActiveConnectionId();
+      const savedSettings = localConfig.getSettings();
+      if (savedSettings) setSettings(savedSettings);
 
-      // Update state for UI consistency (non-blocking)
-      setActiveConnectionId(savedActive);
+      // Load submenu visibility states
+      setShowDataCenterSubmenu(localConfig.getShowDataCenterSubmenu());
+      setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
+      setShowSettingsSubmenu(localConfig.getShowSettingsSubmenu());
 
-      // Start loading immediately with saved storage config
-      loadMasterDataset(savedActive, savedStorage || storageConfig, controller.signal);
+      // Start loading DB immediately if we have a saved connection
+      // Don't wait for activeConnectionId state to update
+      if (savedActive) {
+        initialMountRef.current = true;
+        aborter = new AbortController();
 
-      // Cleanup if component unmounts
-      return () => controller.abort();
-    }
+        // Update state for UI consistency (non-blocking)
+        setActiveConnectionId(savedActive);
+
+        // Start loading immediately with saved storage config
+        loadMasterDataset(savedActive, savedStorage || storageConfig, aborter.signal);
+      }
+    };
+
+    init();
+
+    return () => {
+      aborter?.abort();
+    };
 
     // Initially dates are empty strings from the store
-    // 
-    // @MX:NOTE: Mount-only initialization. loadMasterDataset and storageConfig 
-    // are intentionally omitted as we want to trigger initial data load 
+    //
+    // @MX:NOTE: Mount-only initialization. loadMasterDataset and storageConfig
+    // are intentionally omitted as we want to trigger initial data load
     // ONLY once using the fresh values read directly from localConfig.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);

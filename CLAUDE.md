@@ -664,8 +664,21 @@ Large PDFs (>10 pages) return a lightweight reference when @-mentioned. Always s
 
 ---
 
-Version: 14.0.0 (Agency v3.2 + Harness Design Integration)
-Last Updated: 2026-04-03
+## 18. Harness: Code Review
+
+**목표:** 보안·성능·코드 품질·통합 QA의 4개 전문가 팀을 병렬로 실행하여 종합 코드 리뷰 보고서 생성
+
+**트리거:** 코드 리뷰 관련 작업 요청 시 `code-review-orchestrator` 스킬을 사용하라. 단순 질문은 직접 응답 가능.
+
+**변경 이력:**
+| 날짜 | 변경 내용 | 대상 | 사유 |
+|------|----------|------|------|
+| 2026-05-27 | 초기 구성 | 전체 | - |
+
+---
+
+Version: 14.1.0 (Code Review Harness Added)
+Last Updated: 2026-05-27
 Language: English
 Core Rule: MoAI is an orchestrator; direct implementation is prohibited
 
