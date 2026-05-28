@@ -1800,7 +1800,7 @@ export function KpiDashboard() {
                                       {visibleResults
                                         .sort((a, b) => {
                                           // Sort by age: existing → last_week → this_week
-                                          const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                          const ageOrder: { [key: string]: number } = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
                                           const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
                                           const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
                                           return ageA - ageB;
@@ -2086,7 +2086,7 @@ export function KpiDashboard() {
                                         {visibleResults
                                           .sort((a, b) => {
                                             // Sort by age: existing → last_week → this_week
-                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageOrder: { [key: string]: number } = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
                                             const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
                                             const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
                                             return ageA - ageB;
@@ -2366,7 +2366,7 @@ export function KpiDashboard() {
                                         {visibleResults
                                           .sort((a, b) => {
                                             // Sort by age: existing → last_week → this_week
-                                            const ageOrder = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
+                                            const ageOrder: { [key: string]: number } = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
                                             const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
                                             const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
                                             return ageA - ageB;

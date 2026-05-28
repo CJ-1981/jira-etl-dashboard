@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       if (region === 'all') return true;
 
       // Check if the selected region is in this holiday's regions
-      return h.regions.includes(region);
+      return h.regions.includes(region as GermanState);
     });
 
     return NextResponse.json({

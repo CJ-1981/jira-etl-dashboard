@@ -655,7 +655,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     }[config.height] || 300;
 
     // @MX:NOTE: Use effectiveResults (not kpiResults) so multi-series paths also reflect the custom JQL filter
-    const kpi = effectiveResults.find((k) => k.pluginId === config.kpiId);
+    const kpi = effectiveResults.find((k: any) => k.pluginId === config.kpiId);
     const unit = kpi?.results?.[0]?.unit || '';
 
     // Custom tooltip content for line/area charts

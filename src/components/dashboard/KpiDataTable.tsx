@@ -109,7 +109,7 @@ export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillD
         else if (dims.team) { dimensionType = 'team'; dimensionValue = dims.team; }
         else if (dims.bucket) { dimensionType = 'bucket'; dimensionValue = dims.bucket; }
 
-        const resolvedName = getPluginName ? getPluginName(pluginId) : pluginId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const resolvedName = getPluginName ? getPluginName(pluginId) : pluginId.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
 
         rows.push({
           id: `${pluginId}-${idx}-${res.name}`,

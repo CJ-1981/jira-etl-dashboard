@@ -258,7 +258,7 @@ export async function POST(request: Request) {
 
       const transitionData: any[] = [];
       for (const issue of chunk) {
-        const snapshot = snapshots.find(s => s.jiraKey === issue.key);
+        const snapshot = snapshots.find((s: any) => s.jiraKey === issue.key);
         if (!snapshot || !issue.changelog?.histories) continue;
 
         for (const history of issue.changelog.histories) {

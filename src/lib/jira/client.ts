@@ -79,6 +79,11 @@ export class JiraClient {
     // Remove trailing slash
     normalizedBaseUrl = normalizedBaseUrl.replace(/\/$/, '');
 
+    // SSRF Protection: validate that the Jira host is safe to connect to.
+    // Jira Cloud instances always live at *.atlassian.net. For Jira Server/Data Center,
+    // we allow custom domains but block local/private-network addresses.
+    this.validateJiraHost(normalizedBaseUrl);
+
     this.config = {
       ...config,
       baseUrl: normalizedBaseUrl
@@ -89,6 +94,62 @@ export class JiraClient {
       sprintField: fieldMapping?.sprintField || 'customfield_10020',
       epicLinkField: fieldMapping?.epicLinkField || 'customfield_10014',
     };
+  }
+
+  /**
+   * SSRF Protection: validates that the Jira host is safe to connect to.
+   * Jira Cloud instances always live at *.atlassian.net.
+   * For Jira Server/Data Center, we allow custom domains but block local/private-network addresses.
+   */
+  private validateJiraHost(urlStr: string): void {
+    let host: string;
+    try {
+      const url = new URL(urlStr);
+      host = url.hostname;
+    } catch {
+      throw new Error('Invalid Jira connection URL.');
+    }
+
+    const isJiraCloud = host === 'api.atlassian.com' || host.endsWith('.atlassian.net');
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    const isPrivate =
+      host.startsWith('192.168.') ||
+      host.startsWith('10.') ||
+      host.startsWith('172.16.') ||
+      host.startsWith('172.17.') ||
+      host.startsWith('172.18.') ||
+      host.startsWith('172.19.') ||
+      host.startsWith('172.20.') ||
+      host.startsWith('172.21.') ||
+      host.startsWith('172.22.') ||
+      host.startsWith('172.23.') ||
+      host.startsWith('172.24.') ||
+      host.startsWith('172.25.') ||
+      host.startsWith('172.26.') ||
+      host.startsWith('172.27.') ||
+      host.startsWith('172.28.') ||
+      host.startsWith('172.29.') ||
+      host.startsWith('172.30.') ||
+      host.startsWith('172.31.') ||
+      host.startsWith('0.') ||
+      host === '[::1]' ||
+      host === '0.0.0.0';
+
+    if (isLocal || isPrivate) {
+      throw new Error(
+        `Connection to host '${host}' is not allowed for security reasons. ` +
+        'Local and private network addresses are blocked to prevent SSRF attacks.'
+      );
+    }
+
+    if (!isJiraCloud) {
+      // For non-Atlassian domains (Jira Server/Data Center), accept but log a warning.
+      // We don't maintain an allowlist for on-prem Jira instances.
+      console.warn(
+        `[JiraClient] Connecting to non-Atlassian Jira host: ${host}. ` +
+        'Ensure this is a trusted Jira Server or Data Center instance.'
+      );
+    }
   }
 
   private getHeaders(): HeadersInit {

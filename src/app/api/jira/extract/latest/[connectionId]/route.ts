@@ -38,7 +38,7 @@ export async function POST(
     }
 
     // Reconstruct raw issues for the KPI engine
-    const reconstructedIssues = latestRun.ticketSnapshots.map(snapshot => {
+    const reconstructedIssues = latestRun.ticketSnapshots.map((snapshot: any) => {
       const raw = snapshot.rawData ? JSON.parse(snapshot.rawData) : {};
 
       // Collect every customfield_* stored in rawData so user-defined fields
@@ -78,7 +78,7 @@ export async function POST(
           components: JSON.parse(snapshot.components || '[]').map((name: string) => ({ name })),
         },
         changelog: {
-          histories: snapshot.transitions.map(t => ({
+          histories: snapshot.transitions.map((t: any) => ({
             created: t.occurredAt.toISOString(),
             author: t.author ? { displayName: t.author } : { displayName: 'Unknown' },
             items: [{

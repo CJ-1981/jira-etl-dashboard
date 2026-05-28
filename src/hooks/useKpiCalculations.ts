@@ -164,8 +164,8 @@ export function useKpiCalculations(
   } = useQuery({
     queryKey: stableQueryKey,
     queryFn: fetchKpiCalculations,
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 60000,
+    gcTime: 3600000,
     refetchOnWindowFocus: false,
     retry: false,
     enabled: pollingEnabled,
