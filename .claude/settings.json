@@ -312,7 +312,7 @@
     "CLAUDE_CODE_NO_FLICKER": "1",
     "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
     "DISABLE_PROMPT_CACHING": "false",
-    "PATH": "/Users/chimin/.local/bin:/Users/chimin/go/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+    "PATH": "C:\\Program Files\\GitHub CLI;C:\\Users\\Chimin.Jung\\AppData\\Local\\Programs\\Git\\cmd;C:\\Users\\Chimin.Jung\\AppData\\Local\\Programs\\Git\\bin;C:\\msys64\\usr\\bin;C:\\Program Files\\nodejs;C:\\Users\\Chimin.Jung\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\Chimin.Jung\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin;C:\\Users\\Chimin.Jung\\AppData\\Local\\Programs\\moai;C:\\Users\\Chimin.Jung\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\Chimin.Jung\\AppData\\Roaming\\npm;C:\\Users\\Chimin.Jung\\.local\\bin;C:\\Users\\Chimin.Jung\\go\\bin;C:\\Users\\Chimin.Jung\\AppData\\Local\\pnpm;C:\\Users\\Chimin.Jung\\AppData\\Local\\Programs\\Antigravity\\bin;C:\\Users\\Chimin.Jung\\AppData\\Local\\Programs\\Warp\\bin;C:\\Users\\Chimin.Jung\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.0.1-full_build\\bin;C:\\Users\\Chimin.Jung\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Oven-sh.Bun_Microsoft.Winget.Source_8wekyb3d8bbwe\\.\\bun-windows-x64;C:\\Users\\Chimin.Jung\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe;%PATH%"
   },
   "permissions": {
     "defaultMode": "acceptEdits",
