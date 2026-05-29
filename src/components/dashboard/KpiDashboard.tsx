@@ -20,7 +20,6 @@ import { KpiErrorBoundary } from './KpiErrorBoundary';
 import { ViewManager } from './ViewManager';
 import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
 import { extractSelectFieldValue } from '@/lib/jira/client';
-import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,13 +43,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,7 +68,7 @@ import {
 import {
   Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
   TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
-  Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
+  Download, Loader2, Edit2, Sliders, CheckCircle2,
   ArrowUp, Search, ChevronDown, ChevronUp, Database, Filter, RefreshCw,
   Save, Columns, Users,
 } from 'lucide-react';
@@ -93,6 +85,8 @@ import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
+import { DrillDownSheet } from './DrillDownSheet';
+import { TicketListWidget } from './TicketListWidget';
 
 // ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
 const JQL_PATTERNS = [
@@ -2645,174 +2639,17 @@ export function KpiDashboard() {
                     const tlConn = connections.find((c: any) => c.id === activeConnectionId);
                     const tlJiraBase = tlConn ? (tlConn.baseUrl?.startsWith('http') ? tlConn.baseUrl : `https://${tlConn.baseUrl}`) : '';
                     return widget.kpis.length > 0 ? (
-                    <div key={`ticket-list-${tlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
-                      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader className="pb-2">
-                          <button
-                            onClick={() => toggleWidgetCollapse(tlPluginId)}
-                            className="flex items-center gap-2 group text-left w-full"
-                            aria-expanded={!tlCollapsed}
-                          >
-                            <Ticket className="h-4 w-4 text-blue-500 shrink-0" />
-                            <CardTitle className="flex items-center gap-2 text-base">
-                              Weekly Ticket Overview
-                            </CardTitle>
-                            {!tlCollapsed
-                              ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
-                              : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />}
-                            {tlCollapsed && (
-                              <span className="text-xs text-slate-400 font-normal ml-1">
-                                ({widget.kpis.reduce((acc, k) => acc + k.results.reduce((a, r) => a + (r.value as number), 0), 0)} tickets)
-                              </span>
-                            )}
-                          </button>
-                        </CardHeader>
-                        <AnimatePresence initial={false}>
-                          {!tlCollapsed && (
-                            <motion.div
-                              key="ticket-list-content"
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2, ease: 'easeInOut' }}
-                              style={{ overflow: 'hidden' }}
-                            >
-                              <CardContent>
-                                <WidgetResizeContainer
-                                  widgetId={tlPluginId}
-                                  defaultHeight={400}
-                                  minHeight={200}
-                                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                                >
-                                  {/* This Week */}
-                                  <div className="space-y-3 overflow-hidden flex flex-col">
-                                    <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                                      This Week
-                                    </h4>
-                                    {(['opened', 'closed'] as const).map((activity) => {
-                                      const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity);
-                                      if (!result) return null;
-                                      const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
-                                      const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
-                                      return (
-                                        <div key={`this-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
-                                          <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
-                                            <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
-                                            <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
-                                          </div>
-                                          <div className="overflow-y-auto flex-1 min-h-0">
-                                            {(result.ticketKeys || []).length === 0 && (
-                                              <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
-                                            )}
-                                            <TooltipProvider>
-                                              {(result.ticketKeys || []).map((key) => {
-                                                const issue = issueMap.get(key);
-                                                if (!issue) return null;
-                                                const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
-                                                const summaryText = issue.fields?.summary || issue.summary || '';
-                                                const createdDate = issue.fields?.created || issue.created;
-                                                const isValidDate = createdDate && !isNaN(new Date(createdDate).getTime());
-                                                return (
-                                                  <UITooltip key={key}>
-                                                    <TooltipTrigger asChild>
-                                                      <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
-                                                        <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
-                                                        <span className="text-slate-700 dark:text-slate-300 truncate" title={summaryText}>{summaryText}</span>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.status?.name || issue.status}</Badge>
-                                                      </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="bottom" hideArrow={true} className="max-w-md p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xl">
-                                                      <div className="space-y-1">
-                                                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-1">{key}</p>
-                                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{summaryText}</p>
-                                                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {isValidDate ? new Date(createdDate).toLocaleDateString() : 'N/A'}</span>
-                                                        </div>
-                                                      </div>
-                                                    </TooltipContent>
-                                                  </UITooltip>
-                                                );
-                                              })}
-                                            </TooltipProvider>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* Last Week */}
-                                  <div className="space-y-3 overflow-hidden flex flex-col">
-                                    <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-                                      Last Week
-                                    </h4>
-                                    {(['opened', 'closed'] as const).map((activity) => {
-                                      const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity);
-                                      if (!result) return null;
-                                      const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
-                                      const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
-                                      return (
-                                        <div key={`last-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
-                                          <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
-                                            <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
-                                            <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
-                                          </div>
-                                          <div className="overflow-y-auto flex-1 min-h-0">
-                                            {(result.ticketKeys || []).length === 0 && (
-                                              <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
-                                            )}
-                                            <TooltipProvider>
-                                              {(result.ticketKeys || []).map((key) => {
-                                                const issue = issueMap.get(key);
-                                                if (!issue) return null;
-                                                const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
-                                                const summaryText = issue.fields?.summary || issue.summary || '';
-                                                const createdDate = issue.fields?.created || issue.created;
-                                                const isValidDate = createdDate && !isNaN(new Date(createdDate).getTime());
-                                                return (
-                                                  <UITooltip key={key}>
-                                                    <TooltipTrigger asChild>
-                                                      <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
-                                                        <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
-                                                        <span className="text-slate-700 dark:text-slate-300 truncate" title={summaryText}>{summaryText}</span>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.status?.name || issue.status}</Badge>
-                                                      </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="bottom" hideArrow={true} className="max-w-md p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xl">
-                                                      <div className="space-y-1">
-                                                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-1">{key}</p>
-                                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{summaryText}</p>
-                                                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {isValidDate ? new Date(createdDate).toLocaleDateString() : 'N/A'}</span>
-                                                        </div>
-                                                      </div>
-                                                    </TooltipContent>
-                                                  </UITooltip>
-                                                );
-                                              })}
-                                            </TooltipProvider>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </WidgetResizeContainer>
-                              </CardContent>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </Card>
-                    </div>
-                  ) : null;
+                      <div key={`ticket-list-${tlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
+                        <TicketListWidget
+                          pluginId={tlPluginId}
+                          isCollapsed={tlCollapsed}
+                          onToggleCollapse={toggleWidgetCollapse}
+                          kpis={widget.kpis}
+                          issueMap={issueMap}
+                          jiraBaseUrl={tlJiraBase}
+                        />
+                      </div>
+                    ) : null;
                   }
                   return null;
               }
@@ -2883,55 +2720,15 @@ export function KpiDashboard() {
       )}
 
       {/* Drill-down Sheet */}
-      <Sheet open={isDrillDownOpen} onOpenChange={(open) => !open && closeDrillDown()}>
-        <SheetContent side="right" className="w-[90%] sm:w-[540px] border-l-slate-200 dark:border-l-slate-800 p-0 overflow-hidden flex flex-col">
-          <SheetHeader className="p-6 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <SheetTitle className="flex items-center gap-2 text-xl">
-              <Ticket className="h-5 w-5 text-blue-500" />
-              {drillDownTitle}
-            </SheetTitle>
-            <SheetDescription>
-              Displaying {(drillDownKeys as any)?.length || 0} issues comprising this metric
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 overflow-hidden">
-            {drillDownKeys && (
-              <Virtuoso
-                style={{ height: '100%' }}
-                totalCount={drillDownKeys.length}
-                itemContent={(index) => {
-                  const key = drillDownKeys[index];
-                  const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
-                  if (!issue) return null;
-
-                  const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
-                  const baseUrl = activeConnection?.baseUrl || '';
-                  const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-                  const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
-
-                  return (
-                    <div className="px-4 pb-3">
-                      <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 group hover:border-blue-500/30 transition-all">
-                        <div className="flex items-start justify-between gap-3 mb-1">
-                          <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-mono font-bold text-blue-500 hover:underline flex items-center gap-1">
-                            {key} <ExternalLink className="h-3 w-3" />
-                          </a>
-                          <Badge variant="outline" className="text-[10px] h-4 py-0">{issue.fields?.status?.name || issue.status}</Badge>
-                        </div>
-                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 mb-2">{issue.fields?.summary || issue.summary}</p>
-                        <div className="flex items-center gap-4 text-[10px] text-slate-500">
-                          <div className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</div>
-                          <div className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <DrillDownSheet
+        isOpen={isDrillDownOpen}
+        onOpenChange={(open) => !open && closeDrillDown()}
+        drillDownTitle={drillDownTitle}
+        drillDownKeys={drillDownKeys}
+        issues={masterDatasetInfo?.issues || []}
+        connections={connections}
+        activeConnectionId={activeConnectionId}
+      />
 
       <AnimatePresence>
         {showFloatingBar && !isDrillDownOpen && (
