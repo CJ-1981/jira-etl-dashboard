@@ -72,7 +72,7 @@ export function DrillDownSheet({
                 const createdDate = createdRaw ? new Date(createdRaw) : null;
                 const createdDisplay =
                   createdDate && !isNaN(createdDate.getTime())
-                    ? createdDate.toLocaleDateString()
+                    ? createdDate.toLocaleDateString('en-US')
                     : '';
 
                 return (

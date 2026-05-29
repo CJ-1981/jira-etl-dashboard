@@ -119,7 +119,7 @@ function WeekSection({
                     ? `${jiraBaseUrl}/browse/${issue.key}`
                     : '#';
                   const summaryText =
-                    issue.fields?.summary || '';
+                    issue.fields?.summary || (issue as any).summary || '';
                   const createdDate =
                     issue.fields?.created;
                   const isValidDate =
@@ -142,6 +142,7 @@ function WeekSection({
                             className="text-[9px] h-4 py-0 justify-center"
                           >
                             {issue.fields?.priority?.name ||
+                              (issue as any).priority ||
                               '—'}
                           </Badge>
                           <span
@@ -154,7 +155,7 @@ function WeekSection({
                             variant="outline"
                             className="text-[9px] h-4 py-0 justify-center"
                           >
-                            {issue.fields?.status?.name}
+                            {issue.fields?.status?.name || (issue as any).status}
                           </Badge>
                         </div>
                       </TooltipTrigger>
@@ -174,20 +175,22 @@ function WeekSection({
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">
                               Priority:{' '}
                               {issue.fields?.priority?.name ||
+                                (issue as any).priority ||
                                 '—'}
                             </span>
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">
-                              Status: {issue.fields?.status?.name}
+                              Status: {issue.fields?.status?.name || (issue as any).status}
                             </span>
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">
                               Assignee:{' '}
                               {issue.fields?.assignee?.displayName ||
+                                (issue as any).assignee ||
                                 'Unassigned'}
                             </span>
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">
                               Created:{' '}
                               {isValidDate
-                                ? new Date(createdDate).toLocaleDateString()
+                                ? new Date(createdDate).toLocaleDateString('en-US')
                                 : 'N/A'}
                             </span>
                           </div>
