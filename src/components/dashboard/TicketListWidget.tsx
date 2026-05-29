@@ -11,6 +11,7 @@ import {
 import { Ticket, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
+import type { JiraIssue } from '@/lib/jira/client';
 
 interface WeekActivityResult {
   value: number;
@@ -33,7 +34,7 @@ interface TicketListWidgetProps {
   isCollapsed: boolean;
   onToggleCollapse: (pluginId: string) => void;
   kpis: WidgetKpi[];
-  issueMap: Map<string, any>;
+  issueMap: Map<string, JiraIssue>;
   jiraBaseUrl: string;
 }
 
@@ -45,7 +46,7 @@ function WeekSection({
 }: {
   week: 'this_week' | 'last_week';
   kpis: WidgetKpi[];
-  issueMap: Map<string, any>;
+  issueMap: Map<string, JiraIssue>;
   jiraBaseUrl: string;
 }) {
   const label = week === 'this_week' ? 'This Week' : 'Last Week';
@@ -118,9 +119,9 @@ function WeekSection({
                     ? `${jiraBaseUrl}/browse/${issue.key}`
                     : '#';
                   const summaryText =
-                    issue.fields?.summary || issue.summary || '';
+                    issue.fields?.summary || '';
                   const createdDate =
-                    issue.fields?.created || issue.created;
+                    issue.fields?.created;
                   const isValidDate =
                     createdDate &&
                     !isNaN(new Date(createdDate).getTime());
@@ -141,7 +142,6 @@ function WeekSection({
                             className="text-[9px] h-4 py-0 justify-center"
                           >
                             {issue.fields?.priority?.name ||
-                              issue.priority ||
                               '—'}
                           </Badge>
                           <span
@@ -154,7 +154,7 @@ function WeekSection({
                             variant="outline"
                             className="text-[9px] h-4 py-0 justify-center"
                           >
-                            {issue.fields?.status?.name || issue.status}
+                            {issue.fields?.status?.name}
                           </Badge>
                         </div>
                       </TooltipTrigger>
@@ -174,16 +174,14 @@ function WeekSection({
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">
                               Priority:{' '}
                               {issue.fields?.priority?.name ||
-                                issue.priority ||
                                 '—'}
                             </span>
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">
-                              Status: {issue.fields?.status?.name || issue.status}
+                              Status: {issue.fields?.status?.name}
                             </span>
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">
                               Assignee:{' '}
                               {issue.fields?.assignee?.displayName ||
-                                issue.assignee ||
                                 'Unassigned'}
                             </span>
                             <span className="text-[10px] text-slate-600 dark:text-slate-400">

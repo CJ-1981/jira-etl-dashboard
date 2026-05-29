@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,7 +37,7 @@ interface KpiFilterPanelProps {
   setGlobalFilters: (filters: Record<string, string[]>) => void;
   jqlQuery: string;
   setJqlQuery: (query: string) => void;
-  jqlInputRef: React.RefObject<HTMLInputElement>;
+  jqlInputRef: React.RefObject<HTMLInputElement | null>;
   editingJqlId: string | null;
   setEditingJqlId: (id: string | null) => void;
   jqlToDelete: string | null;
@@ -70,7 +70,45 @@ export function KpiFilterPanel({
 
   const handleUpdateFilter = (key: string, value: string) => {
     jqlFilters.toggleStagingFilter(key, value);
+    setIsViewModified(true);
   };
+
+  const filterConfigs = useMemo(() => [
+    { label: 'Project', key: 'project', options: filterOptions.project },
+    { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
+    { label: 'Priority', key: 'priority', options: filterOptions.priority },
+    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
+    { label: 'Status', key: 'status', options: filterOptions.status },
+    { label: 'Component', key: 'component', options: filterOptions.component },
+    { label: 'Label', key: 'label', options: filterOptions.label },
+    { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
+    ...localConfig.getCustomExtractFields()
+      .filter(cf => cf.role !== 'storyPoints' && cf.role !== 'issueOwnerTeam')
+      .map(cf => ({
+        label: cf.label,
+        key: cf.fieldId,
+        options: filterOptions[cf.fieldId] || []
+      }))
+  ].filter(f => f.options && f.options.length >= 1), [filterOptions]);
+
+  const isApplyDisabled = useMemo(() => {
+    const stagingKeys = Object.keys(jqlFilters.stagingFilters);
+    const globalKeys = Object.keys(globalFilters);
+
+    if (stagingKeys.length !== globalKeys.length) return false;
+
+    for (const key of stagingKeys) {
+      const stagingVals = jqlFilters.stagingFilters[key] || [];
+      const globalVals = globalFilters[key] || [];
+
+      if (stagingVals.length !== globalVals.length) return false;
+
+      const hasAllValues = stagingVals.every(v => globalVals.includes(v));
+      if (!hasAllValues) return false;
+    }
+
+    return true;
+  }, [jqlFilters.stagingFilters, globalFilters]);
 
   return (
     <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-in slide-in-from-top-4 duration-300" data-filter-section>
@@ -223,23 +261,7 @@ export function KpiFilterPanel({
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 no-print">
-          {[
-            { label: 'Project', key: 'project', options: filterOptions.project },
-            { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
-            { label: 'Priority', key: 'priority', options: filterOptions.priority },
-            { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
-            { label: 'Status', key: 'status', options: filterOptions.status },
-            { label: 'Component', key: 'component', options: filterOptions.component },
-            { label: 'Label', key: 'label', options: filterOptions.label },
-            { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
-            ...localConfig.getCustomExtractFields()
-              .filter(cf => cf.role !== 'storyPoints' && cf.role !== 'issueOwnerTeam')
-              .map(cf => ({
-                label: cf.label,
-                key: cf.fieldId,
-                options: filterOptions[cf.fieldId] || []
-              }))
-          ].filter(f => f.options && f.options.length >= 1).map(filter => (
+          {filterConfigs.map(filter => (
             <div key={filter.key} className="space-y-1.5 no-print">
               <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
               <Popover onOpenChange={(open) => !open && setFilterSearchQuery("")}>
@@ -310,24 +332,7 @@ export function KpiFilterPanel({
             size="sm"
             onClick={handleApplyFilters}
             className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-2"
-            disabled={(() => {
-              const stagingKeys = Object.keys(jqlFilters.stagingFilters);
-              const globalKeys = Object.keys(globalFilters);
-
-              if (stagingKeys.length !== globalKeys.length) return false;
-
-              for (const key of stagingKeys) {
-                const stagingVals = jqlFilters.stagingFilters[key] || [];
-                const globalVals = globalFilters[key] || [];
-
-                if (stagingVals.length !== globalVals.length) return false;
-
-                const hasAllValues = stagingVals.every(v => globalVals.includes(v));
-                if (!hasAllValues) return false;
-              }
-
-              return true;
-            })()}
+            disabled={isApplyDisabled}
           >
             <CheckCircle2 className="h-4 w-4" />
             Apply Filters

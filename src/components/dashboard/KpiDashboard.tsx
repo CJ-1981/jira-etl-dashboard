@@ -244,7 +244,7 @@ export function KpiDashboard() {
 
   // Table-only view — grid view removed
 
-  const jqlInputRef = useRef<HTMLInputElement>(null);
+  const jqlInputRef = useRef<HTMLInputElement | null>(null);
 
   // Removed: setDashboardJqls and activePluginsOrder loading - now handled by useJqlFilters and usePluginVisibility hooks
 
@@ -2356,7 +2356,6 @@ export function KpiDashboard() {
                       </div>
                     ) : null;
                   }
-                  return null;
               }
             })}
           </div>

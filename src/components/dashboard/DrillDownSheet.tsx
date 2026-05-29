@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -30,6 +31,19 @@ export function DrillDownSheet({
   connections,
   activeConnectionId,
 }: DrillDownSheetProps) {
+  const issuesMap = useMemo(
+    () => new Map<string, any>(issues.map((i: any) => [i.key, i])),
+    [issues],
+  );
+
+  const activeConnection = useMemo(
+    () => connections.find((c: any) => c.id === activeConnectionId),
+    [connections, activeConnectionId],
+  );
+
+  const jiraBaseUrl = activeConnection?.baseUrl || '';
+  const formattedBaseUrl = jiraBaseUrl.startsWith('http') ? jiraBaseUrl : `https://${jiraBaseUrl}`;
+
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[90%] sm:w-[540px] border-l-slate-200 dark:border-l-slate-800 p-0 overflow-hidden flex flex-col">
@@ -39,7 +53,7 @@ export function DrillDownSheet({
             {drillDownTitle}
           </SheetTitle>
           <SheetDescription>
-            Displaying {(drillDownKeys as any)?.length || 0} issues comprising this metric
+            Displaying {drillDownKeys?.length ?? 0} issues comprising this metric
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 overflow-hidden">
@@ -49,13 +63,17 @@ export function DrillDownSheet({
               totalCount={drillDownKeys.length}
               itemContent={(index) => {
                 const key = drillDownKeys[index];
-                const issue = issues.find((i: any) => i.key === key);
+                const issue = issuesMap.get(key);
                 if (!issue) return null;
 
-                const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
-                const baseUrl = activeConnection?.baseUrl || '';
-                const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
                 const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
+
+                const createdRaw = issue.fields?.created || issue.created;
+                const createdDate = createdRaw ? new Date(createdRaw) : null;
+                const createdDisplay =
+                  createdDate && !isNaN(createdDate.getTime())
+                    ? createdDate.toLocaleDateString()
+                    : '';
 
                 return (
                   <div className="px-4 pb-3">
@@ -69,7 +87,7 @@ export function DrillDownSheet({
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 mb-2">{issue.fields?.summary || issue.summary}</p>
                       <div className="flex items-center gap-4 text-[10px] text-slate-500">
                         <div className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</div>
-                        <div className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</div>
+                        <div className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {createdDisplay}</div>
                       </div>
                     </div>
                   </div>
