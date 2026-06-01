@@ -306,10 +306,11 @@ export function KpiFilterPanel({
                         <div
                           key={opt}
                           className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
+                          onClick={() => handleUpdatePendingFilter(filter.key, opt)}
                         >
                           <Checkbox
                             checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)}
-                            onCheckedChange={() => handleUpdatePendingFilter(filter.key, opt)}
+                            onCheckedChange={(e) => e.stopPropagation()}
                           />
                           <span className="text-xs truncate">{opt}</span>
                         </div>

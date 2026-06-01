@@ -121,7 +121,7 @@ function WeekSection({
                   const summaryText =
                     issue.fields?.summary || (issue as any).summary || '';
                   const createdDate =
-                    issue.fields?.created;
+                    issue.fields?.created || (issue as any).created;
                   const isValidDate =
                     createdDate &&
                     !isNaN(new Date(createdDate).getTime());
@@ -129,14 +129,20 @@ function WeekSection({
                     <UITooltip key={key}>
                       <TooltipTrigger asChild>
                         <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
-                          <a
-                            href={jiraUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-mono font-bold text-blue-500 hover:underline"
-                          >
-                            {key}
-                          </a>
+                          {jiraBaseUrl ? (
+                            <a
+                              href={jiraUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono font-bold text-blue-500 hover:underline"
+                            >
+                              {key}
+                            </a>
+                          ) : (
+                            <span className="font-mono font-bold text-slate-500">
+                              {key}
+                            </span>
+                          )}
                           <Badge
                             variant="outline"
                             className="text-[9px] h-4 py-0 justify-center"

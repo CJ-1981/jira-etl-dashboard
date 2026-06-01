@@ -79,9 +79,15 @@ export function DrillDownSheet({
                   <div className="px-4 pb-3">
                     <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 group hover:border-blue-500/30 transition-all">
                       <div className="flex items-start justify-between gap-3 mb-1">
-                        <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-mono font-bold text-blue-500 hover:underline flex items-center gap-1">
-                          {key} <ExternalLink className="h-3 w-3" />
-                        </a>
+                        {activeConnection ? (
+                          <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-mono font-bold text-blue-500 hover:underline flex items-center gap-1">
+                            {key} <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          <span className="text-xs font-mono font-bold text-slate-500 flex items-center gap-1">
+                            {key}
+                          </span>
+                        )}
                         <Badge variant="outline" className="text-[10px] h-4 py-0">{issue.fields?.status?.name || issue.status}</Badge>
                       </div>
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 mb-2">{issue.fields?.summary || issue.summary}</p>
