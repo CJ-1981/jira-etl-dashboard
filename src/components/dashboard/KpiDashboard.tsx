@@ -20,14 +20,12 @@ import { KpiErrorBoundary } from './KpiErrorBoundary';
 import { ViewManager } from './ViewManager';
 import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
 import { extractSelectFieldValue } from '@/lib/jira/client';
-import { Virtuoso } from 'react-virtuoso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -51,22 +49,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { toast } from 'sonner';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -74,17 +56,17 @@ import {
   AreaChart, Area
 } from 'recharts';
 import {
-  Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
-  TrendingUp, Zap, Calendar, EyeOff, X, RotateCw, Plus, Trash2,
-  Download, Loader2, Edit2, Ticket, ExternalLink, Sliders, CheckCircle2,
-  ArrowUp, Search, ChevronDown, ChevronUp, Database, Filter, RefreshCw,
-  Save, Columns, Users,
+  Activity, Target, Timer, UserCheck, BarChart3, AlertTriangle,
+  TrendingUp, Calendar, EyeOff, RotateCw, Plus,
+  Download, Loader2, Sliders,
+  ArrowUp, ChevronDown, ChevronUp, Database, RefreshCw,
+  Columns, Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import { localConfig, type SavedJql, type KpiPlugin } from '@/lib/config/local-store';
 import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
-import { JqlAutocomplete } from './JqlAutocomplete';
+import { KpiFilterPanel } from './KpiFilterPanel';
 import { useAppStore } from '@/store/app-store';
 import { useDrillDown } from '@/hooks/useDrillDown';
 import { usePeriodAnalysis } from '@/hooks/usePeriodAnalysis';
@@ -93,6 +75,8 @@ import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
+import { DrillDownSheet } from './DrillDownSheet';
+import { TicketListWidget } from './TicketListWidget';
 
 // ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
 const JQL_PATTERNS = [
@@ -185,7 +169,6 @@ export function KpiDashboard() {
   // ─── Editing State for JQL Filters ─────────────────────────────────────────────
   const [editingJqlId, setEditingJqlId] = useState<string | null>(null);
   const [jqlToDelete, setJqlToDelete] = useState<string | null>(null);
-  const [filterSearchQuery, setFilterSearchQuery] = useState("");
 
   // Drill-down state extracted to useDrillDown hook
   const { drillDownKeys, drillDownTitle, isDrillDownOpen, openDrillDown, closeDrillDown } = useDrillDown();
@@ -261,7 +244,7 @@ export function KpiDashboard() {
 
   // Table-only view — grid view removed
 
-  const jqlInputRef = useRef<HTMLInputElement>(null);
+  const jqlInputRef = useRef<HTMLInputElement | null>(null);
 
   // Removed: setDashboardJqls and activePluginsOrder loading - now handled by useJqlFilters and usePluginVisibility hooks
 
@@ -1208,305 +1191,21 @@ export function KpiDashboard() {
           </div>
 
           {filterPanelOpen && (
-            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-in slide-in-from-top-4 duration-300" data-filter-section>
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                  <Sliders className="h-4 w-4 text-emerald-500" />
-                  Advanced Filtering
-                </h4>
-                <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-400 hover:text-red-500" onClick={() => {
-                  jqlFilters.clearStagingFilters();
-                  setGlobalFilters({});
-                }}>
-                  Clear All Filters
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">JQL-Lite Filter</Label>
-                    {jqlQuery && (
-                      <Badge variant="outline" className="h-4 py-0 text-[9px] border-emerald-500/30 text-emerald-500 bg-emerald-500/5">
-                        <Zap className="h-2.5 w-2.5 mr-1" /> Dynamic Filter Active
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <JqlAutocomplete
-                      ref={jqlInputRef}
-                      value={jqlQuery}
-                      onChange={setJqlQuery}
-                      filterOptions={filterOptions}
-                      className="flex-1"
-                    />
-                    <Button
-                      size="sm"
-                      className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-xs"
-                      onClick={() => {
-                        if (!jqlQuery) return;
-                        if (editingJqlId) {
-                          const oldJql = jqlFilters.jqlList.find(j => j.id === editingJqlId);
-                          jqlFilters.editJql(editingJqlId, jqlQuery, oldJql?.name || 'Saved JQL');
-                          setEditingJqlId(null);
-                          setJqlQuery('');
-                          toast.success('Filter updated');
-
-                        } else {
-                          const id = `djql-${Date.now()}`;
-                          const newQuery = jqlQuery;
-                          jqlFilters.addJql(newQuery, newQuery);
-                          setJqlQuery('');
-                          toast.success('Filter saved to dashboard');
-
-                          jqlFilters.toggleStagingFilter('jql', newQuery);
-                          setIsViewModified(true);
-                        }
-                      }}
-                    >
-                      {editingJqlId ? 'Update' : 'Add'} Filter
-                    </Button>
-                    {editingJqlId && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 text-[10px]"
-                        onClick={() => {
-                          setEditingJqlId(null);
-                          setJqlQuery('');
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-
-                  {jqlFilters.jqlList.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                      {jqlFilters.jqlList.map(djql => {
-                        const isActive = jqlFilters.stagingFilters['jql']?.includes(djql.query);
-                        const isEditing = editingJqlId === djql.id;
-                        return (
-                          <div key={djql.id} className="flex items-center gap-1">
-                            <Badge
-                              variant={isActive ? 'default' : 'outline'}
-                              className={`h-6 px-2 gap-1.5 transition-all cursor-pointer ${isEditing ? 'ring-2 ring-amber-500' : ''} ${isActive ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
-                              onClick={() => handleUpdatePendingFilter('jql', djql.query)}
-                            >
-                              <span className="max-w-[120px] truncate font-mono">{djql.query}</span>
-                              <div className="flex items-center gap-1 ml-1">
-                                <span
-                                  className="hover:text-blue-300 transition-colors p-0.5"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingJqlId(djql.id);
-                                    setJqlQuery(djql.query);
-                                  }}
-                                >
-                                  <Edit2 className="h-2.5 w-2.5" />
-                                </span>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <span
-                                      className="hover:text-red-200 transition-colors p-0.5"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setJqlToDelete(djql.id);
-                                      }}
-                                    >
-                                      <Trash2 className="h-2.5 w-2.5" />
-                                    </span>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete JQL-Lite Filter?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Are you sure you want to delete this saved filter? This action cannot be undone.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel onClick={() => setJqlToDelete(null)}>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-red-600 hover:bg-red-700"
-                                        onClick={() => {
-                                          if (jqlToDelete) {
-                                            const queryToDelete = jqlFilters.jqlList.find(j => j.id === jqlToDelete)?.query;
-                                            jqlFilters.deleteJql(jqlToDelete);
-                                            if (queryToDelete && jqlFilters.stagingFilters['jql']?.includes(queryToDelete)) {
-                                              handleUpdatePendingFilter('jql', queryToDelete);
-                                            }
-                                            if (editingJqlId === jqlToDelete) {
-                                              setEditingJqlId(null);
-                                              setJqlQuery('');
-                                            }
-                                            setJqlToDelete(null);
-                                            toast.success('Filter deleted');
-                                          }
-                                        }}
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            </Badge>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 no-print">
-                  {[
-                    { label: 'Project', key: 'project', options: filterOptions.project },
-                    { label: 'Assignee', key: 'assignee', options: filterOptions.assignee },
-                    { label: 'Priority', key: 'priority', options: filterOptions.priority },
-                    { label: 'Issue Type', key: 'issueType', options: filterOptions.issueType },
-                    { label: 'Status', key: 'status', options: filterOptions.status },
-                    { label: 'Component', key: 'component', options: filterOptions.component },
-                    { label: 'Label', key: 'label', options: filterOptions.label },
-                    { label: 'Issue Owner Team', key: 'issueOwnerTeam', options: filterOptions.issueOwnerTeam },
-                    // Dynamically append user-defined custom fields
-                    ...localConfig.getCustomExtractFields()
-                      .filter(cf => cf.role !== 'storyPoints' && cf.role !== 'issueOwnerTeam')
-                      .map(cf => ({
-                        label: cf.label,
-                        key: cf.fieldId,
-                        options: filterOptions[cf.fieldId] || []
-                      }))
-                  ].filter(f => f.options && f.options.length >= 1).map(filter => (
-                    <div key={filter.key} className="space-y-1.5 no-print">
-                      <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold no-print">{filter.label}</Label>
-                      <Popover onOpenChange={(open) => !open && setFilterSearchQuery("")}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full h-8 text-[11px] justify-between bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-normal"
-                          >
-                            <span className="truncate">
-                              {jqlFilters.stagingFilters[filter.key]?.length
-                                ? `${jqlFilters.stagingFilters[filter.key].length} selected`
-                                : `All ${filter.label}${filter.label === 'Priority' ? 'ies' : filter.label === 'Status' ? 'es' : 's'}`}
-                            </span>
-                            <ChevronDown className="h-3 w-3 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[200px] p-0" align="start">
-                          <div className="p-2 border-b border-slate-100 dark:border-slate-800 space-y-2">
-                            <div className="relative">
-                              <Search className="absolute left-2 top-2.5 h-3 w-3 text-slate-400" />
-                              <Input
-                                placeholder={`Search ${filter.label}...`}
-                                className="h-7 pl-7 text-[10px] bg-slate-50 dark:bg-slate-900 border-none focus-visible:ring-1 focus-visible:ring-emerald-500/50"
-                                value={filterSearchQuery}
-                                onChange={(e) => setFilterSearchQuery(e.target.value)}
-                              />
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="w-full h-7 text-[10px] justify-start px-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-                              onClick={() => handleUpdatePendingFilter(filter.key, 'all')}
-                            >
-                              Clear Selection
-                            </Button>
-                          </div>
-                          <div className="max-h-[250px] overflow-y-auto p-1 custom-scrollbar">
-                            {filter.options
-                              .filter(opt => !filterSearchQuery || String(opt).toLowerCase().includes(filterSearchQuery.toLowerCase()))
-                              .map(opt => (
-                                <div
-                                  key={opt}
-                                  className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleUpdatePendingFilter(filter.key, opt);
-                                  }}
-                                >
-                                  <Checkbox checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)} onCheckedChange={() => { }} />
-                                  <span className="text-xs truncate">{opt}</span>
-                                </div>
-                              ))}
-                            {filter.options.filter(opt => !filterSearchQuery || String(opt).toLowerCase().includes(filterSearchQuery.toLowerCase())).length === 0 && (
-                              <div className="py-4 px-2 text-center text-[10px] text-slate-400 italic">
-                                No matches found
-                              </div>
-                            )}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800 no-print">
-                  <Button
-                    size="sm"
-                    onClick={handleApplyFilters}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-2"
-                    disabled={(() => {
-                      // Check if staging filters have any content different from global filters
-                      const stagingKeys = Object.keys(jqlFilters.stagingFilters);
-                      const globalKeys = Object.keys(globalFilters);
-
-                      // Enable if key count differs
-                      if (stagingKeys.length !== globalKeys.length) return false;
-
-                      // Enable if any values differ
-                      for (const key of stagingKeys) {
-                        const stagingVals = jqlFilters.stagingFilters[key] || [];
-                        const globalVals = globalFilters[key] || [];
-
-                        if (stagingVals.length !== globalVals.length) return false;
-
-                        // Check if all values match
-                        const hasAllValues = stagingVals.every(v => globalVals.includes(v));
-                        if (!hasAllValues) return false;
-                      }
-
-                      // If we get here, they're the same - disable button
-                      return true;
-                    })()}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Apply Filters
-                  </Button>
-                </div>
-              </div>
-
-              {Object.keys(jqlFilters.stagingFilters).length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {(Object.entries(jqlFilters.stagingFilters) as [string, string[]][]).map(([key, values]) => {
-                    // Determine display label for the filter key
-                    const getDisplayKey = (k: string) => {
-                      if (k === 'issueOwnerTeam') return 'Team';
-                      if (k.startsWith('customfield_')) {
-                        const cf = localConfig.getCustomExtractFields().find(f => f.fieldId === k);
-                        return cf ? cf.label : k;
-                      }
-                      // Capitalize first letter of standard keys
-                      return k.charAt(0).toUpperCase() + k.slice(1);
-                    };
-                    const displayKey = getDisplayKey(key);
-
-                    return values.map(val => (
-                      <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
-                        <span className="text-slate-400">{displayKey}:</span> {val}
-                        <span
-                          className="flex items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
-                          onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }}
-                        >
-                          <X className="h-2.5 w-2.5" />
-                        </span>
-                      </Badge>
-                    ));
-                  })}
-                </div>
-              )}
-            </div>
+            <KpiFilterPanel
+              jqlFilters={jqlFilters}
+              filterOptions={filterOptions}
+              globalFilters={globalFilters}
+              setGlobalFilters={setGlobalFilters}
+              jqlQuery={jqlQuery}
+              setJqlQuery={setJqlQuery}
+              jqlInputRef={jqlInputRef}
+              editingJqlId={editingJqlId}
+              setEditingJqlId={setEditingJqlId}
+              jqlToDelete={jqlToDelete}
+              setJqlToDelete={setJqlToDelete}
+              setIsViewModified={setIsViewModified}
+              handleApplyFilters={handleApplyFilters}
+            />
           )}
         </CardContent>
       </Card>
@@ -2645,176 +2344,18 @@ export function KpiDashboard() {
                     const tlConn = connections.find((c: any) => c.id === activeConnectionId);
                     const tlJiraBase = tlConn ? (tlConn.baseUrl?.startsWith('http') ? tlConn.baseUrl : `https://${tlConn.baseUrl}`) : '';
                     return widget.kpis.length > 0 ? (
-                    <div key={`ticket-list-${tlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
-                      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader className="pb-2">
-                          <button
-                            onClick={() => toggleWidgetCollapse(tlPluginId)}
-                            className="flex items-center gap-2 group text-left w-full"
-                            aria-expanded={!tlCollapsed}
-                          >
-                            <Ticket className="h-4 w-4 text-blue-500 shrink-0" />
-                            <CardTitle className="flex items-center gap-2 text-base">
-                              Weekly Ticket Overview
-                            </CardTitle>
-                            {!tlCollapsed
-                              ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
-                              : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />}
-                            {tlCollapsed && (
-                              <span className="text-xs text-slate-400 font-normal ml-1">
-                                ({widget.kpis.reduce((acc, k) => acc + k.results.reduce((a, r) => a + (r.value as number), 0), 0)} tickets)
-                              </span>
-                            )}
-                          </button>
-                        </CardHeader>
-                        <AnimatePresence initial={false}>
-                          {!tlCollapsed && (
-                            <motion.div
-                              key="ticket-list-content"
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2, ease: 'easeInOut' }}
-                              style={{ overflow: 'hidden' }}
-                            >
-                              <CardContent>
-                                <WidgetResizeContainer
-                                  widgetId={tlPluginId}
-                                  defaultHeight={400}
-                                  minHeight={200}
-                                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                                >
-                                  {/* This Week */}
-                                  <div className="space-y-3 overflow-hidden flex flex-col">
-                                    <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                                      This Week
-                                    </h4>
-                                    {(['opened', 'closed'] as const).map((activity) => {
-                                      const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'this_week' && r.dimensions?.activity === activity);
-                                      if (!result) return null;
-                                      const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
-                                      const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
-                                      return (
-                                        <div key={`this-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
-                                          <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
-                                            <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
-                                            <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
-                                          </div>
-                                          <div className="overflow-y-auto flex-1 min-h-0">
-                                            {(result.ticketKeys || []).length === 0 && (
-                                              <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
-                                            )}
-                                            <TooltipProvider>
-                                              {(result.ticketKeys || []).map((key) => {
-                                                const issue = issueMap.get(key);
-                                                if (!issue) return null;
-                                                const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
-                                                const summaryText = issue.fields?.summary || issue.summary || '';
-                                                const createdDate = issue.fields?.created || issue.created;
-                                                const isValidDate = createdDate && !isNaN(new Date(createdDate).getTime());
-                                                return (
-                                                  <UITooltip key={key}>
-                                                    <TooltipTrigger asChild>
-                                                      <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
-                                                        <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
-                                                        <span className="text-slate-700 dark:text-slate-300 truncate" title={summaryText}>{summaryText}</span>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.status?.name || issue.status}</Badge>
-                                                      </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="bottom" hideArrow={true} className="max-w-md p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xl">
-                                                      <div className="space-y-1">
-                                                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-1">{key}</p>
-                                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{summaryText}</p>
-                                                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {isValidDate ? new Date(createdDate).toLocaleDateString() : 'N/A'}</span>
-                                                        </div>
-                                                      </div>
-                                                    </TooltipContent>
-                                                  </UITooltip>
-                                                );
-                                              })}
-                                            </TooltipProvider>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* Last Week */}
-                                  <div className="space-y-3 overflow-hidden flex flex-col">
-                                    <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-                                      Last Week
-                                    </h4>
-                                    {(['opened', 'closed'] as const).map((activity) => {
-                                      const result = widget.kpis.find(k => k.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity))?.results.find(r => r.dimensions?.week === 'last_week' && r.dimensions?.activity === activity);
-                                      if (!result) return null;
-                                      const color = activity === 'opened' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
-                                      const bgColor = activity === 'opened' ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30';
-                                      return (
-                                        <div key={`last-${activity}`} className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden flex-1 flex flex-col min-h-0">
-                                          <div className={`flex items-center justify-between px-3 py-1.5 ${bgColor} shrink-0`}>
-                                            <span className={`text-xs font-semibold capitalize ${color}`}>{activity}</span>
-                                            <Badge variant="outline" className="text-[10px] h-4 py-0">{result.value}</Badge>
-                                          </div>
-                                          <div className="overflow-y-auto flex-1 min-h-0">
-                                            {(result.ticketKeys || []).length === 0 && (
-                                              <p className="text-[10px] text-slate-400 px-3 py-2">No tickets</p>
-                                            )}
-                                            <TooltipProvider>
-                                              {(result.ticketKeys || []).map((key) => {
-                                                const issue = issueMap.get(key);
-                                                if (!issue) return null;
-                                                const jiraUrl = tlJiraBase ? `${tlJiraBase}/browse/${issue.key}` : '#';
-                                                const summaryText = issue.fields?.summary || issue.summary || '';
-                                                const createdDate = issue.fields?.created || issue.created;
-                                                const isValidDate = createdDate && !isNaN(new Date(createdDate).getTime());
-                                                return (
-                                                  <UITooltip key={key}>
-                                                    <TooltipTrigger asChild>
-                                                      <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
-                                                        <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-blue-500 hover:underline">{key}</a>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.priority?.name || issue.priority || '\u2014'}</Badge>
-                                                        <span className="text-slate-700 dark:text-slate-300 truncate" title={summaryText}>{summaryText}</span>
-                                                        <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">{issue.fields?.status?.name || issue.status}</Badge>
-                                                      </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="bottom" hideArrow={true} className="max-w-md p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xl">
-                                                      <div className="space-y-1">
-                                                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-1">{key}</p>
-                                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{summaryText}</p>
-                                                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Priority: {issue.fields?.priority?.name || issue.priority || '\u2014'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Status: {issue.fields?.status?.name || issue.status}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Assignee: {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
-                                                          <span className="text-[10px] text-slate-600 dark:text-slate-400">Created: {isValidDate ? new Date(createdDate).toLocaleDateString() : 'N/A'}</span>
-                                                        </div>
-                                                      </div>
-                                                    </TooltipContent>
-                                                  </UITooltip>
-                                                );
-                                              })}
-                                            </TooltipProvider>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </WidgetResizeContainer>
-                              </CardContent>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </Card>
-                    </div>
-                  ) : null;
+                      <div key={`ticket-list-${tlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
+                        <TicketListWidget
+                          pluginId={tlPluginId}
+                          isCollapsed={tlCollapsed}
+                          onToggleCollapse={toggleWidgetCollapse}
+                          kpis={widget.kpis}
+                          issueMap={issueMap}
+                          jiraBaseUrl={tlJiraBase}
+                        />
+                      </div>
+                    ) : null;
                   }
-                  return null;
               }
             })}
           </div>
@@ -2883,55 +2424,15 @@ export function KpiDashboard() {
       )}
 
       {/* Drill-down Sheet */}
-      <Sheet open={isDrillDownOpen} onOpenChange={(open) => !open && closeDrillDown()}>
-        <SheetContent side="right" className="w-[90%] sm:w-[540px] border-l-slate-200 dark:border-l-slate-800 p-0 overflow-hidden flex flex-col">
-          <SheetHeader className="p-6 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <SheetTitle className="flex items-center gap-2 text-xl">
-              <Ticket className="h-5 w-5 text-blue-500" />
-              {drillDownTitle}
-            </SheetTitle>
-            <SheetDescription>
-              Displaying {(drillDownKeys as any)?.length || 0} issues comprising this metric
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 overflow-hidden">
-            {drillDownKeys && (
-              <Virtuoso
-                style={{ height: '100%' }}
-                totalCount={drillDownKeys.length}
-                itemContent={(index) => {
-                  const key = drillDownKeys[index];
-                  const issue = (masterDatasetInfo?.issues || []).find((i: any) => i.key === key);
-                  if (!issue) return null;
-
-                  const activeConnection = connections.find((c: any) => c.id === activeConnectionId);
-                  const baseUrl = activeConnection?.baseUrl || '';
-                  const formattedBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-                  const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
-
-                  return (
-                    <div className="px-4 pb-3">
-                      <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 group hover:border-blue-500/30 transition-all">
-                        <div className="flex items-start justify-between gap-3 mb-1">
-                          <a href={jiraUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-mono font-bold text-blue-500 hover:underline flex items-center gap-1">
-                            {key} <ExternalLink className="h-3 w-3" />
-                          </a>
-                          <Badge variant="outline" className="text-[10px] h-4 py-0">{issue.fields?.status?.name || issue.status}</Badge>
-                        </div>
-                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-2 mb-2">{issue.fields?.summary || issue.summary}</p>
-                        <div className="flex items-center gap-4 text-[10px] text-slate-500">
-                          <div className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</div>
-                          <div className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(issue.fields?.created || issue.created).toLocaleDateString()}</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <DrillDownSheet
+        isOpen={isDrillDownOpen}
+        onOpenChange={(open) => !open && closeDrillDown()}
+        drillDownTitle={drillDownTitle}
+        drillDownKeys={drillDownKeys}
+        issues={masterDatasetInfo?.issues || []}
+        connections={connections}
+        activeConnectionId={activeConnectionId}
+      />
 
       <AnimatePresence>
         {showFloatingBar && !isDrillDownOpen && (
