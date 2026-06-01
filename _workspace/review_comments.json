@@ -1,9 +1,0 @@
-﻿gh : failed to parse jq expression (line 1, column 28)
-At line:1 char:133
-+ ...  $env:Path; gh api repos/CJ-1981/jira-etl-dashboard/pulls/16/comments ...
-+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (failed to parse...e 1, column 28):String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
-    .[] | select(.commit_id == 66d3612d04123818d71587adb54359dbd64677b4) | {path, line, body}
-                               ^  invalid token "66d"
