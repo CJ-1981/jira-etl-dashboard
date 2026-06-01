@@ -42,7 +42,9 @@ export function DrillDownSheet({
   );
 
   const jiraBaseUrl = activeConnection?.baseUrl || '';
-  const formattedBaseUrl = jiraBaseUrl.startsWith('http') ? jiraBaseUrl : `https://${jiraBaseUrl}`;
+  const formattedBaseUrl = jiraBaseUrl
+    ? (jiraBaseUrl.startsWith('http') ? jiraBaseUrl : `https://${jiraBaseUrl}`)
+    : '';
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>

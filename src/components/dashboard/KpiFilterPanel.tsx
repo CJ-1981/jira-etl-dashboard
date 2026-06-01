@@ -63,12 +63,7 @@ export function KpiFilterPanel({
 }: KpiFilterPanelProps) {
   const [filterSearchQuery, setFilterSearchQuery] = useState('');
 
-  const handleUpdatePendingFilter = (key: string, value: string) => {
-    jqlFilters.toggleStagingFilter(key, value);
-    setIsViewModified(true);
-  };
-
-  const handleUpdateFilter = (key: string, value: string) => {
+  const handleToggleFilter = (key: string, value: string) => {
     jqlFilters.toggleStagingFilter(key, value);
     setIsViewModified(true);
   };
@@ -193,7 +188,7 @@ export function KpiFilterPanel({
                     <Badge
                       variant={isActive ? 'default' : 'outline'}
                       className={`h-6 px-2 gap-1.5 transition-all cursor-pointer ${isEditing ? 'ring-2 ring-amber-500' : ''} ${isActive ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
-                      onClick={() => handleUpdatePendingFilter('jql', djql.query)}
+                      onClick={() => handleToggleFilter('jql', djql.query)}
                     >
                       <span className="max-w-[120px] truncate font-mono">{djql.query}</span>
                       <div className="flex items-center gap-1 ml-1">
@@ -235,7 +230,7 @@ export function KpiFilterPanel({
                                     const queryToDelete = jqlFilters.jqlList.find(j => j.id === jqlToDelete)?.query;
                                     jqlFilters.deleteJql(jqlToDelete);
                                     if (queryToDelete && jqlFilters.stagingFilters['jql']?.includes(queryToDelete)) {
-                                      handleUpdatePendingFilter('jql', queryToDelete);
+                                      handleToggleFilter('jql', queryToDelete);
                                     }
                                     if (editingJqlId === jqlToDelete) {
                                       setEditingJqlId(null);
@@ -294,7 +289,7 @@ export function KpiFilterPanel({
                       variant="ghost"
                       size="sm"
                       className="w-full h-7 text-[10px] justify-start px-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      onClick={() => handleUpdatePendingFilter(filter.key, 'all')}
+                      onClick={() => handleToggleFilter(filter.key, 'all')}
                     >
                       Clear Selection
                     </Button>
@@ -306,11 +301,11 @@ export function KpiFilterPanel({
                         <div
                           key={opt}
                           className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
-                          onClick={() => handleUpdatePendingFilter(filter.key, opt)}
+                          onClick={() => handleToggleFilter(filter.key, opt)}
                         >
                           <Checkbox
                             checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)}
-                            onCheckedChange={() => handleUpdatePendingFilter(filter.key, opt)}
+                            onCheckedChange={() => handleToggleFilter(filter.key, opt)}
                             onClick={(e) => e.stopPropagation()}
                           />
                           <span className="text-xs truncate">{opt}</span>
@@ -359,7 +354,7 @@ export function KpiFilterPanel({
                 <span className="text-slate-400">{displayKey}:</span> {val}
                 <span
                   className="flex items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); handleUpdateFilter(key, val); }}
+                  onClick={(e) => { e.stopPropagation(); handleToggleFilter(key, val); }}
                 >
                   <X className="h-2.5 w-2.5" />
                 </span>

@@ -58,9 +58,9 @@ import {
 import {
   Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
 TrendingUp, Calendar, EyeOff, X, RotateCw, Plus,
-  Download, Loader2, Ticket, ExternalLink, Sliders,
-  ArrowUp, ChevronDown, ChevronUp, Database, Filter, RefreshCw,
-  Save, Columns, Users,
+  Download, Loader2, Sliders,
+  ArrowUp, ChevronDown, ChevronUp, Database, RefreshCw,
+  Columns, Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
