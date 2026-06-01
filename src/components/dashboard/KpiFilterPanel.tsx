@@ -305,8 +305,7 @@ export function KpiFilterPanel({
                         >
                           <Checkbox
                             checked={!!jqlFilters.stagingFilters[filter.key]?.includes(opt)}
-                            onCheckedChange={() => handleToggleFilter(filter.key, opt)}
-                            onClick={(e) => e.stopPropagation()}
+                            className="pointer-events-none"
                           />
                           <span className="text-xs truncate">{opt}</span>
                         </div>

@@ -56,8 +56,8 @@ import {
   AreaChart, Area
 } from 'recharts';
 import {
-  Activity, Target, Timer, UserCheck, BarChart3, Clock, AlertTriangle,
-TrendingUp, Calendar, EyeOff, X, RotateCw, Plus,
+  Activity, Target, Timer, UserCheck, BarChart3, AlertTriangle,
+  TrendingUp, Calendar, EyeOff, RotateCw, Plus,
   Download, Loader2, Sliders,
   ArrowUp, ChevronDown, ChevronUp, Database, RefreshCw,
   Columns, Users,
