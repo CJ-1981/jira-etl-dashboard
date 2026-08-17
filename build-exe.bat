@@ -12,7 +12,7 @@ where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Node.js is not installed.
     echo Please install Node.js from https://nodejs.org/
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -20,7 +20,7 @@ if %ERRORLEVEL% NEQ 0 (
 where npm >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] npm is not available.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -38,7 +38,7 @@ echo [2/5] Installing dependencies...
 call npm install
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] npm install failed.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 echo Done.
@@ -48,7 +48,7 @@ echo [3/5] Building Next.js app...
 call npm run build
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Build failed.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 echo Done.
@@ -68,7 +68,7 @@ echo [5/5] Packaging executable with caxa...
 call npx caxa --input ".next/standalone" --output "dist\JIRA ETL Dashboard.exe" --no-dedupe -- "{{caxa}}/node_modules/.bin/node" "{{caxa}}/launcher.cjs"
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Packaging failed.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 echo Done.
@@ -78,4 +78,4 @@ echo =============================================
 echo  Build complete!
 echo  File: dist\JIRA ETL Dashboard.exe
 echo =============================================
-pause
+if not defined CI pause
