@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JIRA ETL Dashboard — User Manual</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --emerald-50: #ecfdf5; --emerald-100: #d1fae5; --emerald-200: #a7f3d0;
+      --emerald-600: #059669; --emerald-700: #047857; --emerald-800: #065f46;
+      --blue-500: #3b82f6; --blue-600: #2563eb; --blue-700: #1d4ed8;
+      --slate-50: #f8fafc; --slate-100: #f1f5f9; --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1; --slate-400: #94a3b8; --slate-500: #64748b;
+      --slate-600: #475569; --slate-700: #334155; --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --amber-400: #fbbf24; --amber-500: #f59e0b;
+      --red-400: #f87171; --red-500: #ef4444;
+      --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      --shadow-lg: 0 4px 12px rgba(0,0,0,.1);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji';
+      color: var(--slate-800);
+      background: var(--slate-50);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ── Header / Hero ───────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, var(--slate-900) 0%, var(--slate-800) 50%, var(--emerald-800) 100%);
+      color: #fff;
+      padding: 60px 0 48px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 2.4rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--emerald-200), var(--blue-400));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+    .hero .version {
+      font-size: .95rem;
+      color: var(--slate-400);
+      margin-bottom: 24px;
+    }
+    .hero .tagline {
+      font-size: 1.1rem;
+      color: var(--slate-300);
+      max-width: 620px;
+      margin: 0 auto;
+    }
+
+    /* ── Table of Contents ───────────────────────────────────── */
+    .toc {
+      background: #fff;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin: -28px auto 40px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      z-index: 1;
+    }
+    .toc h2 {
+      font-size: 1.15rem;
+      color: var(--slate-700);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--emerald-100);
+    }
+    .toc ol {
+      list-style: none;
+      counter-reset: toc-counter;
+      columns: 2;
+      column-gap: 32px;
+    }
+    .toc li {
+      counter-increment: toc-counter;
+      margin-bottom: 6px;
+      break-inside: avoid;
+    }
+    .toc li::before {
+      content: counter(toc-counter) ".";
+      color: var(--emerald-600);
+      font-weight: 600;
+      margin-right: 8px;
+      min-width: 20px;
+      display: inline-block;
+    }
+    .toc a {
+      color: var(--slate-700);
+      text-decoration: none;
+      font-size: .93rem;
+      transition: color .15s;
+    }
+    .toc a:hover { color: var(--emerald-600); text-decoration: underline; }
+    .toc .sub { padding-left: 28px; font-size: .88rem; }
+    .toc .sub::before { content: "·"; color: var(--slate-400); margin-right: 8px; }
+
+    /* ── Sections ─────────────────────────────────────────────── */
+    .section {
+      background: #fff;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 36px 40px;
+      margin-bottom: 28px;
+      box-shadow: var(--shadow);
+    }
+    .section h2 {
+      font-size: 1.5rem;
+      color: var(--slate-900);
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--emerald-100);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section h2 .num {
+      background: var(--emerald-600);
+      color: #fff;
+      font-size: .8rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .section h3 {
+      font-size: 1.15rem;
+      color: var(--slate-800);
+      margin: 24px 0 12px;
+    }
+    .section h3:first-of-type { margin-top: 0; }
+    .section h4 {
+      font-size: 1rem;
+      color: var(--slate-700);
+      margin: 16px 0 8px;
+    }
+
+    .section p { margin-bottom: 12px; }
+    .section ul, .section ol {
+      margin: 8px 0 16px 24px;
+    }
+    .section li { margin-bottom: 6px; }
+    .section li::marker { color: var(--emerald-600); }
+
+    /* ── Callout Boxes ───────────────────────────────────────── */
+    .callout {
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-size: .93rem;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .callout .icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.info { background: #eff6ff; border-left: 4px solid var(--blue-500); color: var(--blue-700); }
+    .callout.tip { background: var(--emerald-50); border-left: 4px solid var(--emerald-600); color: var(--emerald-800); }
+    .callout.warning { background: #fffbeb; border-left: 4px solid var(--amber-500); color: #92400e; }
+    .callout.danger { background: #fef2f2; border-left: 4px solid var(--red-500); color: #991b1b; }
+
+    /* ── Code / Kbd ──────────────────────────────────────────── */
+    code {
+      background: var(--slate-100);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, Consolas, monospace;
+      font-size: .85em;
+      color: var(--emerald-700);
+    }
+    pre {
+      background: var(--slate-900);
+      color: #e2e8f0;
+      padding: 20px 24px;
+      border-radius: var(--radius);
+      font-family: 'SF Mono', 'Fira Code', Menlo, Consolas, monospace;
+      font-size: .88rem;
+      overflow-x: auto;
+      margin: 16px 0;
+      line-height: 1.6;
+    }
+    pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+
+    kbd {
+      background: var(--slate-100);
+      border: 1px solid var(--slate-300);
+      border-bottom: 2px solid var(--slate-300);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: .82em;
+      font-family: inherit;
+      color: var(--slate-700);
+    }
+
+    /* ── Screenshots ──────────────────────────────────────────── */
+    .screenshot-wrapper {
+      margin: 24px 0;
+      text-align: center;
+    }
+    .screenshot {
+      max-width: 100%;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      cursor: pointer;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .screenshot:hover { transform: scale(1.005); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+    .screenshot-caption {
+      font-size: .85rem;
+      color: var(--slate-500);
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    /* Placeholder for future screenshots */
+    .screenshot-placeholder {
+      border: 2px dashed var(--slate-300);
+      border-radius: var(--radius);
+      padding: 60px 24px;
+      background: var(--slate-50);
+      text-align: center;
+      margin: 24px 0;
+      color: var(--slate-400);
+    }
+    .screenshot-placeholder .ph-icon { font-size: 2.4rem; margin-bottom: 8px; }
+    .screenshot-placeholder .ph-label { font-size: .95rem; font-weight: 500; }
+    .screenshot-placeholder .ph-hint { font-size: .82rem; margin-top: 4px; }
+
+    /* ── Tables ───────────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: .93rem;
+    }
+    thead th {
+      background: var(--slate-100);
+      color: var(--slate-700);
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 2px solid var(--slate-200);
+      font-size: .85rem;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    tbody td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--slate-100);
+    }
+    tbody tr:hover { background: var(--emerald-50); }
+
+    /* ── Feature Grid ────────────────────────────────────────── */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 20px 0;
+    }
+    .feature-card {
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 20px;
+      background: var(--slate-50);
+    }
+    .feature-card .fc-icon { font-size: 1.5rem; margin-bottom: 8px; }
+    .feature-card h4 { color: var(--slate-800); margin: 0 0 6px; font-size: .95rem; }
+    .feature-card p { color: var(--slate-500); font-size: .88rem; margin: 0; }
+
+    /* ── Steps ────────────────────────────────────────────────── */
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      margin-left: 0;
+      padding: 0;
+    }
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding-left: 44px;
+      margin-bottom: 18px;
+      min-height: 28px;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0; top: 0;
+      width: 30px; height: 30px;
+      background: var(--emerald-600);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .85rem;
+      font-weight: 600;
+    }
+    .steps li strong { color: var(--slate-800); }
+
+    /* ── Back to Top ──────────────────────────────────────────── */
+    .back-to-top {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 42px; height: 42px;
+      background: var(--emerald-600);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      font-size: 1.2rem;
+      cursor: pointer;
+      box-shadow: var(--shadow-lg);
+      opacity: 0;
+      transition: opacity .3s;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .back-to-top.visible { opacity: 1; }
+    .back-to-top:hover { background: var(--emerald-700); }
+
+    /* ── Footer ───────────────────────────────────────────────── */
+    .footer {
+      text-align: center;
+      padding: 32px 0 48px;
+      color: var(--slate-400);
+      font-size: .85rem;
+    }
+
+    /* ── Print Styles ───────────────────────────────────────── */
+    @media print {
+      body { font-size: 11pt; color: #000; background: #fff; }
+      .hero { background: #fff !important; color: #000 !important; padding: 24px 0; }
+      .hero h1 { -webkit-text-fill-color: #059669 !important; font-size: 1.8rem; }
+      .hero .version, .hero .tagline { color: #475569 !important; }
+      .toc { box-shadow: none; border: 1px solid #ccc; margin-top: 0; }
+      .section { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+      .back-to-top { display: none; }
+      .screenshot { box-shadow: none; max-height: 400px; object-fit: contain; }
+      .screenshot-placeholder { border-color: #ccc; display: none; }
+      pre { background: #f5f5f5 !important; color: #333 !important; border: 1px solid #ddd; }
+      code { background: #f0f0f0 !important; color: #333 !important; }
+      .callout { break-inside: avoid; }
+      @page { size: A4; margin: 2cm; }
+    }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 1.6rem; }
+      .hero { padding: 36px 0 32px; }
+      .section { padding: 24px 20px; }
+      .toc ol { columns: 1; }
+      .feature-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       HERO
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="hero">
+    <div class="container">
+      <h1>JIRA ETL Dashboard</h1>
+      <div class="version">v0.2.0 — User Manual</div>
+      <p class="tagline">
+        Extract ticket data from Jira Cloud or Server, calculate custom KPIs with
+        German holiday-aware business-hour calculations, and export results to
+        Metabase, CSV, JSON, or PostgreSQL.
+      </p>
+    </div>
+  </div>
+
+  <div class="container">
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TABLE OF CONTENTS
+       ═══════════════════════════════════════════════════════════ -->
+  <nav class="toc" id="toc">
+    <h2>Table of Contents</h2>
+    <ol>
+      <li><a href="#getting-started">Getting Started</a></li>
+      <li><a href="#navigation">Navigation Overview</a></li>
+      <li><a href="#data-center">Data Center</a></li>
+      <li class="sub"><a href="#jira-extraction">Jira Extraction</a></li>
+      <li class="sub"><a href="#data-export">Data Export</a></li>
+      <li><a href="#kpi-analytics">KPI Analytics</a></li>
+      <li class="sub"><a href="#dashboard">Dashboard</a></li>
+      <li class="sub"><a href="#plugins">Plugins Configuration</a></li>
+      <li class="sub"><a href="#holidays">Holidays Calendar</a></li>
+      <li><a href="#settings">Settings</a></li>
+      <li class="sub"><a href="#connections">Connections</a></li>
+      <li class="sub"><a href="#storage">Storage</a></li>
+      <li class="sub"><a href="#configuration">Configuration</a></li>
+      <li><a href="#advanced">Advanced Features</a></li>
+      <li class="sub"><a href="#saved-views">Saved Views</a></li>
+      <li class="sub"><a href="#custom-charts">Custom Chart Cards</a></li>
+      <li class="sub"><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
+      <li><a href="#troubleshooting">Troubleshooting &amp; FAQ</a></li>
+    </ol>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       1. GETTING STARTED
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="section" id="getting-started">
+    <h2><span class="num">1</span> Getting Started</h2>
+
+    <h3>Prerequisites</h3>
+    <ul>
+      <li><strong>Node.js 18+</strong> — required to run the development server</li>
+      <li><strong>Jira API Token</strong> (Cloud) or <strong>Password</strong> (Server) — generate a token at
+        <code>https://id.atlassian.com/manage-profile/security/api-tokens</code></li>
+      <li><strong>Jira Base URL</strong> — your organization's Jira instance URL (e.g. <code>https://yourcompany.atlassian.net</code>)</li>
+    </ul>
+
+    <h3>Installation</h3>
+    <p>Clone the repository and install dependencies:</p>
+    <pre><code>git clone &lt;repository-url&gt;
+cd jira-etl-dashboard
+npm install</code></pre>
+
+    <h3>Starting the Application</h3>
+    <pre><code>npm run dev</code></pre>
+    <p>The dashboard will be available at <code>http://localhost:3000</code>.</p>
+
+    <div class="callout tip">
+      <span class="icon">💡</span>
+      <div>For PostgreSQL/Supabase storage, set <code>DATABASE_URL</code> in a <code>.env</code> file and run <code>npm run db:push:pg</code> to initialize the database schema.</div>
+    </div>
+
+    <h3>First Launch — Connecting to Jira</h3>
+    <p>Before extracting data, you need to configure at least one Jira connection:</p>
+    <ol class="steps">
+      <li>Open the app and navigate to <strong>Settings → Connections</strong>.</li>
+      <li>Click <strong>Add Connection</strong> and fill in the form:
+        <ul>
+          <li><strong>Name</strong> — a friendly label (e.g. "Prod Jira")</li>
+          <li><strong>Base URL</strong> — your Jira instance URL</li>
+          <li><strong>Email</strong> — your Jira account email</li>
+          <li><strong>API Token</strong> — your Atlassian API token</li>
+          <li><strong>Project Keys</strong> — comma-separated project keys to scope extractions</li>
+        </ul>
+      </li>
+      <li>Click <strong>Test Connection</strong> to verify — you'll see the server name, version, and response time.</li>
+      <li>Click <strong>Save</strong>. The connection will appear in the connection selector in the top-right header.</li>
+    </ol>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Connections Panel</div>
+      <div class="ph-hint">Navigate to Settings → Connections to capture this screenshot</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       2. NAVIGATION OVERVIEW
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="section" id="navigation">
+    <h2><span class="num">2</span> Navigation Overview</h2>
+
+    <p>The dashboard uses a <strong>tab-based single-page layout</strong> with a sticky header. There are three main sections, each with collapsible sub-menus:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Main Tab</th>
+          <th>Sub-Tabs</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Data Center</strong></td>
+          <td>Jira Extraction, Data Export</td>
+          <td>Extract data from Jira and export results</td>
+        </tr>
+        <tr>
+          <td><strong>KPI Analytics</strong></td>
+          <td>Dashboard, Plugins Configuration, Holidays Calendar</td>
+          <td>Calculate, visualize, and configure KPI metrics</td>
+        </tr>
+        <tr>
+          <td><strong>Settings</strong></td>
+          <td>Connections, Storage, Configuration</td>
+          <td>Manage Jira connections, databases, and app settings</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Header Controls</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-icon">🔌</div>
+        <h4>Connection Selector</h4>
+        <p>Dropdown in the top-right to quickly switch between saved Jira connections.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">🌙</div>
+        <h4>Theme Toggle</h4>
+        <p>Switch between light and dark mode. The entire UI adapts, including charts.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">📋</div>
+        <h4>Sub-Menu Toggle</h4>
+        <p>Click the chevron below the main tabs to expand/collapse the sub-tab bar.</p>
+      </div>
+    </div>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Main Interface — Full View</div>
+      <div class="ph-hint">Capture the header with all three tabs and the connection selector visible</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       3. DATA CENTER
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="section" id="data-center">
+    <h2><span class="num">3</span> Data Center</h2>
+
+    <!-- 3.1 Jira Extraction -->
+    <h3 id="jira-extraction">3.1 Jira Extraction</h3>
+
+    <p>The <strong>Jira Extraction</strong> panel is where you query Jira for ticket data and build your master dataset. It provides a powerful yet easy-to-use interface for ETL operations.</p>
+
+    <h4>JQL Query Editor</h4>
+    <p>Enter a <strong>JQL (Jira Query Language)</strong> expression in the text area to define which tickets to extract. For example:</p>
+    <pre><code>project = "PROJ" AND status changed AFTER -30d</code></pre>
+    <p>You can <strong>save, load, and delete</strong> frequently used queries for quick reuse.</p>
+
+    <h4>Date Range</h4>
+    <p>Set the extraction period using the <strong>From</strong> and <strong>To</strong> date pickers. Quick presets are available for common ranges:</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>Since Yesterday</h4>
+        <p>Excludes anything older than yesterday</p>
+      </div>
+      <div class="feature-card">
+        <h4>Last 7 / 30 / 90 / 365 Days</h4>
+        <p>Rolling window from today</p>
+      </div>
+      <div class="feature-card">
+        <h4>Custom Days Back</h4>
+        <p>Enter any number of days for a custom rolling window</p>
+      </div>
+    </div>
+
+    <h4>Extraction Options</h4>
+    <ul>
+      <li><strong>Update Only Mode</strong> — Toggle to upsert existing tickets without deleting old ones. Uses the <code>updated</code> field for incremental syncing.</li>
+      <li><strong>Custom Extract Fields</strong> — Expand the panel to add custom Jira field IDs (e.g. for "Issue Owner Team"). Use the <strong>Discover</strong> button to auto-fetch available custom fields from your Jira instance.</li>
+      <li><strong>Scheduled Polling</strong> — Enable automatic data fetching at intervals from 1 minute to 4 hours. Shows last run time, next run time, and a live indicator badge.</li>
+    </ul>
+
+    <h4>Running an Extraction</h4>
+    <ol class="steps">
+      <li>Select a <strong>Jira connection</strong> from the header dropdown.</li>
+      <li>Enter a <strong>JQL query</strong> or select a saved query.</li>
+      <li>Set the <strong>date range</strong> using the pickers or quick presets.</li>
+      <li>Optionally enable <strong>Update Only Mode</strong> or configure <strong>custom fields</strong>.</li>
+      <li>Click <strong>Run Jira Extraction</strong>. Progress will be shown as tickets are fetched.</li>
+    </ol>
+
+    <h4>Extraction Results</h4>
+    <p>After extraction, results appear in a card showing:</p>
+    <ul>
+      <li><strong>Summary stats</strong> — Total extracted, resolved, open, oldest ticket date, newest ticket date</li>
+      <li><strong>Ticket list</strong> — Searchable, sortable (by key, created, updated), filterable by status. Each ticket links directly to Jira.</li>
+    </ul>
+
+    <h4>Master Dataset</h4>
+    <p>The <strong>Master Dataset</strong> accumulates tickets across all extractions. It shows total unique tickets, date range, and last update time. Use <strong>Show All Tickets</strong> to browse the full dataset, or <strong>Clear Master Dataset</strong> to reset.</p>
+
+    <div class="screenshot-wrapper">
+      <img src="screenshots/data-center.png" alt="Data Center — Jira Extraction panel" class="screenshot">
+      <div class="screenshot-caption">Figure 1: Data Center — Jira Extraction panel with query editor, date range, and results</div>
+    </div>
+
+    <!-- 3.2 Data Export -->
+    <h3 id="data-export">3.2 Data Export</h3>
+
+    <p>The <strong>Data Export</strong> panel lets you push processed data out of the dashboard in two modes:</p>
+
+    <h4>File Export</h4>
+    <ul>
+      <li>Choose data type: <strong>KPIs</strong>, <strong>Raw Tickets</strong>, or <strong>Both</strong></li>
+      <li>Download as <strong>JSON</strong> or <strong>CSV</strong></li>
+      <li>Select a <strong>German state/region</strong> for holiday-aware calculations</li>
+    </ul>
+
+    <h4>Database Sync</h4>
+    <ul>
+      <li>Toggle to <strong>Database Sync</strong> mode to push data to a configured PostgreSQL / Supabase instance</li>
+      <li>Select the target database from your saved connections</li>
+      <li>Click <strong>Push to Database</strong> — the row count is displayed after completion</li>
+    </ul>
+
+    <div class="callout info">
+      <span class="icon">ℹ️</span>
+      <div>Database sync is designed for <strong>Metabase integration</strong>. Push your KPI results to PostgreSQL so you can build Metabase dashboards on top of the data.</div>
+    </div>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Data Export Panel</div>
+      <div class="ph-hint">Navigate to Data Center → Data Export to capture this screenshot</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       4. KPI ANALYTICS
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="section" id="kpi-analytics">
+    <h2><span class="num">4</span> KPI Analytics</h2>
+
+    <!-- 4.1 Dashboard -->
+    <h3 id="dashboard">4.1 Dashboard</h3>
+
+    <p>The <strong>KPI Dashboard</strong> is the heart of the application — it visualizes calculated metrics as interactive cards, charts, progress bars, and data tables.</p>
+
+    <h4>Controls Bar</h4>
+    <p>At the top of the dashboard you'll find:</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-icon">🔄</div>
+        <h4>Recalculate</h4>
+        <p>Trigger a full KPI recalculation with current filters and date range.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">👁️</div>
+        <h4>View Manager</h4>
+        <p>Save, load, and manage named dashboard views (see Saved Views section).</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">🔍</div>
+        <h4>Filters</h4>
+        <p>Toggle the filter panel — badge shows active filter count.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">🖨️</div>
+        <h4>Print</h4>
+        <p>Export the dashboard to PDF via the browser's print dialog.</p>
+      </div>
+    </div>
+
+    <h4>Period Selection</h4>
+    <p>Choose the analysis period with date pickers or use the <strong>quick preset buttons</strong>:</p>
+    <table>
+      <thead><tr><th>Preset</th><th>Range</th></tr></thead>
+      <tbody>
+        <tr><td><code>7D</code></td><td>Last 7 days</td></tr>
+        <tr><td><code>14D</code></td><td>Last 14 days</td></tr>
+        <tr><td><code>30D</code></td><td>Last 30 days</td></tr>
+        <tr><td><code>60D</code></td><td>Last 60 days</td></tr>
+        <tr><td><code>90D</code></td><td>Last 90 days</td></tr>
+        <tr><td><code>180D</code></td><td>Last 180 days</td></tr>
+        <tr><td><code>1Y</code></td><td>Last 365 days</td></tr>
+        <tr><td><code>MAX</code></td><td>All available data</td></tr>
+      </tbody>
+    </table>
+    <div class="callout warning">
+      <span class="icon">⚠️</span>
+      <div>A <strong>"Data Truncated"</strong> warning badge appears when the selected analysis period exceeds the available data range in your master dataset.</div>
+    </div>
+
+    <h4>Filter Panel</h4>
+    <p>The filter panel provides powerful multi-dimensional filtering:</p>
+    <ul>
+      <li><strong>JQL-Lite Filter</strong> — Autocomplete-enabled text input for quick JQL queries. Save and reuse filters with toggle on/off.</li>
+      <li><strong>Dimension Filters</strong> — Dropdown filters for: Project, Assignee, Priority, Issue Type, Status, Component, Label, Issue Owner Team, and any custom extract fields.</li>
+      <li><strong>Active Filter Badges</strong> — Applied filters appear as removable chips above the dashboard.</li>
+    </ul>
+
+    <h4>Widget Sections</h4>
+    <p>The dashboard renders multiple widget sections, each collapsible and reorderable via drag-and-drop:</p>
+
+    <table>
+      <thead><tr><th>Widget</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Turnaround Time by Status</strong></td>
+          <td>Horizontal progress bars showing business hours per workflow status. Click to drill down.</td>
+        </tr>
+        <tr>
+          <td><strong>Open Tickets by Status</strong></td>
+          <td>Status breakdown with age-group coloring: green (this week), amber (1 week), red (2+ weeks).</td>
+        </tr>
+        <tr>
+          <td><strong>SLA by Priority</strong></td>
+          <td>SLA compliance rates by priority level.</td>
+        </tr>
+        <tr>
+          <td><strong>Open Tickets by Assignee/Team</strong></td>
+          <td>Workload distribution across team members.</td>
+        </tr>
+        <tr>
+          <td><strong>Cycle Time Histogram</strong></td>
+          <td>Distribution of ticket cycle times.</td>
+        </tr>
+        <tr>
+          <td><strong>Aging WIP</strong></td>
+          <td>Visualizes work-in-progress aging across status columns.</td>
+        </tr>
+        <tr>
+          <td><strong>Kanban Board</strong></td>
+          <td>Open tickets organized by kanban column.</td>
+        </tr>
+        <tr>
+          <td><strong>Weekly Ticket List</strong></td>
+          <td>List of tickets grouped by week.</td>
+        </tr>
+        <tr>
+          <td><strong>Custom Chart Cards</strong></td>
+          <td>User-configurable charts with metric selector, chart type, JQL filters, and more.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>KPI Cards &amp; Alerts</h4>
+    <p>Each KPI widget displays:</p>
+    <ul>
+      <li><strong>Icon</strong> — color-coded by metric type (clock for processing, calendar for working days, target for SLA)</li>
+      <li><strong>Value</strong> — with color thresholds: green (OK), amber (warning), red (critical)</li>
+      <li><strong>Alert badges</strong> — animated pulse when warning/critical thresholds are triggered</li>
+      <li><strong>Age breakdown</strong> — This Week / 1 Week / 2+ Weeks with colored indicators</li>
+      <li><strong>Ticket count</strong> — click to open the drill-down sheet</li>
+    </ul>
+
+    <h4>Metrics Overview Table</h4>
+    <p>A sortable, filterable data table showing <strong>all calculated KPI results</strong> with columns: Plugin, Metric, Dimension, Dimension Type, Value, Unit, Alert Status, and Ticket Count. Includes search, plugin filter, and dimension type filter.</p>
+
+    <h4>Drill-Down Sheet</h4>
+    <p>Click any KPI card or table row to open the <strong>Drill-Down Sheet</strong> — a slide-out panel on the right showing the underlying tickets:</p>
+    <ul>
+      <li>Ticket key with direct link to Jira</li>
+      <li>Summary, assignee, created date, status badge</li>
+      <li>Virtual scrolling for 1000+ tickets</li>
+    </ul>
+
+    <div class="screenshot-wrapper">
+      <img src="screenshots/kpi-analytics.png" alt="KPI Analytics — Dashboard view" class="screenshot">
+      <div class="screenshot-caption">Figure 2: KPI Analytics — Dashboard with KPI cards, charts, and progress bars</div>
+    </div>
+
+    <!-- 4.2 Plugins Configuration -->
+    <h3 id="plugins">4.2 Plugins Configuration</h3>
+
+    <p>The <strong>Plugins Configuration</strong> panel controls which KPI metrics are calculated and how they appear on the dashboard.</p>
+
+    <h4>KPI Plugin Registry</h4>
+    <p>The left column shows all available plugins grouped by category:</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-icon">⏱️</div>
+        <h4>Processing Time</h4>
+        <p>Average processing time, first response time, resolution time (6 plugins)</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">📈</div>
+        <h4>Throughput</h4>
+        <p>Closed tickets, created tickets, net flow, throughput trend (4 plugins)</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">🎯</div>
+        <h4>SLA</h4>
+        <p>SLA compliance, SLA by status, SLA breach rate (4 plugins)</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">🔄</div>
+        <h4>Turnaround</h4>
+        <p>Turnaround time by status, total turnaround (2 plugins)</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">✅</div>
+        <h4>Quality</h4>
+        <p>Reopened tickets, reopen rate (2 plugins)</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">👤</div>
+        <h4>Assignee</h4>
+        <p>Tickets by assignee, open by assignee, workload (3 plugins)</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">📊</div>
+        <h4>Time-Series</h4>
+        <p>Trending metrics over time with 7 plugins for processing, throughput, and SLA trends</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon">🧩</div>
+        <h4>Custom</h4>
+        <p>User-created plugins using DSL or JavaScript</p>
+      </div>
+    </div>
+    <p>Toggle checkboxes to <strong>enable/disable</strong> plugins. Star plugins as <strong>favorites</strong>. Use search and filter tabs (All / Active / Favorites) to find plugins quickly.</p>
+
+    <h4>Widget Display Order</h4>
+    <p>The right column shows the <strong>display order</strong> of active, non-time-series widgets. Use <strong>drag-and-drop</strong> (via the grip handle) to reorder how widgets appear on the dashboard.</p>
+
+    <h4>Custom Plugins</h4>
+    <p>Create your own KPI plugins using the <strong>Plugin Builder</strong>:</p>
+    <ul>
+      <li><strong>DSL Mode</strong> — Select a metric type (Count, Average, Sum, Percentage, Time-to-X), set filters, and the formula is auto-generated.</li>
+      <li><strong>JavaScript Mode</strong> — Write full custom calculation logic with access to ticket data, changelogs, and settings.</li>
+    </ul>
+    <p>Set a category and unit for the plugin, then save. Custom plugins are hot-reloaded automatically.</p>
+
+    <h4>SLA Targets by Status</h4>
+    <ul>
+      <li>Set <strong>comment rules</strong>: "Assignee only" (SLA clock resets only on assignee comments) or "Anyone" (any comment resets the clock)</li>
+      <li>Use <strong>"Detect Statuses from Data"</strong> to auto-discover statuses from your master dataset</li>
+      <li>Configure <strong>SLA target hours per status</strong></li>
+    </ul>
+
+    <h4>KPI Alert Thresholds</h4>
+    <p>Configure warning and critical thresholds for each plugin:</p>
+    <ul>
+      <li>Operator: <code>&gt;</code> (greater than) or <code>&lt;</code> (less than)</li>
+      <li><strong>Warning</strong> value — triggers amber alert badge</li>
+      <li><strong>Critical</strong> value — triggers red alert badge with pulse animation</li>
+    </ul>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Plugins Configuration Panel</div>
+      <div class="ph-hint">Navigate to KPI Analytics → Plugins Configuration to capture this screenshot</div>
+    </div>
+
+    <!-- 4.3 Holidays Calendar -->
+    <h3 id="holidays">4.3 Holidays Calendar</h3>
+
+    <p>The <strong>Holidays Calendar</strong> shows German national and regional holidays used for business-hour KPI calculations.</p>
+    <ul>
+      <li><strong>Year selector</strong> — choose the year to display</li>
+      <li><strong>State/Region selector</strong> — select a German state to see its regional holidays</li>
+      <li>Two-column layout: <strong>National holidays</strong> (apply to all states) and <strong>Regional holidays</strong> (state-specific)</li>
+      <li>Each entry shows the holiday name, local name, and date</li>
+    </ul>
+
+    <div class="callout tip">
+      <span class="icon">💡</span>
+      <div>KPI calculations automatically exclude German holidays and weekends when computing business-hour metrics. Make sure the correct state is selected in both the Holidays panel and the KPI Calculation Defaults.</div>
+    </div>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Holidays Calendar Panel</div>
+      <div class="ph-hint">Navigate to KPI Analytics → Holidays Calendar to capture this screenshot</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       5. SETTINGS
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="section" id="settings">
+    <h2><span class="num">5</span> Settings</h2>
+
+    <!-- 5.1 Connections -->
+    <h3 id="connections">5.1 Connections</h3>
+
+    <p>Manage your Jira server connections from this panel.</p>
+
+    <ol class="steps">
+      <li><strong>Add a connection</strong> — Fill in the form with name, base URL, email, API token, and project keys. Click <strong>Test</strong> to verify, then <strong>Save</strong>.</li>
+      <li><strong>Edit a connection</strong> — Click the edit icon on any saved connection to modify its settings.</li>
+      <li><strong>Delete a connection</strong> — Click the delete icon to remove a connection.</li>
+      <li><strong>Reorder</strong> — Drag connections using the grip handle to change their order.</li>
+      <li><strong>Set Active</strong> — The active connection is used by the connection selector dropdown in the header.</li>
+    </ol>
+
+    <div class="callout info">
+      <span class="icon">ℹ️</span>
+      <div>Connection diagnostics show the Jira server title, deployment type (Cloud/Server), version number, and API response time.</div>
+    </div>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Connections Panel</div>
+      <div class="ph-hint">Navigate to Settings → Connections to capture this screenshot</div>
+    </div>
+
+    <!-- 5.2 Storage -->
+    <h3 id="storage">5.2 Storage</h3>
+
+    <p>The <strong>Storage</strong> panel manages where your extracted data is persisted.</p>
+
+    <h4>Storage Types</h4>
+    <table>
+      <thead><tr><th>Storage</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Local SQLite</strong></td>
+          <td>Embedded database (<code>dev.db</code>). No configuration needed — works out of the box. Best for development and single-user setups.</td>
+        </tr>
+        <tr>
+          <td><strong>PostgreSQL / Supabase</strong></td>
+          <td>External database for shared access, Metabase integration, or production deployments. Configure host, port, database, username, password, SSL mode, schema, and table.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>PostgreSQL Management</h4>
+    <ul>
+      <li><strong>Add/Edit/Delete</strong> PostgreSQL backend connections</li>
+      <li><strong>Test</strong> connectivity before saving</li>
+      <li><strong>Set as Primary</strong> to promote any saved PostgreSQL backend as the active storage</li>
+    </ul>
+
+    <h4>Session Persistence</h4>
+    <ul>
+      <li><strong>Auto-save after extraction</strong> — automatically persist results after each extraction</li>
+      <li><strong>Auto-restore on page load</strong> — reload the master dataset when reopening the app</li>
+      <li><strong>Auto-cleanup</strong> — remove old data after 7, 30, or 90 days, or never</li>
+    </ul>
+
+    <h4>Storage Usage</h4>
+    <p>View statistics including total extractions, total tickets, database size, and per-connection breakdowns. Use <strong>Clear Orphaned Data</strong> to clean up disconnected records, or <strong>Clear All Data</strong> for a full reset.</p>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Storage Panel</div>
+      <div class="ph-hint">Navigate to Settings → Storage to capture this screenshot</div>
+    </div>
+
+    <!-- 5.3 Configuration -->
+    <h3 id="configuration">5.3 Configuration</h3>
+
+    <h4>Configuration Management</h4>
+    <p><strong>Export</strong> your full dashboard configuration as a JSON file (includes connections, settings, presets, and saved views). <strong>Import</strong> a previously exported configuration to restore settings on another machine.</p>
+
+    <h4>Webhook Integration</h4>
+    <ul>
+      <li><strong>Enable/Disable</strong> webhooks with a toggle switch</li>
+      <li>View the <strong>endpoint URL</strong> with a copy button</li>
+      <li><strong>Generate</strong> or regenerate the webhook secret</li>
+    </ul>
+
+    <h4>Rate Limiting</h4>
+    <table>
+      <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Delay (ms)</strong></td><td>Pause between API requests to avoid rate limits</td></tr>
+        <tr><td><strong>Max Requests/min</strong></td><td>Maximum number of Jira API calls per minute</td></tr>
+        <tr><td><strong>Batch Size</strong></td><td>Number of tickets fetched per API call</td></tr>
+        <tr><td><strong>Backoff Strategy</strong></td><td>None, Linear, or Exponential — how to handle rate limit errors</td></tr>
+      </tbody>
+    </table>
+
+    <h4>UI Settings</h4>
+    <ul>
+      <li><strong>List Max Height</strong> — controls the maximum height of scrollable ticket lists and tables</li>
+    </ul>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Configuration Panel</div>
+      <div class="ph-hint">Navigate to Settings → Configuration to capture this screenshot</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       6. ADVANCED FEATURES
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="section" id="advanced">
+    <h2><span class="num">6</span> Advanced Features</h2>
+
+    <!-- 6.1 Saved Views -->
+    <h3 id="saved-views">6.1 Saved Views</h3>
+
+    <p>The <strong>View Manager</strong> lets you save and restore complete dashboard states. Each saved view captures:</p>
+    <ul>
+      <li>Date range and period preset</li>
+      <li>Active filters (JQL and dimension filters)</li>
+      <li>Widget layout and collapse states</li>
+      <li>Chart configurations</li>
+    </ul>
+
+    <ol class="steps">
+      <li>Configure the dashboard with your desired filters, dates, and layout.</li>
+      <li>Click the <strong>View Manager</strong> button in the controls bar.</li>
+      <li>Click <strong>Save Current View</strong> and give it a name (e.g. "Sprint 24 Review").</li>
+      <li>Set a view as <strong>Default</strong> to auto-load it on page open.</li>
+      <li>Enable <strong>Auto-Save</strong> to persist changes with a 3-second debounce.</li>
+    </ol>
+
+    <div class="callout tip">
+      <span class="icon">💡</span>
+      <div>Period presets are smart — a "1Y" view saved today will recalculate dates relative to when it's loaded, not when it was saved.</div>
+    </div>
+
+    <!-- 6.2 Custom Chart Cards -->
+    <h3 id="custom-charts">6.2 Custom Chart Cards</h3>
+
+    <p>Add your own charts to the dashboard using <strong>Custom Chart Cards</strong>. Each chart is fully configurable:</p>
+
+    <table>
+      <thead><tr><th>Setting</th><th>Options</th></tr></thead>
+      <tbody>
+        <tr><td><strong>KPI Metric</strong></td><td>Dropdown grouped by Time-Series Trends and Standard KPIs</td></tr>
+        <tr><td><strong>Chart Type</strong></td><td>Bar, Line, Pie, Area (time-series auto-switches to Line)</td></tr>
+        <tr><td><strong>Width</strong></td><td>Small, Medium, Large, Full</td></tr>
+        <tr><td><strong>Height</strong></td><td>Short, Medium, Tall, Extra Tall</td></tr>
+        <tr><td><strong>JQL Filter</strong></td><td>Override or refine — apply custom JQL to scope the chart's data</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Chart Interactions</h4>
+    <ul>
+      <li><strong>Drag to Zoom</strong> — on time-series charts, click and drag to zoom into a date range. Use the <strong>Reset Zoom</strong> button to return.</li>
+      <li><strong>SLA Reference Lines</strong> — target lines displayed on line/area charts</li>
+      <li><strong>Export as PNG</strong> — click the download icon to save the chart as an image</li>
+      <li><strong>Click-through</strong> — click data points to drill down into the underlying tickets</li>
+      <li><strong>Rename</strong> — inline-edit the chart title</li>
+      <li><strong>Reorder</strong> — move charts up/down using arrow buttons</li>
+      <li><strong>Expand/Collapse</strong> — toggle chart visibility</li>
+    </ul>
+
+    <div class="screenshot-placeholder">
+      <div class="ph-icon">🖼️</div>
+      <div class="ph-label">Custom Chart Card</div>
+      <div class="ph-hint">Add a custom chart on the Dashboard and capture it with the configuration popover open</div>
+    </div>
+
+    <!-- 6.3 Keyboard Shortcuts -->
+    <h3 id="keyboard-shortcuts">6.3 Keyboard Shortcuts</h3>
+
+    <p>Speed up your workflow with these keyboard shortcuts:</p>
+
+    <table>
+      <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>R</kbd></td><td>Recalculate Dashboard KPIs</td></tr>
+        <tr><td><kbd>/</kbd></td><td>Focus JQL Search input</td></tr>
+        <tr><td><kbd>1</kbd></td><td>Switch to <strong>Data Center</strong> tab</td></tr>
+        <tr><td><kbd>2</kbd></td><td>Switch to <strong>KPI Analytics</strong> tab</td></tr>
+        <tr><td><kbd>3</kbd></td><td>Switch to <strong>Settings</strong> tab</td></tr>
+        <tr><td><kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>P</kbd></td><td>Print / Export to PDF</td></tr>
+        <tr><td><kbd>Escape</kbd></td><td>Blur input field / cancel editing</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       7. TROUBLESHOOTING & FAQ
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="section" id="troubleshooting">
+    <h2><span class="num">7</span> Troubleshooting &amp; FAQ</h2>
+
+    <h3>Frequently Asked Questions</h3>
+
+    <h4>Why is my extraction returning no tickets?</h4>
+    <ul>
+      <li>Check that the <strong>JQL query</strong> is valid — test it directly in Jira first</li>
+      <li>Verify the <strong>date range</strong> covers the period when tickets were created or updated</li>
+      <li>Ensure the <strong>project keys</strong> in your connection match the projects you're querying</li>
+    </ul>
+
+    <h4>Why do KPI calculations seem incorrect?</h4>
+    <ul>
+      <li>Check the <strong>German state</strong> setting in both Holidays Calendar and KPI Calculation Defaults — holidays must match your team's location</li>
+      <li>Verify <strong>work hours</strong> (start/end) in the Plugins Configuration defaults</li>
+      <li>Ensure your <strong>SLA targets</strong> are configured if using SLA plugins</li>
+      <li>Check the <strong>comment rule</strong> setting — "Assignee only" vs "Anyone" significantly affects first-response SLA metrics</li>
+    </ul>
+
+    <h4>How do I reset the dashboard?</h4>
+    <ul>
+      <li>Use the <strong>Clear Master Dataset</strong> button in the Jira Extraction panel</li>
+      <li>Use the <strong>Clear All Data</strong> button in Settings → Storage</li>
+      <li>Or <strong>Export/Import</strong> configuration in Settings → Configuration to restore a known-good state</li>
+    </ul>
+
+    <h4>Can I use this with Jira Server (on-premise)?</h4>
+    <p>Yes. The dashboard supports both <strong>Jira Cloud</strong> (using API tokens) and <strong>Jira Server/Data Center</strong> (using username + password). Enter your server's base URL and credentials in the Connections panel.</p>
+
+    <h3>Common Issues</h3>
+
+    <table>
+      <thead><tr><th>Issue</th><th>Solution</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Rate limit errors during extraction</td>
+          <td>Increase the <strong>delay</strong> or decrease <strong>max requests/min</strong> in Settings → Configuration → Rate Limiting. Switch backoff strategy to <strong>Exponential</strong>.</td>
+        </tr>
+        <tr>
+          <td>Connection test fails</td>
+          <td>Verify the base URL, email, and API token. Check network access and firewall rules. Ensure the account has API access permissions.</td>
+        </tr>
+        <tr>
+          <td>PostgreSQL sync fails</td>
+          <td>Verify the DATABASE_URL in <code>.env</code>. Run <code>npm run db:push:pg</code> to ensure the schema is up to date. Check SSL mode settings.</td>
+        </tr>
+        <tr>
+          <td>Dashboard shows "No Data"</td>
+          <td>Run a Jira extraction first. Check that the master dataset is populated. Verify the date range covers available data.</td>
+        </tr>
+        <tr>
+          <td>Custom plugin not appearing</td>
+          <td>Ensure the plugin file is in the correct directory. Check for syntax errors — custom plugins are error-isolated and will silently fail if invalid.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout danger">
+      <span class="icon">🔴</span>
+      <div>If you encounter an issue not covered here, check the <code>docs/</code> directory for detailed guides on <strong>Electron builds</strong>, <strong>JIRA field configuration</strong>, and <strong>custom plugins</strong>.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="footer">
+    <p>JIRA ETL Dashboard v0.2.0 — Private project. All rights reserved.</p>
+  </div>
+
+  </div><!-- /.container -->
+
+  <!-- Back to Top -->
+  <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+
+  <script>
+    const btn = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => {
+      btn.classList.toggle('visible', window.scrollY > 400);
+    });
+  </script>
+
+</body>
+</html>

@@ -4,6 +4,29 @@ A professional ETL dashboard that extracts ticket data from Jira Cloud or Server
 
 Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Tailwind CSS 4**.
 
+## 📸 Screenshots
+
+### Data Center
+Extract ticket data from Jira with JQL queries, date range selection, scheduled polling, and export to CSV/JSON/PostgreSQL/PowerPoint.
+
+<p align="center">
+  <img src="docs/screenshots/data-center.png" alt="Data Center - Jira Extraction Panel" width="800" />
+</p>
+
+### KPI Analytics
+Interactive dashboard with 25+ KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+
+<p align="center">
+  <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
+</p>
+
+### Settings
+Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and application settings.
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Settings Panel" width="800" />
+</p>
+
 ---
 
 ## 🚀 Advanced Features
