@@ -50,7 +50,8 @@ function waitForServer(retries) {
     console.log('\n' + APP_NAME + ' is ready!');
     console.log('Opening http://localhost:' + PORT + ' in your browser...\n');
     try {
-      require('child_process').execSync('start http://localhost:' + PORT, { shell: true });
+      const openCmd = process.platform === 'win32' ? 'start' : (process.platform === 'darwin' ? 'open' : 'xdg-open');
+      require('child_process').execSync(`${openCmd} http://localhost:${PORT}`, { shell: true });
     } catch (e) {
       // Browser open failed, not critical
     }

@@ -50,7 +50,8 @@ npx caxa \
   --input ".next/standalone" \
   --output "dist/JIRA ETL Dashboard" \
   --no-dedupe \
-  -- "{{caxa}}/node_modules/.bin/node" "{{caxa}}/launcher.cjs"
+  --no-include-node \
+  -- "node" "{{caxa}}/launcher.cjs"
 
 echo ""
 echo "============================================="
