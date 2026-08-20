@@ -2,9 +2,10 @@ import type { NextConfig } from "next";
 import pkg from './package.json';
 
 const nextConfig: NextConfig = {
-  // Expose the app version to the client bundle
+  // Expose the app version and build date to the client bundle
   env: {
     NEXT_PUBLIC_APP_VERSION: pkg.version,
+    NEXT_PUBLIC_BUILD_DATE: new Date().toISOString().slice(0, 10),
   },
   // Use standalone output for production, export for Electron
   ...(process.env.NODE_ENV === 'production'

@@ -304,7 +304,7 @@ export default function Home() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
         <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 no-print">
           <div className="container max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-[1fr_auto_1fr] h-auto lg:h-16 items-center px-4 sm:px-6 lg:px-8 py-3 lg:py-0 gap-y-3 gap-x-2">
             
@@ -319,9 +319,6 @@ export default function Home() {
               </h1>
               <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate leading-[1.1]">
                 Jira Extract and KPI Engine with German Holiday
-                <span className="ml-1.5 align-middle text-[9px] font-medium text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 rounded-full px-1.5 py-px shrink-0">
-                  v{process.env.NEXT_PUBLIC_APP_VERSION}
-                </span>
               </p>
             </div>
           </div>
@@ -422,7 +419,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="container py-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="container py-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex-1 w-full">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 
           <TabsContent value="extract" className="space-y-6">
@@ -530,6 +527,14 @@ export default function Home() {
           </TabsContent>
         </Tabs>
         </main>
+
+        <footer className="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-950/60 no-print">
+          <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-slate-400 dark:text-slate-500">
+            <span>v{process.env.NEXT_PUBLIC_APP_VERSION}</span>
+            <span aria-hidden="true">·</span>
+            <span>Built {process.env.NEXT_PUBLIC_BUILD_DATE}</span>
+          </div>
+        </footer>
       </div>
       
       {isLoadingDb && (
