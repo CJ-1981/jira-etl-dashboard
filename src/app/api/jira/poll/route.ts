@@ -9,6 +9,10 @@ interface PollingState {
   dateFrom: string;
   dateTo: string;
   jql: string;
+  // When set (via a quick-pull preset like "Since yesterday"), background runs
+  // recompute the date window relative to the current day instead of reusing
+  // the frozen dateFrom/dateTo captured when polling was enabled.
+  daysBack?: number | null;
   lastRunAt: string | null;
   nextRunAt: string | null;
   runCount: number;
@@ -54,6 +58,7 @@ const DEFAULT_STATE: PollingState = {
   dateFrom: '',
   dateTo: '',
   jql: '',
+  daysBack: null,
   lastRunAt: null,
   nextRunAt: null,
   runCount: 0,
@@ -109,6 +114,10 @@ async function runPollingExtraction() {
   pollingState.status = 'running';
   try {
     const port = process.env.PORT || 3000;
+    // With a quick-pull preset (daysBack) the window is recomputed against the
+    // current day on every run — omit the stored dates so the extract route
+    // derives them from "now" instead of reusing frozen values.
+    const useRelativeWindow = typeof pollingState.daysBack === 'number' && pollingState.daysBack > 0;
     const res = await fetch(`http://localhost:${port}/api/jira/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -123,8 +132,12 @@ async function runPollingExtraction() {
         issueOwnerTeamFieldId: pollingState.extractOptions?.issueOwnerTeamFieldId,
         updateOnly: pollingState.extractOptions?.updateOnly ?? false,
         jql: pollingState.jql || undefined,
-        dateFrom: pollingState.dateFrom || undefined,
-        dateTo: pollingState.dateTo || undefined,
+        ...(useRelativeWindow
+          ? { daysBack: pollingState.daysBack }
+          : {
+              dateFrom: pollingState.dateFrom || undefined,
+              dateTo: pollingState.dateTo || undefined,
+            }),
         saveExtraction: true,
         storageConfig: pollingState.storageConfig
       }),
@@ -241,7 +254,8 @@ export async function POST(request: Request) {
       customFieldIds,
       storyPointsFieldId,
       issueOwnerTeamFieldId,
-      updateOnly
+      updateOnly,
+      daysBack
     } = body;
 
     // Handle Ping Action (Manual override notification)
@@ -279,6 +293,13 @@ export async function POST(request: Request) {
       pollingState.dateFrom = typeof dateFrom === 'string' ? dateFrom : '';
       pollingState.dateTo = typeof dateTo === 'string' ? dateTo : '';
       pollingState.jql = typeof jql === 'string' ? jql : '';
+      // Quick-pull preset window: a positive number enables a rolling window that
+      // is recomputed against the current day on every run; null clears it so the
+      // stored absolute dates are used instead.
+      if (daysBack !== undefined) {
+        const db = Number(daysBack);
+        pollingState.daysBack = !daysBack || isNaN(db) || db <= 0 ? null : db;
+      }
 
       // Credentials and extraction options are registration data — only sent when
       // enabling or re-registering. Preserve existing values otherwise, so partial

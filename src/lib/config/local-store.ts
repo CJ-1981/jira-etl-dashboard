@@ -128,6 +128,10 @@ export const KEYS = {
   jql: 'cfg_saved_jqls',
   dashboardJql: 'cfg_dashboard_jqls',
   etlUpdateOnly: 'cfg_etl_update_only',
+  // Extract-panel state persisted across page reloads (F5)
+  extractDates: 'cfg_extract_dates',
+  extractJql: 'cfg_extract_jql',
+  quickPullDays: 'cfg_quick_pull_days',
   customExtractFields: 'cfg_custom_extract_fields',
   dashboardState: 'cfg_dashboard_state',
   presets: 'cfg_dashboard_presets',
@@ -242,6 +246,18 @@ export const localConfig = {
 
   getEtlUpdateOnly: () => get<boolean>(KEYS.etlUpdateOnly, false),
   saveEtlUpdateOnly: (val: boolean) => set(KEYS.etlUpdateOnly, val),
+
+  // Extract panel date range / JQL / quick-pull preset — restored on page load
+  getExtractDates: () => get<{ dateFrom: string; dateTo: string }>(KEYS.extractDates, { dateFrom: '', dateTo: '' }),
+  saveExtractDates: (d: { dateFrom: string; dateTo: string }) => set(KEYS.extractDates, d),
+
+  getExtractJql: () => get<string>(KEYS.extractJql, ''),
+  saveExtractJql: (val: string) => set(KEYS.extractJql, val),
+
+  // Active quick-pull preset (e.g. 1 for "Since yesterday"); null = manual dates.
+  // Defaults to 1 day so first-time users start with "Since yesterday" selected.
+  getQuickPullDays: () => get<number | null>(KEYS.quickPullDays, 1),
+  saveQuickPullDays: (val: number | null) => set(KEYS.quickPullDays, val),
 
   getCustomExtractFields: () => {
     const fields = get<CustomExtractField[] | null>(KEYS.customExtractFields, null);

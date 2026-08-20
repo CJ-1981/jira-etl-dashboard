@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,10 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
   } = useAppStore();
   const [jql, setJql] = useState('');
   const [extracting, setExtracting] = useState(false);
+  // Active quick-pull preset (days back, e.g. 1 for "Since yesterday").
+  // While set, scheduled pulls recompute the window against the real current
+  // date instead of reusing frozen dates; null means manual date selection.
+  const [quickPullDays, setQuickPullDays] = useState<number | null>(null);
 
   // Saved JQL state
   const [savedJqls, setSavedJqls] = useState<SavedJql[]>([]);
@@ -104,6 +108,9 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
   const [pollEnabled, setPollEnabled] = useState(false);
   const [pollInterval, setPollInterval] = useState('15');
   const [pollSaving, setPollSaving] = useState(false);
+  // Last background-run id we refreshed the list for, so each completed run
+  // triggers exactly one silent reload of the displayed tickets.
+  const lastRefreshedRunIdRef = useRef<number | null>(null);
 
   // List filtering state
   const [searchQuery, setSearchQuery] = useState('');
@@ -224,7 +231,32 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     const savedSettings = localConfig.getSettings();
     setSaveThisExtraction(savedSettings.persistence?.autoSave ?? true);
     setUpdateOnly(localConfig.getEtlUpdateOnly());
+
+    // Restore the extract panel's date range / JQL across page reloads. When a
+    // quick-pull preset was active, recompute its window against the real
+    // current date instead of restoring stale frozen dates.
+    const savedJql = localConfig.getExtractJql();
+    if (savedJql) setJql(savedJql);
+    const savedDays = localConfig.getQuickPullDays();
+    if (savedDays && savedDays > 0) {
+      const now = new Date();
+      const from = new Date(now);
+      from.setDate(from.getDate() - savedDays);
+      setDateFrom(from.toISOString().split('T')[0]);
+      setDateTo(now.toISOString().split('T')[0]);
+      setQuickPullDays(savedDays);
+    } else {
+      const savedDates = localConfig.getExtractDates();
+      if (savedDates.dateFrom) setDateFrom(savedDates.dateFrom);
+      if (savedDates.dateTo) setDateTo(savedDates.dateTo);
+    }
   }, []);
+
+  // Persist manual date/JQL selections so they survive page reloads.
+  useEffect(() => {
+    localConfig.saveExtractDates({ dateFrom: dateFrom || '', dateTo: dateTo || '' });
+    localConfig.saveExtractJql(jql);
+  }, [dateFrom, dateTo, jql]);
 
   useEffect(() => {
     localConfig.saveEtlUpdateOnly(updateOnly);
@@ -271,6 +303,11 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
       const activeConn = connections.find(c => c.id === activeConnectionId);
       if (!activeConn) throw new Error('Selected connection not found');
 
+      // When a quick-pull preset is active, extract with a rolling window that is
+      // recomputed against the real current date, instead of the frozen dates
+      // shown in the inputs. Manual "Quick Update" passes its own daysBack.
+      const effectiveDaysBack = daysBack || (quickPullDays ?? undefined);
+
       const body: Record<string, unknown> = {
         connectionRef: activeConnectionId,
         jiraCredentials: {
@@ -283,8 +320,11 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         generalSettings: settings?.general,
         customPlugins: localConfig.getKpiPlugins(),
         jql: jql || undefined,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
+        // Omit absolute dates when using a rolling window so the extract route
+        // derives them from "now".
+        ...(effectiveDaysBack
+          ? { daysBack: effectiveDaysBack }
+          : { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
         saveExtraction: saveThisExtraction,
         updateOnly,
         customFieldIds: customFields.map(f => f.fieldId),
@@ -292,7 +332,6 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         issueOwnerTeamFieldId: customFields.find(f => f.role === 'issueOwnerTeam')?.fieldId,
         storageConfig
       };
-      if (daysBack) body.daysBack = daysBack;
 
       const res = await fetch('/api/jira/extract', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -384,6 +423,10 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     from.setDate(from.getDate() - days);
     setDateFrom(from.toISOString().split('T')[0]);
     setDateTo(now.toISOString().split('T')[0]);
+    // Remember the preset so scheduled pulls keep sliding this window forward
+    // with the real date instead of freezing on today's values.
+    setQuickPullDays(days);
+    localConfig.saveQuickPullDays(days);
   };
 
   const handleCustomDaysBack = () => {
@@ -417,6 +460,9 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
           dateTo: dateTo || undefined,
           jql: jql || undefined,
           enabled: nextEnabled,
+          // Active quick-pull preset → background runs slide the window with the
+          // real date; null clears it in favor of the absolute dates above.
+          ...(nextEnabled ? { daysBack: quickPullDays } : {}),
           // The server has no access to localStorage connections, so credentials
           // and extraction options must be registered here for background runs.
           ...(nextEnabled ? {
@@ -470,12 +516,11 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
   // pollInterval ('15') would overwrite the user's chosen interval.
   useEffect(() => {
     if (!pollEnabled) return;
-            const timer = setTimeout(() => {
-              postPollingState(true);
-            }, 1000);
+    const timer = setTimeout(() => {
+      postPollingState(true);
+    }, 1000);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, jql]);
+  }, [dateFrom, dateTo, jql, quickPullDays]);
 
   const handleShowAllTickets = async () => {
     if (!activeConnectionId) { toast.error('Please select a connection first'); return; }
@@ -517,6 +562,51 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
       setExtracting(false);
     }
   };
+
+  // Silent reload of the master dataset after a background polling run finishes,
+  // so the displayed ticket list reflects newly pulled issues without user action.
+  const refreshMasterData = useCallback(async () => {
+    if (!activeConnectionId || extracting) return;
+    try {
+      const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', storageConfig })
+      });
+      const data = await safeJson(res);
+      if (res.ok && data.success && data.data) {
+        setMasterDatasetInfo({
+          totalExtracted: data.data.totalExtracted,
+          dateRange: data.data.dateRange,
+          lastUpdated: data.data.lastUpdated,
+          issues: data.data.issues
+        });
+        setExtractionResult({
+          total: data.data.totalExtracted,
+          issues: data.data.issues,
+          isAllTickets: true
+        });
+      }
+    } catch (e) {
+      // Background refresh is best-effort; don't surface errors to the user.
+      console.log('Silent master dataset refresh failed:', e);
+    }
+  }, [activeConnectionId, extracting, storageConfig, setMasterDatasetInfo, setExtractionResult]);
+
+  // When a scheduled background run completes, refresh the displayed list once.
+  useEffect(() => {
+    if (!polling || polling.lastError) return;
+    const runId = polling.lastRunId ?? 0;
+    if (lastRefreshedRunIdRef.current === null) {
+      // First observation — just remember it so stale runs don't trigger reloads.
+      lastRefreshedRunIdRef.current = runId;
+      return;
+    }
+    if (runId > lastRefreshedRunIdRef.current) {
+      lastRefreshedRunIdRef.current = runId;
+      refreshMasterData();
+    }
+  }, [polling, refreshMasterData]);
 
   const quickPullButtons = [
     { label: 'Since yesterday', days: 1 },
@@ -628,13 +718,13 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
               <div className="flex items-center h-6">
                 <Label className="text-slate-700 dark:text-slate-300">Date From</Label>
               </div>
-              <Input type="date" value={dateFrom || ''} onChange={(e) => setDateFrom(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
+              <Input type="date" value={dateFrom || ''} onChange={(e) => { setDateFrom(e.target.value); setQuickPullDays(null); localConfig.saveQuickPullDays(null); }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center h-6">
                 <Label className="text-slate-700 dark:text-slate-300">Date To</Label>
               </div>
-              <Input type="date" value={dateTo || ''} onChange={(e) => setDateTo(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
+              <Input type="date" value={dateTo || ''} onChange={(e) => { setDateTo(e.target.value); setQuickPullDays(null); localConfig.saveQuickPullDays(null); }} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 pr-10" />
             </div>
           </div>
 
