@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
+import pkg from './package.json';
 
 const nextConfig: NextConfig = {
+  // Expose the app version to the client bundle
+  env: {
+    NEXT_PUBLIC_APP_VERSION: pkg.version,
+  },
   // Use standalone output for production, export for Electron
   ...(process.env.NODE_ENV === 'production'
     ? { output: 'standalone' }

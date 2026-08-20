@@ -61,6 +61,21 @@ if exist ".next\standalone\.next\node_modules" (
 )
 :: Copy launcher script into the standalone output
 copy /y "launcher.cjs" ".next\standalone\launcher.cjs" >nul
+
+:: Create a clean schema-only database template for first-run bootstrap
+call node scripts/create-db-template.mjs
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Failed to create database template.
+    pause
+    exit /b 1
+)
+if not exist ".next\standalone\db" mkdir ".next\standalone\db"
+copy /y "db\template.db" ".next\standalone\db\template.db" >nul
+
+:: Remove development databases so they are not shipped inside the exe.
+:: The launcher creates a fresh database from the template on first run.
+del /f /q ".next\standalone\db\custom.db" >nul 2>&1
+del /f /q ".next\standalone\prisma\db\custom.db" >nul 2>&1
 echo Done.
 echo.
 

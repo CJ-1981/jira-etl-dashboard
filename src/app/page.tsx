@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { JiraConnection } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
+import { usePollingNotifications } from '@/hooks/usePollingNotifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,6 +60,9 @@ export default function Home() {
     showKpiAnalyticsSubmenu, setShowKpiAnalyticsSubmenu,
     showSettingsSubmenu, setShowSettingsSubmenu,
   } = useAppStore();
+
+  // Surface a toast whenever a scheduled background pull finishes, on any tab.
+  usePollingNotifications();
 
   useEffect(() => {
     setMounted(true);
@@ -315,6 +319,9 @@ export default function Home() {
               </h1>
               <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate leading-[1.1]">
                 Jira Extract and KPI Engine with German Holiday
+                <span className="ml-1.5 align-middle text-[9px] font-medium text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 rounded-full px-1.5 py-px shrink-0">
+                  v{process.env.NEXT_PUBLIC_APP_VERSION}
+                </span>
               </p>
             </div>
           </div>

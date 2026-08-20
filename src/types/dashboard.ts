@@ -62,6 +62,14 @@ export interface KpiCardConfig {
   jqlFilter: JqlFilter;
 }
 
+export interface PollingRunSummary {
+  totalExtracted: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  deleted: number;
+}
+
 export interface PollingStatus {
   enabled: boolean;
   connectionId: string;
@@ -71,6 +79,9 @@ export interface PollingStatus {
   runCount: number;
   status: string;
   lastError: string | null;
+  lastRunSummary?: PollingRunSummary | null;
+  // Bumped every time a background run finishes; lets the UI toast once per run.
+  lastRunId?: number;
 }
 
 export interface DashboardView {

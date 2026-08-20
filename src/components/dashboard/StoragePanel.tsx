@@ -59,6 +59,7 @@ export function StoragePanel() {
     }>;
   } | null>(null);
   const [loadingStorage, setLoadingStorage] = useState(false);
+  const [dbLocation, setDbLocation] = useState<{ path: string | null; hint?: string } | null>(null);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -88,12 +89,29 @@ export function StoragePanel() {
     if (isMounted.current) setLoadingStorage(false);
   };
 
+  const handleRefreshDbLocation = async () => {
+    try {
+      const res = await fetch('/api/db/location');
+      const data = await res.json();
+      if (isMounted.current && data.success) {
+        setDbLocation({ path: data.path, hint: data.hint });
+      }
+    } catch {
+      // Displaying the location is informational only
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
     const updatedPgConnections = localConfig.getPgConnections();
     setPgConnections(updatedPgConnections);
     setLoading(false);
     handleRefreshStorage();
+    if (storageConfig.provider === 'sqlite') {
+      handleRefreshDbLocation();
+    } else {
+      setDbLocation(null);
+    }
   }, [storageConfig]);
 
   const handleCleanup = async () => {
@@ -276,7 +294,7 @@ export function StoragePanel() {
                 </div>
                 <div>
                   <h4 className="font-bold text-sm">Local SQLite</h4>
-                  <p className="text-xs text-slate-500">dev.db (Not for Vercel)</p>
+                  <p className="text-xs text-slate-500">custom.db (stored locally)</p>
                 </div>
               </div>
             </div>
@@ -302,6 +320,15 @@ export function StoragePanel() {
               </div>
             </div>
           </div>
+
+          {storageConfig.provider === 'sqlite' && dbLocation && (
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-semibold">Database file:</span>{' '}
+                <span className="font-mono break-all">{dbLocation.path || dbLocation.hint}</span>
+              </p>
+            </div>
+          )}
 
           {storageConfig.provider === 'postgresql' && (
             <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">

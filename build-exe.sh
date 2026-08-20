@@ -41,6 +41,15 @@ echo ""
 echo "[4/5] Preparing standalone output..."
 rm -rf ".next/standalone/.next/node_modules"
 cp launcher.cjs ".next/standalone/launcher.cjs"
+
+# Create a clean schema-only database template for first-run bootstrap
+node scripts/create-db-template.mjs
+mkdir -p ".next/standalone/db"
+cp db/template.db ".next/standalone/db/template.db"
+
+# Remove development databases so they are not shipped inside the bundle.
+# The launcher creates a fresh database from the template on first run.
+rm -f ".next/standalone/db/custom.db" ".next/standalone/prisma/db/custom.db"
 echo "Done."
 echo ""
 

@@ -31,9 +31,15 @@ mkdir -p dist/app/.next/static
 cp -R .next/static/. dist/app/.next/static/
 cp -R public/. dist/app/public/
 
-# Copy the database
+# Copy the database template (the launcher creates the real database
+# from it on first run, so user data survives app updates)
+node scripts/create-db-template.mjs
+if [ $? -ne 0 ]; then
+    echo "[ERROR] Failed to create database template."
+    exit 1
+fi
 mkdir -p dist/app/db
-cp prisma/db/custom.db dist/app/db/custom.db
+cp db/template.db dist/app/db/template.db
 
 echo "      App folder ready."
 
@@ -85,6 +91,12 @@ echo ""
 export DATABASE_URL="file:$DB_PATH"
 export NODE_ENV=production
 export PORT=$AVAILABLE_PORT
+
+# First run: create the database from the bundled template (never overwrite existing)
+if [ ! -f "$DB_PATH" ] && [ -f "$APP_DIR/db/template.db" ]; then
+    cp "$APP_DIR/db/template.db" "$DB_PATH"
+    echo "  First run: created a new database from the bundled template."
+fi
 
 cd "$APP_DIR"
 node server.js

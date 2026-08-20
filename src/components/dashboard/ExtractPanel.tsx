@@ -25,10 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import {
   Download, RefreshCw, Server, RotateCw, Clock, HardDrive, LayoutGrid, Trash2, Search, X,
-  ExternalLink, CheckCircle2, Loader2, Save, Plus, Tag, Sparkles
+  ExternalLink, CheckCircle2, Loader2, Save, Plus, Tag, Sparkles, ChevronDown
 } from 'lucide-react';
 import { localConfig, JiraConnection, SavedJql, CustomExtractField } from '@/lib/config/local-store';
 import { DEFAULT_FIELD_CONFIG } from '@/lib/jira/field-config';
@@ -106,8 +107,8 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
 
   // List filtering state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [sortOption, setSortOption] = useState('default');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [sortOption, setSortOption] = useState('created-desc');
 
   // Custom extract fields state
   const [customFields, setCustomFields] = useState<CustomExtractField[]>([]);
@@ -234,9 +235,30 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     try {
       return JSON.parse(text);
     } catch (e) {
+      // In dev, the Next.js server serves an HTML error page for API routes
+      // while webpack is (re)compiling — especially after file changes.
+      // Treat this as a transient "server busy" state rather than a real error.
+      const contentType = res.headers.get('content-type') || '';
+      const trimmed = text.trimStart();
+      const isHtml = contentType.includes('text/html') || trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html');
+      if (isHtml) {
+        console.warn(`[ExtractPanel] Server returned HTML instead of JSON (status ${res.status}) — likely compiling or restarting. Retry shortly.`);
+        return { success: false, serverBusy: true, error: 'Server is busy compiling. Please try again in a moment.' };
+      }
       console.error('Failed to parse JSON:', text.substring(0, 500));
       return { success: false, error: `Server error (${res.status})` };
     }
+  };
+
+  const fetchJsonWithRetry = async (url: string, init: RequestInit, attempts = 3, delayMs = 1500) => {
+    let res = await fetch(url, init);
+    let data = await safeJson(res);
+    for (let i = 1; i < attempts && data.serverBusy; i++) {
+      await new Promise(r => setTimeout(r, delayMs));
+      res = await fetch(url, init);
+      data = await safeJson(res);
+    }
+    return { res, data };
   };
 
   const handleExtract = async (daysBack?: number) => {
@@ -306,13 +328,17 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         }
 
         try {
-          const masterRes = await fetch(`/api/jira/master/${activeConnectionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'get', storageConfig })
-          });
-          
-          const masterData = await safeJson(masterRes);
+          // Retry when the dev server responds with HTML while recompiling —
+          // the extraction itself already succeeded, only this refresh failed.
+          const { res: masterRes, data: masterData } = await fetchJsonWithRetry(
+            `/api/jira/master/${activeConnectionId}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'get', storageConfig })
+            }
+          );
+
           if (masterRes.ok && masterData.success && masterData.data) {
             setMasterDatasetInfo({
               totalExtracted: masterData.data.totalExtracted,
@@ -370,11 +396,11 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     }
   };
 
-  const handleTogglePolling = async (targetState?: boolean, overrideInterval?: string) => {
-    const nextEnabled = typeof targetState === 'boolean' ? targetState : !pollEnabled;
-    const intervalToUse = overrideInterval || pollInterval;
-
-    if (nextEnabled && !activeConnectionId) {
+  // Shared POST helper. includeInterval=false is used by the date/JQL sync effect
+  // so it never overwrites the server's interval with a stale local value.
+  const postPollingState = async (nextEnabled: boolean, intervalToUse?: string, includeInterval = true) => {
+    const activeConn = connections.find(c => c.id === activeConnectionId);
+    if (nextEnabled && !activeConn) {
       toast.error('Select a connection first');
       setPollEnabled(false);
       return;
@@ -386,18 +412,39 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           connectionId: nextEnabled ? activeConnectionId : null,
-          intervalMinutes: parseInt(intervalToUse) || 15,
+          ...(includeInterval ? { intervalMinutes: parseInt(intervalToUse || pollInterval) || 15 } : {}),
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
           jql: jql || undefined,
           enabled: nextEnabled,
+          // The server has no access to localStorage connections, so credentials
+          // and extraction options must be registered here for background runs.
+          ...(nextEnabled ? {
+            jiraCredentials: {
+              baseUrl: activeConn!.baseUrl,
+              email: activeConn!.email,
+              apiToken: activeConn!.apiToken,
+              projectKeys: activeConn!.projectKeys,
+            },
+            rateLimit: settings?.rateLimit,
+            generalSettings: settings?.general,
+            customPlugins: localConfig.getKpiPlugins(),
+            customFieldIds: customFields.map(f => f.fieldId),
+            storyPointsFieldId: customFields.find(f => f.role === 'storyPoints')?.fieldId,
+            issueOwnerTeamFieldId: customFields.find(f => f.role === 'issueOwnerTeam')?.fieldId,
+            updateOnly,
+            storageConfig,
+          } : {}),
         }),
       });
       const data = await res.json();
       if (data.success) {
         setPolling(data.polling);
         setPollEnabled(data.polling.enabled);
-        toast.success(data.polling.enabled ? 'Polling started' : 'Polling stopped');
+        // Only the toggle path announces the change; the sync effect stays quiet.
+        if (includeInterval) {
+          toast.success(data.polling.enabled ? 'Polling started' : 'Polling stopped');
+        }
       } else {
         toast.error(data.error);
         setPollEnabled(polling?.enabled || false);
@@ -409,20 +456,43 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     setPollSaving(false);
   };
 
+  const handleTogglePolling = async (targetState?: boolean, overrideInterval?: string) => {
+    const nextEnabled = typeof targetState === 'boolean' ? targetState : !pollEnabled;
+    const intervalToUse = overrideInterval || pollInterval;
+    await postPollingState(nextEnabled, intervalToUse, true);
+  };
+
+  // Keep the server's polling state in sync with the panel's current date range
+  // and JQL while polling is active — otherwise background runs would use the
+  // values captured when polling was first enabled. Debounced so typing in the
+  // JQL box doesn't spam the endpoint. Interval is intentionally NOT sent here:
+  // the server keeps its own value, avoiding a race where a stale local
+  // pollInterval ('15') would overwrite the user's chosen interval.
+  useEffect(() => {
+    if (!pollEnabled) return;
+            const timer = setTimeout(() => {
+              postPollingState(true);
+            }, 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, jql]);
+
   const handleShowAllTickets = async () => {
     if (!activeConnectionId) { toast.error('Please select a connection first'); return; }
     setExtracting(true);
     const loadingToast = toast.loading('Fetching all tickets from database...', { duration: 0 });
 
     try {
-      const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig })
-      });
-      
+      const { res, data } = await fetchJsonWithRetry(
+        `/api/jira/master/${activeConnectionId}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get', storageConfig })
+        }
+      );
+
       toast.dismiss(loadingToast);
-      const data = await safeJson(res);
       
       if (res.ok && data.success && data.data) {
         setExtractionResult({
@@ -812,7 +882,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                     LIVE
                   </Badge>
                 )}
-                <Switch checked={pollEnabled} onCheckedChange={handleTogglePolling} disabled={pollSaving || !activeConnectionId} />
+                <Switch checked={pollEnabled} onCheckedChange={(checked) => handleTogglePolling(checked)} disabled={pollSaving || !activeConnectionId} />
               </div>
             </div>
 
@@ -1017,17 +1087,50 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                     <SelectItem value="updated-asc">Oldest Update</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0">
-                    <SelectValue placeholder="All Statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    {Array.from(new Set<string>((extractionResult.issues || []).map((i: any) => (i.fields?.status?.name || i.status) as string))).sort().map((status: string) => (
-                      <SelectItem key={status} value={status}>{status}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0 justify-between font-normal"
+                    >
+                      <span className="truncate">
+                        {selectedStatuses.length ? `${selectedStatuses.length} selected` : 'All Statuses'}
+                      </span>
+                      <ChevronDown className="h-3 w-3 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[200px] p-0" align="end">
+                    <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full h-7 text-[10px] justify-start px-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        onClick={() => setSelectedStatuses([])}
+                      >
+                        Clear Selection
+                      </Button>
+                    </div>
+                    <div className="max-h-[250px] overflow-y-auto p-1 custom-scrollbar">
+                      {Array.from(new Set<string>((extractionResult.issues || []).map((i: any) => (i.fields?.status?.name || i.status) as string))).sort().map((status: string) => (
+                        <div
+                          key={status}
+                          className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
+                          onClick={() =>
+                            setSelectedStatuses(prev =>
+                              prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
+                            )
+                          }
+                        >
+                          <Checkbox
+                            checked={selectedStatuses.includes(status)}
+                            className="pointer-events-none"
+                          />
+                          <span className="text-xs truncate">{status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div 
@@ -1039,7 +1142,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                   const summary = (issue.fields?.summary || issue.summary || '').toLowerCase();
                   const status = issue.fields?.status?.name || issue.status;
                   const matchesSearch = key.includes(searchQuery.toLowerCase()) || summary.includes(searchQuery.toLowerCase());
-                  const matchesStatus = statusFilter === 'all' || status === statusFilter;
+                  const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(status);
                   return matchesSearch && matchesStatus;
                 }).sort((a: any, b: any) => {
                   if (sortOption === 'key-asc') {

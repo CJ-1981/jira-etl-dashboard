@@ -1,0 +1,4 @@
+# Shell scripts must keep LF line endings — bash heredocs (e.g. the generated
+# start.sh launcher in build-production.sh) break with CRLF terminators.
+*.sh text eol=lf
+*.command text eol=lf

@@ -57,9 +57,16 @@ if not exist "dist\app\.next\static" mkdir "dist\app\.next\static"
 xcopy /s /e /y ".next\static" "dist\app\.next\static\" >nul
 xcopy /s /e /y "public" "dist\app\public\" >nul
 
-:: Copy the database
+:: Copy the database template (the launcher creates the real database
+:: from it on first run, so user data survives app updates)
+call node scripts/create-db-template.mjs
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to create database template.
+    pause
+    exit /b 1
+)
 if not exist "dist\app\db" mkdir "dist\app\db"
-copy /y "prisma\db\custom.db" "dist\app\db\custom.db" >nul
+copy /y "db\template.db" "dist\app\db\template.db" >nul
 
 :: Remove dev/build files that leaked into standalone
 del /f /q "dist\app\*.md" >nul 2>&1
@@ -103,6 +110,9 @@ echo [4/5] Creating launcher with auto port scan...
     echo     ^)
     echo     goto find_port
     echo ^)
+    echo.
+    echo :: ─── First Run: Create Database From Template ─────────────────────
+    echo if not exist "%%~dp0app\db\custom.db" if exist "%%~dp0app\db\template.db" copy /y "%%~dp0app\db\template.db" "%%~dp0app\db\custom.db" ^>nul
     echo.
     echo :: ─── Set Environment ─────────────────────────────────────────────
     echo set "DB_ABS=%%~dp0app\db\custom.db"

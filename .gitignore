@@ -180,6 +180,7 @@ secret-*.*
 # Local-Only Files (never sync via git pull)
 # ===========================================
 .moai/*
+.zcode/
 
 # ===========================================
 # Evolution Telemetry (local-only usage data)
@@ -218,7 +219,7 @@ node_modules
 .next
 test*.js
 docu/*
-db/
+/db/
 prisma/db/
 *.db-journal
 scripts/*.log

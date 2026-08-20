@@ -143,7 +143,12 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
     if (config.connectionId === 'primary') {
       effectiveUrl = envUrl;
     } else if (config.provider === 'sqlite') {
-      effectiveUrl = config.url || 'file:./db/custom.db';
+      // Prefer an explicitly configured URL, then the launcher-provided
+      // DATABASE_URL (absolute path in packaged builds), then the local default.
+      // The hardcoded relative fallback is only safe in dev, where the schema
+      // directory exists; in packaged builds a relative path resolves inside
+      // the extraction folder and fails with SQLITE_CANTOPEN.
+      effectiveUrl = config.url || envUrl || 'file:./db/custom.db';
     } else if (config.provider === 'postgresql') {
       // If we have parts, build the URL server-side (safer)
       if (config.host && config.username) {
