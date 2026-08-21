@@ -9,6 +9,7 @@ import chokidar from 'chokidar';
 import type { FSWatcher } from 'chokidar';
 import path from 'path';
 import { EventEmitter } from 'events';
+import { getCustomPluginDir } from './plugin-paths';
 
 export interface PluginChangeEvent {
   type: 'add' | 'change' | 'unlink';
@@ -24,7 +25,8 @@ class PluginWatcher extends EventEmitter {
 
   constructor() {
     super();
-    this.customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom');
+    // Shared directory with the plugin loader and custom-plugin API
+    this.customDir = getCustomPluginDir();
   }
 
   /**

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getKpiEngine } from '@/lib/kpi/engine';
 import fs from 'fs';
 import path from 'path';
+import { getCustomPluginDir } from '@/lib/kpi/plugin-paths';
 
 /**
  * GET /api/kpi/plugins/custom
@@ -77,8 +78,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create custom plugin file
-    const customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom', safeDomain);
+    // Create custom plugin file in the shared custom-plugin directory
+    // (same location the plugin loader reads and the watcher monitors)
+    const customDir = path.join(getCustomPluginDir(), safeDomain);
     fs.mkdirSync(customDir, { recursive: true });
 
     const pluginFilePath = path.join(customDir, `${safeId}.ts`);
@@ -218,8 +220,8 @@ export async function DELETE(request: Request) {
     // Sanitize domain from plugin info for extra safety
     const safeDomain = sanitizeSegment(plugin.domain);
 
-    // Delete plugin file
-    const customDir = path.join(process.cwd(), 'src', 'lib', 'kpi', 'plugins', 'custom', safeDomain);
+    // Delete plugin file from the shared custom-plugin directory
+    const customDir = path.join(getCustomPluginDir(), safeDomain);
     const pluginFilePath = path.join(customDir, `${safeId}.ts`);
 
     if (fs.existsSync(pluginFilePath)) {
@@ -261,7 +263,19 @@ function generatePluginFile(
  * Generated automatically. Feel free to modify this file directly.
  */
 
-import type { KpiPlugin } from '../../types';
+// Self-contained structural type: this file lives in the writable custom-plugin
+// directory (data/custom-plugins), outside the compiled source tree, so it must
+// not rely on relative imports into src/.
+type KpiPlugin = {
+  id: string;
+  name: string;
+  category: string;
+  domain: string;
+  version: string;
+  unit: string;
+  description?: string;
+  calculate: (issues: any[], options?: any) => any;
+};
 
 const ${id}Plugin: KpiPlugin = {
   id: '${id}',

@@ -6,7 +6,7 @@ import {
   Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon, Loader2, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import dynamic from 'next/dynamic';
 import { localConfig, type AppSettings } from '@/lib/config/local-store';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
@@ -22,6 +22,19 @@ import {
 import { JiraConnection } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 import { usePollingNotifications } from '@/hooks/usePollingNotifications';
+
+// @MX:NOTE: React Query Devtools are lazy-loaded and dev-only.
+// @MX:REASON: A static import wired the devtools' internal lazy chunk into the page's
+// chunk graph, so a stale dev cache or mid-session rebuild could throw a ChunkLoadError
+// and break the page. Loading it dynamically with a catch that renders nothing keeps a
+// failed devtools chunk from ever affecting the dashboard.
+const ReactQueryDevtools = dynamic(
+  () =>
+    import('@tanstack/react-query-devtools')
+      .then((mod) => mod.ReactQueryDevtools)
+      .catch(() => () => null),
+  { ssr: false, loading: () => null }
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {

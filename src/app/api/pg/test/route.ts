@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { Pool } from 'pg';
 import { ValidationError } from '@/lib/api-error';
 import { log } from '@/lib/logger';
-import { db } from '@/lib/db';
 
 /**
  * Validate hostname/IP to prevent SSRF attacks

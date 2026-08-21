@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db as prisma } from '@/lib/db';
+import { getDefaultDb } from '@/lib/db';
 import crypto from 'crypto';
 
 export async function POST(req: NextRequest) {
@@ -47,7 +47,11 @@ export async function POST(req: NextRequest) {
     const dueDate = fields.duedate ? new Date(fields.duedate) : null;
 
     // Save to MasterTicket
-    await prisma.masterTicket.upsert({
+    // @MX:NOTE: Uses getDefaultDb() to obtain the real Prisma client.
+    // @MX:REASON: The `db` export is a proxy exposing only `.client`; calling
+    // model accessors on it directly yields undefined and crashes at runtime.
+    const prisma = getDefaultDb();
+    await (prisma as any).masterTicket.upsert({
       where: {
         connectionRef_jiraKey: {
           connectionRef: connectionId,

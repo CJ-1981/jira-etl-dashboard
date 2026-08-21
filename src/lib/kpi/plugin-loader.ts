@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import type { KpiPlugin } from './types';
+import { getCustomPluginDir } from './plugin-paths';
 
 // Import all built-in plugins directly
 import avgProcessingHoursPlugin from './plugins/builtin/processing-time/avg-processing-hours';
@@ -100,8 +101,8 @@ export class PluginLoader {
   async loadCustomPlugins(): Promise<KpiPlugin[]> {
     const customPlugins: KpiPlugin[] = [];
     
-    // Configurable writable path
-    const customDir = process.env.CUSTOM_PLUGIN_DIR || path.join(process.cwd(), 'data', 'custom-plugins');
+    // Centralized writable path (shared with the watcher and custom-plugin API)
+    const customDir = getCustomPluginDir();
 
     // Check if custom directory exists and is writable
     try {

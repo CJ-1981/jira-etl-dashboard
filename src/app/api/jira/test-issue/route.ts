@@ -1,47 +1,45 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
 import { JiraClient } from '@/lib/jira/client';
 
+/**
+ * POST /api/jira/test-issue
+ * Fetch a single Jira issue to verify credentials and field access.
+ *
+ * @MX:NOTE: Connection credentials arrive in the request body.
+ * @MX:REASON: Connections are stored client-side in localStorage, not in the database.
+ * The previous implementation queried a `jiraConnection` Prisma table that no longer
+ * exists in the schema, so this route always failed with "Connection not found".
+ * This now mirrors the /api/jira/test pattern.
+ *
+ * Expected body: { baseUrl, email, apiToken, issueKey }
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { connectionId, issueKey } = body;
+    const { baseUrl, email, apiToken, issueKey } = body;
 
-    if (!connectionId || !issueKey) {
+    if (!baseUrl || !email || !apiToken || !issueKey) {
       return NextResponse.json({
         success: false,
-        error: 'Missing connectionId or issueKey'
+        error: 'Missing required fields: baseUrl, email, apiToken, issueKey'
       }, { status: 400 });
     }
 
-    // Get connection credentials
-    const connection = await (db as any).jiraConnection.findUnique({
-      where: { id: connectionId }
-    });
-
-    if (!connection) {
-      return NextResponse.json({
-        success: false,
-        error: 'Connection not found'
-      }, { status: 404 });
-    }
-
-    // Create Jira client and fetch issue
     const client = new JiraClient({
-      baseUrl: connection.baseUrl,
-      email: connection.email,
-      apiToken: connection.apiToken,
-      projectKeys: connection.projectKeys ? connection.projectKeys.split(',') : [],
+      baseUrl: baseUrl.trim(),
+      email: email.trim(),
+      apiToken: apiToken.trim(),
+      projectKeys: [],
     });
 
-    console.log(`[Test Issue] Fetching issue ${issueKey} for connection ${connectionId}`);
+    console.log(`[Test Issue] Fetching issue ${issueKey}`);
     const issue = await client.getIssue(issueKey);
 
     if (!issue) {
       return NextResponse.json({
         success: false,
         error: `Issue ${issueKey} not found or not accessible via API`
-      });
+      }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -49,9 +47,9 @@ export async function POST(request: Request) {
       issue: {
         key: issue.key,
         summary: issue.fields.summary,
-        status: issue.fields.status.name,
+        status: issue.fields.status?.name,
         created: issue.fields.created,
-        project: 'Project info would need additional API call',
+        assignee: issue.fields.assignee?.displayName ?? null,
       }
     });
 

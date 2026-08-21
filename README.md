@@ -2,7 +2,7 @@
 
 A professional ETL dashboard that extracts ticket data from Jira Cloud or Server, calculates custom KPIs with **German holiday-aware business hour calculations**, and exports results to **Metabase** via CSV/JSON, PostgreSQL synchronization, or **PowerPoint reporting**.
 
-Built with **Next.js 16.2**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Tailwind CSS 4**.
+Built with **Next.js 16**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Tailwind CSS 4**.
 
 ## 📸 Screenshots
 
@@ -14,7 +14,7 @@ Extract ticket data from Jira with JQL queries, date range selection, scheduled 
 </p>
 
 ### KPI Analytics
-Interactive dashboard with 25+ KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+Interactive dashboard with 29 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
   <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
@@ -58,7 +58,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **TanStack React Query** — Advanced state management for automated background data synchronization, intelligent caching, and consistent loading states.
 - **Scheduled Polling Resilience** — Server-side background sync persists storage configurations across sessions, ensuring data lands in the correct engine automatically.
 - **Resilient Error Boundaries** — Individual widget isolation ensures that a single metric failure or calculation error never crashes the entire dashboard.
-- **Web Worker Architecture** — Heavy KPI calculations are offloaded to a background thread, keeping the UI perfectly responsive even with tens of thousands of tickets.
+- **Server-Side Calculation with Smart Caching** — KPI computation runs on the server via the calculation API, with TanStack Query handling caching, background refetching, and consistent loading states to keep the UI responsive even with tens of thousands of tickets.
 
 ---
 
@@ -71,7 +71,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Extraction Logic** — Smart `update-only` mode that fetches only modified tickets since the last sync to minimize API load.
 
 ### KPI Calculation Engine
-**25+ built-in plugins** organized by business domain:
+**29 built-in plugins** (21 core + 8 time-series) organized by business domain:
 
 **Processing Time (6 plugins)**
 - Avg Processing Hours — Average business hours from creation to resolution
@@ -87,27 +87,34 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - SLA by Status — % of status durations meeting per-status targets
 - SLA by Status (excl. clones) — SLA excluding cloned tickets
 
-**Turnaround (2 plugins)**
+**Turnaround (1 plugin)**
 - Time in Status — Average business hours per workflow status
-- Time in Status (Daily) — Daily time-series tracking
 
-**Throughput (4 plugins)**
+**Throughput (6 plugins)**
 - Throughput — Count of tickets completed in period
 - Open Tickets by Priority — Current backlog breakdown
-- Throughput (Weekly) — Weekly throughput tracking
-- Cumulative Flow (CFD) — Ticket status distribution over time
+- Closed Tickets by Priority — Resolved backlog breakdown
+- Open Tickets by Status — Backlog breakdown by workflow status
+- Open Tickets Kanban — Kanban-style view of open tickets
+- Weekly Ticket List — Per-week ticket listing
 
 **Quality (2 plugins)**
 - Resolution Rate — % of tickets resolved
 - Reassignment Rate — % of tickets with assignee changes
 
-**Assignee (3 plugins)**
+**Assignee (2 plugins)**
 - Open Tickets by Assignee — Current workload distribution
-- Open Tickets by Assignee (Weekly) — Weekly workload tracking
+- Open Tickets by Issue Owner Team — Workload distribution by owning team
 
-**Time-Series Plugins (7 plugins)**
-- Daily and weekly aggregations for all major metrics
-- Automated trend analysis and historical comparisons
+**Time-Series Plugins (8 plugins)**
+- Avg Processing Hours (Weekly) — Weekly processing time trend
+- Throughput (Weekly) — Weekly throughput tracking
+- Cumulative Flow (Daily) — Ticket status distribution over time (CFD)
+- SLA Compliance (Weekly) — Weekly SLA compliance trend
+- SLA by Status (Weekly) — Weekly per-status SLA trend
+- SLA by Status excl. clones (Weekly) — Weekly per-status SLA trend excluding cloned tickets
+- Time in Status (Daily) — Daily time-series tracking per status
+- Open Tickets by Assignee (Weekly) — Weekly workload tracking
 
 All time-based KPIs **exclude weekends and German holidays** (all 16 states supported), with configurable work hours.
 
@@ -116,39 +123,37 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 
 ```
 src/lib/kpi/plugins/
-├── builtin/              # Core plugins (17 plugins)
+├── builtin/              # Core plugins (21 plugins)
 │   ├── processing-time/  # 6 plugins
 │   ├── sla/              # 4 plugins
 │   ├── turnaround/       # 1 plugin
-│   ├── throughput/       # 2 plugins
+│   ├── throughput/       # 6 plugins
 │   ├── quality/          # 2 plugins
 │   └── assignee/         # 2 plugins
 ├── time-series/          # Trend analysis plugins (8 plugins)
-│   ├── processing-time/
-│   ├── sla/
-│   ├── turnaround/
-│   ├── throughput/
-│   └── assignee/
-└── custom/               # User-defined plugins (hot-reload enabled)
-    ├── {domain}/         # Add your own plugins here
-    └── auto-scanned on startup
+│   ├── processing-time/  # 1 plugin
+│   ├── sla/              # 3 plugins
+│   ├── turnaround/       # 1 plugin
+│   ├── throughput/       # 2 plugins
+│   └── assignee/         # 1 plugin
+└── custom/               # Scaffolding only — runtime custom plugins load from data/custom-plugins/
 ```
 
 ### 🔌 Custom Plugin Support
-**Extend without Code Changes** — Create custom KPI plugins by dropping TypeScript/JavaScript files into the `plugins/custom/` directory.
+**Extend without Code Changes** — Create custom KPI plugins either through the dashboard's Plugin Studio (stored with your local configuration) or by dropping plugin files into the `data/custom-plugins/` directory.
 
 **Features:**
-- **Auto-Discovery** — Plugins automatically detected and loaded on server startup
-- **Hot-Reload** — File system watcher monitors `plugins/custom/` for changes
+- **Auto-Discovery** — File-based plugins detected and loaded on server startup
+- **File Watching** — File system watcher monitors `data/custom-plugins/` for changes
 - **Domain Organization** — Group custom plugins by business domain
 - **Validation** — Automatic plugin structure validation before registration
 - **Error Isolation** — Custom plugin failures don't affect built-in plugins
-- **UI Management** — Enable/disable plugins, upload new plugins via dashboard
+- **UI Management** — Enable/disable plugins, create new plugins via the Plugin Studio
 
-**Getting Started:**
-1. Create a new file: `src/lib/kpi/plugins/custom/{domain}/my-metric.ts`
+**Getting Started (file-based):**
+1. Create a new file: `data/custom-plugins/{domain}/my-metric.ts`
 2. Export a `KpiPlugin` object with `id`, `name`, `calculate` function
-3. Plugin auto-loads on next file scan (5-second polling)
+3. Restart the server — plugin files are loaded at startup
 4. Manage via **KPI Analytics** → **Plugins Configuration** → **Custom Plugins**
 
 **SLA Comment Rule Configuration** — Choose how SLA clock resets work for SLA by Status calculations:
@@ -163,10 +168,10 @@ Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targ
 ### Tech Stack
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 16.2 (App Router), React 19, TypeScript 5 |
+| Framework | Next.js 16 (App Router), React 19, TypeScript 5 |
 | State Management | **TanStack React Query 5** (Caching & Background Sync) |
 | Performance | **React Virtuoso** (Virtual Scrolling) |
-| Computation | Web Workers (Background Calculation) |
+| Computation | Server-side KPI engine (`/api/kpi/calculate`) with query caching |
 | UI | shadcn/ui, Tailwind CSS 4, Radix UI, Framer Motion |
 | Database | **Prisma 6 (Dual-Client)** — SQLite (local) + PostgreSQL (Supabase) |
 | Charts | Recharts 2.15 (Interactive Layers) |
@@ -177,7 +182,7 @@ Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targ
 ## 🛠️ Getting Started
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20.9+ (Node 22 LTS recommended — used by CI)
 - Jira API Token (for Cloud) or Password (for Server)
 
 ### Installation
@@ -185,6 +190,10 @@ Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targ
 npm install
 npm run dev
 ```
+
+> `npm install`, `npm run dev`, and `npm run build` automatically run the Prisma setup
+> hook (`scripts/prisma-setup.mjs`), which generates the SQLite/PostgreSQL clients and
+> pushes the schema to the local SQLite database.
 
 ### Database Initialization
 If you are using an external PostgreSQL database (like Supabase), initialize the schema once.

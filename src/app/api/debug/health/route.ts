@@ -3,7 +3,7 @@
  * Useful for monitoring application health and debugging issues
  */
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDefaultDb } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
 // @MX:ANCHOR: Health check response contract - defines the interface for monitoring system integration
@@ -55,7 +55,9 @@ export async function GET(request: Request) {
     // Database connectivity check
     if (detailed) {
       try {
-        await db.$queryRaw`SELECT 1`;
+        // @MX:NOTE: Use getDefaultDb() to reach the real Prisma client for $queryRaw.
+        // @MX:REASON: The `db` proxy only exposes `.client`; `$queryRaw` on it is undefined.
+        await (getDefaultDb() as any).$queryRaw`SELECT 1`;
         health.database = { status: 'connected' };
       } catch (error) {
         health.database = {
