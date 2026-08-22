@@ -117,6 +117,9 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [sortOption, setSortOption] = useState('created-desc');
 
+  // Track when the last extraction returned no results for persistent empty state
+  const [lastExtractionEmpty, setLastExtractionEmpty] = useState(false);
+
   // Custom extract fields state
   const [customFields, setCustomFields] = useState<CustomExtractField[]>([]);
   const [newFieldId, setNewFieldId] = useState('');
@@ -282,7 +285,10 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     }
   };
 
-  const fetchJsonWithRetry = async (url: string, init: RequestInit, attempts = 3, delayMs = 1500) => {
+  // @MX:NOTE: Retries only when the dev server returns HTML instead of JSON (webpack recompiling).
+  // @MX:REASON: During development, Next.js serves an HTML error page while recompiling after file
+  // changes. This is a transient state, not a real error, so we retry a few times with a delay.
+  const fetchWithDevServerRetry = async (url: string, init: RequestInit, attempts = 3, delayMs = 1500) => {
     let res = await fetch(url, init);
     let data = await safeJson(res);
     for (let i = 1; i < attempts && data.serverBusy; i++) {
@@ -347,7 +353,9 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
 
         if (extractedCount === 0) {
           toast('No issues found matching your criteria. Try adjusting your JQL query, date range, or project key.', { duration: 5000 });
+          setLastExtractionEmpty(true);
         } else {
+          setLastExtractionEmpty(false);
           const { added, updated, unchanged, deleted } = data.summary;
           const stats = [
             added > 0 ? `${added} added` : null,
@@ -369,7 +377,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         try {
           // Retry when the dev server responds with HTML while recompiling —
           // the extraction itself already succeeded, only this refresh failed.
-          const { res: masterRes, data: masterData } = await fetchJsonWithRetry(
+          const { res: masterRes, data: masterData } = await fetchWithDevServerRetry(
             `/api/jira/master/${activeConnectionId}`,
             {
               method: 'POST',
@@ -528,7 +536,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     const loadingToast = toast.loading('Fetching all tickets from database...', { duration: 0 });
 
     try {
-      const { res, data } = await fetchJsonWithRetry(
+      const { res, data } = await fetchWithDevServerRetry(
         `/api/jira/master/${activeConnectionId}`,
         {
           method: 'POST',
@@ -1072,6 +1080,21 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
               >
                 <Trash2 className="h-3 w-3 mr-1" /> Clear Master Dataset
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty state when last extraction returned no results */}
+      {lastExtractionEmpty && !extractionResult && (
+        <Card className="border-amber-500/30 bg-amber-50 dark:bg-amber-500/5">
+          <CardContent className="py-8">
+            <div className="text-center">
+              <Search className="h-12 w-12 mx-auto mb-3 text-amber-400 opacity-50" />
+              <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-300 mb-2">No Issues Found</h3>
+              <p className="text-sm text-amber-700 dark:text-amber-400 max-w-md mx-auto">
+                No tickets matched your extraction criteria. Try adjusting your JQL query, expanding the date range, or verifying the project key.
+              </p>
             </div>
           </CardContent>
         </Card>

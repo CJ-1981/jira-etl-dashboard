@@ -47,11 +47,17 @@ const mockState = vi.hoisted(() => {
   return state;
 });
 
-vi.mock('../../store/app-store', () => ({
-  useAppStore: vi.fn((selector) => {
+vi.mock('../../store/app-store', () => {
+  const mockStore = vi.fn((selector: (state: typeof mockState) => unknown) => {
     return typeof selector === 'function' ? selector(mockState) : mockState;
-  }),
-}));
+  });
+  // Add getState for direct store access in triggerCalculation
+  const storeWithGetState = mockStore as typeof mockStore & {
+    getState: () => typeof mockState;
+  };
+  storeWithGetState.getState = () => mockState;
+  return { useAppStore: storeWithGetState };
+});
 
 // Mock fetch API
 global.fetch = vi.fn();

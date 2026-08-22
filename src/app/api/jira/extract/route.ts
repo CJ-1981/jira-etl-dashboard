@@ -4,41 +4,13 @@ import { JiraClient } from '@/lib/jira/client';
 import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-config';
 import { getDb } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
+import { isLoopbackOriginRequest } from '@/lib/security';
 
 // Constants for sizeBytes estimation
 // @MX:NOTE: These are heuristic estimates for storage sizing, not exact byte measurements
 const EST_FIELD_BYTES_PER_KEY = 50; // Average bytes per field key-value pair
 const EST_CHANGE_HISTORY_BYTES = 200; // Average bytes per changelog history entry
 const FIXED_OVERHEAD_BYTES = 100; // Fixed overhead per issue (metadata, etc.)
-
-/**
- * @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
- * @MX:REASON: This endpoint is unauthenticated and forwards custom plugin
- * formulas into the KPI engine. Any website the user visits could POST a
- * `no-cors` text/plain request to the localhost server. Browsers attach an
- * `origin` (or `referer`) header to such cross-origin POSTs, so we reject
- * every request whose origin is not a loopback address. Requests without
- * these headers (server-side fetches, curl, Electron main process) pass.
- * @MX:NOTE: Keep this implementation identical to the one in /api/kpi/calculate.
- */
-function isLoopbackOriginRequest(request: Request): boolean {
-  const headerValue =
-    request.headers.get('origin') || request.headers.get('referer');
-  if (!headerValue) return true;
-
-  let host: string;
-  try {
-    host = new URL(headerValue).hostname;
-  } catch {
-    // Unparseable origin/referer: fail closed.
-    return false;
-  }
-
-  if (host === 'localhost' || host === '127.0.0.1') return true;
-  // IPv6 loopback arrives URL-encoded as "[::1]" from URL.hostname.
-  const normalized = host.replace(/^\[|\]$/g, '');
-  return normalized === '::1' || normalized === '0:0:0:0:0:0:0:1';
-}
 
 export async function POST(request: Request) {
   if (!isLoopbackOriginRequest(request)) {

@@ -1025,7 +1025,7 @@ export function KpiDashboard() {
     });
     
     return result;
-  }, [masterDatasetInfo]);
+  }, [masterDatasetInfo?.issues]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">

@@ -8,6 +8,7 @@
 import type { JiraIssue } from '../jira/client';
 import { calculateBusinessHours, calculateWorkingDays } from '../holidays/german-holidays';
 import { extractSelectFieldValue } from '../jira/client';
+import { getIssueOwnerTeamField } from '../jira/field-config';
 import type { TransformedIssue, StatusTransition, AgeCategory } from './types';
 
 // ─── Transform Cache ────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     statusCategory: issue.fields?.status?.statusCategory?.name || (issue as any).statusCategory || 'Unknown',
     assignee: issue.fields?.assignee?.displayName || (issue as any).assignee || 'Unassigned',
     reporter: issue.fields?.reporter?.displayName || (issue as any).reporter || 'Unknown',
-    issueOwnerTeam: extractSelectFieldValue((issue.fields as any)?.customfield_10132) || (issue.fields as any)?.issueOwnerTeam || (issue as any).issueOwnerTeam || null,
+    issueOwnerTeam: extractSelectFieldValue((issue.fields as any)?.[getIssueOwnerTeamField()]) || (issue.fields as any)?.issueOwnerTeam || (issue as any).issueOwnerTeam || null,
     created: new Date(issue.fields?.created || (issue as any).created || Date.now()),
     updated: new Date(issue.fields?.updated || (issue as any).updated || Date.now()),
     resolved: (issue.fields?.resolutiondate || (issue as any).resolved) ? new Date(issue.fields?.resolutiondate || (issue as any).resolved) : null,

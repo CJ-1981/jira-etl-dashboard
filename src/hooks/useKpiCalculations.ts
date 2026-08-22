@@ -76,11 +76,36 @@ export function useKpiCalculations(
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastCalculationParamsRef = useRef<string>('');
 
+  // @MX:NOTE: Ref-based parameter access to prevent stale closures in triggerCalculation.
+  // @MX:REASON: triggerCalculation may be called from setTimeout or event handlers that
+  // captured an older version of the function. Using refs ensures we always read the
+  // latest parameter values at call time rather than at capture time.
+  const paramsRef = useRef({
+    activeConnectionId,
+    dateFrom,
+    dateTo,
+    region,
+    globalFilters,
+    storageConfig,
+    customWidgets,
+  });
+  paramsRef.current = {
+    activeConnectionId,
+    dateFrom,
+    dateTo,
+    region,
+    globalFilters,
+    storageConfig,
+    customWidgets,
+  };
+
   /**
    * Fetch KPI calculations from the API
    */
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
-    // Update params ref AFTER successful response (moved from line 81)
+    // Read latest params from ref to avoid stale closure
+    const params = paramsRef.current;
+
     // AbortController for timeout (120s — server-side calculation may be heavy)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000);
@@ -95,14 +120,14 @@ export function useKpiCalculations(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          activeConnectionId,
-          connectionId: activeConnectionId,
-          storageConfig,
-          dateFrom: dateFrom.toISOString(),
-          dateTo: dateTo.toISOString(),
-          region,
-          globalFilters,
-          customWidgets: customWidgets || []
+          activeConnectionId: params.activeConnectionId,
+          connectionId: params.activeConnectionId,
+          storageConfig: params.storageConfig,
+          dateFrom: params.dateFrom.toISOString(),
+          dateTo: params.dateTo.toISOString(),
+          region: params.region,
+          globalFilters: params.globalFilters,
+          customWidgets: params.customWidgets || []
         }),
         signal: controller.signal,
       });
@@ -128,20 +153,20 @@ export function useKpiCalculations(
     // Update params ref only after successful response
     if (data.success && data.results) {
       lastCalculationParamsRef.current = JSON.stringify({
-        dateFrom: dateFrom.toISOString(),
-        dateTo: dateTo.toISOString(),
-        globalFilters,
-        activeConnectionId,
-        region,
-        storageConfig,
-        customWidgets: customWidgets || []
+        dateFrom: params.dateFrom.toISOString(),
+        dateTo: params.dateTo.toISOString(),
+        globalFilters: params.globalFilters,
+        activeConnectionId: params.activeConnectionId,
+        region: params.region,
+        storageConfig: params.storageConfig,
+        customWidgets: params.customWidgets || []
       });
       return data.results;
     }
 
     console.error('[useKpiCalculations] Calculation failed:', data.error);
     throw new Error(`KPI calculation failed: ${data.error || 'unknown error'}`);
-  }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, storageConfig]);
+  }, []);
 
   // @MX:NOTE: Stable cache key serialization to prevent unnecessary re-fetches
   // Date objects and filter objects are serialized to strings for stable comparison
@@ -217,11 +242,12 @@ export function useKpiCalculations(
         const widgetResult = { context: {}, results: result };
 
         // Handle both Map (real store) and object (mocked store in tests)
-        if (customWidgetResults instanceof Map) {
-          setCustomWidgetResults(new Map(customWidgetResults).set(widgetId, widgetResult));
+        const currentResults = useAppStore.getState().customWidgetResults;
+        if (currentResults instanceof Map) {
+          setCustomWidgetResults(new Map(currentResults).set(widgetId, widgetResult));
         } else {
           // For mocked store in tests, convert to Map first
-          const resultsRecord = customWidgetResults as Record<string, { context: any; results: KpiCalcResult[] }>;
+          const resultsRecord = currentResults as Record<string, { context: any; results: KpiCalcResult[] }>;
           const map = new Map<string, { context: any; results: KpiCalcResult[] }>(
             Object.entries(resultsRecord).map(([k, v]) => [k, v])
           );
@@ -238,7 +264,7 @@ export function useKpiCalculations(
       setCalculatingSet(new Set(isCalculatingRef.current));
       setCalculatingWidgets(new Set(isCalculatingRef.current));
     }
-  }, [fetchKpiCalculations, refetch, setCalculatingWidgets, setCustomWidgetResults, customWidgetResults]);
+  }, [fetchKpiCalculations, refetch, setCalculatingWidgets, setCustomWidgetResults]);
 
   /**
    * Toggle polling on/off
