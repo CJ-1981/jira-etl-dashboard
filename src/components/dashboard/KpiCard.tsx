@@ -22,6 +22,7 @@ import { AppSettings } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 import { KpiCalcResult, ChartConfig } from '@/types/dashboard';
 import { JqlFilterSettings } from './jql/JqlFilterSettings';
+import { PluginInfoIcon } from './PluginInfoIcon';
 import {
   transformForBarChart,
   transformForPieChart,
@@ -1495,6 +1496,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   >
                     <Pencil className="h-3 w-3" />
                   </button>
+                  <PluginInfoIcon pluginId={config.kpiId} />
                 </div>
               )}
               {isTimeSeries && (

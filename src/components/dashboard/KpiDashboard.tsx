@@ -17,6 +17,7 @@ import {
 } from '@/lib/chart-data-utils';
 import { KpiDataTable } from './KpiDataTable';
 import { KpiErrorBoundary } from './KpiErrorBoundary';
+import { PluginInfoIcon } from './PluginInfoIcon';
 import { ViewManager } from './ViewManager';
 import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
 import { extractSelectFieldValue } from '@/lib/jira/client';
@@ -1391,6 +1392,7 @@ export function KpiDashboard() {
                               >
                                 {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                               </button>
+                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
                             </div>
                             {Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`)) && (
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -1482,6 +1484,7 @@ export function KpiDashboard() {
                               >
                                 {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                               </button>
+                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
                             </div>
                             {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -1664,6 +1667,7 @@ export function KpiDashboard() {
                               >
                                 {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                               </button>
+                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
                             </div>
                             {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -1758,6 +1762,7 @@ export function KpiDashboard() {
                               >
                                 {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                               </button>
+                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
                             </div>
                             {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -1952,6 +1957,7 @@ export function KpiDashboard() {
                               >
                                 {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                               </button>
+                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
                             </div>
                             {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -2047,6 +2053,7 @@ export function KpiDashboard() {
                               >
                                 {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                               </button>
+                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
                             </div>
                             {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
                               <Button variant="ghost" size="sm" onClick={() => {

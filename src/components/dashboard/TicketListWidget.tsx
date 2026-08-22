@@ -6,6 +6,7 @@ import { Ticket, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Virtuoso } from 'react-virtuoso';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
+import { PluginInfoIcon } from './PluginInfoIcon';
 import type { JiraIssue } from '@/lib/jira/client';
 
 // @MX:NOTE: Lists above this size are rendered through react-virtuoso so hundreds
@@ -255,6 +256,7 @@ export function TicketListWidget({
           ) : (
             <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
           )}
+          <PluginInfoIcon pluginId={pluginId} />
           {isCollapsed && (
             <span className="text-xs text-slate-400 font-normal ml-1">
               ({totalTickets} tickets)
