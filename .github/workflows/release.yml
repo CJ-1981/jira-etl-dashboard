@@ -15,8 +15,39 @@ permissions:
   contents: write
 
 jobs:
+  ci-gate:
+    name: Require green CI for the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for the CI workflow to pass on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO="${{ github.repository }}"
+          SHA="${{ github.sha }}"
+          echo "Waiting for CI workflow to complete on $SHA..."
+          for attempt in $(seq 1 60); do
+            JSON=$(gh run list --repo "$REPO" --workflow ci.yml --commit "$SHA" --json status,conclusion 2>/dev/null || echo "[]")
+            TOTAL=$(echo "$JSON" | jq 'length')
+            DONE=$(echo "$JSON" | jq '[.[] | select(.status == "completed")] | length')
+            if [ "$TOTAL" -gt 0 ] && [ "$DONE" -eq "$TOTAL" ]; then
+              FAILED=$(echo "$JSON" | jq '[.[] | select(.conclusion != "success" and .conclusion != "skipped")] | length')
+              if [ "$FAILED" -eq 0 ]; then
+                echo "CI is green for $SHA — proceeding with the release."
+                exit 0
+              fi
+              echo "::error::CI failed for $SHA — aborting the release."
+              exit 1
+            fi
+            echo "CI not complete yet (attempt $attempt/60)..."
+            sleep 20
+          done
+          echo "::error::Timed out waiting for CI on $SHA — aborting the release."
+          exit 1
+
   build-macos:
     name: Build macOS Executable
+    needs: [ci-gate]
     runs-on: macos-latest
 
     steps:
@@ -46,6 +77,7 @@ jobs:
 
   build-windows:
     name: Build Windows Executable
+    needs: [ci-gate]
     runs-on: windows-latest
 
     steps:

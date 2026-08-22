@@ -27,6 +27,8 @@ build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 
 CI runs `test:coverage`, `lint --max-warnings=10`, and `type-check` on push/PR to main/develop (Node 22). E2E is not wired into CI yet.
 
+**Quality gates:** a `pre-push` hook runs the same CI trio locally before every push (installed automatically on `npm install` via `scripts/hooks/install-hooks.mjs`, or manually with `npm run hooks:install`; bypass with `git push --no-verify`). The release workflow additionally waits for the CI run of the tagged commit to finish and aborts the release if it is red — so tagging cannot outrun CI.
+
 ## Architecture
 
 ### Single page + API routes
