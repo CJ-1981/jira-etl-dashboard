@@ -305,9 +305,11 @@ export function calculateBusinessHours(
     }
 
     // Middle days (full days - use mathematical approach to avoid day-by-day iteration)
+    // @MX:REASON: Both anchors must share the same time-of-day; a noon startDay vs midnight
+    // endCheck loses 12h per range, making middleDays one too few (drops a whole middle day).
     const startDay = new Date(startDate);
     startDay.setDate(startDay.getDate() + 1);
-    startDay.setHours(12, 0, 0, 0);
+    startDay.setHours(0, 0, 0, 0);
 
     const endCheck = new Date(endDate);
     endCheck.setHours(0, 0, 0, 0);
@@ -450,7 +452,11 @@ export function calculateWorkingDays(
 
     // Count working days in the first partial week
     let firstWeekDays = 0;
-    const firstWeekEnd = Math.min(5 - startDayOfWeek + 1, diffDays); // Days until Saturday
+    // @MX:REASON: 6 - startDayOfWeek goes negative for Saturday/Sunday starts (dow 6/0
+    // would yield 0/-1 misaligning the full-week window and overcounting ~1 day/week).
+    // Modulo keeps the partial week ending on Saturday inclusive for any start day.
+    const daysUntilSaturday = (6 - startDayOfWeek + 7) % 7;
+    const firstWeekEnd = Math.min(daysUntilSaturday + 1, diffDays); // Days until Saturday (inclusive)
     for (let i = 0; i < firstWeekEnd && i < diffDays; i++) {
       const checkDate = new Date(current);
       checkDate.setDate(checkDate.getDate() + i);

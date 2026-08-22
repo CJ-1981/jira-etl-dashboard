@@ -283,8 +283,19 @@ export class JiraClient {
    * Get a single issue by key (for testing access to specific issues)
    */
   async getIssue(issueKey: string): Promise<JiraIssue | null> {
+    // @MX:WARN: Validate the issue key before interpolating it into the URL path.
+    // @MX:REASON: An unchecked key containing `../` or `?` could traverse to other
+    // REST endpoints (path injection), letting caller-controlled input reach
+    // unintended Jira API routes with the client's credentials attached.
+    if (typeof issueKey !== 'string' || !/^[A-Z][A-Z0-9_]{0,9}-[0-9]{1,10}$/i.test(issueKey)) {
+      console.warn(`[JiraClient] Invalid issue key format: ${issueKey}`);
+      return null;
+    }
+
     try {
-      const response = await fetch(this.buildUrl(`/issue/${issueKey}`), {
+      // @MX:REASON: encodeURIComponent as defense-in-depth even though the regex
+      // above already restricts the key to a safe character set.
+      const response = await fetch(this.buildUrl(`/issue/${encodeURIComponent(issueKey)}`), {
         headers: this.getHeaders(),
       });
 
@@ -306,18 +317,6 @@ export class JiraClient {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  /**
-   * Handle rate limiting / backoff based on strategy
-   */
-  private async handleBackoff(attempt: number, strategy: string): Promise<void> {
-    if (strategy === 'none') return;
-    if (strategy === 'linear') {
-      await this.sleep(1000 * attempt);
-    } else if (strategy === 'exponential') {
-      await this.sleep(1000 * Math.pow(2, attempt));
-    }
   }
 
   /**
@@ -345,9 +344,14 @@ export class JiraClient {
 
         clearTimeout(timeoutId);
 
-        // Fail fast on authentication errors - don't retry these
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(`Authentication failed (HTTP ${response.status}). Please check your API token.`);
+        // Fail fast on auth/permission errors — don't retry these. The helpful
+        // text lives here because fetchWithRetry throws before the caller can
+        // inspect the status, so this is the only place these reach the user.
+        if (response.status === 401) {
+          throw Object.assign(new Error('Authentication failed (HTTP 401). Your API token is invalid or expired. Please check your connection settings.'), { status: 401 });
+        }
+        if (response.status === 403) {
+          throw Object.assign(new Error('Access denied (HTTP 403). Your API token does not have permission to browse issues in this project.'), { status: 403 });
         }
 
         // Handle rate limiting
@@ -358,9 +362,11 @@ export class JiraClient {
             await this.sleep(waitTime);
             continue;
           }
+          throw Object.assign(new Error('Jira rate limit exceeded (HTTP 429). Too many requests — increase the delay or reduce the max requests per minute in Settings, then try again.'), { status: 429 });
         }
 
         // Retry on server errors (5xx) and network errors
+        const serverStatus = response.status || 503;
         if (response.status >= 500 || response.status === 0) {
           if (attempt < maxRetries) {
             const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10s
@@ -368,6 +374,7 @@ export class JiraClient {
             await this.sleep(waitTime);
             continue;
           }
+          throw Object.assign(new Error(`Jira server error (HTTP ${serverStatus}). The Jira instance returned an error or was unavailable.`), { status: serverStatus });
         }
 
         return response;
@@ -376,9 +383,14 @@ export class JiraClient {
         clearTimeout(timeoutId);
         lastError = error as Error;
 
+        // Auth/permission errors must not be retried — fail immediately.
+        if ((lastError as any)?.status === 401 || (lastError as any)?.status === 403) {
+          throw lastError;
+        }
+
         // Don't retry if it's a timeout and we've exceeded attempts
         if (lastError.name === 'AbortError' && attempt >= maxRetries) {
-          throw new Error(`Request timeout after ${timeoutMs}ms`);
+          throw Object.assign(new Error(`Request timeout after ${timeoutMs}ms. Jira did not respond within the time limit — try reducing the date range or batch size.`), { status: 504 });
         }
 
         // Retry on network errors
@@ -391,7 +403,10 @@ export class JiraClient {
       }
     }
 
-    throw lastError || new Error('Max retries exceeded');
+    // Preserve a Jira HTTP status if the last error carried one; otherwise
+    // surface network errors as 503 (unavailable).
+    if (lastError && 'status' in lastError) throw lastError;
+    throw Object.assign(new Error('Network error contacting Jira: ' + (lastError?.message || 'Max retries exceeded')), { status: 503 });
   }
 
   /**
@@ -477,18 +492,12 @@ export class JiraClient {
 
         consecutive429Count = 0;
 
+        // 401/403/429/5xx are thrown by fetchWithRetry above; a non-ok response
+        // here is a different error (bad JQL, 404, etc.) — carry its status so
+        // the route can return it.
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'No error details available');
-
-          // Specific error messages for authentication/permission failures
-          if (response.status === 401) {
-            throw new Error('Authentication failed (HTTP 401). Your API token is invalid or expired. Please check your connection settings.');
-          }
-          if (response.status === 403) {
-            throw new Error('Access denied (HTTP 403). Your API token does not have permission to browse issues in this project.');
-          }
-
-          throw new Error(`JQL query failed: ${response.status} ${response.statusText} - ${errorText}`);
+          throw Object.assign(new Error(`JQL query failed: ${response.status} ${response.statusText} - ${errorText}`), { status: response.status });
         }
 
         const data: JiraSearchResult = await response.json();
@@ -512,13 +521,16 @@ export class JiraClient {
         onProgress?.(allIssues.length, total);
 
       } catch (error) {
-        // Provide context about which page failed
+        // Provide context about which page failed; preserve the upstream HTTP
+        // status (if any) so the extract route can return it to the client.
         const pageNum = Math.floor(allIssues.length / maxResults) + 1;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const status = (error as any)?.status;
 
-        throw new Error(
+        const wrapped = new Error(
           `Failed to fetch page ${pageNum} (already extracted ${allIssues.length} issues): ${errorMessage}`
         );
+        throw status ? Object.assign(wrapped, { status }) : wrapped;
       }
 
     } while (nextPageToken);

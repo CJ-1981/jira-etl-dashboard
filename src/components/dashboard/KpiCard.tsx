@@ -1589,10 +1589,9 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-[400px] p-0 z-[100]" onPointerDownOutside={(e) => {
+                // @MX:NOTE: Outside-click closing stays blocked to prevent accidental loss of
+                // unsaved filter edits; the popover provides a visible Cancel button instead.
                 console.log('[ChartCard] Popover onPointerDownOutside - preventing default');
-                e.preventDefault();
-              }} onEscapeKeyDown={(e) => {
-                console.log('[ChartCard] Popover onEscapeKeyDown - preventing default');
                 e.preventDefault();
               }}>
                 <JqlFilterSettings

@@ -28,6 +28,8 @@ export interface UseKpiCalculationsResult {
   kpiResults: KpiCalcResult[];
   customWidgetResults: Record<string, unknown>;
   isCalculating: boolean;
+  isError: boolean;
+  error: Error | null;
   pollingEnabled: boolean;
   triggerCalculation: (widgetId?: string) => Promise<void>;
   setPollingEnabled: (enabled: boolean) => void;
@@ -79,12 +81,15 @@ export function useKpiCalculations(
    */
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
     // Update params ref AFTER successful response (moved from line 81)
-    try {
-      // AbortController for timeout (120s — server-side calculation may be heavy)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
+    // AbortController for timeout (120s — server-side calculation may be heavy)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const response = await fetch('/api/kpi/calculate', {
+    // Only network-level failures (including abort/timeout) are caught here so
+    // that intentional errors thrown below are not misreported as network errors.
+    let response: Response;
+    try {
+      response = await fetch('/api/kpi/calculate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,51 +102,52 @@ export function useKpiCalculations(
           dateTo: dateTo.toISOString(),
           region,
           globalFilters,
-          customWidgets: customWidgets || [],
+          customWidgets: customWidgets || []
         }),
         signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.error('[useKpiCalculations] API error:', response.status, response.statusText);
-        return [];
-      }
-
-      const data = await response.json() as KpiCalculateResponse;
-
-      // Update params ref only after successful response
-      if (data.success && data.results) {
-        lastCalculationParamsRef.current = JSON.stringify({
-          dateFrom: dateFrom.toISOString(),
-          dateTo: dateTo.toISOString(),
-          globalFilters,
-          activeConnectionId,
-          region,
-          storageConfig,
-          customWidgets: customWidgets || []
-        });
-        return data.results;
-      }
-
-      console.error('[useKpiCalculations] Calculation failed:', data.error);
-      return [];
     } catch (error) {
+      clearTimeout(timeoutId);
       if (error instanceof Error && error.name === 'AbortError') {
-        console.error('[useKpiCalculations] Request timeout after 30 seconds');
-      } else {
-        console.error('[useKpiCalculations] Network error:', error);
+        console.error('[useKpiCalculations] Request timeout after 120 seconds');
+        throw new Error('KPI calculation request timed out after 120 seconds');
       }
-      return [];
+      console.error('[useKpiCalculations] Network error:', error);
+      throw error;
     }
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error('[useKpiCalculations] API error:', response.status, response.statusText);
+      throw new Error(`KPI calculation failed with HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json() as KpiCalculateResponse;
+
+    // Update params ref only after successful response
+    if (data.success && data.results) {
+      lastCalculationParamsRef.current = JSON.stringify({
+        dateFrom: dateFrom.toISOString(),
+        dateTo: dateTo.toISOString(),
+        globalFilters,
+        activeConnectionId,
+        region,
+        storageConfig,
+        customWidgets: customWidgets || []
+      });
+      return data.results;
+    }
+
+    console.error('[useKpiCalculations] Calculation failed:', data.error);
+    throw new Error(`KPI calculation failed: ${data.error || 'unknown error'}`);
   }, [activeConnectionId, dateFrom, dateTo, region, globalFilters, customWidgets, storageConfig]);
 
   // @MX:NOTE: Stable cache key serialization to prevent unnecessary re-fetches
   // Date objects and filter objects are serialized to strings for stable comparison
   const stableQueryKey = useMemo(() => {
     const filtersKey = globalFilters ? JSON.stringify(globalFilters) : 'empty';
-    const customWidgetsKey = customWidgets ? JSON.stringify(customWidgets.sort()) : 'empty';
+    const customWidgetsKey = customWidgets ? JSON.stringify([...customWidgets].sort()) : 'empty';
     return [
       'kpi-results',
       activeConnectionId,
@@ -158,8 +164,10 @@ export function useKpiCalculations(
    * React Query for KPI data with caching
    */
   const {
-    data: queryResults = [],
+    data,
     isLoading: isQueryLoading,
+    isError: isQueryError,
+    error: queryError,
     refetch,
   } = useQuery({
     queryKey: stableQueryKey,
@@ -168,17 +176,22 @@ export function useKpiCalculations(
     gcTime: Infinity,
     refetchOnWindowFocus: false,
     retry: false,
-    enabled: pollingEnabled,
+    // Don't fire a calculation without a data source — the route requires a
+    // connectionId (or inline issues), so an empty connectionId only ever
+    // produces a 400 and a spurious error banner on a freshly-opened KPI tab.
+    enabled: pollingEnabled && !!activeConnectionId,
   });
 
   /**
    * Update Zustand store when query results change
+   * @MX:NOTE: Syncs empty results too so stale results are cleared. Skips while
+   * the query has no definitive result yet (loading/disabled) or is in an error
+   * state, so last good data is kept instead of being wiped by failures.
    */
   useEffect(() => {
-    if (queryResults.length > 0) {
-      setKpiResults(queryResults);
-    }
-  }, [queryResults, setKpiResults]);
+    if (data === undefined || isQueryError) return;
+    setKpiResults(data);
+  }, [data, isQueryError, setKpiResults]);
 
   /**
    * Trigger KPI calculation for all widgets or specific widget
@@ -319,6 +332,8 @@ export function useKpiCalculations(
     kpiResults,
     customWidgetResults: customWidgetResultsRecord,
     isCalculating,
+    isError: isQueryError,
+    error: queryError,
     pollingEnabled,
     triggerCalculation,
     setPollingEnabled,

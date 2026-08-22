@@ -2,6 +2,18 @@
 setlocal enabledelayedexpansion
 title Jira ETL Dashboard - Production Build
 
+:: ── Distribution layouts (read before "fixing" either one) ──────
+:: 1. Portable folder build  (THIS script, and build-production.sh):
+::    Output is a copyable folder. The database lives at app\db\custom.db,
+::    NEXT TO the server, so all data travels with the folder
+::    (local disk, share, USB stick). Do not move it to an app-data dir.
+:: 2. Single-executable build (build-exe.bat / build-exe.sh via caxa,
+::    launched by launcher.cjs): the exe self-extracts into a volatile
+::    temp dir, so its database lives in the platform app-data directory
+::    (or JIRA_ETL_DATA_DIR if set). See the header of launcher.cjs.
+:: Both formats scan ports 3200-3299 (3000 is reserved for `npm run dev`).
+:: -----------------------------------------------------------------
+
 echo ============================================================
 echo   Jira ETL Dashboard - Production Build
 echo ============================================================
@@ -97,14 +109,15 @@ echo [4/5] Creating launcher with auto port scan...
     echo     exit /b 1
     echo ^)
     echo.
-    echo set "PORT=3000"
+    echo :: ─── Find a free port in 3200-3299, matching launcher.cjs; port 3000 is for npm run dev ───
+    echo set "PORT=3200"
     echo :find_port
-    echo %%SystemRoot%%\System32\netstat.exe -ano ^| %%SystemRoot%%\System32\findstr.exe /R /C:":%%PORT%% " ^>nul 2^>^&1
+    echo %%SystemRoot%%\System32\netstat.exe -ano ^| %%SystemRoot%%\System32\findstr.exe /R /C:":%%PORT%% " ^| %%SystemRoot%%\System32\findstr.exe "LISTENING" ^>nul 2^>^&1
     echo if %%errorlevel%% equ 0 ^(
     echo     echo   Port %%PORT%% is occupied, trying next...
     echo     set /a PORT+=1
-    echo     if %%PORT%% gtr 3100 ^(
-    echo         echo [ERROR] No available port found in range 3000-3100.
+    echo     if %%PORT%% gtr 3299 ^(
+    echo         echo [ERROR] No available port found in range 3200-3299.
     echo         pause
     echo         exit /b 1
     echo     ^)
@@ -126,6 +139,7 @@ echo [4/5] Creating launcher with auto port scan...
     echo echo   =============================================
     echo echo   Starting on port: %%PORT%%
     echo echo   URL: http://localhost:%%PORT%%
+    echo echo   Database: %%~dp0app\db\custom.db
     echo echo   Press Ctrl+C to stop.
     echo echo   =============================================
     echo echo.

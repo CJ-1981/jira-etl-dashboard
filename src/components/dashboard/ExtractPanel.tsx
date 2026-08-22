@@ -399,11 +399,11 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
         }
       } else {
         if (res.status === 401) {
-          toast.error('Authentication failed. Please check your Jira credentials.', { duration: 5000 });
+          toast.error('Authentication failed. Please check your Jira credentials.', { description: data.error, duration: 5000 });
         } else if (res.status === 429) {
-          toast.error('Rate limit exceeded. Increase delay in settings and try again.', { duration: 5000 });
+          toast.error('Rate limit exceeded. Increase delay in settings and try again.', { description: data.error, duration: 5000 });
         } else if (res.status === 503 || res.status === 504) {
-          toast.error('Jira server unavailable or timeout. Try reducing the date range or batch size.', { duration: 5000 });
+          toast.error('Jira server unavailable or timeout. Try reducing the date range or batch size.', { description: data.error, duration: 5000 });
         } else {
           toast.error(data.error || `Extraction failed (${res.status})`, { duration: 5000 });
         }
@@ -1281,6 +1281,7 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                         <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </a>
                       <span className="truncate text-slate-700 dark:text-slate-300 flex-1">{issue.fields?.summary || issue.summary}</span>
+                      <span className="truncate text-slate-500 dark:text-slate-400 text-xs w-28 sm:w-36 shrink-0">{issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned'}</span>
                       <Badge variant={isResolved ? 'default' : 'secondary'} className={`text-xs shrink-0 ${isResolved ? 'bg-blue-600' : ''}`}>{issue.fields?.status?.name || issue.status}</Badge>
                     </div>
                   );

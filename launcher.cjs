@@ -1,3 +1,20 @@
+/**
+ * Production launcher for the caxa-packaged executable (build-exe.bat / build-exe.sh).
+ *
+ * Environment variables:
+ *   PORT     - Optional. If set, the app binds to exactly this port (no scan).
+ *              Otherwise the launcher scans for a free port starting at
+ *              DEFAULT_PORT (3200). Port 3000 is left free for `npm run dev`.
+ *   HOSTNAME - Optional. Bind address for the server. Defaults to 127.0.0.1
+ *              (loopback only, since the app has no authentication).
+ *
+ * Data directory resolution order (where the SQLite database lives):
+ *   1. JIRA_ETL_DATA_DIR env var, if set (explicit override).
+ *   2. Platform app-data dir (%APPDATA% / ~/Library/Application Support /
+ *      ~/.local/share) when running from the caxa temp extraction dir,
+ *      so data survives temp cleanup and re-packaging.
+ *   3. ./data next to this file (portable layout, data travels with the app).
+ */
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -147,12 +164,16 @@ async function main() {
 
   const serverPath = path.join(__dirname, 'server.js');
 
-  const env = {
-    ...process.env,
-    PORT: PORT.toString(),
-    NODE_ENV: 'production',
-    DATABASE_URL: 'file:' + dbPath.replace(/\\/g, '/'),
-  };
+const env = {
+  ...process.env,
+  PORT: PORT.toString(),
+  NODE_ENV: 'production',
+  // @MX:WARN - Localhost-only binding: the app has no authentication.
+  // @MX:REASON - Binding 0.0.0.0 would expose Jira credentials and ticket data
+  // to anyone on the LAN; restrict to loopback unless HOSTNAME is set explicitly.
+  HOSTNAME: process.env.HOSTNAME || '127.0.0.1',
+  DATABASE_URL: 'file:' + dbPath.replace(/\\/g, '/'),
+};
 
   console.log('Starting ' + APP_NAME + ' on port ' + PORT + '...');
   console.log('Database: ' + dbPath);

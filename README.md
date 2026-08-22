@@ -1,13 +1,13 @@
 # Jira ETL Dashboard for Metabase
 
-A professional ETL dashboard that extracts ticket data from Jira Cloud or Server, calculates custom KPIs with **German holiday-aware business hour calculations**, and exports results to **Metabase** via CSV/JSON, PostgreSQL synchronization, or **PowerPoint reporting**.
+A professional ETL dashboard that extracts ticket data from Jira Cloud or Server, calculates custom KPIs with **German holiday-aware business hour calculations**, and exports results to **Metabase** via CSV/JSON or PostgreSQL synchronization.
 
 Built with **Next.js 16**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Tailwind CSS 4**.
 
 ## 📸 Screenshots
 
 ### Data Center
-Extract ticket data from Jira with JQL queries, date range selection, scheduled polling, and export to CSV/JSON/PostgreSQL/PowerPoint.
+Extract ticket data from Jira with JQL queries, date range selection, scheduled polling, and export to CSV/JSON/PostgreSQL. The extraction list previews results with key, summary, assignee, and status columns — filter by multiple statuses at once, search, and sort (newest created by default).
 
 <p align="center">
   <img src="docs/screenshots/data-center.png" alt="Data Center - Jira Extraction Panel" width="800" />
@@ -58,6 +58,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **TanStack React Query** — Advanced state management for automated background data synchronization, intelligent caching, and consistent loading states.
 - **Scheduled Polling Resilience** — Server-side background sync persists storage configurations across sessions, ensuring data lands in the correct engine automatically.
 - **Resilient Error Boundaries** — Individual widget isolation ensures that a single metric failure or calculation error never crashes the entire dashboard.
+- **Hardened Local API Surface** — Unauthenticated endpoints accept loopback-origin requests only (CSRF protection), Jira issue keys are validated before use, and ETL runs are marked complete only after a fully successful load.
 - **Server-Side Calculation with Smart Caching** — KPI computation runs on the server via the calculation API, with TanStack Query handling caching, background refetching, and consistent loading states to keep the UI responsive even with tens of thousands of tickets.
 
 ---
@@ -67,8 +68,9 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 ### Jira ETL & Data Extraction
 - **Dynamic Storage Engines** — Store your master dataset locally in SQLite for privacy or on Supabase for team-wide accessibility via Metabase.
 - **Master Dataset Management** — Automatically tracks additions, updates, and deletions to maintain a faithful local mirror of Jira data.
-- **Scheduled Polling** — Robust server-side background sync (1min–4hr intervals) that survives restarts and hot-reloads.
+- **Scheduled Polling** — Robust server-side background sync (1min–4hr intervals) that survives restarts and hot-reloads; the extraction list silently refreshes when a scheduled run completes.
 - **Extraction Logic** — Smart `update-only` mode that fetches only modified tickets since the last sync to minimize API load.
+- **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
 **29 built-in plugins** (21 core + 8 time-series) organized by business domain:
@@ -119,7 +121,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 All time-based KPIs **exclude weekends and German holidays** (all 16 states supported), with configurable work hours.
 
 ### 🎯 Plugin Architecture
-**File-Based Auto-Discovery System** — Plugins are stored as independent files in domain-based directories, enabling automatic discovery and hot-reload without server restart.
+**File-Based Auto-Discovery System** — Plugins are stored as independent files in domain-based directories and registered automatically at server startup; a file watcher tracks the custom-plugin directory for changes.
 
 ```
 src/lib/kpi/plugins/
@@ -148,6 +150,7 @@ src/lib/kpi/plugins/
 - **Domain Organization** — Group custom plugins by business domain
 - **Validation** — Automatic plugin structure validation before registration
 - **Error Isolation** — Custom plugin failures don't affect built-in plugins
+- **Sandboxed Formulas** — Custom DSL (`COUNT`/`AVG`/`SUM`/`PERCENTAGE`) and JavaScript formulas run in a sandboxed expression interpreter — no `eval`/`new Function`, with an allow-list of safe methods only (see `custom_plugin_guide.md`)
 - **UI Management** — Enable/disable plugins, create new plugins via the Plugin Studio
 
 **Getting Started (file-based):**
@@ -175,7 +178,7 @@ Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targ
 | UI | shadcn/ui, Tailwind CSS 4, Radix UI, Framer Motion |
 | Database | **Prisma 6 (Dual-Client)** — SQLite (local) + PostgreSQL (Supabase) |
 | Charts | Recharts 2.15 (Interactive Layers) |
-| Exports | PptxGenJS (PowerPoint), html-to-image (PNG), CSV/JSON |
+| Exports | html-to-image (PNG), CSV/JSON |
 
 ---
 
@@ -195,6 +198,17 @@ npm run dev
 > hook (`scripts/prisma-setup.mjs`), which generates the SQLite/PostgreSQL clients and
 > pushes the schema to the local SQLite database.
 
+### Environment variables
+Copy `.env.example` to `.env` and adjust the values as needed:
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Database connection string (SQLite file path or PostgreSQL URL) |
+| `JIRA_WEBHOOK_SECRET` | Shared secret used to authenticate incoming Jira webhooks |
+| `CUSTOM_PLUGIN_DIR` | Directory scanned for custom KPI plugins (defaults to `data/custom-plugins/`) |
+| `PORT` | Port the server listens on |
+| `HOSTNAME` | Hostname/IP the server binds to |
+
 ### Database Initialization
 If you are using an external PostgreSQL database (like Supabase), initialize the schema once.
 
@@ -212,6 +226,20 @@ If you are using an external PostgreSQL database (like Supabase), initialize the
 # Create a portable Windows release folder with database bundled
 build-exe.bat
 ```
+
+---
+
+## 🧪 Development & Testing
+
+```bash
+npm test               # Vitest unit/integration suite
+npm run test:coverage  # Coverage with enforced minimum thresholds (ratchet)
+npm run e2e            # Playwright end-to-end suite (reuses a running dev server)
+npm run lint           # ESLint
+npm run type-check     # TypeScript strict check
+```
+
+Unit tests live in `__tests__/` directories next to the code they cover (shared mocks in `src/test/`); E2E specs live in `e2e/`. CI runs coverage, lint, and type-check on every push to `main`/`develop`.
 
 ---
 

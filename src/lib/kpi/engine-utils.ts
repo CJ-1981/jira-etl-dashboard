@@ -98,7 +98,9 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     updated: new Date(issue.fields?.updated || (issue as any).updated || Date.now()),
     resolved: (issue.fields?.resolutiondate || (issue as any).resolved) ? new Date(issue.fields?.resolutiondate || (issue as any).resolved) : null,
     dueDate: (issue.fields?.duedate || (issue as any).dueDate) ? new Date(issue.fields?.duedate || (issue as any).dueDate) : null,
-    storyPoints: (issue.fields as any)?.customfield_10002 || (issue as any).storyPoints || null,
+    // @MX:REASON: ?? instead of || — a story points value of 0 is meaningful
+    // and must not fall through to the next fallback.
+    storyPoints: (issue.fields as any)?.customfield_10002 ?? (issue as any).storyPoints ?? null,
     labels: issue.fields?.labels || (issue as any).labels || [],
     components: issue.fields?.components?.map((c) => c.name) || (issue as any).components || [],
     transitions,
@@ -109,6 +111,9 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
         created: new Date(c.created),
       }))
       .sort((a: { created: Date }, b: { created: Date }) => a.created.getTime() - b.created.getTime()),
+    // @MX:NOTE: Raw changelog is preserved because some plugins (reassignment_count)
+    // need assignee-change history, which status-only `transitions` cannot represent.
+    changelog: issue.changelog || (issue as any).changelog || undefined,
   };
 
   if (transformCache.size >= TRANSFORM_CACHE_SIZE) {

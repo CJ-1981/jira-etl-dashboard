@@ -54,6 +54,11 @@ echo "Done."
 echo ""
 
 echo "[5/5] Packaging executable..."
+echo ""
+echo "[WARNING] Packaging with --no-include-node: Node.js is NOT bundled."
+echo "          The target Mac must have Node.js installed and on PATH,"
+echo "          otherwise the built app will not run."
+echo ""
 mkdir -p dist
 npx caxa \
   --input ".next/standalone" \
@@ -66,4 +71,6 @@ echo ""
 echo "============================================="
 echo " Build complete!"
 echo " File: dist/JIRA ETL Dashboard"
+echo " NOTE: Node.js is not bundled - the target"
+echo " machine must have Node.js installed."
 echo "============================================="

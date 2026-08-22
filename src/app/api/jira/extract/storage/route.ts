@@ -3,12 +3,21 @@ import { getDb } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
-    const { activeConnections, storageConfig } = await request.json();
-    const db = getDb(storageConfig);
-    
-    if (!activeConnections || !Array.isArray(activeConnections)) {
-      return NextResponse.json({ success: false, error: 'activeConnections array is required' }, { status: 400 });
+    // The body can be absent on the first request to a freshly-compiled dev
+    // route (Next.js holds the request during compile and the body stream is
+    // lost). Degrade to empty stats instead of crashing so the panel doesn't
+    // surface a spurious "Failed to retrieve storage info" toast.
+    let body: { activeConnections?: unknown[]; storageConfig?: unknown } = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Empty/unparseable body — fall through with empty defaults below.
     }
+    const activeConnections = Array.isArray(body.activeConnections)
+      ? body.activeConnections
+      : [];
+    const storageConfig = body.storageConfig;
+    const db = getDb(storageConfig as Parameters<typeof getDb>[0]);
 
     const activeConnectionRefs = activeConnections.map((c: any) => c.id);
 

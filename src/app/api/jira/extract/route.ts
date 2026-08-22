@@ -11,7 +11,46 @@ const EST_FIELD_BYTES_PER_KEY = 50; // Average bytes per field key-value pair
 const EST_CHANGE_HISTORY_BYTES = 200; // Average bytes per changelog history entry
 const FIXED_OVERHEAD_BYTES = 100; // Fixed overhead per issue (metadata, etc.)
 
+/**
+ * @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+ * @MX:REASON: This endpoint is unauthenticated and forwards custom plugin
+ * formulas into the KPI engine. Any website the user visits could POST a
+ * `no-cors` text/plain request to the localhost server. Browsers attach an
+ * `origin` (or `referer`) header to such cross-origin POSTs, so we reject
+ * every request whose origin is not a loopback address. Requests without
+ * these headers (server-side fetches, curl, Electron main process) pass.
+ * @MX:NOTE: Keep this implementation identical to the one in /api/kpi/calculate.
+ */
+function isLoopbackOriginRequest(request: Request): boolean {
+  const headerValue =
+    request.headers.get('origin') || request.headers.get('referer');
+  if (!headerValue) return true;
+
+  let host: string;
+  try {
+    host = new URL(headerValue).hostname;
+  } catch {
+    // Unparseable origin/referer: fail closed.
+    return false;
+  }
+
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  // IPv6 loopback arrives URL-encoded as "[::1]" from URL.hostname.
+  const normalized = host.replace(/^\[|\]$/g, '');
+  return normalized === '::1' || normalized === '0:0:0:0:0:0:0:1';
+}
+
 export async function POST(request: Request) {
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
+  // Hoisted so the outer catch can mark a created run as failed
+  let db: any = null;
+  let etlRun: any = null;
   try {
     let body;
     try {
@@ -38,7 +77,7 @@ export async function POST(request: Request) {
       updateOnly
     } = body;
 
-    const db = getDb(storageConfig);
+    db = getDb(storageConfig);
 
     if (!connectionRef) {
       return NextResponse.json({ success: false, error: 'connectionRef is required' }, { status: 400 });
@@ -130,43 +169,9 @@ export async function POST(request: Request) {
 
     const shouldSave = saveExtraction ?? true;
 
-    // Prune old extractions - Optimization: limited pruning scope
-    // Skip pruning in update-only mode to preserve incremental run history
-    if (shouldSave && connectionRef && !updateOnly) {
-      try {
-        const normalize = (j: string) => j.replace(/created\s*[<>]=\s*"[^"]*"/g, '').replace(/\s+/g, ' ').trim();
-        const currentTemplate = normalize(finalJql);
-
-        const allRuns = await (db as any).etlRun.findMany({
-          where: { connectionRef: connectionRef },
-          select: { id: true, jql: true },
-          take: 50 // Only look at recent runs to prune
-        });
-        
-        const runsToPrune = allRuns.filter((r: any) => normalize(r.jql || '') === currentTemplate);
-        const oldRunIds = runsToPrune.map((r: any) => r.id);
-        
-        if (oldRunIds.length > 0) {
-          console.log(`[Extract API] Pruning ${oldRunIds.length} old runs...`);
-          // Note: Many DBs handle cascading via schema, but we do it manually for SQLite safety
-          const snapshotIds = await (db as any).ticketSnapshot.findMany({
-            where: { etlRunId: { in: oldRunIds } },
-            select: { id: true }
-          });
-          
-          if (snapshotIds.length > 0) {
-            await (db as any).ticketTransition.deleteMany({
-              where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
-            });
-          }
-          await (db as any).ticketSnapshot.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
-          await (db as any).kpiResult.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
-          await (db as any).etlRun.deleteMany({ where: { id: { in: oldRunIds } } });
-        }
-      } catch (pruneError) {
-        console.warn('[Extract API] Pruning failed:', pruneError);
-      }
-    }
+    // @MX:NOTE: Pruning of old extractions is deferred until AFTER the new data is loaded
+    // successfully (see below). Pruning before the write could destroy run history if the
+    // extraction fails mid-run.
 
     // Get existing keys and timestamps
     const existingMasterTickets = await (db as any).masterTicket.findMany({
@@ -179,13 +184,15 @@ export async function POST(request: Request) {
       if (t.jiraKey) existingMap.set(t.jiraKey, t.updated);
     });
     
-    const etlRun = await (db as any).etlRun.create({
+    etlRun = await (db as any).etlRun.create({
       data: {
         connectionRef: connectionRef,
-        status: 'completed',
+        // @MX:NOTE: Run starts as 'extracting' and is promoted to 'completed' only after the
+        // load succeeds. This prevents a mid-run failure from leaving a 'completed' run behind.
+        status: 'extracting',
         ticketsProcessed: issues.length,
         startedAt: new Date(),
-        completedAt: new Date(),
+        completedAt: null,
         jql: finalJql,
         dateFrom: effectiveDateFrom,
         dateTo: effectiveDateTo,
@@ -363,14 +370,18 @@ export async function POST(request: Request) {
     }
 
     // Deletion detection
+    // @MX:NOTE: Only treat a field as date-bounded when it appears as an actual JQL field
+    // operand (e.g. `updated >= ...` / `created BETWEEN ...`). Substring matching previously
+    // false-positived on project keys, labels, and text values containing these words.
+    const DATE_FIELD_OPERAND_RE = /\b(created|updated|resolved(date)?)\s*(>=|<=|>|<|=|BETWEEN)/i;
     let deletedCount = 0;
     const currentKeys = new Set(issues.map(i => i.key));
-    const lowerJql = finalJql.toLowerCase();
-    const isBroadSync = !lowerJql.includes('updated') && !lowerJql.includes('created') && !lowerJql.includes('resolved');
-    
+    const dateFieldMatch = finalJql.match(DATE_FIELD_OPERAND_RE);
+    const isBroadSync = !dateFieldMatch;
+
     // Skip deletion detection in update-only mode
     if (!updateOnly) {
-      if (isBroadSync) {
+      if (isBroadSync && !jql) {
         const existingKeys = Array.from(existingMap.keys());
         const keysToRemove = existingKeys.filter(k => !currentKeys.has(k));
         deletedCount = keysToRemove.length;
@@ -379,10 +390,17 @@ export async function POST(request: Request) {
             where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
           });
         }
-      } else if (effectiveDateFrom) {
+      } else if (isBroadSync) {
+        // Custom JQL without a recognizable date window: the extraction may cover only a subset
+        // of the connection's tickets, so missing keys are not necessarily deleted upstream.
+        console.log('[Extract API] Skipping deletion detection: custom JQL in use; deletion is intentionally conservative.');
+      } else if (effectiveDateFrom && !jql) {
+        // @MX:NOTE: Scoped deletion is only safe for the app-generated broad-sync JQL, where the
+        // date window and the extracted key set are known to line up. For user-provided custom JQL
+        // the extraction may intentionally cover a subset, so missing keys are not deletions.
         let dateField = 'created';
-        if (lowerJql.includes('updated')) dateField = 'updated';
-        else if (lowerJql.includes('resolved')) dateField = 'resolved';
+        if (/updated/i.test(dateFieldMatch![1])) dateField = 'updated';
+        else if (/resolved/i.test(dateFieldMatch![1])) dateField = 'resolved';
 
         const startDate = new Date(effectiveDateFrom);
         const endDate = effectiveDateTo ? new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999)) : new Date();
@@ -401,6 +419,8 @@ export async function POST(request: Request) {
             where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
           });
         }
+      } else if (effectiveDateFrom) {
+        console.log('[Extract API] Skipping deletion detection: custom JQL with a date window in use; deletion is intentionally conservative.');
       }
     }
 
@@ -489,6 +509,50 @@ export async function POST(request: Request) {
       console.error('[Extract API] KPI calculation failed:', kpiError);
     }
 
+    // All data written successfully — promote the run to 'completed'
+    await (db as any).etlRun.update({
+      where: { id: etlRun.id },
+      data: { status: 'completed', completedAt: new Date() },
+    });
+
+    // Prune old extractions AFTER successful load so a mid-run failure never destroys history.
+    // Optimization: limited pruning scope. Skipped in update-only mode to preserve incremental runs.
+    if (shouldSave && connectionRef && !updateOnly) {
+      try {
+        const normalize = (j: string) => j.replace(/created\s*[<>]=\s*"[^"]*"/g, '').replace(/\s+/g, ' ').trim();
+        const currentTemplate = normalize(finalJql);
+
+        const allRuns = await (db as any).etlRun.findMany({
+          where: { connectionRef: connectionRef, id: { not: etlRun.id } },
+          select: { id: true, jql: true },
+          take: 50 // Only look at recent runs to prune
+        });
+
+        const runsToPrune = allRuns.filter((r: any) => normalize(r.jql || '') === currentTemplate);
+        const oldRunIds = runsToPrune.map((r: any) => r.id);
+
+        if (oldRunIds.length > 0) {
+          console.log(`[Extract API] Pruning ${oldRunIds.length} old runs...`);
+          // Note: Many DBs handle cascading via schema, but we do it manually for SQLite safety
+          const snapshotIds = await (db as any).ticketSnapshot.findMany({
+            where: { etlRunId: { in: oldRunIds } },
+            select: { id: true }
+          });
+
+          if (snapshotIds.length > 0) {
+            await (db as any).ticketTransition.deleteMany({
+              where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
+            });
+          }
+          await (db as any).ticketSnapshot.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
+          await (db as any).kpiResult.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
+          await (db as any).etlRun.deleteMany({ where: { id: { in: oldRunIds } } });
+        }
+      } catch (pruneError) {
+        console.warn('[Extract API] Pruning failed:', pruneError);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       etlRunId: etlRun.id,
@@ -508,6 +572,25 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('[Extract API] Critical error:', error);
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    // If the run row was already created, mark it failed so it never stays 'extracting'
+    // nor masquerades as a completed run.
+    if (etlRun && db) {
+      try {
+        await (db as any).etlRun.update({
+          where: { id: etlRun.id },
+          data: {
+            status: 'failed',
+            errorLog: error instanceof Error ? error.message : String(error),
+            completedAt: new Date(),
+          },
+        });
+      } catch (markFailedError) {
+        console.error('[Extract API] Failed to mark ETL run as failed:', markFailedError);
+      }
+    }
+    // Preserve the upstream Jira HTTP status (401/403/429/5xx) so the client
+    // can show a tailored toast; fall back to 500 for unexpected errors.
+    const httpStatus = (error as any)?.status ?? 500;
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: httpStatus });
   }
 }

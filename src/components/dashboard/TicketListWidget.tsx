@@ -2,16 +2,15 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Tooltip as UITooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { Ticket, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Virtuoso } from 'react-virtuoso';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
 import type { JiraIssue } from '@/lib/jira/client';
+
+// @MX:NOTE: Lists above this size are rendered through react-virtuoso so hundreds
+// of rows don't each mount their own DOM nodes.
+const VIRTUALIZATION_THRESHOLD = 100;
 
 interface WeekActivityResult {
   value: number;
@@ -36,6 +35,70 @@ interface TicketListWidgetProps {
   kpis: WidgetKpi[];
   issueMap: Map<string, JiraIssue>;
   jiraBaseUrl: string;
+}
+
+/**
+ * Single ticket row.
+ * @MX:NOTE: The previous per-row Radix Tooltip was replaced with a native `title`
+ * attribute carrying the same details — adequate for a quick hover preview and it
+ * avoids instantiating one tooltip component per row.
+ */
+function TicketRow({
+  issueKey,
+  issue,
+  jiraBaseUrl,
+}: {
+  issueKey: string;
+  issue: JiraIssue;
+  jiraBaseUrl: string;
+}) {
+  const jiraUrl = jiraBaseUrl ? `${jiraBaseUrl}/browse/${issue.key}` : '#';
+  const summaryText = issue.fields?.summary || (issue as any).summary || '';
+  const createdDate = issue.fields?.created || (issue as any).created;
+  const isValidDate = createdDate && !isNaN(new Date(createdDate).getTime());
+  const priority = issue.fields?.priority?.name || (issue as any).priority || '—';
+  const status = issue.fields?.status?.name || (issue as any).status;
+
+  const tooltipText = [
+    issueKey,
+    summaryText,
+    `Priority: ${priority}`,
+    `Status: ${status}`,
+    `Assignee: ${issue.fields?.assignee?.displayName || (issue as any).assignee || 'Unassigned'}`,
+    `Created: ${isValidDate ? new Date(createdDate).toLocaleDateString('en-US') : 'N/A'}`,
+  ].join('\n');
+
+  return (
+    <div
+      title={tooltipText}
+      className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default"
+    >
+      {jiraBaseUrl ? (
+        <a
+          href={jiraUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono font-bold text-blue-500 hover:underline"
+        >
+          {issueKey}
+        </a>
+      ) : (
+        <span className="font-mono font-bold text-slate-500">{issueKey}</span>
+      )}
+      <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">
+        {priority}
+      </Badge>
+      <span
+        className="text-slate-700 dark:text-slate-300 truncate"
+        title={summaryText}
+      >
+        {summaryText}
+      </span>
+      <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">
+        {status}
+      </Badge>
+    </div>
+  );
 }
 
 function WeekSection({
@@ -105,107 +168,54 @@ function WeekSection({
                 {result.value}
               </Badge>
             </div>
-            <div className="overflow-y-auto flex-1 min-h-0">
-              {(result.ticketKeys || []).length === 0 && (
-                <p className="text-[10px] text-slate-400 px-3 py-2">
-                  No tickets
-                </p>
-              )}
-              <TooltipProvider>
-                {(result.ticketKeys || []).map((key) => {
-                  const issue = issueMap.get(key);
-                  if (!issue) return null;
-                  const jiraUrl = jiraBaseUrl
-                    ? `${jiraBaseUrl}/browse/${issue.key}`
-                    : '#';
-                  const summaryText =
-                    issue.fields?.summary || (issue as any).summary || '';
-                  const createdDate =
-                    issue.fields?.created || (issue as any).created;
-                  const isValidDate =
-                    createdDate &&
-                    !isNaN(new Date(createdDate).getTime());
+            {/* @MX:NOTE: max-h gives this scroller a deterministic height so Virtuoso can
+                virtualize long lists; short lists simply size to their content. */}
+            <div className="overflow-y-auto flex-1 min-h-0 max-h-[420px]">
+              {(() => {
+                // Skip rows whose issue is missing from the map (same behavior as before)
+                const tickets = (result.ticketKeys || []).filter((key) =>
+                  issueMap.has(key),
+                );
+                if (tickets.length === 0) {
                   return (
-                    <UITooltip key={key}>
-                      <TooltipTrigger asChild>
-                        <div className="grid grid-cols-[minmax(80px,auto)_minmax(60px,auto)_1fr_minmax(60px,auto)] items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default">
-                          {jiraBaseUrl ? (
-                            <a
-                              href={jiraUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-mono font-bold text-blue-500 hover:underline"
-                            >
-                              {key}
-                            </a>
-                          ) : (
-                            <span className="font-mono font-bold text-slate-500">
-                              {key}
-                            </span>
-                          )}
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] h-4 py-0 justify-center"
-                          >
-                            {issue.fields?.priority?.name ||
-                              (issue as any).priority ||
-                              '—'}
-                          </Badge>
-                          <span
-                            className="text-slate-700 dark:text-slate-300 truncate"
-                            title={summaryText}
-                          >
-                            {summaryText}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] h-4 py-0 justify-center"
-                          >
-                            {issue.fields?.status?.name || (issue as any).status}
-                          </Badge>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent
-                        side="bottom"
-                        hideArrow={true}
-                        className="max-w-md p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xl"
-                      >
-                        <div className="space-y-1">
-                          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                            {key}
-                          </p>
-                          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                            {summaryText}
-                          </p>
-                          <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                            <span className="text-[10px] text-slate-600 dark:text-slate-400">
-                              Priority:{' '}
-                              {issue.fields?.priority?.name ||
-                                (issue as any).priority ||
-                                '—'}
-                            </span>
-                            <span className="text-[10px] text-slate-600 dark:text-slate-400">
-                              Status: {issue.fields?.status?.name || (issue as any).status}
-                            </span>
-                            <span className="text-[10px] text-slate-600 dark:text-slate-400">
-                              Assignee:{' '}
-                              {issue.fields?.assignee?.displayName ||
-                                (issue as any).assignee ||
-                                'Unassigned'}
-                            </span>
-                            <span className="text-[10px] text-slate-600 dark:text-slate-400">
-                              Created:{' '}
-                              {isValidDate
-                                ? new Date(createdDate).toLocaleDateString('en-US')
-                                : 'N/A'}
-                            </span>
-                          </div>
-                        </div>
-                      </TooltipContent>
-                    </UITooltip>
+                    <p className="text-[10px] text-slate-400 px-3 py-2">
+                      No tickets
+                    </p>
                   );
-                })}
-              </TooltipProvider>
+                }
+                if (tickets.length > VIRTUALIZATION_THRESHOLD) {
+                  // Pattern mirrors DrillDownSheet's Virtuoso usage
+                  return (
+                    <Virtuoso
+                      style={{ height: '100%' }}
+                      totalCount={tickets.length}
+                      itemContent={(index) => {
+                        const key = tickets[index];
+                        const issue = issueMap.get(key);
+                        if (!issue) return null;
+                        return (
+                          <TicketRow
+                            issueKey={key}
+                            issue={issue}
+                            jiraBaseUrl={jiraBaseUrl}
+                          />
+                        );
+                      }}
+                    />
+                  );
+                }
+                return tickets.map((key) => {
+                  const issue = issueMap.get(key)!;
+                  return (
+                    <TicketRow
+                      key={key}
+                      issueKey={key}
+                      issue={issue}
+                      jiraBaseUrl={jiraBaseUrl}
+                    />
+                  );
+                });
+              })()}
             </div>
           </div>
         );

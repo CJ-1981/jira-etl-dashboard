@@ -4,23 +4,76 @@ import { ValidationError } from '@/lib/api-error';
 import { log } from '@/lib/logger';
 
 /**
+ * Extract the hostname from a user-supplied host value that may include
+ * protocol, port, path, or bracketed IPv6 form. Returns the lower-cased
+ * hostname with any trailing dot stripped, or '' if nothing remains.
+ */
+function extractHostname(host: string): string {
+  let hostname = host.trim();
+  // Remove protocol if present
+  hostname = hostname.replace(/^https?:\/\//i, '');
+  // Remove path
+  hostname = hostname.split('/')[0];
+  // Handle bracketed IPv6 literals, e.g. `[::1]:5432`
+  const bracketMatch = hostname.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketMatch) {
+    hostname = bracketMatch[1];
+  } else {
+    // Remove port
+    hostname = hostname.split(':')[0];
+  }
+  // Strip a trailing dot (FQDN form, e.g. `example.com.`)
+  return hostname.replace(/\.$/, '').toLowerCase();
+}
+
+/**
  * Validate hostname/IP to prevent SSRF attacks
- * Rejects private/reserved IP ranges (RFC1918, loopback, link-local)
+ * Rejects private/reserved IP ranges (RFC1918, loopback, link-local),
+ * IPv6 literals, and alternate-radix IP encodings (decimal/hex/octal).
  */
 function validateHostAddress(host: string): { valid: boolean; error?: string } {
-  // Allow Supabase domains (already validated below)
-  if (host.includes('.supabase.co')) {
+  if (typeof host !== 'string' || host.trim().length === 0) {
+    return { valid: false, error: 'Invalid hostname format' };
+  }
+
+  // @MX:WARN: Extract the actual hostname BEFORE any allow-list check.
+  // @MX:REASON: The previous `host.includes('.supabase.co')` check matched attacker
+  // suffixes such as `db.x.supabase.co.attacker.com`, which would send the
+  // user-supplied database credentials to a server controlled by the attacker.
+  // Only a hostname that actually ENDS WITH `.supabase.co` may take the allow path.
+  const hostname = extractHostname(host);
+
+  if (!hostname) {
+    return { valid: false, error: 'Invalid hostname format' };
+  }
+
+  // Allow Supabase domains only when the parsed hostname truly ends with `.supabase.co`
+  if (hostname === 'supabase.co' || hostname.endsWith('.supabase.co')) {
     return { valid: true };
   }
 
-  // Extract hostname if URL format provided
-  let hostname = host;
-  try {
-    // Remove protocol if present
-    hostname = hostname.replace(/^https?:\/\//, '');
-    // Remove port and path
-    hostname = hostname.split('/')[0].split(':')[0];
-  } catch {
+  // @MX:WARN: Reject IPv6 literals outright.
+  // @MX:REASON: IPv6 forms (`::1`, `[::1]`, IPv4-mapped `::ffff:127.0.0.1`,
+  // link-local `fe80::/10`, ULA `fc00::/7`) bypass dotted-quad checks and can
+  // reach loopback/internal services. Raw IPv6 literals are never expected as
+  // Supabase or managed-database hosts here.
+  if (hostname.includes(':')) {
+    return { valid: false, error: 'IPv6 addresses are not allowed' };
+  }
+
+  // @MX:WARN: Reject alternate-radix IP encodings (decimal, hexadecimal, octal).
+  // @MX:REASON: `2130706433`, `0x7f.0.0.1` and `0177.0.0.1` all resolve to
+  // 127.0.0.1 on many resolvers, bypassing the dotted-quad range checks below.
+  // Block any host made up purely of numeric/hex/octal labels (with or without dots).
+  const labels = hostname.split('.');
+  const radixLabel = /^(0x[0-9a-f]+|0b[01]+|[0-9]+)$/i; // hex, binary, or decimal integer
+  if (labels.every((label) => label.length > 0 && radixLabel.test(label))) {
+    return { valid: false, error: 'Numeric IP address encodings are not allowed' };
+  }
+
+  // Reject hostnames that are not valid DNS names (blocks userinfo tricks, etc.)
+  const dnsLabel = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i;
+  if (!labels.every((label) => label.length > 0 && label.length <= 63 && dnsLabel.test(label))) {
     return { valid: false, error: 'Invalid hostname format' };
   }
 
@@ -107,17 +160,22 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    // @MX:REASON: Use the parsed hostname (not the raw user input) for all
+    // Supabase-specific behavior below, consistent with the SSRF allow-list above.
+    const parsedHostname = extractHostname(host);
+    const isSupabaseHost = parsedHostname === 'supabase.co' || parsedHostname.endsWith('.supabase.co');
+
     // Detect Supabase connection issues
-    if (host.includes('.supabase.co')) {
+    if (isSupabaseHost) {
       // Check for missing db. prefix
-      if (!host.startsWith('db.') && !host.startsWith('aws-0-')) {
+      if (!parsedHostname.startsWith('db.') && !parsedHostname.startsWith('aws-0-')) {
         return NextResponse.json({
           success: false,
           message: 'Invalid Supabase hostname format',
           error: 'Supabase direct connection host must start with "db."',
           diagnostics: {
-            correct: `db.${host}`,
-            current: host,
+            correct: `db.${parsedHostname}`,
+            current: parsedHostname,
             suggestions: [
               'Use the format: db.<project-ref>.supabase.co',
               'Example: db.nrwuteocoqmvibocjvtv.supabase.co',
@@ -136,7 +194,7 @@ export async function POST(request: Request) {
     });
 
     // Force SSL for Supabase
-    const effectiveSslMode = (host.includes('.supabase.co') && sslMode === 'disable') ? 'prefer' : sslMode;
+    const effectiveSslMode = (isSupabaseHost && sslMode === 'disable') ? 'prefer' : sslMode;
     const sslConfig = effectiveSslMode === 'disable' ? false : { rejectUnauthorized: effectiveSslMode === 'verify-full' };
 
     const pool = new Pool({
@@ -146,7 +204,7 @@ export async function POST(request: Request) {
       user: username,
       password,
       ssl: sslConfig,
-      connectionTimeoutMillis: host.includes('.supabase.co') ? 15000 : 10000, // Longer timeout for Supabase
+      connectionTimeoutMillis: isSupabaseHost ? 15000 : 10000, // Longer timeout for Supabase
     });
 
     try {

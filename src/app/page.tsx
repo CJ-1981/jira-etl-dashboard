@@ -297,19 +297,38 @@ export default function Home() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+
       // Don't trigger if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         return;
+      }
+
+      // Ctrl/Cmd+P — print (works regardless of focus, except while typing above)
+      if (e.key === 'p' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handlePrint();
+        return;
+      }
+
+      // @MX:NOTE: Tightened guard — bare-key shortcuts must not hijack events from
+      // interactive elements (selects, buttons, links, contentEditable, Radix triggers).
+      // Only fire when the event target is document.body or a plain non-interactive element.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (target && target !== document.body) {
+        const tagName = target.tagName;
+        if (
+          tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' ||
+          tagName === 'BUTTON' || tagName === 'A' ||
+          target.isContentEditable
+        ) {
+          return;
+        }
       }
 
       if (e.key === '1') setActiveTab('extract');
       if (e.key === '2') setActiveTab('kpi');
       if (e.key === '3') setActiveTab('settings');
-      
-      if (e.key === 'p' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        handlePrint();
-      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

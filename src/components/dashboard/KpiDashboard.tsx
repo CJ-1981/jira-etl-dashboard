@@ -60,7 +60,7 @@ import {
   TrendingUp, Calendar, EyeOff, RotateCw, Plus,
   Download, Loader2, Sliders,
   ArrowUp, ChevronDown, ChevronUp, Database, RefreshCw,
-  Columns, Users,
+  Columns, Users, X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
@@ -241,6 +241,15 @@ export function KpiDashboard() {
     dateTo ? new Date(dateTo) : new Date(),
     globalFilters
   );
+  const { isError: isCalcError, error: calcError } = kpiCalculations;
+
+  // Dismissal state for the calculation error banner.
+  // @MX:NOTE: Automatically re-arms when the error identity changes (or clears),
+  // so a new failure surfaces even after a previous dismissal.
+  const [calcErrorDismissed, setCalcErrorDismissed] = useState(false);
+  useEffect(() => {
+    setCalcErrorDismissed(false);
+  }, [calcError]);
 
   // Table-only view — grid view removed
 
@@ -482,6 +491,19 @@ export function KpiDashboard() {
   const calculating = kpiCalculations.isCalculating;
   const runCalculation = kpiCalculations.triggerCalculation;
 
+  // @MX:NOTE: Safe wrapper for fire-and-forget recalculation triggers.
+  // @MX:REASON: The upgraded useKpiCalculations throws on calculation failures, so
+  // bare invocations could produce unhandled promise rejections. This catches any
+  // rejection, logs it, and surfaces it via toast. The hook's isError/error state
+  // drives the error banner, so last good results stay visible underneath.
+  const runCalculationSafe = useCallback(() => {
+    hasUserInitiatedCalc.current = true;
+    runCalculation().catch((err) => {
+      console.error('[KpiDashboard] KPI calculation failed:', err);
+      toast.error(err instanceof Error ? err.message : 'KPI calculation failed');
+    });
+  }, [runCalculation]);
+
   // @MX:NOTE: Calculate KPI results for a specific widget with custom JQL
   // @MX:REASON: Independent widget calculations allow side-by-side data comparison
   const calculateWidgetJql = useCallback(async (widgetId: string, jqlFilter: any) => {
@@ -540,7 +562,10 @@ export function KpiDashboard() {
         }
 
         if (field && operator && value) {
-          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
+          // @MX:NOTE: Refine on top of the already globally-filtered issues (global filters first,
+          // then widget-level JQL). Override mode skipped the global filtering above, so this
+          // correctly starts from the full dataset in that case.
+          filteredIssues = filteredIssues.filter((issue: any) => {
             // Support both flat (issue.summary) and nested (issue.fields.summary) issue shapes
             const rawValue = issue[field] ?? issue.fields?.[field];
             let normalizedValue = rawValue;
@@ -571,8 +596,9 @@ export function KpiDashboard() {
           });
         } else {
           // Fallback: full-text search across summary, key, description
+          // (also applied on top of the globally filtered issues in refine mode)
           const queryLower = query.toLowerCase();
-          filteredIssues = masterDatasetInfo.issues.filter((issue: any) => {
+          filteredIssues = filteredIssues.filter((issue: any) => {
             const text = `${issue.summary ?? issue.fields?.summary ?? ''} ${issue.key} ${issue.description ?? issue.fields?.description ?? ''}`.toLowerCase();
             return text.includes(queryLower);
           });
@@ -673,7 +699,20 @@ export function KpiDashboard() {
         return;
       }
 
-      const activePlugins = JSON.parse(raw) as string[];
+      let activePlugins: string[];
+      try {
+        activePlugins = JSON.parse(raw) as string[];
+      } catch (error) {
+        // Corrupted config - fall back to showing all plugins instead of crashing
+        console.error('Failed to parse cfg_active_plugins, falling back to all plugins:', error);
+        lastFilteredPlugins.current = new Set(['__DEFAULT_ALL__']);
+        return;
+      }
+      if (!Array.isArray(activePlugins)) {
+        console.error('Invalid cfg_active_plugins structure, falling back to all plugins');
+        lastFilteredPlugins.current = new Set(['__DEFAULT_ALL__']);
+        return;
+      }
       const activePluginsSet = new Set<string>(activePlugins);
 
       // Skip ONLY if both active plugins haven't changed AND kpiResults/charts are already likely filtered
@@ -685,7 +724,8 @@ export function KpiDashboard() {
       // (e.g. if kpiResults contains items not in activePluginsSet)
       if (isPluginsSame) {
         const needsKpiFilter = kpiResults.some(kpi => !activePluginsSet.has(kpi.pluginId));
-        const needsChartFilter = charts.some(chart => chart.kpiId && !activePluginsSet.has(chart.kpiId));
+        // Chart configs are intentionally preserved when no plugins are active (see below)
+        const needsChartFilter = activePlugins.length > 0 && charts.some(chart => chart.kpiId && !activePluginsSet.has(chart.kpiId));
         if (!needsKpiFilter && !needsChartFilter) return;
       }
 
@@ -701,10 +741,13 @@ export function KpiDashboard() {
         }
       }
 
-      // Filter dashboard charts to only include active plugins
-      if (activePlugins.length === 0) {
-        if (charts.length > 0) setCharts([]);
-      } else {
+      // Filter dashboard charts to only include active plugins.
+      // @MX:NOTE: When all plugins are hidden we deliberately keep chart configs intact.
+      // @MX:REASON: "No plugins selected" is a visibility state, not a user deletion of charts.
+      // Wiping charts here would persist an empty array via page-level effects and permanently
+      // destroy user chart configurations. The chart section is not rendered while kpiResults
+      // is empty, so configs are simply restored once plugins are re-enabled.
+      if (activePlugins.length > 0) {
         const filteredCharts = charts.filter(chart => !chart.kpiId || activePlugins.includes(chart.kpiId));
         if (filteredCharts.length !== charts.length) {
           setCharts(filteredCharts);
@@ -767,18 +810,36 @@ export function KpiDashboard() {
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      const target = e.target as HTMLElement | null;
+
+      // Don't trigger if user is typing in an input — Escape still blurs it
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         if (e.key === 'Escape') {
-          (e.target as HTMLElement).blur();
+          target.blur();
         }
         return;
       }
 
+      // @MX:NOTE: Tightened guard — bare-key shortcuts must not hijack events from
+      // interactive elements (selects, buttons, links, contentEditable, Radix triggers).
+      // Only fire when the event target is document.body or a plain non-interactive element.
+      if (target && target !== document.body) {
+        const tagName = target.tagName;
+        if (
+          tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' ||
+          tagName === 'BUTTON' || tagName === 'A' ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+
+      // No modifier keys for bare shortcuts (avoids eating Ctrl+R browser reload etc.)
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       if (e.key.toLowerCase() === 'r') {
         e.preventDefault();
-        hasUserInitiatedCalc.current = true;
-        runCalculation();
+        runCalculationSafe();
         toast.info('Recalculating KPIs...');
       }
 
@@ -792,7 +853,7 @@ export function KpiDashboard() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [runCalculation, setFilterPanelOpen]);
+  }, [runCalculationSafe, setFilterPanelOpen]);
 
   const sortedKpiResults = useMemo(() => {
     // Use activePlugins from usePluginVisibility hook
@@ -981,8 +1042,7 @@ export function KpiDashboard() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      hasUserInitiatedCalc.current = true;
-                      runCalculation();
+                      runCalculationSafe();
                       toast.info('Recalculating KPIs...');
                     }}
                     disabled={calculating}
@@ -1209,6 +1269,53 @@ export function KpiDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Calculation Error Banner — non-blocking; last good results stay visible below */}
+      {isCalcError && !calcErrorDismissed && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 rounded-lg border border-red-500/20 bg-red-50/80 dark:bg-red-500/10 backdrop-blur-sm px-4 py-3 animate-in fade-in duration-300"
+        >
+          <div className="flex items-start gap-2.5 min-w-0">
+            <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                KPI calculation failed
+              </p>
+              <p className="text-xs text-red-600/90 dark:text-red-400/90 break-words">
+                {calcError?.message || 'An unexpected error occurred while calculating KPIs.'}
+              </p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Showing last successful results.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[10px] font-bold text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-500/10 gap-1"
+              onClick={() => {
+                runCalculationSafe();
+                toast.info('Recalculating KPIs...');
+              }}
+              disabled={calculating}
+            >
+              <RefreshCw className={`h-3 w-3 ${calculating ? 'animate-spin' : ''}`} />
+              Retry
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Dismiss error"
+              className="h-7 w-7 p-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              onClick={() => setCalcErrorDismissed(true)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {kpiResults.length > 0 && (<>
         <div className="space-y-4">
@@ -2537,8 +2644,7 @@ export function KpiDashboard() {
                   size="sm"
                   className="rounded-full h-8 px-4 bg-blue-600 hover:bg-blue-700 text-xs font-bold shadow-lg shadow-blue-600/20 gap-2"
                   onClick={() => {
-                    hasUserInitiatedCalc.current = true;
-                    runCalculation();
+                    runCalculationSafe();
                     toast.info('Recalculating KPIs...');
                   }}
                   disabled={calculating}

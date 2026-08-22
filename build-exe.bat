@@ -66,7 +66,7 @@ copy /y "launcher.cjs" ".next\standalone\launcher.cjs" >nul
 call node scripts/create-db-template.mjs
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Failed to create database template.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 if not exist ".next\standalone\db" mkdir ".next\standalone\db"

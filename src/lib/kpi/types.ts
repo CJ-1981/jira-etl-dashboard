@@ -223,6 +223,15 @@ export interface TransformedIssue {
   transitions: StatusTransition[];
   timeInStatus: Record<string, number>;
   comments: Array<{ author: string; created: Date }>;
+  /** Raw Jira changelog (present when the source issue carries one; read by e.g. reassignment_count). */
+  changelog?: {
+    histories: Array<{
+      id?: string;
+      author?: { displayName: string };
+      created?: string;
+      items: Array<{ field: string; from: string | null; to: string | null }>;
+    }>;
+  };
 }
 
 /**

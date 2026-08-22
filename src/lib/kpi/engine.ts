@@ -9,11 +9,15 @@ import type { GermanState } from '../holidays/german-holidays';
 import type { JiraIssue } from '../jira/client';
 import { extractSelectFieldValue } from '../jira/client';
 
-// @MX:NOTE: Module-level WeakMap to cache compiled JavaScript functions without mutating definitions
+// @MX:NOTE: Module-level WeakMap to cache compiled custom formula functions without mutating definitions
 // @MX:REASON: Prevents pollution of caller-provided objects and enables safe garbage collection
-type CompiledFunction = (context: KpiContext) => KpiResult | KpiResult[];
+// @MX:WARN: SECURITY BOUNDARY — values in this cache are produced exclusively by
+// compileCustomFormula() (a sandboxed parser + interpreter). `new Function`/`eval`
+// must never be used here: formulas arrive over unauthenticated HTTP endpoints.
+type CompiledFunction = (context: KpiContext) => unknown;
 const compiledFnCache = new WeakMap<object, CompiledFunction>();
 import { PluginLoader } from './plugin-loader';
+import { compileCustomFormula } from './custom-formula';
 import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
 import { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone } from './engine-utils';
 
@@ -119,6 +123,87 @@ interface Preprocessed {
   prevPeriodTransformed: TransformedIssue[];
   /** Previous period boundaries */
   prevPeriod: { start: Date; end: Date };
+}
+
+// ─── Custom plugin result sanitization ───────────────────────────────────────
+// @MX:WARN: SECURITY BOUNDARY — values produced by user-supplied formulas flow
+// into storage/API responses. Formula output is sanitized at this boundary:
+// values must be finite numbers, name/unit must be strings, non-object entries
+// are dropped, and nested details/dimensions keep only scalar content.
+
+/** True when the value looks like a KpiResult object (has a defined `value`). */
+function hasValueProperty(entry: unknown): boolean {
+  return entry !== null && typeof entry === 'object' &&
+    typeof (entry as Record<string, unknown>).value !== 'undefined';
+}
+
+function finiteNumberOrZero(value: unknown): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+/** Sanitize one formula-produced KpiResult object; returns null if unusable. */
+function sanitizeKpiResultEntry(
+  entry: unknown,
+  defaults: { name: string; unit: string }
+): KpiResult | null {
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return null;
+  const raw = entry as Record<string, unknown>;
+
+  const result: KpiResult = {
+    name: typeof raw.name === 'string' && raw.name ? raw.name : defaults.name,
+    value: finiteNumberOrZero(raw.value),
+    unit: typeof raw.unit === 'string' ? raw.unit : defaults.unit,
+  };
+
+  if (raw.dimensions !== null && typeof raw.dimensions === 'object' && !Array.isArray(raw.dimensions)) {
+    const dimensions: Record<string, string> = {};
+    for (const [key, val] of Object.entries(raw.dimensions as Record<string, unknown>)) {
+      const t = typeof val;
+      if (t === 'string' || t === 'number' || t === 'boolean') dimensions[key] = String(val);
+    }
+    result.dimensions = dimensions;
+  }
+
+  if (Array.isArray(raw.details)) {
+    const details: NonNullable<KpiResult['details']> = [];
+    for (const item of raw.details) {
+      if (item === null || typeof item !== 'object' || Array.isArray(item)) continue;
+      const detail = item as Record<string, unknown>;
+      const sanitizedDetail: { label: string; value: number; unit?: string } = {
+        label: typeof detail.label === 'string' ? detail.label : 'Detail',
+        value: finiteNumberOrZero(detail.value),
+      };
+      if (typeof detail.unit === 'string') sanitizedDetail.unit = detail.unit;
+      details.push(sanitizedDetail);
+    }
+    result.details = details;
+  }
+
+  return result;
+}
+
+/**
+ * Normalize any formula output into a safe KpiResult[].
+ * Result objects/arrays are sanitized field by field; anything else is treated
+ * as a scalar value and coerced to a finite number (NaN/Infinity become 0).
+ */
+function sanitizeFormulaResults(
+  result: unknown,
+  defaults: { name: string; unit: string }
+): KpiResult[] {
+  if (Array.isArray(result) && result.length > 0 && hasValueProperty(result[0])) {
+    const sanitized = result
+      .map((entry) => sanitizeKpiResultEntry(entry, defaults))
+      .filter((entry): entry is KpiResult => entry !== null);
+    if (sanitized.length > 0) return sanitized;
+    return [{ name: defaults.name, value: 0, unit: defaults.unit }];
+  }
+  if (hasValueProperty(result)) {
+    const sanitized = sanitizeKpiResultEntry(result, defaults);
+    if (sanitized) return [sanitized];
+  }
+  return [{ name: defaults.name, value: finiteNumberOrZero(result), unit: defaults.unit }];
 }
 
 // ─── KPI Engine ──────────────────────────────────────────────────────────────
@@ -589,114 +674,42 @@ export class KpiEngine {
       pluginType: 'custom',
       isActive: true,
       calculate(context) {
+        const defaults = { name: definition.name, unit: definition.unit };
         if (definition.language === 'javascript') {
           try {
             let fn = compiledFnCache.get(definition);
             if (!fn) {
-              fn = new Function('context', definition.formula) as CompiledFunction;
+              fn = compileCustomFormula(definition.formula, 'javascript');
               compiledFnCache.set(definition, fn);
             }
-            const result = fn!(context);
-            if (Array.isArray(result) && result.length > 0 && typeof result[0].value !== 'undefined') {
-              return result;
-            }
-            return [{ name: definition.name, value: Number(result) || 0, unit: definition.unit }];
+            // @MX:WARN: Formula output is sanitized at the boundary — result
+            // objects get finite values/string fields, non-object entries are
+            // dropped, scalars are coerced with an explicit isFinite guard.
+            return sanitizeFormulaResults(fn!(context), defaults);
           } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             console.error('Plugin JS error:', errorMessage);
             return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'JS Error', value: 0 }] }];
           }
         }
-        // Parse and execute the custom formula
-        return executeCustomFormula(definition.formula, context, definition);
+        // DSL formulas: compile once into a sandboxed evaluator (cached like JS),
+        // returning the numeric value wrapped into the plugin's KpiResult shape.
+        // Output passes through the same sanitizer as the JS branch.
+        try {
+          let fn = compiledFnCache.get(definition);
+          if (!fn) {
+            fn = compileCustomFormula(definition.formula, 'dsl');
+            compiledFnCache.set(definition, fn);
+          }
+          return sanitizeFormulaResults(fn!(context), defaults);
+        } catch {
+          return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'Parse Error', value: 0 }] }];
+        }
       },
     };
 
     this.register(customPlugin);
     return customPlugin;
-  }
-}
-
-/**
- * Execute custom formula DSL for plugin extensions
- */
-function executeCustomFormula(
-  formula: string,
-  context: KpiContext,
-  definition: { id: string; name: string; unit: string }
-): KpiResult[] {
-  const issues = context.issues;
-
-  try {
-    // Simple formula parser supporting:
-    // - COUNT(issues where <condition>)
-    // - AVG(<field>) where <condition>
-    // - SUM(<field>) where <condition>
-    // - PERCENTAGE(<condition1>) of <condition2>
-
-    const match = formula.match(/^(\w+)\((.+)\)$/i);
-    if (!match) {
-      return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'Error', value: 0 }] }];
-    }
-
-    const func = match[1].toUpperCase();
-    const args = match[2];
-
-    let value = 0;
-
-    switch (func) {
-      case 'COUNT': {
-        const filtered = applyFilter(issues, args);
-        value = filtered.length;
-        break;
-      }
-      case 'AVG': {
-        const [field, whereClause] = args.split(' WHERE ');
-        const filtered = whereClause ? applyFilter(issues, whereClause) : issues;
-        if (filtered.length === 0) { value = 0; break; }
-
-        let sum = 0;
-        let numericCount = 0;
-
-        for (const issue of filtered) {
-          const fieldValue = getFieldValue(issue, field.trim());
-          if (typeof fieldValue === 'number') {
-            sum += fieldValue;
-            numericCount++;
-          }
-        }
-
-        if (numericCount === 0) {
-          value = 0;
-        } else {
-          value = Math.round((sum / numericCount) * 100) / 100;
-        }
-        break;
-      }
-      case 'SUM': {
-        const [field, whereClause] = args.split(' WHERE ');
-        const filtered = whereClause ? applyFilter(issues, whereClause) : issues;
-        value = filtered.reduce((acc, issue) => {
-          const fieldValue = getFieldValue(issue, field.trim());
-          return acc + (typeof fieldValue === 'number' ? fieldValue : 0);
-        }, 0);
-        value = Math.round(value * 100) / 100;
-        break;
-      }
-      case 'PERCENTAGE': {
-        const parts = args.split(' OF ');
-        const numerator = applyFilter(issues, parts[0]).length;
-        const denominator = applyFilter(issues, parts[1] || 'true').length;
-        value = denominator > 0 ? Math.round((numerator / denominator) * 10000) / 100 : 0;
-        break;
-      }
-      default:
-        return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'Unknown Function', value: 0 }] }];
-    }
-
-    return [{ name: definition.name, value, unit: definition.unit }];
-  } catch {
-    return [{ name: definition.name, value: 0, unit: definition.unit, details: [{ label: 'Parse Error', value: 0 }] }];
   }
 }
 

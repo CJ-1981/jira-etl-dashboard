@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb, buildPgUrl } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 
 export async function POST(request: Request) {

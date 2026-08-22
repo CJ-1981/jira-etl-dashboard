@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { JiraClient } from '@/lib/jira/client';
 import { handleApiError, ValidationError } from '@/lib/api-error';
-import { UrlSchema, EmailSchema } from '@/lib/validation/schemas';
 import { log } from '@/lib/logger';
 
 export async function POST(request: Request) {

@@ -53,30 +53,45 @@ export async function POST(request: Request) {
     // If a view with the same connectionRef and name exists, we might want to skip or overwrite.
     // For simplicity, we'll just create them. If IDs collide, Prisma will error unless we use upsert.
     
-    const results: any[] = [];
-    for (const viewData of views) {
-      const { id, name, connectionRef, data, isDefault, autoSaveEnabled } = viewData;
-      
-      // Upsert by ID if provided, otherwise by Name/ConnectionRef (though the model doesn't have a unique constraint on name/connectionRef)
-      const view = await (db as any).dashboardView.upsert({
-        where: { id: id || 'new-view-' + Math.random() },
-        update: {
-          name,
-          connectionRef,
-          data: typeof data === 'string' ? data : JSON.stringify(data),
-          isDefault: !!isDefault,
-          autoSaveEnabled: !!autoSaveEnabled,
-        },
-        create: {
-          name,
-          connectionRef,
-          data: typeof data === 'string' ? data : JSON.stringify(data),
-          isDefault: !!isDefault,
-          autoSaveEnabled: !!autoSaveEnabled,
+    const results: any[] = await (db as any).$transaction(async (tx: any) => {
+      const upserted: any[] = [];
+      for (const viewData of views) {
+        const { id, name, connectionRef, data, isDefault, autoSaveEnabled } = viewData;
+
+        // Upsert by ID if provided, otherwise by Name/ConnectionRef (though the model doesn't have a unique constraint on name/connectionRef)
+        const view = await tx.dashboardView.upsert({
+          where: { id: id || 'new-view-' + Math.random() },
+          update: {
+            name,
+            connectionRef,
+            data: typeof data === 'string' ? data : JSON.stringify(data),
+            isDefault: !!isDefault,
+            autoSaveEnabled: !!autoSaveEnabled,
+          },
+          create: {
+            name,
+            connectionRef,
+            data: typeof data === 'string' ? data : JSON.stringify(data),
+            isDefault: !!isDefault,
+            autoSaveEnabled: !!autoSaveEnabled,
+          }
+        });
+
+        // @MX:WARN - Concurrency Risk: Atomic default view enforcement required
+        // @MX:REASON - Importing multiple views flagged isDefault would otherwise leave several
+        // defaults per connectionRef. Clear other defaults in the same transaction to maintain
+        // the single-default invariant (mirrors the PATCH handler in views/[id]/route.ts).
+        if (isDefault) {
+          await tx.dashboardView.updateMany({
+            where: { connectionRef, isDefault: true, id: { not: view.id } },
+            data: { isDefault: false }
+          });
         }
-      });
-      results.push(view);
-    }
+
+        upserted.push(view);
+      }
+      return upserted;
+    });
 
     return NextResponse.json({ success: true, count: results.length });
   } catch (error) {

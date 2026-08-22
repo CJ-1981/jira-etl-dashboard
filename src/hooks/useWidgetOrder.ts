@@ -104,7 +104,13 @@ export function useWidgetOrder(): UseWidgetOrderResult {
   // Persist to local storage on change
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (isSyncing.current) return;
+    // Skip exactly one persist for state updates caused by syncing from
+    // another instance (avoids echo writes). Reset the flag here so that
+    // subsequent user-initiated changes persist normally.
+    if (isSyncing.current) {
+      isSyncing.current = false;
+      return;
+    }
 
     try {
       isSelfWriting.current = true;

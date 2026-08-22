@@ -153,16 +153,27 @@ export function ViewManager() {
     }
   };
 
-  const fetchViews = async (restoreViewId: string | null = null) => {
-    if (!activeConnectionRef) return;
+  // @MX:NOTE: connectionRef is passed in (not read from closure) and stale responses
+  // are ignored via AbortController, so a slow response for a previous connection
+  // can never overwrite the view list of the current connection.
+  const fetchViews = async (
+    connectionRef: string,
+    restoreViewId: string | null = null,
+    signal?: AbortSignal
+  ) => {
+    if (!connectionRef) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        connectionRef: activeConnectionRef,
+        connectionRef,
         storageConfig: JSON.stringify(storageConfig)
       });
-      const res = await fetch(`/api/dashboard/views?${params}`);
+      const res = await fetch(`/api/dashboard/views?${params}`, { signal });
       const data = await res.json();
+
+      // Ignore responses for a connection that is no longer active
+      if (connectionRef !== activeConnectionRef) return;
+
       if (data.success) {
         setSavedViews(data.views);
 
@@ -184,22 +195,37 @@ export function ViewManager() {
         }
       }
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Request was aborted on connection change/unmount — nothing to do
+        return;
+      }
       console.error('Failed to fetch views:', error);
     } finally {
-      setLoading(false);
+      // Only clear loading if this is still the request for the active connection
+      if (connectionRef === activeConnectionRef) {
+        setLoading(false);
+      }
     }
   };
 
   // Fetch views on connection change
   useEffect(() => {
-    if (activeConnectionId) {
+    // Capture the requested connectionRef so resolve can be compared against it
+    const requestedConnectionRef = activeConnectionId;
+
+    if (requestedConnectionRef) {
+      const controller = new AbortController();
+
       // Try to restore the last active view for this connection
-      const savedActiveViewId = localStorage.getItem(`activeView_${activeConnectionRef}`);
+      const savedActiveViewId = localStorage.getItem(`activeView_${requestedConnectionRef}`);
 
       // @MX:WARN - Closure Risk: fetchViews must be called with fresh state
       // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from
       // stale closures if fetchViews depends on the activeView value from the current render.
-      fetchViews(savedActiveViewId);
+      fetchViews(requestedConnectionRef, savedActiveViewId, controller.signal);
+
+      // Abort in-flight fetch when the connection changes or on unmount
+      return () => controller.abort();
     } else {
       setSavedViews([]);
       setActiveView(null);

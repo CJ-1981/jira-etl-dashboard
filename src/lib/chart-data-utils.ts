@@ -18,6 +18,7 @@ export interface KpiResult {
       [key: string]: any;
     };
     details?: Array<{ label: string; value: number; unit?: string }>;
+    ticketKeys?: string[];
     timeSeries?: Array<{
       period: string;
       date: Date;

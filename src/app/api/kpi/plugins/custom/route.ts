@@ -52,7 +52,44 @@ export async function GET() {
  *   version?: string;
  * }
  */
+/**
+ * @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+ * @MX:REASON: This endpoint is unauthenticated and writes user-supplied plugin
+ * code to disk (which is later imported). Any website the user visits could
+ * POST a `no-cors` text/plain request to the localhost server to plant a
+ * plugin. Browsers attach an `origin` (or `referer`) header to such
+ * cross-origin POSTs, so we reject every request whose origin is not a
+ * loopback address. Requests without these headers (server-side fetches,
+ * curl, Electron main process) pass through.
+ * @MX:NOTE: Keep this implementation identical to the one in /api/kpi/calculate.
+ */
+function isLoopbackOriginRequest(request: Request): boolean {
+  const headerValue =
+    request.headers.get('origin') || request.headers.get('referer');
+  if (!headerValue) return true;
+
+  let host: string;
+  try {
+    host = new URL(headerValue).hostname;
+  } catch {
+    // Unparseable origin/referer: fail closed.
+    return false;
+  }
+
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  // IPv6 loopback arrives URL-encoded as "[::1]" from URL.hostname.
+  const normalized = host.replace(/^\[|\]$/g, '');
+  return normalized === '::1' || normalized === '0:0:0:0:0:0:0:1';
+}
+
 export async function POST(request: Request) {
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { id, name, domain, unit, calculate, description, version } = body;

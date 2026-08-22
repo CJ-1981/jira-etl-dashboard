@@ -3,7 +3,43 @@ import { KpiEngine } from '@/lib/kpi/engine';
 import type { JiraIssue } from '@/lib/jira/client';
 import { getDb } from '@/lib/db';
 
+/**
+ * @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+ * @MX:REASON: This endpoint is unauthenticated and accepts custom plugin
+ * formulas. Any website the user visits could POST a `no-cors` text/plain
+ * request to the localhost server. Browsers attach an `origin` (or
+ * `referer`) header to such cross-origin POSTs, so we reject every request
+ * whose origin is not a loopback address. Requests without these headers
+ * (server-side fetches, curl, Electron main process) pass through.
+ * @MX:NOTE: Keep this implementation identical to the one in /api/jira/extract.
+ */
+function isLoopbackOriginRequest(request: Request): boolean {
+  const headerValue =
+    request.headers.get('origin') || request.headers.get('referer');
+  if (!headerValue) return true;
+
+  let host: string;
+  try {
+    host = new URL(headerValue).hostname;
+  } catch {
+    // Unparseable origin/referer: fail closed.
+    return false;
+  }
+
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  // IPv6 loopback arrives URL-encoded as "[::1]" from URL.hostname.
+  const normalized = host.replace(/^\[|\]$/g, '');
+  return normalized === '::1' || normalized === '0:0:0:0:0:0:0:1';
+}
+
 export async function POST(request: Request) {
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const {
@@ -63,9 +99,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const start = dateFrom ? new Date(dateFrom) : new Date('2024-01-01');
     const end = dateTo ? new Date(dateTo) : new Date();
-    
+
+    // @MX:NOTE: When dateFrom is missing, default to a rolling 90-day window ending at `end`
+    // instead of a hardcoded calendar date (previously 2024-01-01), which silently grew
+    // stale and produced misleading KPI periods.
+    const DEFAULT_LOOKBACK_DAYS = 90;
+    const start = dateFrom
+      ? new Date(dateFrom)
+      : new Date(end.getTime() - DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+
     // If dateTo was just a date string (YYYY-MM-DD), ensure it covers the full day
     if (dateTo && typeof dateTo === 'string' && dateTo.length <= 10) {
       end.setHours(23, 59, 59, 999);
