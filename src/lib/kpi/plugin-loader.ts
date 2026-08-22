@@ -37,7 +37,8 @@ import openTicketsByIssueOwnerTeamPlugin from './plugins/builtin/assignee/open-t
 
 // Import all time-series plugins directly
 import avgProcessingHoursWeeklyPlugin from './plugins/time-series/processing-time/avg-processing-hours-weekly';
-import throughputWeeklyPlugin from './plugins/time-series/throughput/throughput-weekly';
+import throughputWeeklyPlugin from './plugins/time-series/throughput/throughput-weekly'
+import priorityInflowWeeklyPlugin from './plugins/time-series/throughput/priority-inflow-weekly';
 import cumulativeFlowDailyPlugin from './plugins/time-series/throughput/cumulative-flow-daily';
 import slaComplianceWeeklyPlugin from './plugins/time-series/sla/sla-compliance-weekly';
 import slaByStatusWeeklyPlugin from './plugins/time-series/sla/sla-by-status-weekly';
@@ -219,6 +220,7 @@ export class PluginLoader {
 
       // Throughput time-series plugins
       throughputWeeklyPlugin,
+      priorityInflowWeeklyPlugin,
       cumulativeFlowDailyPlugin,
 
       // SLA time-series plugins

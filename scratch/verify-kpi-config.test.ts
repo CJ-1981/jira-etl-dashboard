@@ -90,7 +90,9 @@ describe.skipIf(!canRun)('kpi-plugin-config.json', () => {
     for (const view of views) {
       const charts = view.data.charts ?? [];
       expect(charts.length).toBeGreaterThan(0);
-      expect(charts.length).toBeLessThanOrEqual(12); // UI caps charts at 12
+      // The UI only hides the "add chart" button at >=12; saved views may
+      // legitimately hold more (all are rendered via charts.map).
+      expect(charts.length).toBeLessThanOrEqual(20);
 
       for (const chart of charts) {
         expect(chartTypes).toContain(chart.type);

@@ -14,7 +14,7 @@ Extract ticket data from Jira with JQL queries, date range selection, scheduled 
 </p>
 
 ### KPI Analytics
-Interactive dashboard with 30 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+Interactive dashboard with 31 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
   <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
@@ -73,7 +73,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
-**30 built-in plugins** (22 core + 8 time-series) organized by business domain:
+**31 built-in plugins** (22 core + 9 time-series) organized by business domain:
 
 **Processing Time (6 plugins)**
 - Avg Processing Hours — Average business hours from creation to resolution
@@ -109,9 +109,10 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - Open Tickets by Assignee — Current workload distribution
 - Open Tickets by Issue Owner Team — Workload distribution by owning team
 
-**Time-Series Plugins (8 plugins)**
+**Time-Series Plugins (9 plugins)**
 - Avg Processing Hours (Weekly) — Weekly processing time trend
 - Throughput (Weekly) — Weekly throughput tracking
+- Priority Inflow (Weekly) — Weekly new-ticket inflow split by priority (P0 → P3)
 - Cumulative Flow (Daily) — Ticket status distribution over time (CFD)
 - SLA Compliance (Weekly) — Weekly SLA compliance trend
 - SLA by Status (Weekly) — Weekly per-status SLA trend
@@ -133,11 +134,11 @@ src/lib/kpi/plugins/
 │   ├── throughput/       # 6 plugins
 │   ├── quality/          # 2 plugins
 │   └── assignee/         # 2 plugins
-├── time-series/          # Trend analysis plugins (8 plugins)
+├── time-series/          # Trend analysis plugins (9 plugins)
 │   ├── processing-time/  # 1 plugin
 │   ├── sla/              # 3 plugins
 │   ├── turnaround/       # 1 plugin
-│   ├── throughput/       # 2 plugins
+│   ├── throughput/       # 3 plugins
 │   └── assignee/         # 1 plugin
 └── custom/               # Scaffolding only — runtime custom plugins load from data/custom-plugins/
 ```
