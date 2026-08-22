@@ -22,7 +22,8 @@ import slaCompliancePlugin from './plugins/builtin/sla/sla-compliance';
 import slaByPriorityPlugin from './plugins/builtin/sla/sla-by-priority';
 import slaByStatusPlugin from './plugins/builtin/sla/sla-by-status';
 import slaByStatusExclClonePlugin from './plugins/builtin/sla/sla-by-status-excl-clone';
-import timeInStatusPlugin from './plugins/builtin/turnaround/time-in-status';
+import timeInStatusPlugin from './plugins/builtin/turnaround/time-in-status'
+import noCommentFollowupPlugin from './plugins/builtin/turnaround/no-comment-followup';
 import throughputPlugin from './plugins/builtin/throughput/throughput';
 import openTicketsByPriorityPlugin from './plugins/builtin/throughput/open-tickets-by-priority';
 import closedTicketsByPriorityPlugin from './plugins/builtin/throughput/closed-tickets-by-priority';
@@ -73,6 +74,7 @@ export class PluginLoader {
 
       // Turnaround plugins
       timeInStatusPlugin,
+      noCommentFollowupPlugin,
 
       // Throughput plugins
       throughputPlugin,

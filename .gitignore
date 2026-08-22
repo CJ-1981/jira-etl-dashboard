@@ -445,3 +445,9 @@ release_prod/app/src/types/dashboard.ts
 .gitignore
 release/Start Jira Dashboard.bat
 .kilo/plans/
+
+# Large test fixture generated from prisma/db/custom.db (node scratch/export-fixture.cjs)
+scratch/issues-fixture.json
+
+# Locally generated KPI plugin config export (contains connection-specific data)
+kpi-plugin-config.json
