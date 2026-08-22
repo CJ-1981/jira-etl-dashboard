@@ -79,7 +79,8 @@ export function useKpiCalculations(
   // @MX:NOTE: Ref-based parameter access to prevent stale closures in triggerCalculation.
   // @MX:REASON: triggerCalculation may be called from setTimeout or event handlers that
   // captured an older version of the function. Using refs ensures we always read the
-  // latest parameter values at call time rather than at capture time.
+  // latest parameter values at call time rather than at capture time. The assignment
+  // lives in an effect because writing refs during render breaks React Compiler.
   const paramsRef = useRef({
     activeConnectionId,
     dateFrom,
@@ -89,15 +90,17 @@ export function useKpiCalculations(
     storageConfig,
     customWidgets,
   });
-  paramsRef.current = {
-    activeConnectionId,
-    dateFrom,
-    dateTo,
-    region,
-    globalFilters,
-    storageConfig,
-    customWidgets,
-  };
+  useEffect(() => {
+    paramsRef.current = {
+      activeConnectionId,
+      dateFrom,
+      dateTo,
+      region,
+      globalFilters,
+      storageConfig,
+      customWidgets,
+    };
+  });
 
   /**
    * Fetch KPI calculations from the API
