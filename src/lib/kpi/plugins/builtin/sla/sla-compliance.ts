@@ -9,7 +9,7 @@ import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
 const slaCompliancePlugin: KpiPlugin = {
   id: 'sla_compliance',
   name: 'SLA Compliance Rate',
-  description: 'Percentage of tickets resolved within the configured SLA target (business hours).',
+  description: 'Service Level Agreement (SLA) compliance: percentage of tickets resolved within the configured SLA target (business hours).',
   category: 'builtin',
   domain: 'sla',
   version: '1.0.0',

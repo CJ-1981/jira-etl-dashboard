@@ -11,7 +11,7 @@ import { isIssueDone } from '../../../engine-utils';
 const agingWipPlugin: KpiPlugin = {
   id: 'aging_wip',
   name: 'Aging WIP Analysis',
-  description: 'Buckets open (non-resolved) tickets by how long they have been open in business hours.',
+  description: 'Aging Work In Progress (WIP): buckets open (non-resolved) tickets by how long they have been open in business hours.',
   category: 'builtin',
   domain: 'processing-time',
   version: '1.0.0',

@@ -127,7 +127,7 @@ function calculateCumulativeFlow(
 const cumulativeFlowDailyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   id: 'cumulative_flow_trend',
   name: 'Cumulative Flow Diagram',
-  description: 'Number of tickets in each status over time (stacked area chart). Includes periods with zero tickets.',
+  description: 'Cumulative Flow Diagram (CFD): number of tickets in each status over time (stacked area chart). Includes periods with zero tickets.',
   category: 'time-series',
   domain: 'throughput',
   version: '1.0.0',
