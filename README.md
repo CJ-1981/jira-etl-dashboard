@@ -14,7 +14,7 @@ Extract ticket data from Jira with JQL queries, date range selection, scheduled 
 </p>
 
 ### KPI Analytics
-Interactive dashboard with 32 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+Interactive dashboard with 33 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
   <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
@@ -73,15 +73,16 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
-**32 built-in plugins** (23 core + 9 time-series) organized by business domain:
+**33 built-in plugins** (24 core + 9 time-series) organized by business domain:
 
-**Processing Time (6 plugins)**
+**Processing Time (7 plugins)**
 - Avg Processing Hours — Average business hours from creation to resolution
 - Median Processing Hours — Median business hours for better outlier resistance
 - Avg Working Days — Average calendar days excluding weekends
 - Cycle Time Histogram — Distribution of resolution times
 - Aging WIP — Open tickets exceeding business hour thresholds
 - First Response Time — Time to first assignee comment
+- Resolution Time by Priority — Average business hours to resolution per priority level
 
 **SLA (4 plugins)**
 - SLA Compliance — % of tickets meeting per-priority targets
@@ -128,8 +129,8 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 
 ```
 src/lib/kpi/plugins/
-├── builtin/              # Core plugins (23 plugins)
-│   ├── processing-time/  # 6 plugins
+├── builtin/              # Core plugins (24 plugins)
+│   ├── processing-time/  # 7 plugins
 │   ├── sla/              # 4 plugins
 │   ├── turnaround/       # 3 plugins
 │   ├── throughput/       # 6 plugins

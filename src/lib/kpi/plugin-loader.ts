@@ -17,7 +17,8 @@ import medianProcessingHoursPlugin from './plugins/builtin/processing-time/media
 import avgWorkingDaysPlugin from './plugins/builtin/processing-time/avg-working-days';
 import cycleTimeHistogramPlugin from './plugins/builtin/processing-time/cycle-time-histogram';
 import agingWipPlugin from './plugins/builtin/processing-time/aging-wip';
-import firstResponseTimePlugin from './plugins/builtin/processing-time/first-response-time';
+import firstResponseTimePlugin from './plugins/builtin/processing-time/first-response-time'
+import resolutionTimeByPriorityPlugin from './plugins/builtin/processing-time/resolution-time-by-priority';
 import slaCompliancePlugin from './plugins/builtin/sla/sla-compliance';
 import slaByPriorityPlugin from './plugins/builtin/sla/sla-by-priority';
 import slaByStatusPlugin from './plugins/builtin/sla/sla-by-status';
@@ -67,6 +68,7 @@ export class PluginLoader {
       cycleTimeHistogramPlugin,
       agingWipPlugin,
       firstResponseTimePlugin,
+      resolutionTimeByPriorityPlugin,
 
       // SLA plugins
       slaCompliancePlugin,

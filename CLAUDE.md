@@ -57,8 +57,8 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
 
 ### KPI engine & plugins
 - Engine singleton: `src/lib/kpi/engine.ts` (`getKpiEngine()`); helpers in `engine-utils.ts`.
-- 32 plugins registered statically in `src/lib/kpi/plugin-loader.ts`:
-  23 in `plugins/builtin/{processing-time,sla,turnaround,throughput,quality,assignee}`,
+- 33 plugins registered statically in `src/lib/kpi/plugin-loader.ts`:
+  24 in `plugins/builtin/{processing-time,sla,turnaround,throughput,quality,assignee}`,
   9 in `plugins/time-series/...`. To add a built-in plugin: create the file, import and
   register it in `plugin-loader.ts`.
 - **Custom formulas are sandboxed** (`src/lib/kpi/custom-formula.ts`): the old
