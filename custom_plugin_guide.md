@@ -54,6 +54,24 @@ Your JavaScript expression has access to a `context` object:
 - `context.slaTargets`: Per-status SLA targets.
 - `context.period`: The analysis date range.
 
+> **Warning:** `context.holidays` is a placeholder for formula plugins — its date set is
+> empty and `isWorkingDay`/`isHoliday` are stubs. Holiday-aware business-day math cannot be
+> done in a formula; implement such metrics as compiled TypeScript plugins instead
+> (`src/lib/kpi/plugins/builtin/...`, using `calculateWorkingDays`/`calculateBusinessHours`
+> from `src/lib/holidays/german-holidays.ts`).
+
+### Fields available on issues
+DSL conditions and `getFieldValue` resolve these named fields:
+`storyPoints`, `priority`, `status`, `statusCategory`, `issueType`, `assignee`, `reporter`,
+`labels`, `components`, `resolved`, `key`, `project`, `summary`, `description`, and
+`timeInStatus.<StatusName>` (hours spent in a status). Unknown names fall back to raw issue
+properties, so DSL can also reach e.g. `issueOwnerTeam`.
+
+JavaScript formulas can additionally use any transformed-issue property directly:
+- `issue.comments` — `[{ author, created }]`, chronologically sorted
+- `issue.transitions` — `[{ fromStatus, toStatus, author, occurredAt }]`, status history
+- `issue.dueDate`, `issue.created`, `issue.updated`, `issue.resolved` — `Date` values (or `null`)
+
 ### Example: SLA Plugin excluding Clones
 If you wanted to implement the "Exclude CLONE" logic manually in a custom JS plugin, write a
 single expression that produces the result array (no intermediate variables — repeat or
@@ -72,12 +90,31 @@ compose `filter` calls instead):
 }]
 ```
 
+### Example: Rework detection from status transitions
+Tickets that bounced back to a status they already passed through (A→B→A loops). Note the
+accumulator pattern: `new Set()` and assignments are not available in the sandbox, so a
+plain object in a `reduce` stands in for a set, and multi-parameter arrow callbacks
+(`(t, k) =>`) give you the element index:
+
+```javascript
+[{
+  name: "Rework Tickets (Status Ping-Pong)",
+  value: issues.filter(i => (i.transitions || []).length > 0 &&
+    (i.transitions || []).some((t, k) =>
+      t.toStatus === i.transitions[0].fromStatus ||
+      (i.transitions || []).slice(0, k).some(p => p.toStatus === t.toStatus))).length,
+  unit: "tickets"
+}]
+```
+
 ### Tips for JavaScript Plugins
 - **Single expression**: use arrow functions and ternaries instead of statements
   (`condition ? a : b` instead of `if`).
-- **Issue Transitions**: Use `issue.transitions` to track status history.
-- **Business Hours**: Implement your own logic using `context.holidays` (calculation
-  utilities are not exposed to the sandbox).
+- **No mutation**: `new Set`/`new Map`, `new` in general, and assignments are rejected.
+  Thread state through `reduce` with a plain-object accumulator instead.
+- **Issue Transitions**: Use `issue.transitions` to track status history (see example above).
+- **Business Hours**: not possible in formulas — `context.holidays` is a stub (see warning
+  above). Use a compiled TypeScript plugin for holiday/weekend-aware metrics.
 - **Return Format**: Always produce an array of `KpiResult` objects: `[{ name, value, unit, dimensions?, details? }]`.
 
 ---
