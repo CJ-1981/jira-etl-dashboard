@@ -14,7 +14,7 @@ Extract ticket data from Jira with JQL queries, date range selection, scheduled 
 </p>
 
 ### KPI Analytics
-Interactive dashboard with 31 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+Interactive dashboard with 32 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
   <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
@@ -73,7 +73,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
-**31 built-in plugins** (22 core + 9 time-series) organized by business domain:
+**32 built-in plugins** (23 core + 9 time-series) organized by business domain:
 
 **Processing Time (6 plugins)**
 - Avg Processing Hours — Average business hours from creation to resolution
@@ -89,9 +89,10 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - SLA by Status — % of status durations meeting per-status targets
 - SLA by Status (excl. clones) — SLA excluding cloned tickets
 
-**Turnaround (2 plugins)**
+**Turnaround (3 plugins)**
 - Time in Status — Average business hours per workflow status
-- No Comment Follow-up — Open tickets with no new comment for ≥3 / ≥7 working days (weekends and German holidays excluded; never-commented tickets measured from creation)
+- No Comment Follow-up — Open tickets with no new comment for >3 / >7 working days (status changes do not reset the clock)
+- No Activity Follow-up — Open tickets with no comment and no status change for >3 / >7 working days
 
 **Throughput (6 plugins)**
 - Throughput — Count of tickets completed in period
@@ -127,10 +128,10 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 
 ```
 src/lib/kpi/plugins/
-├── builtin/              # Core plugins (22 plugins)
+├── builtin/              # Core plugins (23 plugins)
 │   ├── processing-time/  # 6 plugins
 │   ├── sla/              # 4 plugins
-│   ├── turnaround/       # 2 plugins
+│   ├── turnaround/       # 3 plugins
 │   ├── throughput/       # 6 plugins
 │   ├── quality/          # 2 plugins
 │   └── assignee/         # 2 plugins
