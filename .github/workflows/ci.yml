@@ -68,10 +68,10 @@ jobs:
         run: npm ci
 
       - name: Run ESLint
-        # Ratchet: 1068 warnings — tightened from 2000 after the 2026-08 debt
-        # cleanup (docs/DEBT_CLEANUP.md). Lower this threshold as the codebase
-        # is cleaned up further.
-        run: npm run lint -- --max-warnings=1068
+        # Ratchet: 1032 warnings — tightened from 1068 after the phase-4
+        # deduplication pass (docs/DEBT_CLEANUP.md). Lower this threshold as
+        # the codebase is cleaned up further.
+        run: npm run lint -- --max-warnings=1032
 
   type-check:
     runs-on: ubuntu-latest
@@ -91,3 +91,38 @@ jobs:
 
       - name: Run TypeScript check
         run: npm run type-check
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Installs Chromium plus OS-level libraries (--with-deps) needed to run it.
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      # The Playwright config boots `npm run dev` itself (webServer option) and
+      # runs single-worker because next dev does not tolerate parallel route
+      # compilation churn. CI=true makes the config strict (forbidOnly, retries).
+      - name: Run Playwright E2E tests
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v5
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

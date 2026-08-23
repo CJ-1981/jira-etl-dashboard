@@ -1,13 +1,50 @@
-import { PrismaClient as PrismaClientDefault } from '@prisma/client'
 import crypto from 'crypto';
-// Import the specialized clients
-// @ts-ignore
+// Import the specialized clients. No suppression directive is needed: the two
+// generated clients coexist fine at the type level (each declares its own
+// `Prisma` namespace scoped to its module), so plain typed imports work. The
+// public surface is re-expressed below as the structural DbClient type.
 import { PrismaClient as SQLiteClient } from '../../prisma/generated/sqlite';
-// @ts-ignore
 import { PrismaClient as PostgresClient } from '../../prisma/generated/postgresql';
 
-// Use a global cache to avoid excessive client instantiation in serverless env
-type DbClient = SQLiteClient | PostgresClient;
+/**
+ * Structural type describing the model-access surface of either generated
+ * Prisma client. The concrete generated types are deliberately not re-exported
+ * (their union previously leaked `any` because of the dual-client import);
+ * this structural bag gives typed model ACCESS without full generic Prisma
+ * typing. Returns are intentionally `Promise<unknown>`-ish for now.
+ */
+export interface PrismaModelDelegate {
+  findMany(args?: unknown): Promise<unknown[]>;
+  findUnique(args: unknown): Promise<unknown>;
+  findFirst(args?: unknown): Promise<unknown>;
+  create(args: unknown): Promise<unknown>;
+  createMany(args: unknown): Promise<unknown>;
+  update(args: unknown): Promise<unknown>;
+  updateMany(args: unknown): Promise<unknown>;
+  upsert(args: unknown): Promise<unknown>;
+  delete(args: unknown): Promise<unknown>;
+  deleteMany(args?: unknown): Promise<unknown>;
+  count(args?: unknown): Promise<number>;
+  aggregate(args: unknown): Promise<unknown>;
+}
+
+/**
+ * Structural DbClient: model delegates for every schema model plus the
+ * runtime helpers used across the codebase. The transaction callback
+ * receives the same structural client type.
+ */
+export interface DbClient {
+  etlRun: PrismaModelDelegate;
+  ticketSnapshot: PrismaModelDelegate;
+  ticketTransition: PrismaModelDelegate;
+  masterTicket: PrismaModelDelegate;
+  kpiResult: PrismaModelDelegate;
+  dashboardView: PrismaModelDelegate;
+  $transaction<T>(fn: (tx: DbClient) => Promise<T>): Promise<T>;
+  $queryRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
+  $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
+  $disconnect(): Promise<void>;
+}
 
 /**
  * @MX:NOTE: Simple LRU Cache implementation for Prisma clients
@@ -187,15 +224,19 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
   
   try {
     if (provider === 'postgres') {
+      // Single cast at the boundary: the generated client structurally matches
+      // the DbClient model surface; only $transaction's extra batch overload
+      // (PrismaPromise[]) prevents direct assignability, which is harmless here
+      // because callers only use the interactive (callback) form.
       client = new PostgresClient({
         datasources: { db: { url: effectiveUrl } },
         log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-      });
+      }) as unknown as DbClient;
     } else if (provider === 'sqlite') {
       client = new SQLiteClient({
         datasources: { db: { url: effectiveUrl } },
         log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-      });
+      }) as unknown as DbClient;
     } else {
       throw new Error(`Unsupported database scheme for URL: ${redactUrl(effectiveUrl)}`);
     }
@@ -250,6 +291,6 @@ export function getDefaultDb(): DbClient {
 }
 
 // Export a proxy for backward compatibility if needed, or just let callers use getDefaultDb()
-export const db = (typeof process !== 'undefined') ? {
+export const db: { readonly client: DbClient } = (typeof process !== 'undefined') ? {
   get client() { return getDefaultDb(); },
-} : ({} as any);
+} : ({} as { readonly client: DbClient });

@@ -154,44 +154,131 @@ local-time Monday week computation was copy-pasted three times (engine
 
 ---
 
+## Phase 4 — Deduplication, typing, and CI hardening (branch `refactor/phase4-deduplication`)
+
+### 4A. Cascade-delete deduplication
+**Why:** the FK-safe deletion sequence was copy-pasted in 4 places with
+inconsistent atomicity — only the connections route used a transaction; the
+master route (twice, verbatim, in the same file) and the cleanup route could
+leave partial deletes on failure.
+
+**Changes:**
+- New `src/lib/db-cascade.ts` (structural `DbLike`/`TxLike` types, zero
+  `any`, no Prisma import): `deleteEtlRunsWithChildren(tx, runIds)` and
+  `deleteConnectionData(db, connectionRef)` which runs the full cascade in
+  one `$transaction`.
+- connections DELETE, master POST-delete, and master DELETE all delegate to
+  it; the master DELETE handler's duplicated block (~110 lines) is gone and
+  its previously swallowed errors are now logged.
+- `jira/extract/cleanup` is now transactional too and reuses the shared
+  child-deletion helper.
+- Behavior alignment (bug fixes): master-route deletes now also remove
+  orphaned `kpiResult` rows (NULL `etlRunId`) and `dashboardView` rows,
+  matching the connections route.
+- 11 new unit tests (deletion order via `invocationCallOrder`, count
+  aggregation, empty cases, transaction wiring, error propagation) + 7 new
+  route tests.
+
+### 4B. Age-breakdown plugin deduplication
+**Why:** five builtin plugins each carried ~100 lines of the same
+group-by-dimension × age-category × sort algorithm.
+
+**Changes:**
+- New `src/lib/kpi/utils/age-breakdown.ts` (`calculateAgeBreakdown` +
+  exported age-label constants), 12 unit tests including a parity fixture
+  against the pre-refactor plugin output.
+- The five plugins shrank to metadata + filter + delegation (516 → 211
+  lines; −468/+80 in the plugins). Existing plugin tests pass unchanged,
+  proving byte-equivalent results.
+- `open-tickets-kanban` intentionally kept separate: its 3-level grouping
+  diverges on too many axes (fallback labels, age labels, name format,
+  display dimension) for the shared helper to absorb cleanly.
+
+### 4C. Typed dual Prisma client
+**Why:** `src/lib/db.ts` imported the generated clients under `@ts-ignore`,
+making `getDb()` return `any` and forcing ~150 `(db as any).model` casts
+across the API layer.
+
+**Changes:**
+- Exported structural `PrismaModelDelegate` / `DbClient` types covering the
+  six schema models plus `$transaction`/`$queryRaw`/`$executeRaw`/
+  `$disconnect`; `getDb()`, `getDefaultDb()`, and `db.client` are now typed.
+- Both `@ts-ignore` directives removed entirely — the dual-client imports
+  proved error-free at the type level.
+- Routes were intentionally NOT refactored in this pass; their casts still
+  compile and can now be retired incrementally. This change already removed
+  lint warnings and is the foundation for eliminating the rest.
+- 6 new tests (`buildPgUrl` edge cases + structural-type wiring).
+
+### 4D. E2E wired into CI
+**Why:** the Playwright suite existed but never ran in CI.
+
+**Changes:** new `e2e` job in `.github/workflows/ci.yml` — installs Chromium
+with system deps, lets the Playwright config boot the dev server (strict
+CI-mode config: `forbidOnly`, retries), uploads the HTML report as an
+artifact. Validated locally in CI-simulation mode: 22/22 passed.
+
+### 4E. Coverage configuration fix
+The phase-4C test legitimately imports `src/lib/db.ts` unmocked (to test the
+real `buildPgUrl`), which loads the generated Prisma runtimes into the
+instrumented set and collapsed global coverage. Generated code is not
+meaningfully measurable — `prisma/generated/` added to the coverage
+`exclude` list in `vitest.config.ts`.
+
+---
+
 ## Final results
 
-| Metric | v0.9.0 baseline | After cleanup | Delta |
+| Metric | v0.9.0 baseline | After phases 1–4 | Delta |
 |---|---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **1,068** (threshold tightened to 1,068) | −19 warnings, threshold −932 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **1,032** (threshold tightened to 1,032) | −55 warnings, threshold −968 |
 | Type errors | 0 | 0 | — |
-| Tests | 918 | **917** (+73 new, −74 dead-code tests removed) | coverage preserved |
-| Coverage (lines) | 70.98% | 70.3% (floor 70%) | dead code removed from both numerator and denominator |
+| Tests | 918 | **953** (+125 new, −74 dead-code tests removed, net) | coverage preserved |
+| Coverage (lines) | 70.98% | 71.5% (floor 70%) | dead code removed from both numerator and denominator |
 | npm dependencies | 89 | 63 | −26 packages |
 | shadcn components | 48 | 21 | −27 files (−7,100 lines) |
 | Mutating API routes with loopback guard | 4 of ~15 | **all** | security gap closed |
 | Card/trend SLA rule divergence | excl-clone AND plain pairs diverged | both consistent | metric bug fixed |
+| Cascade deletes transactional | 1 of 4 sites | **all 4** | partial-delete risk removed |
+| E2E in CI | not wired | **wired + validated** | regression net on every push |
 
-Commits on `refactor/debt-cleanup`:
-1. `52d2350` — phase 1: security guards, SLA parity, dead code removal
-2. `a954224` — phase 2: unused UI components + dependency pruning
-3. `c713c0f` — phase 3: honest time-series date typing + shared week bounds
-4. _(this commit)_ — ratchet tightening + docs
+Commits: phases 1–3 on `refactor/debt-cleanup` (merged to main at `bf1d343`),
+phase 4 on `refactor/phase4-deduplication`.
 
 ---
 
-## Deferred backlog (not in this branch)
+## Deferred backlog (remaining work)
 
-Items intentionally out of scope here — each touches architecture broadly and
-needs its own branch/review:
+Items still open — each touches architecture broadly and needs its own
+branch/review:
 
 - Decompose `KpiDashboard.tsx` (2.7k lines, 9 copy-paste widget cases),
   `ChartCard` (1.4k lines), `ExtractPanel.tsx` (26 `useState` calls).
 - Consolidate the three widget-order/plugin-visibility sync mechanisms into a
   single zustand slice.
 - Move ~36 raw `fetch` call sites onto the already-configured React Query.
-- Type the dual Prisma client in `src/lib/db.ts` (retires ~150 `(db as any)`
-  casts; the largest single `no-explicit-any` source — 703 warnings).
-- Cascade-delete logic duplicated in 4 routes (only one transactional).
-- Age-breakdown logic duplicated across 5 builtin plugins (~600 lines).
+- Retire the ~150 `(db as any)` casts route-by-route — the structural
+  `DbClient` type from phase 4C makes this incremental work now; this is
+  still the largest single `no-explicit-any` source.
+- Time-series scaffold duplicated across 5 trend plugins (zero-fill →
+  weighted average over complete periods → incomplete-period detail);
+  `sla-by-status-weekly` now shows the delegation pattern to follow.
+- Three near-identical quote-aware string splitters (`engine-utils.ts`
+  `applyFilter`, `splitByTopLevelOperator`, `custom-formula.ts`
+  `splitTopLevelKeyword`).
+- `transformIssueForKpi` (engine-utils.ts) — 19 `as any` casts modeling an
+  untyped two-shape issue union; should be a typed discriminator.
+- `chart-data-utils.ts` redeclares its own `KpiResult` (missing
+  `ticketKeys`), forcing 8 casts; legacy `_trend` ID list matches no plugin.
 - Electron removal decision (`electron/` path is documented as broken; caxa
   is the real distribution path).
 - Root-level working-note markdown files (`TIME_SERIES_*.md`, etc.) → move to
   `docs/` or delete.
 - Orphaned dev-DB migration record `20260528000000_add_ticket_snapshot_rawdata_owner_team`.
-- Wire E2E into CI.
+- UTC-ISO-week vs local-Monday-week divergence (documented with `@MX:WARN`
+  in `time-series-utils.ts` / `week-boundaries.ts`) — needs a product
+  decision before unifying.
+
+Done in phase 4 (previously listed here): cascade-delete deduplication,
+age-breakdown deduplication, typed dual Prisma client (foundation), E2E
+wired into CI.

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { deleteEtlRunsWithChildren, type DbLike } from '@/lib/db-cascade';
 
 export async function POST(request: Request) {
   // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     }
 
     // Find runs to delete
-    const runsToDelete = await (db as any).etlRun.findMany({
+    const runsToDelete = await (db as unknown as DbLike).etlRun.findMany({
       where: {
         completedAt: {
           lt: cutoffDate
@@ -39,35 +40,16 @@ export async function POST(request: Request) {
         id: true,
         sizeBytes: true
       }
-    });
+    }) as Array<{ id: string; sizeBytes: number | null }>;
 
-    const etlRunIds = runsToDelete.map((r: any) => r.id);
-    const freedSpaceBytes = runsToDelete.reduce((sum: number, r: any) => sum + (r.sizeBytes || 0), 0);
+    const etlRunIds = runsToDelete.map((r) => r.id);
+    const freedSpaceBytes = runsToDelete.reduce((sum, r) => sum + (r.sizeBytes || 0), 0);
 
     if (etlRunIds.length > 0) {
-      // Delete associated data
-      await (db as any).kpiResult.deleteMany({
-        where: { etlRunId: { in: etlRunIds } }
-      });
-
-      const snapshotIds = await (db as any).ticketSnapshot.findMany({
-        where: { etlRunId: { in: etlRunIds } },
-        select: { id: true }
-      });
-
-      if (snapshotIds.length > 0) {
-        await (db as any).ticketTransition.deleteMany({
-          where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
-        });
-      }
-
-      await (db as any).ticketSnapshot.deleteMany({
-        where: { etlRunId: { in: etlRunIds } }
-      });
-
-      await (db as any).etlRun.deleteMany({
-        where: { id: { in: etlRunIds } }
-      });
+      // Delete associated data in a single transaction (FK-safe child order).
+      await (db as unknown as DbLike).$transaction((tx) =>
+        deleteEtlRunsWithChildren(tx, etlRunIds)
+      );
     }
 
     return NextResponse.json({
