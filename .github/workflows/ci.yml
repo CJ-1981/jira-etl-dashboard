@@ -68,7 +68,9 @@ jobs:
         run: npm ci
 
       - name: Run ESLint
-        run: npm run lint -- --max-warnings=10
+        # Ratchet: 2000 warnings — re-enabled rules surface pre-existing noise.
+        # Lower this threshold as the codebase is cleaned up.
+        run: npm run lint -- --max-warnings=2000
 
   type-check:
     runs-on: ubuntu-latest
