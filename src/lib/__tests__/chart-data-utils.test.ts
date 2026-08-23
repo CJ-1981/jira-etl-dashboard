@@ -408,6 +408,52 @@ describe('transformForLineChart', () => {
     expect(out[1].date).toBeInstanceOf(Date);
   });
 
+  it('sorts time-series points whose dates are ISO strings (API round-trip)', () => {
+    // KPI results travel through a JSON API boundary: Date objects serialize
+    // to ISO strings, so consumers must sort correctly when `date` is a string.
+    const kpi: KpiResult = {
+      pluginId: 'throughput_trend',
+      results: [
+        {
+          name: 'Throughput',
+          value: 0,
+          unit: 'count',
+          timeSeries: [
+            { period: '2026-W3', date: '2026-01-18T23:59:59.999Z', value: 7, count: 7, isComplete: true },
+            { period: '2026-W1', date: '2026-01-04T23:59:59.999Z', value: 2, count: 2, isComplete: true },
+            { period: '2026-W2', date: '2026-01-11T23:59:59.999Z', value: 4, count: 4, isComplete: false },
+          ],
+        },
+      ],
+    };
+    const out = transformForLineChart([kpi], 'throughput_trend');
+    expect(out.map((d) => d.name)).toEqual(['2026-W1', '2026-W2', '2026-W3']);
+    expect(out.map((d) => d.value)).toEqual([2, 4, 7]);
+    expect(out[0].isComplete).toBe(true);
+    expect(out[1].isComplete).toBe(false);
+    // The original string value is passed through untouched
+    expect(out[0].date).toBe('2026-01-04T23:59:59.999Z');
+  });
+
+  it('sorts a mix of Date and string dates correctly', () => {
+    const kpi: KpiResult = {
+      pluginId: 'throughput_trend',
+      results: [
+        {
+          name: 'Throughput',
+          value: 0,
+          unit: 'count',
+          timeSeries: [
+            { period: '2026-W2', date: '2026-01-11T23:59:59.999Z', value: 4, count: 4 },
+            { period: '2026-W1', date: new Date('2026-01-04T23:59:59.999Z'), value: 2, count: 2 },
+          ],
+        },
+      ],
+    };
+    const out = transformForLineChart([kpi], 'throughput_trend');
+    expect(out.map((d) => d.name)).toEqual(['2026-W1', '2026-W2']);
+  });
+
   it('falls back to period localeCompare when dates are missing', () => {
     const kpi: KpiResult = {
       pluginId: 'throughput_trend',

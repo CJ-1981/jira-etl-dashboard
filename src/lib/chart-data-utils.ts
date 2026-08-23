@@ -21,7 +21,12 @@ export interface KpiResult {
     ticketKeys?: string[];
     timeSeries?: Array<{
       period: string;
-      date: Date;
+      /**
+       * @MX:WARN: `Date | string` — KPI results cross a JSON API boundary,
+       * after which Date values arrive as ISO-8601 strings. Always normalize
+       * with `new Date(date)` before doing date arithmetic.
+       */
+      date: Date | string;
       value: number;
       count: number;
       isComplete?: boolean;
@@ -33,7 +38,8 @@ export interface ChartDataPoint {
   name: string;
   value: number;
   fill?: string;
-  date?: Date;
+  /** @MX:WARN: May be an ISO string after a JSON API round-trip; normalize with `new Date()` before arithmetic. */
+  date?: Date | string;
   thisWeek?: number;  // This week's value
   prevWeek?: number;  // Last week's value (1 week old)
   existing?: number; // Existing tickets (2+ weeks old)
@@ -365,6 +371,8 @@ export function transformForLineChart(
   // Check if time-series data is available (prefer the first series if we're asked for a single-line data format)
   if (kpi.results[0]?.timeSeries && kpi.results[0].timeSeries.length > 0) {
     const sortedTimeSeries = [...kpi.results[0].timeSeries].sort((a, b) => {
+      // @MX:WARN: `date` may be an ISO string after the JSON API round-trip —
+      // `new Date(...)` normalizes both Date and string values.
       const aTime = a.date ? new Date(a.date).getTime() : 0;
       const bTime = b.date ? new Date(b.date).getTime() : 0;
       if (aTime && bTime) return aTime - bTime;

@@ -101,7 +101,8 @@ function calculateSlaTrend(
   }
 
   // Sort by date
-  timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
+  timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   // Calculate overall compliance from complete periods only
   const completePoints = timeSeries.filter(p => p.isComplete);

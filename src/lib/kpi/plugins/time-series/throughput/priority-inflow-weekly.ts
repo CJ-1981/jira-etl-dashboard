@@ -63,7 +63,8 @@ function calculatePriorityInflowTrend(
         isComplete,
       });
     }
-    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+    // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
+    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const completePoints = timeSeries.filter((p) => p.isComplete);
     const totalInComplete = completePoints.reduce((sum, p) => sum + p.value, 0);
