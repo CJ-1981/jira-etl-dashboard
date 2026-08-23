@@ -1,24 +1,35 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getDefaultDb } from '@/lib/db';
+import { isLoopbackOriginRequest } from '@/lib/security';
 import crypto from 'crypto';
 
 /**
- * @MX:WARN: Check whether a request carries a browser Origin/Referer header that
- * is NOT loopback. Browsers always send Origin on cross-origin POSTs, so a header
- * pointing at a non-localhost origin indicates a cross-site request (potential
- * CSRF/SSRF against this local API) and must be rejected when no secret is set.
- * Requests with no Origin/Referer (server-to-server webhooks, curl) are allowed.
+ * @MX:WARN: SECURITY BOUNDARY — webhook loopback check (CSRF protection),
+ * composed on top of the shared isLoopbackOriginRequest guard.
+ * @MX:REASON: The shared guard only inspects whichever of Origin/Referer is
+ * present first and trusts any scheme whose host is loopback. The original
+ * webhook-local check was stricter, and we must not loosen security by
+ * consolidating, so this composes the shared guard with the two stricter
+ * rules: (1) BOTH Origin and Referer must be loopback when present, and
+ * (2) only http(s) URLs are trusted (exotic schemes are treated as
+ * cross-origin). Requests with no Origin/Referer (server-to-server Jira
+ * webhooks, curl) still pass, as before.
  */
-function isLoopbackOrigin(req: NextRequest): boolean {
+function isWebhookLoopbackRequest(req: Request): boolean {
+  // Shared guard: fail-closed loopback host classification of the primary header.
+  if (!isLoopbackOriginRequest(req)) return false;
+
+  // Stricter webhook-local composition (see @MX:REASON above).
   const check = (value: string | null): boolean => {
     if (!value) return true; // header absent — not a browser cross-origin request
     try {
       const url = new URL(value);
-      const host = url.hostname.toLowerCase();
-      // @MX:REASON: Only http(s) URLs whose host is a loopback name are trusted;
-      // anything else (including exotic schemes) is treated as cross-origin.
       if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-      return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+      // Re-classify this single header value with the shared guard by
+      // presenting it as the request's Origin.
+      return isLoopbackOriginRequest(
+        new Request(req.url, { headers: { origin: value } }),
+      );
     } catch {
       // Unparseable header value: fail closed — legitimate server-to-server
       // Jira webhooks do not send Origin/Referer at all.
@@ -44,7 +55,7 @@ function coerceStoryPoints(value: unknown): number | null {
   return null;
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const connectionId = searchParams.get('connectionId');
@@ -67,7 +78,7 @@ export async function POST(req: NextRequest) {
       if (expectedBuffer.length !== incomingBuffer.length || !crypto.timingSafeEqual(expectedBuffer, incomingBuffer)) {
         return NextResponse.json({ success: false, error: 'Unauthorized: Invalid secret' }, { status: 401 });
       }
-    } else if (!isLoopbackOrigin(req)) {
+    } else if (!isWebhookLoopbackRequest(req)) {
       // @MX:WARN: No webhook secret is configured, so restrict writes to loopback-originated
       // requests only. A malicious web page could otherwise POST forged webhook payloads to
       // this localhost endpoint and corrupt the database (browsers always send an Origin

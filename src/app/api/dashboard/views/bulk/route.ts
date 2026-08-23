@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getDb } from '@/lib/db';
+import { isLoopbackOriginRequest } from '@/lib/security';
+import { StorageConfigSchema } from '@/lib/validation/schemas';
 
 /**
  * GET /api/dashboard/views/bulk
@@ -15,9 +18,14 @@ export async function GET(request: Request) {
     if (storageConfigRaw) {
       try {
         storageConfig = JSON.parse(storageConfigRaw);
-      } catch (e) {
-        console.warn('[Views Bulk API] Failed to parse storageConfig');
+      } catch {
+      console.warn('[Views Bulk API] Failed to parse storageConfig');
       }
+    }
+
+    // Reject parsed-but-invalid storageConfig before it reaches getDb().
+    if (storageConfig !== undefined && !StorageConfigSchema.safeParse(storageConfig).success) {
+      return NextResponse.json({ success: false, error: 'Invalid storageConfig' }, { status: 400 });
     }
 
     const db = getDb(storageConfig);
@@ -33,34 +41,75 @@ export async function GET(request: Request) {
 }
 
 /**
+ * Derive a deterministic id for an imported view that lacks one.
+ * @MX:WARN: Idempotent bulk import depends on id stability.
+ * @MX:REASON: Using Math.random() in the upsert key guaranteed a brand-new row
+ * on every re-import of views without ids (duplicate views). Hashing the view's
+ * identity (connectionRef + name + data) yields a stable key, so re-importing
+ * the same payload upserts the existing row instead of creating duplicates.
+ */
+function stableViewId(viewData: { name?: unknown; connectionRef?: unknown; data?: unknown }): string {
+  const dataString = typeof viewData.data === 'string'
+    ? viewData.data
+    : JSON.stringify(viewData.data ?? null);
+  const digest = crypto
+    .createHash('sha256')
+    .update(`${viewData.connectionRef ?? ''}\u0000${viewData.name ?? ''}\u0000${dataString}`)
+    .digest('hex');
+  return `view-${digest}`;
+}
+
+/**
  * POST /api/dashboard/views/bulk
  * Imports a list of dashboard views.
  * Used for full configuration import.
  */
 export async function POST(request: Request) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route writes dashboard views into the database and the app
+  // is unauthenticated; reject cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'Malformed JSON payload' }, { status: 400 });
+    }
     const { views, storageConfig } = body;
 
     if (!views || !Array.isArray(views)) {
       return NextResponse.json({ success: false, error: 'Views array is required' }, { status: 400 });
     }
 
+    // Validate untrusted storageConfig before handing it to getDb().
+    if (storageConfig !== undefined) {
+      const parsedConfig = StorageConfigSchema.safeParse(storageConfig);
+      if (!parsedConfig.success) {
+        return NextResponse.json({ success: false, error: 'Invalid storageConfig' }, { status: 400 });
+      }
+    }
+
     const db = getDb(storageConfig);
-    
-    // Perform bulk upsert
-    // Note: Since we are using cuid for IDs, we'll try to preserve them or create new ones if they don't exist.
-    // If a view with the same connectionRef and name exists, we might want to skip or overwrite.
-    // For simplicity, we'll just create them. If IDs collide, Prisma will error unless we use upsert.
-    
+
+    // Bulk upsert keyed by a stable id: explicit ids are preserved; views
+    // without one receive a deterministic content-derived id (see stableViewId)
+    // so re-importing the same payload updates existing rows instead of
+    // duplicating them.
     const results: any[] = await (db as any).$transaction(async (tx: any) => {
       const upserted: any[] = [];
       for (const viewData of views) {
         const { id, name, connectionRef, data, isDefault, autoSaveEnabled } = viewData;
+        const effectiveId = id || stableViewId(viewData);
 
-        // Upsert by ID if provided, otherwise by Name/ConnectionRef (though the model doesn't have a unique constraint on name/connectionRef)
         const view = await tx.dashboardView.upsert({
-          where: { id: id || 'new-view-' + Math.random() },
+          where: { id: effectiveId },
           update: {
             name,
             connectionRef,
@@ -69,6 +118,7 @@ export async function POST(request: Request) {
             autoSaveEnabled: !!autoSaveEnabled,
           },
           create: {
+            id: effectiveId,
             name,
             connectionRef,
             data: typeof data === 'string' ? data : JSON.stringify(data),

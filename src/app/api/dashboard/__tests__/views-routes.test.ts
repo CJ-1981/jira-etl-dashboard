@@ -354,3 +354,429 @@ describe('POST/DELETE /api/dashboard/views/[id]/default', () => {
     expect((await readJson(res)).success).toBe(false);
   });
 });
+
+// ─── Loopback-origin guard (CSRF protection) ─────────────────────────────────
+// Every mutating dashboard-views handler must reject non-loopback origins with
+// 401, accept header-less requests, and accept localhost origins.
+
+const EXTERNAL_ORIGIN = 'https://evil.example';
+const LOCALHOST_ORIGIN = 'http://localhost:3000';
+
+describe('loopback-origin guard on mutating views routes', () => {
+  const ctxV1 = () => ({ params: Promise.resolve({ id: 'v1' }) });
+
+  describe('POST /api/dashboard/views', () => {
+    const body = {
+      connectionRef: 'c1',
+      name: 'New',
+      data: { filters: [] },
+      storageConfig: STORAGE_CONFIG,
+    };
+
+    it('rejects an external origin with 401', async () => {
+      const res = await viewsPost(
+        makeRequest('/api/dashboard/views', {
+          method: 'POST',
+          body,
+          headers: { origin: EXTERNAL_ORIGIN },
+        }),
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(mockDb().dashboardView.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await viewsPost(
+        makeRequest('/api/dashboard/views', { method: 'POST', body }),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await viewsPost(
+        makeRequest('/api/dashboard/views', {
+          method: 'POST',
+          body,
+          headers: { origin: LOCALHOST_ORIGIN },
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('POST /api/dashboard/views/bulk', () => {
+    const body = {
+      views: [{ name: 'A', connectionRef: 'c1', data: 'raw' }],
+      storageConfig: STORAGE_CONFIG,
+    };
+
+    it('rejects an external origin with 401', async () => {
+      const res = await bulkPost(
+        makeRequest('/api/dashboard/views/bulk', {
+          method: 'POST',
+          body,
+          headers: { origin: EXTERNAL_ORIGIN },
+        }),
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(mockDb().dashboardView.upsert).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await bulkPost(
+        makeRequest('/api/dashboard/views/bulk', { method: 'POST', body }),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await bulkPost(
+        makeRequest('/api/dashboard/views/bulk', {
+          method: 'POST',
+          body,
+          headers: { origin: LOCALHOST_ORIGIN },
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('PATCH /api/dashboard/views/[id]', () => {
+    const body = { name: 'X', storageConfig: STORAGE_CONFIG };
+
+    it('rejects an external origin with 401', async () => {
+      const res = await PATCH(
+        makeRequest('/api/dashboard/views/v1', {
+          method: 'PATCH',
+          body,
+          headers: { origin: EXTERNAL_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(mockDb().dashboardView.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await PATCH(
+        makeRequest('/api/dashboard/views/v1', { method: 'PATCH', body }),
+        ctxV1(),
+      );
+      // Not blocked by the guard (404 because findUnique defaults to null).
+      expect(res.status).not.toBe(401);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await PATCH(
+        makeRequest('/api/dashboard/views/v1', {
+          method: 'PATCH',
+          body,
+          headers: { origin: LOCALHOST_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).not.toBe(401);
+    });
+  });
+
+  describe('DELETE /api/dashboard/views/[id]', () => {
+    const body = { storageConfig: STORAGE_CONFIG };
+
+    it('rejects an external origin with 401', async () => {
+      const res = await DELETE(
+        makeRequest('/api/dashboard/views/v1', {
+          method: 'DELETE',
+          body,
+          headers: { origin: EXTERNAL_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(mockDb().dashboardView.delete).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await DELETE(
+        makeRequest('/api/dashboard/views/v1', { method: 'DELETE', body }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await DELETE(
+        makeRequest('/api/dashboard/views/v1', {
+          method: 'DELETE',
+          body,
+          headers: { origin: LOCALHOST_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('POST /api/dashboard/views/[id]/default', () => {
+    const body = { storageConfig: STORAGE_CONFIG };
+
+    it('rejects an external origin with 401', async () => {
+      const res = await setDefault(
+        makeRequest('/api/dashboard/views/v1/default', {
+          method: 'POST',
+          body,
+          headers: { origin: EXTERNAL_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(mockDb().dashboardView.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await setDefault(
+        makeRequest('/api/dashboard/views/v1/default', { method: 'POST', body }),
+        ctxV1(),
+      );
+      // Not blocked by the guard (404 because findUnique defaults to null).
+      expect(res.status).not.toBe(401);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await setDefault(
+        makeRequest('/api/dashboard/views/v1/default', {
+          method: 'POST',
+          body,
+          headers: { origin: LOCALHOST_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).not.toBe(401);
+    });
+  });
+
+  describe('DELETE /api/dashboard/views/[id]/default', () => {
+    const body = { storageConfig: STORAGE_CONFIG };
+
+    it('rejects an external origin with 401', async () => {
+      const res = await clearDefault(
+        makeRequest('/api/dashboard/views/v1/default', {
+          method: 'DELETE',
+          body,
+          headers: { origin: EXTERNAL_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(mockDb().dashboardView.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await clearDefault(
+        makeRequest('/api/dashboard/views/v1/default', { method: 'DELETE', body }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await clearDefault(
+        makeRequest('/api/dashboard/views/v1/default', {
+          method: 'DELETE',
+          body,
+          headers: { origin: LOCALHOST_ORIGIN },
+        }),
+        ctxV1(),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+});
+
+// ─── storageConfig validation (StorageConfigSchema) ──────────────────────────
+
+describe('storageConfig validation on views routes', () => {
+  const ctxV1 = () => ({ params: Promise.resolve({ id: 'v1' }) });
+  const INVALID_CONFIGS = [
+    { provider: 'mongodb' },
+    123,
+    { provider: 'sqlite', url: 42 },
+    '',
+  ];
+
+  it('POST /api/dashboard/views returns 400 for invalid storageConfig', async () => {
+    for (const storageConfig of INVALID_CONFIGS) {
+      const res = await viewsPost(
+        makeRequest('/api/dashboard/views', {
+          method: 'POST',
+          body: {
+            connectionRef: 'c1',
+            name: 'New',
+            data: { x: 1 },
+            storageConfig,
+          },
+        }),
+      );
+      expect(res.status).toBe(400);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Invalid storageConfig/);
+    }
+    expect(mockDb().dashboardView.create).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/dashboard/views accepts a valid object storageConfig', async () => {
+    const res = await viewsPost(
+      makeRequest('/api/dashboard/views', {
+        method: 'POST',
+        body: {
+          connectionRef: 'c1',
+          name: 'New',
+          data: { x: 1 },
+          storageConfig: { provider: 'sqlite', url: '', isCustom: false },
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await readJson(res)).success).toBe(true);
+  });
+
+  it('POST /api/dashboard/views/bulk returns 400 for invalid storageConfig', async () => {
+    const res = await bulkPost(
+      makeRequest('/api/dashboard/views/bulk', {
+        method: 'POST',
+        body: {
+          views: [{ name: 'A', connectionRef: 'c1', data: 'raw' }],
+          storageConfig: { provider: 'mongodb' },
+        },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toMatch(/Invalid storageConfig/);
+    expect(mockDb().dashboardView.upsert).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /api/dashboard/views/[id] returns 400 for invalid storageConfig', async () => {
+    const res = await PATCH(
+      makeRequest('/api/dashboard/views/v1', {
+        method: 'PATCH',
+        body: { name: 'X', storageConfig: { provider: 'mongodb' } },
+      }),
+      ctxV1() as any,
+    );
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toMatch(/Invalid storageConfig/);
+  });
+
+  it('DELETE /api/dashboard/views/[id] returns 400 for invalid storageConfig', async () => {
+    const res = await DELETE(
+      makeRequest('/api/dashboard/views/v1', {
+        method: 'DELETE',
+        body: { storageConfig: { provider: 'mongodb' } },
+      }),
+      ctxV1() as any,
+    );
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toMatch(/Invalid storageConfig/);
+    expect(mockDb().dashboardView.delete).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/dashboard/views/[id]/default returns 400 for invalid storageConfig', async () => {
+    const res = await setDefault(
+      makeRequest('/api/dashboard/views/v1/default', {
+        method: 'POST',
+        body: { storageConfig: { provider: 'mongodb' } },
+      }),
+      ctxV1() as any,
+    );
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toMatch(/Invalid storageConfig/);
+  });
+
+  it('DELETE /api/dashboard/views/[id]/default returns 400 for invalid storageConfig', async () => {
+    const res = await clearDefault(
+      makeRequest('/api/dashboard/views/v1/default', {
+        method: 'DELETE',
+        body: { storageConfig: { provider: 'mongodb' } },
+      }),
+      ctxV1() as any,
+    );
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toMatch(/Invalid storageConfig/);
+  });
+});
+
+// ─── Bulk import idempotency ─────────────────────────────────────────────────
+
+describe('POST /api/dashboard/views/bulk idempotency', () => {
+  const viewWithoutId = { name: 'B', connectionRef: 'c1', data: 'raw' };
+
+  it('generates a stable id for views lacking one (same payload -> same id)', async () => {
+    const payload = { views: [viewWithoutId], storageConfig: STORAGE_CONFIG };
+
+    await bulkPost(
+      makeRequest('/api/dashboard/views/bulk', { method: 'POST', body: payload }),
+    );
+    await bulkPost(
+      makeRequest('/api/dashboard/views/bulk', { method: 'POST', body: payload }),
+    );
+
+    const calls = mockDb().dashboardView.upsert.mock.calls;
+    expect(calls).toHaveLength(2);
+    const firstId = calls[0][0].where.id;
+    const secondId = calls[1][0].where.id;
+    // Deterministic (not random), so re-import upserts instead of duplicating.
+    expect(firstId).toMatch(/^view-[0-9a-f]{64}$/);
+    expect(secondId).toBe(firstId);
+  });
+
+  it('derives different stable ids for different views', async () => {
+    const res = await bulkPost(
+      makeRequest('/api/dashboard/views/bulk', {
+        method: 'POST',
+        body: {
+          views: [
+            viewWithoutId,
+            { name: 'C', connectionRef: 'c1', data: 'raw' },
+          ],
+          storageConfig: STORAGE_CONFIG,
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const calls = mockDb().dashboardView.upsert.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][0].where.id).not.toBe(calls[1][0].where.id);
+  });
+
+  it('preserves explicit ids when provided', async () => {
+    await bulkPost(
+      makeRequest('/api/dashboard/views/bulk', {
+        method: 'POST',
+        body: {
+          views: [{ id: 'explicit-1', name: 'A', connectionRef: 'c1', data: 'x' }],
+          storageConfig: STORAGE_CONFIG,
+        },
+      }),
+    );
+    const calls = mockDb().dashboardView.upsert.mock.calls;
+    expect(calls[0][0].where.id).toBe('explicit-1');
+  });
+});

@@ -173,17 +173,6 @@ beforeEach(() => {
   watcherMock.getEventCounter.mockReturnValue(0);
 });
 
-// ─── GET /api ─────────────────────────────────────────────────────────────────
-
-describe('GET /api', () => {
-  it('returns the hello-world message', async () => {
-    const { GET } = await import('@/app/api/route');
-    const res = await GET();
-    expect(res.status).toBe(200);
-    expect((await readJson(res)).message).toBe('Hello, world!');
-  });
-});
-
 // ─── GET /api/debug/health ────────────────────────────────────────────────────
 
 describe('GET /api/debug/health', () => {
@@ -501,6 +490,35 @@ describe('/api/kpi/plugins/custom', () => {
       expect(body.success).toBe(false);
       expect(body.error).toContain('Only custom plugins');
     });
+
+    it('rejects cross-origin requests (CSRF guard)', async () => {
+      engineMocks.fns.getPlugin.mockReturnValue({ ...CUSTOM_PLUGIN });
+      const { PUT } = await import('@/app/api/kpi/plugins/custom/route');
+      const res = await PUT(
+        makeRequest('/api/kpi/plugins/custom', {
+          method: 'PUT',
+          body: { pluginId: 'my-cust', isActive: false },
+          headers: { origin: 'https://evil.example' },
+        }),
+      );
+      expect(res.status).toBe(401);
+      const body = await readJson(res);
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Cross-origin');
+    });
+
+    it('accepts a localhost origin', async () => {
+      engineMocks.fns.getPlugin.mockReturnValue({ ...CUSTOM_PLUGIN });
+      const { PUT } = await import('@/app/api/kpi/plugins/custom/route');
+      const res = await PUT(
+        makeRequest('/api/kpi/plugins/custom', {
+          method: 'PUT',
+          body: { pluginId: 'my-cust', isActive: false },
+          headers: { origin: 'http://localhost:3000' },
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
   });
 
   describe('DELETE', () => {
@@ -550,6 +568,36 @@ describe('/api/kpi/plugins/custom', () => {
       const body = await readJson(res);
       expect(body.success).toBe(false);
       expect(body.error).toContain('Only custom plugins');
+    });
+
+    it('rejects cross-origin requests (CSRF guard)', async () => {
+      engineMocks.fns.getPlugin.mockReturnValue({ ...CUSTOM_PLUGIN });
+      const { DELETE } = await import('@/app/api/kpi/plugins/custom/route');
+      const res = await DELETE(
+        makeRequest('/api/kpi/plugins/custom?pluginId=my-cust', {
+          method: 'DELETE',
+          headers: { origin: 'https://evil.example' },
+        }),
+      );
+      expect(res.status).toBe(401);
+      const body = await readJson(res);
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Cross-origin');
+      // Must not have deleted anything.
+      expect(fsMock.promises.unlink).not.toHaveBeenCalled();
+      expect(engineMocks.fns.unregister).not.toHaveBeenCalled();
+    });
+
+    it('accepts a localhost origin', async () => {
+      engineMocks.fns.getPlugin.mockReturnValue({ ...CUSTOM_PLUGIN });
+      const { DELETE } = await import('@/app/api/kpi/plugins/custom/route');
+      const res = await DELETE(
+        makeRequest('/api/kpi/plugins/custom?pluginId=my-cust', {
+          method: 'DELETE',
+          headers: { origin: 'http://localhost:3000' },
+        }),
+      );
+      expect(res.status).toBe(200);
     });
   });
 });
@@ -693,5 +741,70 @@ describe('POST /api/export/file', () => {
     expect(res.status).toBe(400);
     const body = await readJson(res);
     expect(body.error).toContain('Issues array is required');
+  });
+});
+
+// ─── POST /api/pg/export ──────────────────────────────────────────────────────
+
+describe('POST /api/pg/export', () => {
+  const exportBody = {
+    connection: { host: 'localhost', username: 'user', database: 'postgres' },
+    issues: [SAMPLE_ISSUE],
+    exportDataType: 'tickets',
+  };
+
+  it('exports issues to the target database (loopback, no origin header)', async () => {
+    const { POST } = await import('@/app/api/pg/export/route');
+    const res = await POST(
+      makeRequest('/api/pg/export', { method: 'POST', body: exportBody }),
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.success).toBe(true);
+    expect(body.rowCount).toBe(1);
+    expect(dbRef.current!.masterTicket.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects cross-origin requests (CSRF guard)', async () => {
+    const { POST } = await import('@/app/api/pg/export/route');
+    const res = await POST(
+      makeRequest('/api/pg/export', {
+        method: 'POST',
+        body: exportBody,
+        headers: { origin: 'https://evil.example' },
+      }),
+    );
+    expect(res.status).toBe(401);
+    const body = await readJson(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Cross-origin');
+    expect(dbRef.current!.masterTicket.upsert).not.toHaveBeenCalled();
+  });
+
+  it('accepts a localhost origin', async () => {
+    const { POST } = await import('@/app/api/pg/export/route');
+    const res = await POST(
+      makeRequest('/api/pg/export', {
+        method: 'POST',
+        body: exportBody,
+        headers: { origin: 'http://localhost:3000' },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await readJson(res)).success).toBe(true);
+  });
+
+  it('returns 400 when connection details are missing', async () => {
+    const { POST } = await import('@/app/api/pg/export/route');
+    const res = await POST(
+      makeRequest('/api/pg/export', {
+        method: 'POST',
+        body: { issues: [SAMPLE_ISSUE] },
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = await readJson(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Database connection details are required');
   });
 });

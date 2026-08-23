@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { isLoopbackOriginRequest } from '@/lib/security';
 
 export async function POST(request: Request) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route deletes ETL runs and related data and the app is
+  // unauthenticated; reject cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const { retentionDays, beforeDate, storageConfig } = await request.json();
     const db = getDb(storageConfig);

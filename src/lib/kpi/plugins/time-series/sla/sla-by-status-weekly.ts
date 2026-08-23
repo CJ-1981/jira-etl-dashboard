@@ -9,6 +9,8 @@
  * @MX:WARN: Only counts completed status durations to avoid partial data bias.
  * @MX:NOTE: Each status result carries its own target via `slaTargetHours` so the
  * chart layer can render a per-series target reference line.
+ * @MX:NOTE: Applies the same comment-based SLA clock reset as the builtin
+ * sla_by_status card so card and trend buckets agree.
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
@@ -23,9 +25,23 @@ import {
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
-function calculateSlaByStatusTrend(
+/**
+ * Options controlling how the SLA clock is measured for each status duration.
+ */
+export interface SlaByStatusTrendOptions {
+  /**
+   * When true, the SLA clock resets to the last relevant comment within the
+   * status window, mirroring the builtin `sla_by_status` card. A comment is
+   * relevant when it was authored by the assignee (or by anyone when
+   * `context.useAnyoneCommentsForSla` is set) and falls inside the window.
+   */
+  useCommentBasedReset?: boolean;
+}
+
+export function calculateSlaByStatusTrend(
   context: KpiContext,
-  interval: TimeInterval
+  interval: TimeInterval,
+  options?: SlaByStatusTrendOptions
 ): TimeSeriesResult[] {
   // Get SLA targets for each status from context
   const targets = (context.slaTargets || {}) as Record<string, number>;
@@ -55,17 +71,30 @@ function calculateSlaByStatusTrend(
       // Only track statuses that have an SLA target
       if (!targetStatuses.has(status)) continue;
 
-      const slaStart = transition.occurredAt;
+      const statusEntry = transition.occurredAt;
       const nextTransition = issue.transitions[i + 1];
       
       // The status "ends" at the next transition or when the issue is resolved
-      let statusExit = nextTransition ? nextTransition.occurredAt : issue.resolved;
+      const statusExit = nextTransition ? nextTransition.occurredAt : issue.resolved;
 
       // If not resolved and no next transition, it's still in this status (aging)
       // For Trend charts, we usually only count COMPLETED status durations to avoid partial data bias
       if (!statusExit) continue;
 
       allExitDates.push(statusExit);
+
+      // @MX:NOTE: Optional comment-based clock reset keeps the trend consistent
+      // with the builtin sla_by_status card (see sla-by-status.ts).
+      let slaStart = statusEntry;
+      if (options?.useCommentBasedReset) {
+        const relevantComments = issue.comments.filter((c) => {
+          const authorMatch = context.useAnyoneCommentsForSla || c.author === issue.assignee;
+          return authorMatch && c.created >= statusEntry && c.created <= statusExit;
+        });
+        if (relevantComments.length > 0) {
+          slaStart = relevantComments[relevantComments.length - 1].created;
+        }
+      }
 
       const targetHours = targets[status];
 
@@ -192,7 +221,9 @@ const slaByStatusWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
   unit: '%',
   timeInterval: 'weekly',
   calculate(context) {
-    return calculateSlaByStatusTrend(context, 'weekly');
+    // Comment-based clock reset enabled to stay consistent with the
+    // builtin sla_by_status card.
+    return calculateSlaByStatusTrend(context, 'weekly', { useCommentBasedReset: true });
   },
 };
 

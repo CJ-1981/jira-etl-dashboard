@@ -4,11 +4,23 @@
  */
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { isLoopbackOriginRequest } from '@/lib/security';
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ connectionId: string }> }
 ) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route can delete the entire master dataset of a
+  // connection (action: 'delete') and the app is unauthenticated; reject
+  // cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const { connectionId } = await params;
     
@@ -205,6 +217,17 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ connectionId: string }> }
 ) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route deletes the entire master dataset of a connection
+  // and the app is unauthenticated; reject cross-origin browser requests
+  // (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const { connectionId } = await params;
     const db = getDb(); // Fallback to default

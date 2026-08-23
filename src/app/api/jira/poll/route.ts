@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isLoopbackOriginRequest } from '@/lib/security';
 
 // ─── Persistent Polling State (using global to survive hot reloads in dev) ────
 
@@ -223,6 +224,17 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route stores Jira credentials on the server and starts
+  // background extractions; the app is unauthenticated, so reject cross-origin
+  // browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     let body;
     try {

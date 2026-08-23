@@ -1,11 +1,23 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { isLoopbackOriginRequest } from '@/lib/security';
+import { StorageConfigSchema } from '@/lib/validation/schemas';
 
 // Set a view as the default for its connection
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route mutates dashboard view defaults and the app is
+  // unauthenticated; reject cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -13,6 +25,12 @@ export async function POST(
 
     if (!storageConfig) {
       return NextResponse.json({ success: false, error: 'storageConfig is required in request body' }, { status: 400 });
+    }
+
+    // Validate untrusted storageConfig before handing it to getDb().
+    const parsedConfig = StorageConfigSchema.safeParse(storageConfig);
+    if (!parsedConfig.success) {
+      return NextResponse.json({ success: false, error: 'Invalid storageConfig' }, { status: 400 });
     }
 
     const db = getDb(storageConfig);
@@ -50,6 +68,16 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route mutates dashboard view defaults and the app is
+  // unauthenticated; reject cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -57,6 +85,12 @@ export async function DELETE(
 
     if (!storageConfig) {
       return NextResponse.json({ success: false, error: 'storageConfig is required in request body' }, { status: 400 });
+    }
+
+    // Validate untrusted storageConfig before handing it to getDb().
+    const parsedConfig = StorageConfigSchema.safeParse(storageConfig);
+    if (!parsedConfig.success) {
+      return NextResponse.json({ success: false, error: 'Invalid storageConfig' }, { status: 400 });
     }
 
     const db = getDb(storageConfig);

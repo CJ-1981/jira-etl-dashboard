@@ -132,6 +132,16 @@ export async function POST(request: Request) {
  * }
  */
 export async function PUT(request: Request) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route mutates plugin state and the app is unauthenticated;
+  // reject cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { pluginId, isActive } = body;
@@ -186,6 +196,16 @@ export async function PUT(request: Request) {
  * Remove a custom plugin
  */
 export async function DELETE(request: Request) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route deletes plugin files from disk and the app is
+  // unauthenticated; reject cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const pluginId = searchParams.get('pluginId');
