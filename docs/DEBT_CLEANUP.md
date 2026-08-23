@@ -216,7 +216,12 @@ across the API layer.
 **Changes:** new `e2e` job in `.github/workflows/ci.yml` — installs Chromium
 with system deps, lets the Playwright config boot the dev server (strict
 CI-mode config: `forbidOnly`, retries), uploads the HTML report as an
-artifact. Validated locally in CI-simulation mode: 22/22 passed.
+artifact. Validated locally in CI-simulation mode: 22/22 passed. The first
+real CI run exposed a genuine gap: `scripts/prisma-setup.mjs` skips
+`prisma db push` when `CI=true`, so the app's fallback SQLite file never
+existed on the runner and the connection-delete E2E failed with
+SQLITE_CANTOPEN. The e2e job now initializes the SQLite database explicitly
+before running the suite.
 
 ### 4E. Coverage configuration fix
 The phase-4C test legitimately imports `src/lib/db.ts` unmocked (to test the

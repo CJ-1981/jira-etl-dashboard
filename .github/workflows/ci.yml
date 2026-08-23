@@ -113,6 +113,13 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
+      # prisma-setup (postinstall) intentionally skips `prisma db push` in CI,
+      # so create the local SQLite database the app falls back to here.
+      - name: Initialize SQLite test database
+        run: npx prisma db push --schema=prisma/schema.sqlite.prisma --skip-generate
+        env:
+          DATABASE_URL: file:./db/custom.db
+
       # The Playwright config boots `npm run dev` itself (webServer option) and
       # runs single-worker because next dev does not tolerate parallel route
       # compilation churn. CI=true makes the config strict (forbidOnly, retries).
