@@ -16,7 +16,7 @@ npm run build          # Production build → .next/standalone
 npm start              # Run standalone production server
 npm test               # Vitest (run mode: npx vitest run)
 npm run test:coverage  # v8 coverage — enforces ratchet thresholds (70% lines), fails below
-npm run lint           # ESLint (critical rules re-enabled; 1032 warnings, ratchet threshold 1032)
+npm run lint           # ESLint (critical rules re-enabled; 933 warnings, ratchet threshold 933)
 npm run type-check     # tsc --noEmit — ALWAYS run this before committing
 npm run e2e            # Playwright e2e (reuses a running dev server locally; boots one in CI)
 npm run db:push        # Push schema to SQLite (default DATABASE_URL)
@@ -25,7 +25,7 @@ npm run db:studio      # Prisma Studio
 build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 ```
 
-CI runs `test:coverage`, `lint --max-warnings=1032`, `type-check`, and the Playwright
+CI runs `test:coverage`, `lint --max-warnings=933`, `type-check`, and the Playwright
 E2E suite on push/PR to main/develop (Node 22). The e2e job installs Chromium, boots
 the dev server via the Playwright config, and uploads the HTML report as an artifact.
 
@@ -60,6 +60,9 @@ requires BOTH headers to be loopback and http(s) only.
 - Generated clients live in `prisma/generated/{sqlite,postgresql}` (gitignored).
 - `getDb(config)` returns a cached client (LRU, max 10) with SSRF host validation
   (localhost + Supabase only). Default DB: `DATABASE_URL` env or `file:./db/custom.db`.
+  The return type is the structural `DbClient` exported from `src/lib/db.ts`
+  (typed model delegates + interactive and batch `$transaction`) — routes use
+  it directly; do not reintroduce `(db as any)` casts.
 - The exported `db` object only has a `.client` getter. Access models via
   `db.client.masterTicket...`, `getDefaultDb()`, or `getDb(...)` — **not** `db.masterTicket`.
   (The webhook and health routes were previously broken this way and now use `getDefaultDb()`.)
@@ -111,7 +114,7 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 1. **Build enforces type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: false`
    and ESLint has critical rules re-enabled (`no-explicit-any`, `no-unused-vars`, `no-debugger`,
    `no-fallthrough`, `no-unreachable`, etc.). `npm run type-check` and `npm run lint` are both
-   real static gates. The lint warning threshold is 1032 (ratchet, tightened 2026-08
+   real static gates. The lint warning threshold is 933 (ratchet, tightened 2026-08
    from 2000 during the debt cleanup — see `docs/DEBT_CLEANUP.md`) — lower it as the codebase
    is cleaned up.
 2. **`REACT_APP_*` env vars do nothing** — leftover CRA convention in
@@ -123,9 +126,9 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
    (`data/custom-plugins/`) with the plugin's `calculate` body interpolated, activated at
    restart. Formula execution itself is sandboxed (see KPI engine section), but the file-write
    surface remains — never expose this app untrusted on a network.
-5. **Electron path is abandoned/broken** — `electron/main.js` loads `../out/index.html`, but
-   no `output: 'export'` build exists (production is `standalone`). The caxa pipeline
-   (`build-exe.*` + `launcher.cjs`) is the real distribution path.
+5. **Electron path was removed** — the abandoned Electron distribution path
+   (`electron/`, electron-builder config and docs) was deleted on this branch.
+   The caxa pipeline (`build-exe.*` + `launcher.cjs`) is the only distribution path.
 6. **Jira custom field IDs** — `transformIssueForKpi` in `src/lib/kpi/engine-utils.ts`
    accepts an optional `fieldMapping` parameter and uses `JIRA_FIELD_MAP` defaults
    (the legacy `transformIssue` in `jira/client.ts` was deleted as dead code). However,

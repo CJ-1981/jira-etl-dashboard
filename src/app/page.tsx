@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { localConfig, type AppSettings } from '@/lib/config/local-store';
+import { localConfig, KEYS, type AppSettings } from '@/lib/config/local-store';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
 import { ExtractPanel } from '@/components/dashboard/ExtractPanel';
@@ -22,6 +22,7 @@ import {
 import { JiraConnection } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 import { usePollingNotifications } from '@/hooks/usePollingNotifications';
+import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 
 // @MX:NOTE: React Query Devtools are lazy-loaded and dev-only.
 // @MX:REASON: A static import wired the devtools' internal lazy chunk into the page's
@@ -79,7 +80,7 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem('jira-etl-theme');
+    const savedTheme = localStorage.getItem(KEYS.theme);
     if (savedTheme === 'light' || savedTheme === 'dark') {
       setTheme(savedTheme as 'light' | 'dark');
     }
@@ -110,7 +111,7 @@ export default function Home() {
           issues: data.data.issues,
           isAllTickets: true,
           etlRunId: 'master'
-        } as any);
+        });
       }
     } catch (e: any) {
       if (e.name === 'AbortError') return;
@@ -202,7 +203,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!mounted) return;
-    localStorage.setItem('jira-etl-theme', theme);
+    localStorage.setItem(KEYS.theme, theme);
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme, mounted]);
 
@@ -293,44 +294,17 @@ export default function Home() {
     window.print();
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-
-      // Don't trigger if user is typing in an input
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      // Ctrl/Cmd+P — print (works regardless of focus, except while typing above)
-      if (e.key === 'p' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        handlePrint();
-        return;
-      }
-
-      // @MX:NOTE: Tightened guard — bare-key shortcuts must not hijack events from
-      // interactive elements (selects, buttons, links, contentEditable, Radix triggers).
-      // Only fire when the event target is document.body or a plain non-interactive element.
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (target && target !== document.body) {
-        const tagName = target.tagName;
-        if (
-          tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' ||
-          tagName === 'BUTTON' || tagName === 'A' ||
-          target.isContentEditable
-        ) {
-          return;
-        }
-      }
-
-      if (e.key === '1') setActiveTab('extract');
-      if (e.key === '2') setActiveTab('kpi');
-      if (e.key === '3') setActiveTab('settings');
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActiveTab]);
+  useGlobalShortcuts({
+    modifierBindings: [
+      // Ctrl/Cmd+P — print (works regardless of focus, except while typing)
+      { key: 'p', modifierKeys: ['ctrl', 'meta'], onTrigger: () => handlePrint() },
+    ],
+    bareBindings: [
+      { key: '1', onTrigger: () => setActiveTab('extract') },
+      { key: '2', onTrigger: () => setActiveTab('kpi') },
+      { key: '3', onTrigger: () => setActiveTab('settings') },
+    ],
+  });
 
   return (
     <QueryClientProvider client={queryClient}>

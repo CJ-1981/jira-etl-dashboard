@@ -40,10 +40,10 @@ export async function POST(request: Request) {
     let typedIssues: JiraIssue[];
     if (connectionId && storageConfig && !issues) {
       const db = getDb(storageConfig);
-      const masterTickets = await (db as any).masterTicket.findMany({
+      const masterTickets = await db.masterTicket.findMany({
         where: { connectionRef: connectionId },
         select: { rawData: true }
-      });
+      }) as Array<{ rawData: string }>;
       // @MX:NOTE: Parse once per ticket, using stricter type guard for safety
       const parsed: JiraIssue[] = [];
       for (let i = 0; i < masterTickets.length; i++) {

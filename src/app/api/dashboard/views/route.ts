@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     }
 
     const db = getDb(storageConfig);
-    const views = await (db as any).dashboardView.findMany({
+    const views = await db.dashboardView.findMany({
       where: { connectionRef },
       orderBy: { updatedAt: 'desc' }
     });
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
     const db = getDb(storageConfig);
     
-    const view = await (db as any).$transaction(async (tx: any) => {
+    const view = await db.$transaction(async (tx) => {
       // @MX:WARN - Concurrency Risk: Atomic default view creation required
       // @MX:REASON - Unsetting previous defaults and creating the new default view must 
       // happen atomically to maintain the invariant that only one view is default.

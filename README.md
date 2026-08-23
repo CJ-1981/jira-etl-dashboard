@@ -366,7 +366,7 @@ build-exe.bat
 npm test               # Vitest unit/integration suite
 npm run test:coverage  # Coverage with enforced minimum thresholds (ratchet)
 npm run e2e            # Playwright end-to-end suite (reuses a running dev server)
-npm run lint           # ESLint (critical rules enabled; ratchet threshold 1032)
+npm run lint           # ESLint (critical rules enabled; ratchet threshold 933)
 npm run type-check     # TypeScript strict check
 ```
 

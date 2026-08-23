@@ -232,23 +232,120 @@ meaningfully measurable — `prisma/generated/` added to the coverage
 
 ---
 
+## Phase 5 — Cast retirement, typing, consolidation, Electron removal (branch `refactor/phase5-cleanup`)
+
+Four parallel workstreams with disjoint file ownership, executed TDD-style.
+Documentation is part of the deliverable: this section tracks each
+workstream, `docs/REFACTORING_SUMMARY.md` carries the full work log with
+commit IDs, and `CLAUDE.md` is updated wherever behavior facts change.
+
+### 5A. Retire `(db as any)` casts across the API routes
+**Why:** the phase-4C structural `DbClient` type made ~48 route-level casts
+removable; they were still the largest single `no-explicit-any` source.
+
+**Changes:**
+- Added the batch `$transaction` overload to `DbClient` (the extract route's
+  three `PrismaPromise[]` transactions were the only sites not covered).
+- **45 casts removed**: 36× `(db/prisma/getDefaultDb() as any)` across 12
+  route files, 4× `(tx: any)` param annotations, `let db: any`/
+  `let etlRun: any` in the extract route, and all 5
+  `db as unknown as DbLike` bridges.
+- Results read from `Promise<unknown>` got narrow local types instead of
+  casts (`EtlRunRow`, `TicketSnapshotRow`, `DashboardViewRow`,
+  `EtlRunSizeAggregate`, `LatestRunRow`, `MasterTicketMeta`).
+- `db-cascade.ts`: `CascadeModelDelegate` returns widened to
+  `Promise<unknown>` so `DbClient` is directly assignable to `TxLike` and
+  `DbLike` — routes pass `db` with zero bridging casts.
+- Gates: type-check clean; API suites 149/149; zero new lint warnings.
+  Pre-existing element-level `(t: any)` lambdas and Jira-field casts
+  intentionally left (they model external API shapes).
+
+### 5B. Typed issue shape + chart-data-utils wins
+**Why:** `transformIssueForKpi` carried 18 `as any` casts to model an
+implicit two-shape issue union; `chart-data-utils.ts` had leftover casts,
+a fully dead `_trend` ID list, and triplicated weekly-detail parsing.
+
+**Changes:**
+- Explicit `KpiIssueInput` union (`KpiJiraIssue | FlatIssue`) +
+  `'fields' in issue` discriminator in `types.ts`; `transformIssueForKpi`
+  refactored to a single typed narrowing — **25 `as any` casts eliminated**,
+  covered by 5 new tests (both shapes + equivalence). Writing the tests
+  first exposed a latent crash: the old code threw on truly flat issues
+  (`reading 'updated'` of undefined); the refactor fixes it. Two dead
+  imports removed as well.
+- chart-data-utils: 11 leftover casts removed (local result/point types now
+  carry `ticketKeys`/`isComplete`), 4 `(d: any)` detail callbacks typed,
+  dead `_trend` ID list deleted (real trend IDs all match the
+  `includes('trend')` check — proven by new tests), and the dual-format
+  weekly-detail parsing consolidated into one `extractWeeklyBreakdown`
+  helper used by both chart paths and `hasAgeBreakdown`.
+- Gates: type-check clean; KPI + chart suites 403/403; lint 1,032 → **931**
+  (engine-utils 27→0 warnings, chart-data-utils 20→7).
+
+### 5C. Frontend hook and storage consolidation
+**Why:** `useWidgetOrder` and `usePluginVisibility` were structural clones;
+localStorage keys were hardcoded in ~13 places bypassing `localConfig`; the
+keyboard-shortcut guard was duplicated; several hook APIs were dead.
+
+**Changes:**
+- New generic `usePersistedList` hook; both list hooks rewritten as thin
+  wrappers with unchanged public APIs.
+- Dead APIs removed (`getWidgetDefinitions`, `isWidgetVisible`,
+  `applyStagingFilters`), dead `useQuery` import removed.
+- Keyboard guard extracted to a shared hook used by `page.tsx` and
+  `KpiDashboard.tsx`.
+- localStorage literals consolidated into `KEYS`/helpers in `local-store.ts`
+  (theme, `activeView_${id}` via new `activeViewKey()`). The
+  `cfg_active_plugins` and widget-order literals stay as single documented
+  module constants mirroring `KEYS.*`: three KpiDashboard test files mock
+  `local-store` without a `KEYS` export, so importing `KEYS` into that
+  module graph would break them — consolidating the mock is a follow-up.
+- New tests: `usePersistedList` (18), `useGlobalShortcuts` incl. the guard
+  predicate (17), `KEYS.activeView`/`activeViewKey` cases; the dead-API
+  assertions were dropped from the existing hook tests.
+- Gates: type-check clean; full suite **1,003 tests passing**; hook/config/
+  dashboard suites 323/323.
+
+### 5D. Electron removal
+**Why:** the Electron path was documented as abandoned/broken
+(`electron/main.js` loads a build output that no build produces); caxa is
+the real distribution path.
+
+**Changes:**
+- Deleted `electron/`, the four Electron docs, the `main` field, the
+  electron scripts, the electron-builder `build` config, and the three
+  electron devDependencies; stale references fixed (`next.config.ts` comment,
+  CLAUDE.md gotcha).
+- Follow-up in the same pass: `concurrently` and `wait-on` became orphaned
+  (only `electron:dev` used them) and were uninstalled too — 5 devDeps and
+  218 lock-file packages removed in total.
+- Remaining intentional mentions: the CLAUDE.md removal note, a comment in
+  `eslint.config.mjs` (still valid for `launcher.cjs`), and the archived
+  `docs/user-manual.html`.
+
+---
+
 ## Final results
 
-| Metric | v0.9.0 baseline | After phases 1–4 | Delta |
+| Metric | v0.9.0 baseline | After phases 1–5 | Delta |
 |---|---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **1,032** (threshold tightened to 1,032) | −55 warnings, threshold −968 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **933** (threshold tightened to 933) | −154 warnings, threshold −1,067 |
 | Type errors | 0 | 0 | — |
-| Tests | 918 | **953** (+125 new, −74 dead-code tests removed, net) | coverage preserved |
-| Coverage (lines) | 70.98% | 71.5% (floor 70%) | dead code removed from both numerator and denominator |
-| npm dependencies | 89 | 63 | −26 packages |
+| Tests | 918 | **1,003** | coverage preserved |
+| Coverage (lines) | 70.98% | 71.8% (floor 70%) | dead code removed from both numerator and denominator |
+| npm dependencies | 89 | 58 | −31 packages |
 | shadcn components | 48 | 21 | −27 files (−7,100 lines) |
 | Mutating API routes with loopback guard | 4 of ~15 | **all** | security gap closed |
 | Card/trend SLA rule divergence | excl-clone AND plain pairs diverged | both consistent | metric bug fixed |
 | Cascade deletes transactional | 1 of 4 sites | **all 4** | partial-delete risk removed |
 | E2E in CI | not wired | **wired + validated** | regression net on every push |
+| `(db as any)` route casts | ~150 | **0** (45 retired in phase 5A) | routes typed against `DbClient` |
+| `transformIssueForKpi` casts | 19 | **0** | typed `KpiIssueInput` union |
+| Electron path | broken/abandoned | **removed** | caxa is the only distribution path |
 
-Commits: phases 1–3 on `refactor/debt-cleanup` (merged to main at `bf1d343`),
-phase 4 on `refactor/phase4-deduplication`.
+Commits: phases 1–3 on `refactor/debt-cleanup` (merged to main at `bf1d343`,
+released as v0.10.0 including phase 4), phase 5 on
+`refactor/phase5-cleanup`.
 
 ---
 
@@ -258,29 +355,25 @@ Items still open — each touches architecture broadly and needs its own
 branch/review:
 
 - Decompose `KpiDashboard.tsx` (2.7k lines, 9 copy-paste widget cases),
-  `ChartCard` (1.4k lines), `ExtractPanel.tsx` (26 `useState` calls).
-- Consolidate the three widget-order/plugin-visibility sync mechanisms into a
-  single zustand slice.
+  `ChartCard` (1.4k lines), `ExtractPanel.tsx` (25 `useState` calls).
 - Move 40 raw `fetch` call sites onto the already-configured React Query
   (dedupe the three independent 5-second pollers first — two of them hit the
   same `/api/jira/poll` endpoint).
-- Retire the 48 remaining `(db as any)`/`(tx as any)`/`(prisma as any)` cast
-  sites across 11 route files — the structural `DbClient` type from phase 4C
-  covers every model method used; the only prerequisite is adding the batch
-  `$transaction` overload (`PrismaPromise[]`) to `DbClient` (one line), after
-  which all sites are verified removable. Biggest `no-explicit-any` source.
+- Fix the `kpiResults` dual-write loop: the store slice is synced by React
+  Query in `useKpiCalculations` while a plugin-filter effect in
+  `KpiDashboard` mutates the same slice (guarded only by refs); make the
+  filtering a derived selector instead.
+- Replace the `Set`/`Map` values in zustand with plain arrays/records to
+  remove clone boilerplate and `instanceof Map` test-compat branches.
+- Adopt `handleApiError` from `src/lib/api-error.ts` across the 19 routes
+  still using raw try/catch; normalize error shapes (`{error}` vs
+  `{success:false,error}`) and the 200-vs-404 "no extractions" mismatch.
 - Time-series scaffold hand-rolled in 8 of 9 trend plugins (zero-fill →
   weighted average over complete periods → incomplete-period detail, ~1,280
   lines); `sla-by-status-excl-clone-weekly` shows the delegation pattern.
 - Three near-identical quote-aware string splitters (`engine-utils.ts`
   `applyFilter`, `splitByTopLevelOperator`, `custom-formula.ts`
-  `splitTopLevelKeyword`).
-- `transformIssueForKpi` (engine-utils.ts) — 19 `as any` casts modeling an
-  untyped two-shape issue union; should be a typed discriminator.
-- `chart-data-utils.ts` redeclares its own `KpiResult` (missing
-  `ticketKeys`), forcing 8 casts; legacy `_trend` ID list matches no plugin.
-- Electron removal decision (`electron/` path is documented as broken; caxa
-  is the real distribution path).
+  `splitTopLevelKeyword`) — consolidate into one shared parser helper.
 - Root-level working-note markdown files (`TIME_SERIES_*.md`, etc.) → move to
   `docs/` or delete.
 - Orphaned dev-DB migration record `20260528000000_add_ticket_snapshot_rawdata_owner_team`
@@ -290,6 +383,14 @@ branch/review:
 - UTC-ISO-week vs local-Monday-week divergence (documented with `@MX:WARN`
   in `time-series-utils.ts` / `week-boundaries.ts`) — needs a product
   decision before unifying.
+- KpiDashboard test mocks of `local-store` lack the `KEYS` export, which is
+  why the `cfg_active_plugins`/widget-order keys remain module constants
+  mirroring `KEYS.*` (see 5C) — update the mocks to import the real module
+  shape so the literals can move into `KEYS`.
+
+Done in phase 5 (previously listed here): `(db as any)` cast retirement,
+typed `transformIssueForKpi` discriminator, chart-data-utils cast/dead-code
+cleanup, frontend hook + localStorage consolidation, Electron removal.
 
 Done in phase 4 (previously listed here): cascade-delete deduplication,
 age-breakdown deduplication, typed dual Prisma client (foundation), E2E

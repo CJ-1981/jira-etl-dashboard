@@ -92,7 +92,7 @@ describe('useWidgetOrder - Reordering and Visibility', () => {
     });
 
     expect(result.current.widgetOrder).toEqual(['kpi-1', 'kpi-3']);
-    expect(result.current.isWidgetVisible('kpi-2')).toBe(false);
+    expect(result.current.widgetOrder.includes('kpi-2')).toBe(false);
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual([
       'kpi-1',
       'kpi-3',
@@ -110,7 +110,7 @@ describe('useWidgetOrder - Reordering and Visibility', () => {
     });
 
     expect(result.current.widgetOrder).toEqual(['kpi-1', 'kpi-3', 'kpi-2']);
-    expect(result.current.isWidgetVisible('kpi-2')).toBe(true);
+    expect(result.current.widgetOrder.includes('kpi-2')).toBe(true);
   });
 });
 

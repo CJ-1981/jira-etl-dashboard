@@ -43,8 +43,6 @@ export interface UseJqlFiltersResult {
   toggleStagingFilter: (key: string, value: string) => void;
   /** Clear all staging filters */
   clearStagingFilters: () => void;
-  /** Apply staging filters and return them */
-  applyStagingFilters: () => Record<string, string[]>;
 }
 
 /**
@@ -178,16 +176,6 @@ export function useJqlFilters(): UseJqlFiltersResult {
     setStagingFilters({});
   }, []);
 
-  /**
-   * Apply staging filters
-   * Returns the current staging filters for consumption by the caller
-   *
-   * @returns Current staging filters organized by category
-   */
-  const applyStagingFilters = useCallback(() => {
-    return stagingFilters;
-  }, [stagingFilters]);
-
   return {
     jqlList,
     stagingFilters,
@@ -196,6 +184,5 @@ export function useJqlFilters(): UseJqlFiltersResult {
     deleteJql,
     toggleStagingFilter,
     clearStagingFilters,
-    applyStagingFilters,
   };
 }

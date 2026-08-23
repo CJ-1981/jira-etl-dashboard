@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       try {
         // @MX:NOTE: Use getDefaultDb() to reach the real Prisma client for $queryRaw.
         // @MX:REASON: The `db` proxy only exposes `.client`; `$queryRaw` on it is undefined.
-        await (getDefaultDb() as any).$queryRaw`SELECT 1`;
+        await getDefaultDb().$queryRaw`SELECT 1`;
         health.database = { status: 'connected' };
       } catch (error) {
         health.database = {

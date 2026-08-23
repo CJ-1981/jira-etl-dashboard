@@ -404,36 +404,6 @@ describe('useJqlFilters - Characterization Tests (T-012)', () => {
     });
   });
 
-  describe('applyStagingFilters - Apply filters', () => {
-    it('should return current staging filters', () => {
-      const { result } = renderHook(() => useJqlFilters());
-
-      act(() => {
-        result.current.addJql('project = TEST', 'My Test JQL');
-      });
-
-      const jql = result.current.jqlList[0];
-
-      act(() => {
-        result.current.toggleStagingFilter('jql', jql.query);
-      });
-
-      const applied = result.current.applyStagingFilters();
-
-      expect(applied).toEqual({
-        jql: [jql.query],
-      });
-    });
-
-    it('should return empty object when no filters staged', () => {
-      const { result } = renderHook(() => useJqlFilters());
-
-      const applied = result.current.applyStagingFilters();
-
-      expect(applied).toEqual({});
-    });
-  });
-
   describe('Edge Cases', () => {
     it('should handle special characters in JQL queries', () => {
       const { result } = renderHook(() => useJqlFilters());

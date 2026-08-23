@@ -8,7 +8,8 @@
  *
  * The module is typed against minimal structural types (TxLike/DbLike) so it
  * works with any Prisma client flavor (SQLite/PostgreSQL) and with test
- * mocks, without importing Prisma itself.
+ * mocks, without importing Prisma itself. lib/db's structural DbClient
+ * satisfies DbLike directly, so routes pass their client without casts.
  */
 
 /** Batch mutation result (the shape Prisma's deleteMany resolves to). */
@@ -23,19 +24,27 @@ export interface IdRow {
 
 /**
  * Minimal structural model delegate — the slice of a Prisma model API the
- * cascade needs (id-projecting reads and batch deletes).
+ * cascade needs (id-projecting reads and batch deletes). Returns are the
+ * loose unknown shapes of lib/db's PrismaModelDelegate so that DbClient is
+ * directly assignable; the cascade narrows results locally where it reads
+ * `.id` / `.count`.
  */
 export interface CascadeModelDelegate {
   findMany(args: {
     where?: Record<string, unknown>;
     select?: Record<string, unknown>;
-  }): Promise<IdRow[]>;
-  deleteMany(args: { where: Record<string, unknown> }): Promise<BatchDeleteResult>;
+  }): Promise<unknown[]>;
+  deleteMany(args: { where: Record<string, unknown> }): Promise<unknown>;
 }
 
 /**
  * A transaction handle (or client) exposing the models the cascade touches.
  * Prisma interactive-transaction clients satisfy this structurally.
+ *
+ * Kept as a narrow structural type (rather than lib/db's DbClient) so that
+ * minimal test doubles and transaction handles that only carry the six
+ * cascade models remain assignable; lib/db's DbClient is assignable too,
+ * because CascadeModelDelegate mirrors PrismaModelDelegate's loose returns.
  */
 export interface TxLike {
   kpiResult: CascadeModelDelegate;
@@ -46,8 +55,18 @@ export interface TxLike {
   masterTicket: CascadeModelDelegate;
 }
 
-/** A Prisma-client-like value that can run an interactive transaction. */
-export interface DbLike extends TxLike {
+/**
+ * A client that can run the cascade. lib/db's DbClient satisfies this
+ * directly (its $transaction callback yields a DbClient, which carries every
+ * TxLike model), so routes can pass their DbClient without bridging casts.
+ */
+export interface DbLike {
+  kpiResult: CascadeModelDelegate;
+  dashboardView: CascadeModelDelegate;
+  ticketTransition: CascadeModelDelegate;
+  ticketSnapshot: CascadeModelDelegate;
+  etlRun: CascadeModelDelegate;
+  masterTicket: CascadeModelDelegate;
   $transaction<T>(fn: (tx: TxLike) => Promise<T>): Promise<T>;
 }
 
@@ -71,7 +90,7 @@ export async function deleteEtlRunsWithChildren(
   const kpiResults = await tx.kpiResult.deleteMany({
     where: { etlRunId: { in: etlRunIds } },
   });
-  deletedCount += kpiResults.count;
+  deletedCount += (kpiResults as BatchDeleteResult).count;
 
   // 2. Ticket transitions (reference ticketSnapshotId) — resolve ids first
   const snapshots = await tx.ticketSnapshot.findMany({
@@ -80,22 +99,22 @@ export async function deleteEtlRunsWithChildren(
   });
   if (snapshots.length > 0) {
     const transitions = await tx.ticketTransition.deleteMany({
-      where: { ticketSnapshotId: { in: snapshots.map((s) => s.id) } },
+      where: { ticketSnapshotId: { in: (snapshots as IdRow[]).map((s) => s.id) } },
     });
-    deletedCount += transitions.count;
+    deletedCount += (transitions as BatchDeleteResult).count;
   }
 
   // 3. Ticket snapshots (reference etlRunId)
   const deletedSnapshots = await tx.ticketSnapshot.deleteMany({
     where: { etlRunId: { in: etlRunIds } },
   });
-  deletedCount += deletedSnapshots.count;
+  deletedCount += (deletedSnapshots as BatchDeleteResult).count;
 
   // 4. The ETL runs themselves
   const runs = await tx.etlRun.deleteMany({
     where: { id: { in: etlRunIds } },
   });
-  deletedCount += runs.count;
+  deletedCount += (runs as BatchDeleteResult).count;
 
   return deletedCount;
 }
@@ -133,7 +152,7 @@ export async function deleteConnectionData(
       where: { connectionRef },
       select: { id: true },
     });
-    const etlRunIds = etlRuns.map((r) => r.id);
+    const etlRunIds = (etlRuns as IdRow[]).map((r) => r.id);
 
     let deletedCount = 0;
 
@@ -142,13 +161,13 @@ export async function deleteConnectionData(
     const kpiResults = await tx.kpiResult.deleteMany({
       where: { connectionRef },
     });
-    deletedCount += kpiResults.count;
+    deletedCount += (kpiResults as BatchDeleteResult).count;
 
     // 2. Dashboard views (reference connectionRef)
     const dashboardViews = await tx.dashboardView.deleteMany({
       where: { connectionRef },
     });
-    deletedCount += dashboardViews.count;
+    deletedCount += (dashboardViews as BatchDeleteResult).count;
 
     // 3-5. Run-scoped cascade (transitions → snapshots → runs)
     deletedCount += await deleteEtlRunsWithChildren(tx, etlRunIds);
@@ -157,11 +176,11 @@ export async function deleteConnectionData(
     const masterTickets = await tx.masterTicket.deleteMany({
       where: { connectionRef },
     });
-    deletedCount += masterTickets.count;
+    deletedCount += (masterTickets as BatchDeleteResult).count;
 
     return {
       runCount: etlRunIds.length,
-      masterTicketCount: masterTickets.count,
+      masterTicketCount: (masterTickets as BatchDeleteResult).count,
       deletedCount,
     };
   });

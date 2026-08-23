@@ -20,7 +20,7 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "@typescript-eslint/no-non-null-assertion": "warn",
     "@typescript-eslint/ban-ts-comment": "warn",
     "@typescript-eslint/prefer-as-const": "error",
-    // require() is legitimately used in CJS launcher and Electron files
+    // require() is legitimately used in the CJS launcher (launcher.cjs)
     "@typescript-eslint/no-require-imports": "off",
 
     // React hooks rules

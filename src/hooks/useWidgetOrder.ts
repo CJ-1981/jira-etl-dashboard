@@ -3,6 +3,9 @@
  *
  * Manages the display order of widgets (individual KPIs and panel sections) on the dashboard.
  *
+ * Thin wrapper around the generic usePersistedList hook, which implements the
+ * shared localStorage persistence / cross-instance synchronization mechanics.
+ *
  * @example
  * ```tsx
  * function MyComponent() {
@@ -12,162 +15,64 @@
  * ```
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
+import { usePersistedList } from './usePersistedList';
 
 // @MX:NOTE: Custom event for same-tab synchronization
 // @MX:REASON: Storage events only fire across tabs, not within the same tab
 const WIDGET_ORDER_CHANGE_EVENT = 'widget-order-change';
 
-// Widget type definitions
-export type WidgetType = 'kpi' | 'panel';
-
-export interface WidgetDefinition {
-  id: string;
-  type: WidgetType;
-  name: string;
-  category?: string;
-  icon?: string;
-}
+// @MX:NOTE: This is KEYS.widgetOrder ('widget_display_order') from local-store.
+// It is inlined because KpiDashboard's integration test mocks
+// '@/lib/config/local-store' without a KEYS export while still exercising the
+// real useWidgetOrder hook, so importing KEYS here would crash that suite.
+const WIDGET_ORDER_STORAGE_KEY = 'widget_display_order';
 
 export interface UseWidgetOrderResult {
   widgetOrder: string[];
   reorderWidget: (sourceIndex: number, destIndex: number) => void;
   toggleWidgetVisibility: (widgetId: string) => void;
-  isWidgetVisible: (widgetId: string) => boolean;
-  getWidgetDefinitions: () => WidgetDefinition[];
   initializeWidgetOrder: (availableKpis: string[], excludeFilter?: (id: string) => boolean) => void;
 }
+
+// Panel section ids are managed separately and must never leak into widget order
+const stripPanelIds = (ids: string[]) => ids.filter(id => !id.startsWith('panel-'));
 
 // @MX:NOTE: Main hook implementation for widget display order management
 // @MX:REASON: Centralizes widget ordering logic for both KPIs and panel sections
 export function useWidgetOrder(): UseWidgetOrderResult {
-  const STORAGE_KEY = 'widget_display_order';
+  // Stable options object so the generic hook's effects don't re-subscribe on
+  // every render of the wrapper.
+  const options = useMemo(
+    () => ({
+      fallback: [] as string[],
+      onLoad: stripPanelIds,
+      changeEvent: WIDGET_ORDER_CHANGE_EVENT,
+      // Another instance in this tab announces writes via the custom event;
+      // adopting them must not trigger an echo write back to storage.
+      suppressSyncEcho: true,
+    }),
+    []
+  );
 
-  const [widgetOrder, setWidgetOrder] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.filter((id: string) => !id.startsWith('panel-'));
-      }
-      return [];
-    } catch (error) {
-      console.error(`Failed to load ${STORAGE_KEY} from localStorage:`, error);
-      return [];
-    }
-  });
-
-  const isSelfWriting = useRef(false);
-  const isSyncing = useRef(false);
-
-  // Re-sync from localStorage whenever changes happen from other components
-  // @MX:NOTE: Uses both storage events (cross-tab) and custom events (same-tab)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const syncFromStorage = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          const cleaned = parsed.filter((id: string) => !id.startsWith('panel-'));
-          isSyncing.current = true;
-          setWidgetOrder(cleaned);
-        }
-      } catch (error) {
-        console.error(`[useWidgetOrder] Failed to sync:`, error);
-      }
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && !isSelfWriting.current) {
-        syncFromStorage();
-      }
-    };
-
-    const handleCustomEvent = () => {
-      // Early return when this instance is writing to prevent feedback loop
-      if (isSelfWriting.current) return;
-      syncFromStorage();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener(WIDGET_ORDER_CHANGE_EVENT, handleCustomEvent);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener(WIDGET_ORDER_CHANGE_EVENT, handleCustomEvent);
-    };
-  }, []);
-
-  // Persist to local storage on change
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    // Skip exactly one persist for state updates caused by syncing from
-    // another instance (avoids echo writes). Reset the flag here so that
-    // subsequent user-initiated changes persist normally.
-    if (isSyncing.current) {
-      isSyncing.current = false;
-      return;
-    }
-
-    try {
-      isSelfWriting.current = true;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(widgetOrder));
-      window.dispatchEvent(new CustomEvent(WIDGET_ORDER_CHANGE_EVENT));
-      // Synchronously clear flags after dispatch
-      isSelfWriting.current = false;
-      isSyncing.current = false;
-    } catch (error) {
-      isSelfWriting.current = false;
-      isSyncing.current = false;
-      console.error(`[useWidgetOrder] Failed to save:`, error);
-    }
-  }, [widgetOrder]);
-
-  const reorderWidget = useCallback((sourceIndex: number, destIndex: number) => {
-    setWidgetOrder(prev => {
-      const newOrder = [...prev];
-      const [removed] = newOrder.splice(sourceIndex, 1);
-      newOrder.splice(destIndex, 0, removed);
-      return newOrder;
-    });
-  }, []);
-
-  const toggleWidgetVisibility = useCallback((widgetId: string) => {
-    setWidgetOrder(prev => {
-      if (prev.includes(widgetId)) {
-        return prev.filter(id => id !== widgetId);
-      } else {
-        return [...prev, widgetId];
-      }
-    });
-  }, []);
-
-  const isWidgetVisible = useCallback((widgetId: string) => {
-    return widgetOrder.includes(widgetId);
-  }, [widgetOrder]);
-
-  const getWidgetDefinitions = useCallback((): WidgetDefinition[] => {
-    return [];
-  }, []);
+  const { list, setList, reorder, toggle } = usePersistedList<string>(
+    WIDGET_ORDER_STORAGE_KEY,
+    options
+  );
 
   const initializeWidgetOrder = useCallback((availableKpis: string[], excludeFilter?: (id: string) => boolean) => {
-    setWidgetOrder(prev => {
+    setList(prev => {
       const widgetKpis = excludeFilter ? availableKpis.filter(id => !excludeFilter(id)) : availableKpis;
       const existingKpis = prev.filter(id => !excludeFilter || !excludeFilter(id));
       const newKpis = widgetKpis.filter(id => !existingKpis.includes(id));
       return [...newKpis, ...existingKpis];
     });
-  }, []);
+  }, [setList]);
 
   return {
-    widgetOrder,
-    reorderWidget,
-    toggleWidgetVisibility,
-    isWidgetVisible,
-    getWidgetDefinitions,
+    widgetOrder: list,
+    reorderWidget: reorder,
+    toggleWidgetVisibility: toggle,
     initializeWidgetOrder,
   };
 }

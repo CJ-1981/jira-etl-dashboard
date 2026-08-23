@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DashboardView, DashboardViewState } from '@/types/dashboard';
+import { activeViewKey } from '@/lib/config/local-store';
 
 export function ViewManager() {
   const {
@@ -217,7 +218,7 @@ export function ViewManager() {
       const controller = new AbortController();
 
       // Try to restore the last active view for this connection
-      const savedActiveViewId = localStorage.getItem(`activeView_${requestedConnectionRef}`);
+      const savedActiveViewId = localStorage.getItem(activeViewKey(requestedConnectionRef));
 
       // @MX:WARN - Closure Risk: fetchViews must be called with fresh state
       // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from
@@ -235,10 +236,10 @@ export function ViewManager() {
   // Persist active view to localStorage whenever it changes
   useEffect(() => {
     if (activeConnectionRef && activeView) {
-      localStorage.setItem(`activeView_${activeConnectionRef}`, activeView.id);
+      localStorage.setItem(activeViewKey(activeConnectionRef), activeView.id);
     } else if (activeConnectionRef && !activeView) {
       // Clear the saved view if no view is active
-      localStorage.removeItem(`activeView_${activeConnectionRef}`);
+      localStorage.removeItem(activeViewKey(activeConnectionRef));
     }
   }, [activeView, activeConnectionRef]);
 

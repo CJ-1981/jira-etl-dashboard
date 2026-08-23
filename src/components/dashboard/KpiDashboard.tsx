@@ -3,7 +3,6 @@
 import { KpiCard, ChartCard } from './KpiCard';
 import { AppSettings } from '@/lib/config/local-store';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import {
   transformForBarChart,
   transformForPieChart,
@@ -78,8 +77,14 @@ import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
 import { DrillDownSheet } from './DrillDownSheet';
 import { TicketListWidget } from './TicketListWidget';
+import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 
 // ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
+// @MX:NOTE: This is KEYS.activePlugins from local-store, inlined because the
+// KpiDashboard test suites mock '@/lib/config/local-store' without a KEYS
+// export, so importing it here would crash those tests.
+const ACTIVE_PLUGINS_STORAGE_KEY = 'cfg_active_plugins';
+
 const JQL_PATTERNS = [
   { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
   { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
@@ -186,7 +191,7 @@ export function KpiDashboard() {
 
   // ─── Plugin Visibility Hook ───────────────────────────────────────────────────
   const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
-  const pluginVisibility = usePluginVisibility(allPluginIds, 'cfg_active_plugins');
+  const pluginVisibility = usePluginVisibility(allPluginIds, ACTIVE_PLUGINS_STORAGE_KEY);
   const { widgetOrder, toggleWidgetVisibility } = useWidgetOrder();
 
   // Automatically sync widget order with available plugins
@@ -692,7 +697,7 @@ export function KpiDashboard() {
 
   useEffect(() => {
     const filterByActivePlugins = () => {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem('cfg_active_plugins') : null;
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_PLUGINS_STORAGE_KEY) : null;
       
       // If never configured (null), show all plugins by default
       if (raw === null) {
@@ -760,7 +765,7 @@ export function KpiDashboard() {
     filterByActivePlugins();
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'cfg_active_plugins') {
+      if (e.key === ACTIVE_PLUGINS_STORAGE_KEY) {
         filterByActivePlugins();
       }
     };
@@ -809,52 +814,30 @@ export function KpiDashboard() {
   }, []);
 
   // Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-
-      // Don't trigger if user is typing in an input — Escape still blurs it
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        if (e.key === 'Escape') {
-          target.blur();
-        }
-        return;
-      }
-
-      // @MX:NOTE: Tightened guard — bare-key shortcuts must not hijack events from
-      // interactive elements (selects, buttons, links, contentEditable, Radix triggers).
-      // Only fire when the event target is document.body or a plain non-interactive element.
-      if (target && target !== document.body) {
-        const tagName = target.tagName;
-        if (
-          tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' ||
-          tagName === 'BUTTON' || tagName === 'A' ||
-          target.isContentEditable
-        ) {
-          return;
-        }
-      }
-
-      // No modifier keys for bare shortcuts (avoids eating Ctrl+R browser reload etc.)
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-      if (e.key.toLowerCase() === 'r') {
-        e.preventDefault();
-        runCalculationSafe();
-        toast.info('Recalculating KPIs...');
-      }
-
-      if (e.key === '/') {
-        e.preventDefault();
-        setFilterPanelOpen(true);
-        setTimeout(() => {
-          jqlInputRef.current?.focus();
-        }, 100);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [runCalculationSafe, setFilterPanelOpen]);
+  useGlobalShortcuts({
+    blurInputOnEscape: true,
+    bareBindings: [
+      {
+        key: 'r',
+        caseInsensitive: true,
+        onTrigger: ({ event }) => {
+          event.preventDefault();
+          runCalculationSafe();
+          toast.info('Recalculating KPIs...');
+        },
+      },
+      {
+        key: '/',
+        onTrigger: ({ event }) => {
+          event.preventDefault();
+          setFilterPanelOpen(true);
+          setTimeout(() => {
+            jqlInputRef.current?.focus();
+          }, 100);
+        },
+      },
+    ],
+  });
 
   const sortedKpiResults = useMemo(() => {
     // Use activePlugins from usePluginVisibility hook
@@ -865,7 +848,7 @@ export function KpiDashboard() {
 
     // Check if there is a saved list in localStorage (i.e. the user configured plugins)
     const hasSavedList = typeof window !== 'undefined'
-      ? localStorage.getItem('cfg_active_plugins') !== null
+      ? localStorage.getItem(ACTIVE_PLUGINS_STORAGE_KEY) !== null
       : false;
 
     // If never configured, show all in original order (no filter applied)
@@ -2455,7 +2438,7 @@ export function KpiDashboard() {
                 case 'ticket-list': {
                     const tlPluginId = widget.kpis[0]?.pluginId;
                     const tlCollapsed = collapsedWidgets.has(tlPluginId);
-                    const tlConn = connections.find((c: any) => c.id === activeConnectionId);
+                    const tlConn = connections.find((c) => c.id === activeConnectionId);
                     const tlJiraBase = tlConn ? (tlConn.baseUrl?.startsWith('http') ? tlConn.baseUrl : `https://${tlConn.baseUrl}`) : '';
                     return widget.kpis.length > 0 ? (
                       <div key={`ticket-list-${tlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">

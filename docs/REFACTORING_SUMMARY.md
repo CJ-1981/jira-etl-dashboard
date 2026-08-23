@@ -175,20 +175,20 @@ Both pre-existing, both fixed TDD-style (RED confirmed first):
 
 ## Metrics before → after
 
-| Metric | v0.9.0 (`085a0d7`) | After (`13838c0`) |
+| Metric | v0.9.0 (`085a0d7`) | After (`phase 5`) |
 |---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **1,032** (threshold 1,032) |
-| `no-explicit-any` warnings | 703 | 666 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **933** (threshold 933) |
+| `no-explicit-any` warnings | 703 | 568 |
 | Type errors | 0 | 0 |
-| Unit tests | 918 | **957** (all passing; +~130 new, dead-code tests removed) |
-| Coverage (lines) | 70.98% | 71.5% (floor 70%) |
+| Unit tests | 918 | **1,003** (all passing) |
+| Coverage (lines) | 70.98% | 71.8% (floor 70%) |
 | E2E tests | 22 (local only) | 22, **also in CI** |
-| npm dependencies | 89 | 63 |
+| npm dependencies | 89 | 58 |
 | shadcn components | 48 | 21 |
 | Mutating routes with loopback guard | 4 of ~15 | **all** |
 | Transactional cascade deletes | 1 of 4 sites | **all 4** |
-| Card/trend SLA rule divergence | both pairs diverged | consistent |
-| Net line change | — | **−7,478** |
+| `(db as any)` route casts | ~150 | **0** |
+| Net line change | — | **≈ −8,900** |
 
 ---
 
@@ -203,6 +203,45 @@ Both pre-existing, both fixed TDD-style (RED confirmed first):
   Jira key validation confirmed in code, tech-stack dependencies confirmed
   present and used.
 - The two defects in `13838c0` were the only functional findings; both fixed.
+
+---
+
+## Phase 5 — cast retirement, typing, consolidation, Electron removal
+
+Branch `refactor/phase5-cleanup` (based on v0.10.0 / `d57cac9`), four
+parallel workstreams with disjoint file ownership:
+
+- **5A — Retire `(db as any)` casts**: 45 casts removed across 12 route
+  files (36 db/prisma casts, 4 `tx` annotations, 5 `DbLike` bridges);
+  batch `$transaction` overload added to `DbClient`; narrow local row types
+  (`EtlRunRow`, `DashboardViewRow`, …) replace `any` results; routes pass
+  `db` to the cascade helpers with zero bridging casts.
+- **5B — Typed issue shape**: explicit `KpiIssueInput` union +
+  `'fields' in issue` discriminator; `transformIssueForKpi` cast-free
+  (25 `as any` eliminated). TDD exposed a latent crash — the old code threw
+  on truly flat webhook-shaped issues; the refactor fixes it. Plus
+  chart-data-utils: 11 casts removed, dead `_trend` ID list deleted,
+  weekly-detail parsing consolidated into `extractWeeklyBreakdown`.
+- **5C — Frontend consolidation**: generic `usePersistedList` hook replaces
+  two structural clones (public APIs unchanged); dead hook APIs removed;
+  keyboard guard extracted to `useGlobalShortcuts`; localStorage keys
+  consolidated through `localConfig`/`KEYS` where the test mocks allow.
+  35 new hook/guard tests.
+- **5D — Electron removal**: `electron/`, four docs, `main` field, electron
+  scripts, electron-builder config, and 5 orphaned devDependencies removed
+  (218 lock-file packages); caxa remains the only distribution path.
+
+**Gates:** type-check 0 errors; **1,003 tests passing** (68 files);
+coverage 71.8% lines (floor 70%); lint **1,032 → 933** (ratchet tightened
+to 933 in CI, the pre-push hook, CLAUDE.md, README).
+
+Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 5 section).
+Commit ID: filled in below at commit time.
+
+| Workstream | Commit |
+|---|---|
+| Phase 5 (all four streams) | `d58fd56` |
+| Phase 5 docs finalization | _(this commit)_ |
 
 ---
 

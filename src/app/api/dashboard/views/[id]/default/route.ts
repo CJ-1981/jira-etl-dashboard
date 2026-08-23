@@ -3,6 +3,11 @@ import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { StorageConfigSchema } from '@/lib/validation/schemas';
 
+/** Narrow slice of a DashboardView row — only the fields this handler reads. */
+interface DashboardViewRow {
+  connectionRef: string;
+}
+
 // Set a view as the default for its connection
 export async function POST(
   request: Request,
@@ -36,13 +41,13 @@ export async function POST(
     const db = getDb(storageConfig);
 
     // Fetch current view to get connectionRef
-    const currentView = await (db as any).dashboardView.findUnique({ where: { id } });
+    const currentView = await db.dashboardView.findUnique({ where: { id } }) as DashboardViewRow | null;
     if (!currentView) {
       return NextResponse.json({ success: false, error: 'View not found' }, { status: 404 });
     }
 
     // Update atomically: unset all other defaults and set this one as default
-    const view = await (db as any).$transaction(async (tx: any) => {
+    const view = await db.$transaction(async (tx) => {
       // Unset all other default views for this connection
       await tx.dashboardView.updateMany({
         where: { connectionRef: currentView.connectionRef, isDefault: true },
@@ -96,7 +101,7 @@ export async function DELETE(
     const db = getDb(storageConfig);
 
     // Update view to remove default status
-    const view = await (db as any).dashboardView.update({
+    const view = await db.dashboardView.update({
       where: { id },
       data: { isDefault: false }
     });

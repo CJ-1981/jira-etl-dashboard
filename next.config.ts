@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: pkg.version,
     NEXT_PUBLIC_BUILD_DATE: new Date().toISOString().slice(0, 10),
   },
-  // Use standalone output for production, export for Electron
+  // Use standalone output for production
   ...(process.env.NODE_ENV === 'production'
     ? { output: 'standalone' }
     : {}),

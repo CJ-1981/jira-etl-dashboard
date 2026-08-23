@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         const rawSp = (issue.fields as any)['customfield_10002'];
         const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
 
-        await (db as any).masterTicket.upsert({
+        await db.masterTicket.upsert({
           where: { connectionRef_jiraKey: { connectionRef: 'external_export', jiraKey: issue.key } },
           create: {
             connectionRef: 'external_export',
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
       }
 
       if (kpiData.length > 0) {
-        await (db as any).kpiResult.createMany({ data: kpiData });
+        await db.kpiResult.createMany({ data: kpiData });
         rowCount += kpiData.length;
       }
     }

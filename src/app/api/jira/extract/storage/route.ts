@@ -1,6 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
+/** Shape of the etlRun aggregate result this handler reads. */
+interface EtlRunSizeAggregate {
+  _sum: { sizeBytes: number | null };
+  _min: { completedAt: string | null };
+  _max: { completedAt: string | null };
+}
+
+/** Narrow slice of an EtlRun row — only the fields the per-connection read uses. */
+interface EtlRunSizeRow {
+  sizeBytes: number | null;
+  completedAt: string | null;
+}
+
 export async function POST(request: Request) {
   try {
     // The body can be absent on the first request to a freshly-compiled dev
@@ -22,18 +35,18 @@ export async function POST(request: Request) {
     const activeConnectionRefs = activeConnections.map((c: any) => c.id);
 
     // Get overall stats
-    const totalMasterTickets = await (db as any).masterTicket.count({
+    const totalMasterTickets = await db.masterTicket.count({
       where: { connectionRef: { in: activeConnectionRefs } }
     });
 
-    const totalExtractions = await (db as any).etlRun.count({
+    const totalExtractions = await db.etlRun.count({
       where: {
         autoSave: true,
         connectionRef: { in: activeConnectionRefs }
       }
     });
 
-    const sizeResult = await (db as any).etlRun.aggregate({
+    const sizeResult = await db.etlRun.aggregate({
       where: {
         autoSave: true,
         connectionRef: { in: activeConnectionRefs }
@@ -47,12 +60,12 @@ export async function POST(request: Request) {
       _max: {
         completedAt: true
       }
-    }) as any;
+    }) as EtlRunSizeAggregate;
 
     // Get breakdown by connection
     const connectionStats = await Promise.all(
       activeConnections.map(async (connection: any) => {
-        const runs = await (db as any).etlRun.findMany({
+        const runs = await db.etlRun.findMany({
           where: {
             connectionRef: connection.id,
             autoSave: true,
@@ -63,10 +76,10 @@ export async function POST(request: Request) {
             completedAt: true,
             ticketsProcessed: true,
           },
-        });
+        }) as EtlRunSizeRow[];
 
         const totalSize = runs.reduce((sum: number, run: any) => sum + (run.sizeBytes || 0), 0);
-        const masterTicketCount = await (db as any).masterTicket.count({
+        const masterTicketCount = await db.masterTicket.count({
           where: { connectionRef: connection.id }
         });
 
@@ -85,7 +98,7 @@ export async function POST(request: Request) {
     connectionStats.sort((a, b) => b.totalSizeMB - a.totalSizeMB);
 
     // Orphaned records (not in currently active frontend list)
-    const orphanedCount = await (db as any).etlRun.count({
+    const orphanedCount = await db.etlRun.count({
       where: {
         autoSave: true,
         connectionRef: { notIn: activeConnectionRefs }

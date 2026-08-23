@@ -5,11 +5,9 @@
  * @MX:REASON: Prevents code duplication across plugin files and provides consistent behavior
  */
 
-import type { JiraIssue } from '../jira/client';
-import { calculateBusinessHours, calculateWorkingDays } from '../holidays/german-holidays';
 import { extractSelectFieldValue } from '../jira/client';
 import { getIssueOwnerTeamField } from '../jira/field-config';
-import type { TransformedIssue, StatusTransition, AgeCategory } from './types';
+import type { TransformedIssue, StatusTransition, AgeCategory, KpiIssueInput, FlatIssue } from './types';
 
 // ─── Transform Cache ────────────────────────────────────────────────────────────
 
@@ -28,9 +26,17 @@ const TRANSFORM_CACHE_SIZE = 5000;
 
 // ─── Issue Transformation ───────────────────────────────────────────────────────
 
-export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
+export function transformIssueForKpi(issue: KpiIssueInput): TransformedIssue {
+  // @MX:NOTE: Discriminated union — a real Jira issue carries its data under
+  // `fields`, a flat/normalized issue (webhook/master-derived) carries the same
+  // data at the top level. Narrow once and read each shape with typed access.
+  // @MX:REASON: `'fields' in issue` is the structural discriminator; KpiJiraIssue
+  // always has `fields`, FlatIssue never does.
+  const jiraFields = 'fields' in issue ? issue.fields : undefined;
+  const flat: FlatIssue = issue; // both shapes share the top-level FlatIssue view
+
   // @MX:NOTE: Use composed key (issue.key + updated timestamp) to detect stale data
-  const cacheKey = `${issue.key}:${issue.fields.updated || ''}`;
+  const cacheKey = `${issue.key}:${jiraFields?.updated || flat.updated || ''}`;
   const cached = transformCache.get(cacheKey);
   if (cached) return cached.issue;
   const transitions: StatusTransition[] = [];
@@ -52,6 +58,11 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
   // Sort transitions chronologically (Jira returns changelog in reverse order)
   transitions.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
 
+  // @MX:NOTE: created/resolved/due dates exist on both shapes; resolve once.
+  const createdRaw = jiraFields?.created ?? flat.created;
+  const resolvedRaw = jiraFields?.resolutiondate ?? flat.resolved;
+  const dueDateRaw = jiraFields?.duedate ?? flat.dueDate;
+
   // Calculate time in each status
   const timeInStatus: Record<string, number> = {};
   if (transitions.length > 0) {
@@ -59,7 +70,7 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
     const firstTransition = transitions[0];
     const initialStatus = firstTransition.fromStatus;
     if (initialStatus) {
-      const createdDate = new Date(issue.fields.created);
+      const createdDate = new Date(createdRaw ?? Date.now());
       const durationHours = (firstTransition.occurredAt.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
       timeInStatus[initialStatus] = (timeInStatus[initialStatus] || 0) + Math.max(0, durationHours);
     }
@@ -69,52 +80,58 @@ export function transformIssueForKpi(issue: JiraIssue): TransformedIssue {
       const startTime = transitions[i].occurredAt.getTime();
       const endTime = transitions[i + 1]
         ? transitions[i + 1].occurredAt.getTime()
-        : (issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate).getTime() : Date.now());
-      
+        : (resolvedRaw ? new Date(resolvedRaw).getTime() : Date.now());
+
       const durationHours = (endTime - startTime) / (1000 * 60 * 60);
       const status = transitions[i].toStatus;
       timeInStatus[status] = (timeInStatus[status] || 0) + Math.max(0, durationHours);
     }
   } else {
     // No transitions - all time spent in current status
-    const createdDate = new Date(issue.fields.created);
+    const createdDate = new Date(createdRaw ?? Date.now());
     const startTime = createdDate.getTime();
-    const endTime = issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate).getTime() : Date.now();
+    const endTime = resolvedRaw ? new Date(resolvedRaw).getTime() : Date.now();
     const durationHours = (endTime - startTime) / (1000 * 60 * 60);
-    timeInStatus[issue.fields.status.name] = durationHours;
+    const statusName = jiraFields?.status?.name ?? flat.status ?? 'Unknown';
+    timeInStatus[statusName] = durationHours;
   }
+
+  // @MX:NOTE: storyPoints uses ?? (not ||) because a value of 0 is meaningful.
+  const storyPoints = jiraFields?.customfield_10002 ?? flat.storyPoints ?? null;
 
   const result: TransformedIssue = {
     key: issue.key,
-    project: (issue.fields as any)?.project?.name || (issue.fields as any)?.project?.key || issue.key.split('-')[0],
-    summary: issue.fields?.summary || (issue as any).summary || 'No Summary',
-    issueType: issue.fields?.issuetype?.name || (issue as any).issueType || 'Task',
-    priority: issue.fields?.priority?.name || (issue as any).priority || null,
-    status: issue.fields?.status?.name || (issue as any).status || 'Unknown',
-    statusCategory: issue.fields?.status?.statusCategory?.name || (issue as any).statusCategory || 'Unknown',
-    assignee: issue.fields?.assignee?.displayName || (issue as any).assignee || 'Unassigned',
-    reporter: issue.fields?.reporter?.displayName || (issue as any).reporter || 'Unknown',
-    issueOwnerTeam: extractSelectFieldValue((issue.fields as any)?.[getIssueOwnerTeamField()]) || (issue.fields as any)?.issueOwnerTeam || (issue as any).issueOwnerTeam || null,
-    created: new Date(issue.fields?.created || (issue as any).created || Date.now()),
-    updated: new Date(issue.fields?.updated || (issue as any).updated || Date.now()),
-    resolved: (issue.fields?.resolutiondate || (issue as any).resolved) ? new Date(issue.fields?.resolutiondate || (issue as any).resolved) : null,
-    dueDate: (issue.fields?.duedate || (issue as any).dueDate) ? new Date(issue.fields?.duedate || (issue as any).dueDate) : null,
-    // @MX:REASON: ?? instead of || — a story points value of 0 is meaningful
-    // and must not fall through to the next fallback.
-    storyPoints: (issue.fields as any)?.customfield_10002 ?? (issue as any).storyPoints ?? null,
-    labels: issue.fields?.labels || (issue as any).labels || [],
-    components: issue.fields?.components?.map((c) => c.name) || (issue as any).components || [],
+    project: jiraFields?.project?.name || jiraFields?.project?.key || issue.key.split('-')[0],
+    summary: jiraFields?.summary || flat.summary || 'No Summary',
+    issueType: jiraFields?.issuetype?.name || flat.issueType || 'Task',
+    priority: jiraFields?.priority?.name || flat.priority || null,
+    status: jiraFields?.status?.name || flat.status || 'Unknown',
+    statusCategory: jiraFields?.status?.statusCategory?.name || flat.statusCategory || 'Unknown',
+    assignee: jiraFields?.assignee?.displayName || flat.assignee || 'Unassigned',
+    reporter: jiraFields?.reporter?.displayName || flat.reporter || 'Unknown',
+    issueOwnerTeam:
+      extractSelectFieldValue(jiraFields?.[getIssueOwnerTeamField()]) ||
+      extractSelectFieldValue(jiraFields?.issueOwnerTeam) ||
+      flat.issueOwnerTeam ||
+      null,
+    created: new Date(createdRaw ?? Date.now()),
+    updated: new Date(jiraFields?.updated ?? flat.updated ?? Date.now()),
+    resolved: resolvedRaw ? new Date(resolvedRaw) : null,
+    dueDate: dueDateRaw ? new Date(dueDateRaw) : null,
+    labels: jiraFields?.labels || flat.labels || [],
+    components: jiraFields?.components?.map((c) => c.name) || flat.components || [],
     transitions,
     timeInStatus,
-    comments: ((issue.fields as any)?.comment?.comments || [])
-      .map((c: { author?: { displayName?: string }; created: string | number | Date }) => ({
+    storyPoints,
+    comments: (jiraFields?.comment?.comments || [])
+      .map((c) => ({
         author: c.author?.displayName || 'Unknown',
         created: new Date(c.created),
       }))
-      .sort((a: { created: Date }, b: { created: Date }) => a.created.getTime() - b.created.getTime()),
+      .sort((a, b) => a.created.getTime() - b.created.getTime()),
     // @MX:NOTE: Raw changelog is preserved because some plugins (reassignment_count)
     // need assignee-change history, which status-only `transitions` cannot represent.
-    changelog: issue.changelog || (issue as any).changelog || undefined,
+    changelog: issue.changelog || undefined,
   };
 
   if (transformCache.size >= TRANSFORM_CACHE_SIZE) {
@@ -349,7 +366,10 @@ const FIELD_MAP: Record<string, (issue: TransformedIssue) => unknown> = {
   key: (i) => i.key,
   project: (i) => i.project,
   summary: (i) => i.summary,
-  description: (i) => (i as any).description || '',
+  // @MX:NOTE: TransformedIssue carries no description field, so this always
+  // yields ''. Kept (returning '' rather than null) to preserve the prior
+  // behavior of the removed untyped description cast.
+  description: () => '',
 };
 
 /**
