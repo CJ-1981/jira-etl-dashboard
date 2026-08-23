@@ -14,7 +14,7 @@ Extract ticket data from Jira with JQL queries, date range selection, scheduled 
 </p>
 
 ### KPI Analytics
-Interactive dashboard with 39 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+Interactive dashboard with 40 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
   <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
@@ -73,9 +73,9 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
-**39 built-in plugins** (26 core + 13 time-series) organized by business domain. Every time-based KPI **excludes weekends and German holidays** (all 16 states supported), with configurable work hours.
+**40 built-in plugins** (27 core + 13 time-series) organized by business domain. Every time-based KPI **excludes weekends and German holidays** (all 16 states supported), with configurable work hours.
 
-#### Core Plugins (26)
+#### Core Plugins (27)
 
 **Processing Time (7)**
 
@@ -118,13 +118,14 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 | **Weekly Ticket List** (`weekly_ticket_list`) | tickets | Opened and closed tickets, this week vs last week | This week opened **9** / closed **7** |
 | **Backlog Age Percentiles** (`backlog_age_percentiles`) | days | Open-ticket age as P50 / P90 / oldest calendar days | P50 **12d**, P90 **45d**, oldest **200d** |
 
-**Quality (3)**
+**Quality (4)**
 
 | Plugin | Unit | What it measures | Example |
 |--------|:----:|------------------|---------|
 | **Resolution Rate** (`resolution_rate`) | % | % of created tickets that have been resolved | 80 of 100 resolved → **80%** |
 | **Avg. Reassignments** (`reassignment_count`) | reassignments | Average number of assignee changes per ticket | Average **1.4** hand-offs per ticket |
 | **First-Time Resolution Rate** (`first_time_resolution_rate`) | % | % resolved without any reassignment (first assignment stuck) | **62%** resolved on first assignment |
+| **Escalation Rate** (`escalation_rate`) | % | % of tickets whose priority was raised at least once (P3 → P0) | **3.5%** escalated; 105 de-escalated tracked in details |
 
 **Assignee (2)**
 
@@ -162,12 +163,12 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 
 ```
 src/lib/kpi/plugins/
-├── builtin/              # Core plugins (26 plugins)
+├── builtin/              # Core plugins (27 plugins)
 │   ├── processing-time/  # 7 plugins
 │   ├── sla/              # 4 plugins
 │   ├── turnaround/       # 3 plugins
 │   ├── throughput/       # 7 plugins
-│   ├── quality/          # 3 plugins
+│   ├── quality/          # 4 plugins
 │   └── assignee/         # 2 plugins
 ├── time-series/          # Trend analysis plugins (13 plugins)
 │   ├── processing-time/  # 1 plugin
