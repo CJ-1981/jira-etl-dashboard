@@ -34,6 +34,7 @@ export interface KpiCalcResult {
     ticketKeys?: string[];
     comparison?: { value: number; change: number; label: string };
     timeSeries?: Array<{ period: string; value: number; isComplete?: boolean }>;
+    slaTargetHours?: number;
   }>;
 }
 

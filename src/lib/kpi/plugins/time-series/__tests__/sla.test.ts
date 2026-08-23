@@ -123,6 +123,8 @@ describe('sla_by_status_trend (weekly) Plugin', () => {
 
     expect(r.details).toContainEqual({ label: 'Target', value: 8, unit: 'hours' });
     expect(r.details).toContainEqual({ label: 'Total Occurrences', value: 2 });
+    // Per-series target is exposed for chart reference-line rendering
+    expect(r.slaTargetHours).toBe(8);
   });
 
   it('returns a single zero-value result when no SLA targets are configured', () => {
@@ -277,5 +279,27 @@ describe('sla_trend (weekly compliance) Plugin', () => {
     const r = results[0];
     expect(r.timeSeries.some((p: any) => p.isComplete === false)).toBe(true);
     expect(r.details?.some((d: any) => String(d.label).includes('incomplete'))).toBe(true);
+  });
+
+  it('honors context.globalFilters.priority (case-insensitive) and surfaces it in details', () => {
+    const issues = [
+      // Within SLA, priority High
+      makeIssue({ key: 'HIGH', priority: 'High', created: D(2024, 0, 9, 9), resolved: D(2024, 0, 9, 11), status: 'Done' }),
+      // Breach (~52h), priority Low -> excluded by the filter
+      makeIssue({ key: 'LOW', priority: 'Low', created: D(2024, 0, 9, 9), resolved: D(2024, 0, 17, 13), status: 'Done' }),
+    ];
+    const context = createMockContext(0, {
+      issues: issues as any,
+      period,
+      holidays: holidaysWith(40),
+      globalFilters: { priority: ['high'] },
+    });
+
+    const results = slaComplianceWeeklyPlugin.calculate(context) as any[];
+    const r = results[0];
+    // Only the High ticket is considered -> 100% compliance, 1 resolved
+    expect(r.value).toBe(100);
+    expect(r.details).toContainEqual({ label: 'Total Resolved', value: 1 });
+    expect(r.details?.some((d: any) => String(d.label).includes('Priority Filter'))).toBe(true);
   });
 });

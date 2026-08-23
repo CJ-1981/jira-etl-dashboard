@@ -47,8 +47,14 @@ import cumulativeFlowDailyPlugin from './plugins/time-series/throughput/cumulati
 import slaComplianceWeeklyPlugin from './plugins/time-series/sla/sla-compliance-weekly';
 import slaByStatusWeeklyPlugin from './plugins/time-series/sla/sla-by-status-weekly';
 import slaByStatusExclCloneWeeklyPlugin from './plugins/time-series/sla/sla-by-status-excl-clone-weekly';
-import timeInStatusWeeklyPlugin from './plugins/time-series/turnaround/time-in-status-daily';
-import openTicketsByAssigneeWeeklyPlugin from './plugins/time-series/assignee/open-tickets-by-assignee-weekly';
+import timeInStatusDailyPlugin, {
+  timeInStatusWeeklyPlugin,
+  timeInStatusMonthlyPlugin,
+} from './plugins/time-series/turnaround/time-in-status-daily';
+import openTicketsByAssigneeWeeklyPlugin, {
+  openTicketsByAssigneeDailyPlugin,
+  openTicketsByAssigneeMonthlyPlugin,
+} from './plugins/time-series/assignee/open-tickets-by-assignee-weekly';
 
 /**
  * Plugin Loader for auto-discovering built-in plugins
@@ -90,10 +96,12 @@ export class PluginLoader {
       openTicketsByStatusPlugin,
       openTicketsKanbanPlugin,
       weeklyTicketListPlugin,
+      backlogAgePercentilesPlugin,
 
       // Quality plugins
       resolutionRatePlugin,
       reassignmentPlugin,
+      firstTimeResolutionPlugin,
 
       // Assignee plugins
       openTicketsByAssigneePlugin,
@@ -235,10 +243,14 @@ export class PluginLoader {
       slaByStatusExclCloneWeeklyPlugin,
 
       // Turnaround time-series plugins
+      timeInStatusDailyPlugin,
       timeInStatusWeeklyPlugin,
+      timeInStatusMonthlyPlugin,
 
       // Assignee time-series plugins
       openTicketsByAssigneeWeeklyPlugin,
+      openTicketsByAssigneeDailyPlugin,
+      openTicketsByAssigneeMonthlyPlugin,
     ];
   }
 }

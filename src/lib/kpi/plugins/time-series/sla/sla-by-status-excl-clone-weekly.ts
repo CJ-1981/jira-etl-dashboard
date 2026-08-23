@@ -155,6 +155,7 @@ function calculateSlaByStatusTrend(
       value: Math.round(overallCompliance * 100) / 100,
       unit: '%',
       dimensions: { status },
+      slaTargetHours: targetHours,
       timeSeries,
       details: [
         { label: 'Target', value: targetHours, unit: 'hours' },

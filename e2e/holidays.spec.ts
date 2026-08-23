@@ -44,4 +44,16 @@ test.describe('Holidays Calendar — real API rendering', () => {
     await page.getByPlaceholder('Year').fill(String(prevYear));
     await expect(page.getByText(`${prevYear}-01-01`, { exact: true })).toBeVisible();
   });
+
+  test('rejects an out-of-range year with an inline validation error', async ({ page }) => {
+    // The panel clamps years to 2000..current+5. A far-future year must show
+    // the validation message and must NOT render any holiday rows.
+    await page.getByPlaceholder('Year').fill('9999');
+
+    await expect(page.getByText(/Year must be between 2000 and \d{4}/)).toBeVisible();
+    // The year input is flagged invalid for assistive tech.
+    await expect(page.getByPlaceholder('Year')).toHaveAttribute('aria-invalid', 'true');
+    // No holiday from any year should be listed while the input is invalid.
+    await expect(page.getByText(/-01-01$/, { exact: false })).toHaveCount(0);
+  });
 });

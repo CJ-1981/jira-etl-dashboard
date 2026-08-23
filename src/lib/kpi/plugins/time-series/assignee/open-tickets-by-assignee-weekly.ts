@@ -1,12 +1,14 @@
 /**
- * Open Tickets by Assignee Trend - Weekly
+ * Open Tickets by Assignee Trend (Daily / Weekly / Monthly)
  *
- * Number of open (non-resolved) tickets per assignee over time, grouped by week
+ * Number of open (non-resolved) tickets per assignee over time.
+ * A shared calculation is instantiated per interval via a plugin factory.
  * 
  * @MX:NOTE: Tracks individual workload distribution over time.
  * @MX:WARN: Relies on resolution date; tickets without one are considered open.
  * @MX:ANCHOR: Assignee Trend - monitor team capacity evolution.
- * @MX:TODO: Support custom interval selection (daily/monthly).
+ * @MX:NOTE: Interval variants are produced by createOpenTicketsByAssigneeTrendPlugin;
+ * the weekly variant keeps its historical id/name for backward compatibility.
  */
 
 import { isIssueDone } from '../../../engine-utils';
@@ -120,20 +122,48 @@ function calculateOpenTicketsByAssigneeTrend(
   return assigneeResults;
 }
 
-// ─── Plugin Definition ───────────────────────────────────────────────────────────
+// ─── Plugin Factory ────────────────────────────────────────────────────────────
 
+const INTERVAL_NOUN: Record<TimeInterval, string> = {
+  daily: 'day',
+  weekly: 'week',
+  monthly: 'month',
+};
+
+/**
+ * Build an open-tickets-by-assignee trend plugin for a specific interval.
+ * The calculation logic is interval-agnostic; only the period bucketing differs.
+ */
+function createOpenTicketsByAssigneeTrendPlugin(
+  interval: TimeInterval
+): KpiPlugin<TimeSeriesResult[]> {
+  return {
+    id: `open_tickets_by_assignee_trend_${interval}`,
+    name: `Open Tickets by Assignee Trend (${interval})`,
+    description: `Number of open (non-resolved) tickets per assignee over time, grouped by ${INTERVAL_NOUN[interval]}. Includes periods with zero tickets.`,
+    category: 'time-series',
+    domain: 'assignee',
+    version: '1.0.0',
+    unit: 'tickets',
+    timeInterval: interval,
+    calculate(context) {
+      return calculateOpenTicketsByAssigneeTrend(context, interval);
+    },
+  };
+}
+
+// ─── Plugin Definitions ────────────────────────────────────────────────────────
+
+export const openTicketsByAssigneeDailyPlugin = createOpenTicketsByAssigneeTrendPlugin('daily');
+export const openTicketsByAssigneeMonthlyPlugin = createOpenTicketsByAssigneeTrendPlugin('monthly');
+
+// The weekly plugin keeps its historical id (no interval suffix) so existing
+// dashboards, configs and tests continue to reference it unchanged.
 const openTicketsByAssigneeWeeklyPlugin: KpiPlugin<TimeSeriesResult[]> = {
+  ...createOpenTicketsByAssigneeTrendPlugin('weekly'),
   id: 'open_tickets_by_assignee_trend',
   name: 'Open Tickets by Assignee Trend',
   description: 'Number of open (non-resolved) tickets per assignee over time, grouped by week. Includes periods with zero tickets.',
-  category: 'time-series',
-  domain: 'assignee',
-  version: '1.0.0',
-  unit: 'tickets',
-  timeInterval: 'weekly',
-  calculate(context) {
-    return calculateOpenTicketsByAssigneeTrend(context, 'weekly');
-  },
 };
 
 export default openTicketsByAssigneeWeeklyPlugin;

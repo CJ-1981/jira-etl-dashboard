@@ -1,12 +1,14 @@
 /**
- * Turnaround Time by Status Trend - Daily
+ * Turnaround Time by Status Trend (Daily / Weekly / Monthly)
  *
- * Average business hours tickets spend in each workflow status, grouped by day
+ * Average business hours tickets spend in each workflow status.
+ * A shared calculation is instantiated per interval via a plugin factory.
  * 
  * @MX:NOTE: Tracks turnaround time trends by status.
  * @MX:WARN: Only counts completed status durations to avoid partial data bias.
  * @MX:ANCHOR: Turnaround Trend - visualize bottleneck evolution.
- * @MX:TODO: Add monthly interval support.
+ * @MX:NOTE: Interval variants are produced by createTimeInStatusTrendPlugin;
+ * the daily variant keeps its historical id/name for backward compatibility.
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
@@ -152,20 +154,48 @@ function calculateTimeInStatusTrend(
   return statusResults;
 }
 
-// ─── Plugin Definition ───────────────────────────────────────────────────────────
+// ─── Plugin Factory ────────────────────────────────────────────────────────────
 
-const timeInStatusDailyPlugin: KpiPlugin<TimeSeriesResult[]> = {
-  id: 'time_in_status_trend_daily',
-  name: 'Time In Status Trend (Daily)',
-  description: 'Average business hours tickets spend in each workflow status, grouped by day',
-  category: 'time-series',
-  domain: 'turnaround',
-  version: '1.0.0',
-  unit: 'hours',
-  timeInterval: 'daily',
-  calculate(context) {
-    return calculateTimeInStatusTrend(context, 'daily');
-  },
+const INTERVAL_NOUN: Record<TimeInterval, string> = {
+  daily: 'day',
+  weekly: 'week',
+  monthly: 'month',
 };
+
+const INTERVAL_LABEL: Record<TimeInterval, string> = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+};
+
+/**
+ * Build a time-in-status trend plugin for a specific interval.
+ * The calculation logic is interval-agnostic; only the period bucketing differs.
+ */
+function createTimeInStatusTrendPlugin(
+  interval: TimeInterval
+): KpiPlugin<TimeSeriesResult[]> {
+  return {
+    id: `time_in_status_trend_${interval}`,
+    name: `Time In Status Trend (${INTERVAL_LABEL[interval]})`,
+    description: `Average business hours tickets spend in each workflow status, grouped by ${INTERVAL_NOUN[interval]}`,
+    category: 'time-series',
+    domain: 'turnaround',
+    version: '1.0.0',
+    unit: 'hours',
+    timeInterval: interval,
+    calculate(context) {
+      return calculateTimeInStatusTrend(context, interval);
+    },
+  };
+}
+
+// ─── Plugin Definitions ────────────────────────────────────────────────────────
+
+export const timeInStatusWeeklyPlugin = createTimeInStatusTrendPlugin('weekly');
+export const timeInStatusMonthlyPlugin = createTimeInStatusTrendPlugin('monthly');
+
+// The daily plugin is the historical default; keep its id/name unchanged.
+const timeInStatusDailyPlugin: KpiPlugin<TimeSeriesResult[]> = createTimeInStatusTrendPlugin('daily');
 
 export default timeInStatusDailyPlugin;

@@ -9,8 +9,14 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import avgProcessingHoursWeeklyPlugin from '../processing-time/avg-processing-hours-weekly';
-import openTicketsByAssigneeWeeklyPlugin from '../assignee/open-tickets-by-assignee-weekly';
-import timeInStatusDailyPlugin from '../turnaround/time-in-status-daily';
+import openTicketsByAssigneeWeeklyPlugin, {
+  openTicketsByAssigneeDailyPlugin,
+  openTicketsByAssigneeMonthlyPlugin,
+} from '../assignee/open-tickets-by-assignee-weekly';
+import timeInStatusDailyPlugin, {
+  timeInStatusWeeklyPlugin,
+  timeInStatusMonthlyPlugin,
+} from '../turnaround/time-in-status-daily';
 import { createMockContext } from '../../../__tests__/mocks';
 import type { TransformedIssue } from '../../../types';
 
@@ -284,5 +290,69 @@ describe('time_in_status_trend_daily (daily) Plugin', () => {
     expect(results[0].value).toBe(0);
     // Partial-period info is attached to the first status result
     expect(results[0].details?.some((d: any) => String(d.label).includes('incomplete'))).toBe(true);
+  });
+});
+
+describe('interval variants (plugin factory)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: D(2024, 5, 15, 12) });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('assignee daily/monthly variants expose correct metadata and bucket by interval', () => {
+    expect(openTicketsByAssigneeDailyPlugin.id).toBe('open_tickets_by_assignee_trend_daily');
+    expect(openTicketsByAssigneeDailyPlugin.timeInterval).toBe('daily');
+    expect(openTicketsByAssigneeMonthlyPlugin.id).toBe('open_tickets_by_assignee_trend_monthly');
+    expect(openTicketsByAssigneeMonthlyPlugin.timeInterval).toBe('monthly');
+
+    const issues = [
+      makeIssue({ key: 'A1', assignee: 'Alice', created: D(2024, 0, 2, 12), status: 'Open', resolved: null }),
+    ];
+    const context = createMockContext(0, { issues: issues as any, period });
+
+    // Monthly: a single 2024-01 bucket, ticket still open at month end
+    const monthly = openTicketsByAssigneeMonthlyPlugin.calculate(context) as any[];
+    expect(monthly).toHaveLength(1);
+    expect(monthly[0].timeSeries).toHaveLength(1);
+    expect(monthly[0].timeSeries[0].period).toBe('2024-01');
+    expect(monthly[0].timeSeries[0].value).toBe(1);
+
+    // Daily: one bucket per day across the period (Jan 1 .. Jan 31)
+    const daily = openTicketsByAssigneeDailyPlugin.calculate(context) as any[];
+    expect(daily).toHaveLength(1);
+    expect(daily[0].timeSeries).toHaveLength(31);
+    expect(daily[0].timeSeries[daily[0].timeSeries.length - 1].value).toBe(1);
+  });
+
+  it('time-in-status weekly/monthly variants expose correct metadata and bucket by interval', () => {
+    expect(timeInStatusWeeklyPlugin.id).toBe('time_in_status_trend_weekly');
+    expect(timeInStatusWeeklyPlugin.timeInterval).toBe('weekly');
+    expect(timeInStatusMonthlyPlugin.id).toBe('time_in_status_trend_monthly');
+    expect(timeInStatusMonthlyPlugin.timeInterval).toBe('monthly');
+
+    const issues = [
+      makeIssue({
+        key: 'D1',
+        created: D(2024, 0, 9, 9),
+        resolved: D(2024, 0, 9, 11),
+        status: 'Done',
+        statusCategory: 'Done',
+        transitions: [
+          { fromStatus: 'Open', toStatus: 'In Progress', author: 'x', occurredAt: D(2024, 0, 9, 9, 30) },
+          { fromStatus: 'In Progress', toStatus: 'Done', author: 'x', occurredAt: D(2024, 0, 9, 11) },
+        ],
+      }),
+    ];
+    const context = createMockContext(0, { issues: issues as any, period });
+
+    // Monthly: a single 2024-01 bucket per status
+    const monthly = timeInStatusMonthlyPlugin.calculate(context) as any[];
+    const inProgress = monthly.find((r: any) => r.dimensions.status === 'In Progress');
+    expect(inProgress).toBeDefined();
+    expect(inProgress.timeSeries).toHaveLength(1);
+    expect(inProgress.timeSeries[0].period).toBe('2024-01');
+    expect(inProgress.timeSeries[0].value).toBe(1.5);
   });
 });

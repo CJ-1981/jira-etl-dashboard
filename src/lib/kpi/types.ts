@@ -59,6 +59,9 @@ export interface KpiResult {
   /** Optional time series data for trend analysis */
   timeSeries?: TimeSeriesDataPoint[];
 
+  /** Optional per-result SLA target (hours) used to render reference lines */
+  slaTargetHours?: number;
+
   /** Optional comparison with previous period */
   comparison?: {
     value: number;

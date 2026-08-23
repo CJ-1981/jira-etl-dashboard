@@ -6,7 +6,9 @@
  * @MX:NOTE: Tracks SLA compliance performance over time.
  * @MX:ANCHOR: SLA Trend - correlate speed with volume.
  * @MX:WARN: Accuracy depends on correctly configured SLA targets.
- * @MX:TODO: Integrate with specific priority filtering.
+ * @MX:NOTE: Priority filtering is applied centrally by the KPI engine via
+ * `globalFilters.priority` (see engine.buildPreprocessed) before issues reach
+ * this plugin; a defensive in-plugin filter keeps direct invocations consistent.
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
@@ -26,7 +28,18 @@ function calculateSlaTrend(
   interval: TimeInterval
 ): TimeSeriesResult[] {
   const slaTargetHours = context.holidays.slaTargetHours || 40;
-  const resolvedIssues = context.issues.filter((i) => i.resolved);
+  // @MX:NOTE: Apply priority filter defensively. The engine already narrows
+  // context.issues via globalFilters, but plugins can also be invoked directly
+  // (tests, workers), so honor context.globalFilters.priority here as well.
+  const priorityFilter = context.globalFilters?.priority;
+  const prioritySet = priorityFilter?.length
+    ? new Set(priorityFilter.map((p) => p.toLowerCase()))
+    : null;
+  const resolvedIssues = context.issues.filter(
+    (i) =>
+      i.resolved &&
+      (!prioritySet || (i.priority !== null && prioritySet.has(i.priority.toLowerCase())))
+  );
 
   if (resolvedIssues.length === 0) {
     return [{
@@ -102,6 +115,11 @@ function calculateSlaTrend(
     { label: 'Total Resolved', value: resolvedIssues.length },
     { label: 'SLA Target', value: slaTargetHours, unit: 'hours' },
   ];
+
+  // Surface the active priority filter (if any) so the trend is self-documenting
+  if (priorityFilter && priorityFilter.length > 0) {
+    details.push({ label: `Priority Filter (${priorityFilter.join(', ')})`, value: priorityFilter.length });
+  }
 
   if (completePoints.length > 0) {
     const validPoints = completePoints.filter(p => p.count > 0);

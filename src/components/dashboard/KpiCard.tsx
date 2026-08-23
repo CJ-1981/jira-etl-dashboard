@@ -1105,18 +1105,20 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     />
                   );
                 })}
-                {/* SLA Target Reference Lines */}
-                {slaTarget !== null && !isNaN(slaTarget) && kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                {/* SLA Target Reference Lines — prefer each series' own target, fall back to the chart-level target */}
+                {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                   if (hiddenDimensions.has(`${config.kpiId}|${result.name}`)) return null;
+                  const target = result.slaTargetHours ?? slaTarget;
+                  if (target === null || target === undefined || isNaN(target)) return null;
                   return (
                     <ReferenceLine
                       key={`sla-ref-${result.name}-${idx}`}
-                      y={slaTarget}
+                      y={target}
                       stroke="#f59e0b"
                       strokeWidth={2}
                       strokeDasharray="5 5"
                       label={{
-                        value: `${slaTarget}h`,
+                        value: `${target}h`,
                         position: 'insideBottomRight',
                         fill: '#f59e0b',
                         fontSize: 10,
@@ -1296,18 +1298,20 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                     }}
                   />
                 ))}
-                {/* SLA Target Reference Lines */}
-                {slaTarget !== null && !isNaN(slaTarget) && kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
+                {/* SLA Target Reference Lines — prefer each series' own target, fall back to the chart-level target */}
+                {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
                   if (hiddenDimensions.has(`${config.kpiId}|${result.name}`)) return null;
+                  const target = result.slaTargetHours ?? slaTarget;
+                  if (target === null || target === undefined || isNaN(target)) return null;
                   return (
                     <ReferenceLine
                       key={`sla-ref-area-${result.name}-${idx}`}
-                      y={slaTarget}
+                      y={target}
                       stroke="#f59e0b"
                       strokeWidth={2}
                       strokeDasharray="5 5"
                       label={{
-                        value: `SLA: ${slaTarget}h`,
+                        value: `SLA: ${target}h`,
                         position: 'insideBottomRight',
                         fill: '#f59e0b',
                         fontSize: 10,

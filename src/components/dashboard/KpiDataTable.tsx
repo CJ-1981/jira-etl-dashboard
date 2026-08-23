@@ -64,6 +64,22 @@ const DIMENSION_TYPE_LABELS: Record<string, string> = {
   none: '—',
 };
 
+// @MX:ANCHOR: Dimension resolution precedence
+// @MX:NOTE: A result may carry several dimension keys; the first key present in
+// this ordered list wins and becomes the row's single displayed dimension.
+// Order is significant — earlier keys take priority over later ones.
+const DIMENSION_PRECEDENCE = ['kanban', 'status', 'priority', 'assignee', 'team', 'bucket'] as const;
+
+/** Resolve a result's dimensions to a single (type, value) pair by precedence. */
+function resolveDimension(dims: Record<string, string>): { type: string; value: string } {
+  for (const key of DIMENSION_PRECEDENCE) {
+    if (dims[key]) {
+      return { type: key, value: dims[key] };
+    }
+  }
+  return { type: 'none', value: '—' };
+}
+
 // @MX:NOTE: Wrapped with React.memo to prevent unnecessary re-renders
 // @MX:REASON: Data table is expensive to render, only re-render when results change
 export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillDown, getPluginName }: KpiDataTableProps) {
@@ -97,17 +113,10 @@ export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillD
           }
         }
 
-        // @MX:TODO: Dimension resolution mapping hierarchical dimension properties to standardized grid columns
-        // Documented keys/precedence: kanban -> status -> priority -> assignee -> team -> bucket -> none
+        // Resolve the result's dimensions to a single standardized (type, value)
+        // pair using the shared precedence order (see resolveDimension).
         const dims = res.dimensions || {};
-        let dimensionType = 'none';
-        let dimensionValue = '—';
-        if (dims.kanban) { dimensionType = 'kanban'; dimensionValue = dims.kanban; }
-        else if (dims.status) { dimensionType = 'status'; dimensionValue = dims.status; }
-        else if (dims.priority) { dimensionType = 'priority'; dimensionValue = dims.priority; }
-        else if (dims.assignee) { dimensionType = 'assignee'; dimensionValue = dims.assignee; }
-        else if (dims.team) { dimensionType = 'team'; dimensionValue = dims.team; }
-        else if (dims.bucket) { dimensionType = 'bucket'; dimensionValue = dims.bucket; }
+        const { type: dimensionType, value: dimensionValue } = resolveDimension(dims);
 
         const resolvedName = getPluginName ? getPluginName(pluginId) : pluginId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 

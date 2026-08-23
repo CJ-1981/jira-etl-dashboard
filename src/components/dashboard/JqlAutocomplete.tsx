@@ -12,17 +12,24 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Zap, Search, Braces, User, Tag, Type, ListChecks, CheckCircle2 } from 'lucide-react';
+import { parseJqlFieldContext } from '@/lib/jql-parser';
 
 type Suggestion = 
   | { kind: 'field'; label: string; icon: React.ReactNode; category?: string }
   | { kind: 'operator'; label: string; description?: string; category?: string }
-  | { kind: 'value'; label: string; category?: string };
+  | { kind: 'value'; label: string; icon?: React.ReactNode; category?: string };
+
+/**
+ * A filter option is either a plain string or an object carrying an optional
+ * icon (e.g. a project avatar). Plain strings keep existing callers working.
+ */
+export type JqlFilterOption = string | { label: string; icon?: React.ReactNode };
 
 interface JqlAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  filterOptions: Record<string, string[]>;
+  filterOptions: Record<string, JqlFilterOption[]>;
   className?: string;
 }
 
@@ -85,54 +92,40 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
     if (!currentWord && !open) return [];
 
     const lowerWord = currentWord.toLowerCase();
-    
-    // Determine context: are we after a field and an operator?
-    const beforeCursor = inputValue.slice(0, cursorPosition).trim();
-    const parts = beforeCursor.split(/\s+/);
-    const lastPart = parts[parts.length - 1]?.toUpperCase();
-    const secondLastPart = parts[parts.length - 2]?.toUpperCase();
-    const thirdLastPart = parts[parts.length - 3]?.toLowerCase();
 
-    // If last part is an operator, suggest values for the field before it
     // @MX:ANCHOR: JQL Field Selection Logic
-    // @MX:NOTE: This logic identifies the current field context by looking back from the cursor position to find operators like '=', '==', '!=', or 'CONTAINS'. It handles the special case of 'NOT CONTAINS' by checking the second to last part.
-    // @MX:TODO: Implement a proper JQL parser to handle complex expressions, parentheses, and list-based operators (e.g., IN, NOT IN).
-    // @MX:WARN: Position-based index access is brittle.
-    // @MX:REASON: Relying on simple whitespace splitting and fixed array indices (parts.length - 2) fails when there are extra spaces, nested queries, or multi-word field names.
-    let field: string | null = null;
-    if ((lastPart === 'CONTAINS' || lastPart === 'IN') && secondLastPart === 'NOT') {
-      field = thirdLastPart || null;
-    } else if (lastPart && ['=', '==', '!=', 'CONTAINS', 'IN'].includes(lastPart)) {
-      field = parts[parts.length - 2]?.toLowerCase() || null;
-    }
-    
-    // Also handle context inside parentheses for IN (...)
-    // This heuristic matches when the cursor is inside an unclosed IN(...) list
-    if (!field && /(?:NOT\s+)?IN\s*\([^)]*$/i.test(beforeCursor)) {
-      const partsBeforeIn = beforeCursor.split(/(?:NOT\s+)?IN\s*\(/i)[0].trim().split(/\s+/);
-      field = partsBeforeIn[partsBeforeIn.length - 1]?.toLowerCase() || null;
-      // Handle NOT IN (
-      if (field?.toUpperCase() === 'NOT') {
-        field = partsBeforeIn[partsBeforeIn.length - 2]?.toLowerCase() || null;
-      }
-    }
+    // @MX:NOTE: parseJqlFieldContext tokenizes the text before the cursor and
+    // tracks quoted strings, nested parentheses, and multi-word operators
+    // (IN, NOT IN, NOT CONTAINS), so field detection is robust instead of
+    // relying on brittle whitespace-splitting and fixed array indices.
+    const beforeCursor = inputValue.slice(0, cursorPosition);
+    const { field, afterInOperator } = parseJqlFieldContext(beforeCursor);
 
     if (field) {
       const fieldValues: Suggestion[] = [];
-      
+
       // Suggest opening parenthesis for IN operators if not already there
-      if (lastPart === 'IN') {
+      if (afterInOperator) {
         fieldValues.push({ label: '(', description: 'Start list', kind: 'operator', category: 'Operators' });
       }
 
-      if (field === 'status') fieldValues.push(...(filterOptions.status || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Status' })));
-      else if (field === 'priority') fieldValues.push(...(filterOptions.priority || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Priority' })));
-      else if (field === 'project') fieldValues.push(...(filterOptions.project || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Project' })));
-      else if (field === 'issuetype') fieldValues.push(...(filterOptions.issueType || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Issue Type' })));
-      else if (field === 'assignee') fieldValues.push(...(filterOptions.assignee || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Assignee' })));
-      else if (field === 'label' || field === 'labels') fieldValues.push(...(filterOptions.label || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Label' })));
-      else if (field === 'component' || field === 'components') fieldValues.push(...(filterOptions.component || []).map(v => ({ label: `"${v}"`, kind: 'value' as const, category: 'Component' })));
-      
+      // Build quoted value suggestions for a field, preserving any custom icon
+      // (e.g. a project avatar) carried by object-form filter options.
+      const buildValues = (options: JqlFilterOption[] | undefined, category: string) =>
+        (options || []).map<Suggestion>((opt) => {
+          const label = typeof opt === 'string' ? opt : opt.label;
+          const icon = typeof opt === 'string' ? undefined : opt.icon;
+          return { label: `"${label}"`, kind: 'value', category, ...(icon ? { icon } : {}) };
+        });
+
+      if (field === 'status') fieldValues.push(...buildValues(filterOptions.status, 'Status'));
+      else if (field === 'priority') fieldValues.push(...buildValues(filterOptions.priority, 'Priority'));
+      else if (field === 'project') fieldValues.push(...buildValues(filterOptions.project, 'Project'));
+      else if (field === 'issuetype') fieldValues.push(...buildValues(filterOptions.issueType, 'Issue Type'));
+      else if (field === 'assignee') fieldValues.push(...buildValues(filterOptions.assignee, 'Assignee'));
+      else if (field === 'label' || field === 'labels') fieldValues.push(...buildValues(filterOptions.label, 'Label'));
+      else if (field === 'component' || field === 'components') fieldValues.push(...buildValues(filterOptions.component, 'Component'));
+
       return fieldValues.filter(v => v.label.toLowerCase().includes(lowerWord));
     }
 
@@ -217,12 +210,15 @@ export const JqlAutocomplete = forwardRef<HTMLInputElement, JqlAutocompleteProps
                       >
                         {/* 
                           @MX:ANCHOR: Suggestion Item Rendering
-                          @MX:NOTE: Renders individual suggestion items with icons for fields and hash symbols for values.
-                          @MX:TODO: Support custom icon rendering for specific value types (e.g. project avatars).
-                          @MX:WARN: Discriminant (kind) is used to safely access icons and descriptions.
-                          @MX:REASON: Suggestion items can be fields, operators, or values, each with different optional properties.
+                          @MX:NOTE: Renders individual suggestion items. Fields use their icon;
+                          values use a custom icon when provided (e.g. project avatars) and a
+                          hash symbol otherwise; operators may show a trailing description.
                         */}
-                        {s.kind === 'field' ? s.icon : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold text-slate-400">#</span>}
+                        {s.kind === 'field'
+                          ? s.icon
+                          : s.kind === 'value' && s.icon
+                            ? s.icon
+                            : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold text-slate-400">#</span>}
                         <span className="text-xs font-medium">{s.label}</span>
                         {s.kind === 'operator' && s.description && <span className="ml-auto text-[10px] text-slate-400">{s.description}</span>}
                       </CommandItem>

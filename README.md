@@ -14,7 +14,7 @@ Extract ticket data from Jira with JQL queries, date range selection, scheduled 
 </p>
 
 ### KPI Analytics
-Interactive dashboard with 33 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+Interactive dashboard with 39 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
   <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
@@ -73,56 +73,87 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
-**35 built-in plugins** (26 core + 9 time-series) organized by business domain:
+**39 built-in plugins** (26 core + 13 time-series) organized by business domain. Every time-based KPI **excludes weekends and German holidays** (all 16 states supported), with configurable work hours.
 
-**Processing Time (7 plugins)**
-- Avg Processing Hours — Average business hours from creation to resolution
-- Median Processing Hours — Median business hours for better outlier resistance
-- Avg Working Days — Average calendar days excluding weekends
-- Cycle Time Histogram — Distribution of resolution times
-- Aging WIP — Open tickets exceeding business hour thresholds
-- First Response Time — Time to first assignee comment
-- Resolution Time by Priority — Average business hours to resolution per priority level
+#### Core Plugins (26)
 
-**SLA (4 plugins)**
-- SLA Compliance — % of tickets meeting per-priority targets
-- SLA by Priority — Compliance breakdown by priority level
-- SLA by Status — % of status durations meeting per-status targets
-- SLA by Status (excl. clones) — SLA excluding cloned tickets
+**Processing Time (7)**
 
-**Turnaround (3 plugins)**
-- Time in Status — Average business hours per workflow status
-- No Comment Follow-up — Open tickets with no new comment for >3 / >7 working days (status changes do not reset the clock)
-- No Activity Follow-up — Open tickets with no comment and no status change for >3 / >7 working days
+| Plugin | Unit | What it measures | Example |
+|--------|:----:|------------------|---------|
+| **Avg. Processing Hours** (`avg_processing_hours`) | hours | Average business hours from creation to resolution | 3 tickets taking 10h, 20h, 30h → shows **20h** |
+| **Median Processing Hours** (`median_processing_hours`) | hours | Median business hours — resists outliers | `[10h, 20h, 90h]` → shows **20h** (not the 40h average) |
+| **Avg. Working Days** (`avg_working_days`) | days | Average working days to resolution, skipping weekends/holidays | Created Mon, resolved next Wed → ≈ **3 working days** |
+| **Cycle Time Histogram** (`cycle_time_histogram`) | tickets | Distribution of resolution times across buckets | Buckets `0–8h`, `8–24h`, `1–3d`… with counts per bucket |
+| **Aging WIP Analysis** (`aging_wip`) | tickets | Open tickets bucketed by how long they've been open | Highlights stale work, e.g. `> 160h` bucket |
+| **Avg. First Response Time** (`first_response_time`) | hours | Time from creation to first assignee comment/transition | First response after **4 business hours** |
+| **Resolution Time by Priority** (`resolution_time_by_priority`) | hours | Avg business hours to resolution per priority | High **12h** vs Low **48h** — is urgent really faster? |
 
-**Throughput (7 plugins)**
-- Throughput — Count of tickets completed in period
-- Open Tickets by Priority — Current backlog breakdown
-- Closed Tickets by Priority — Resolved backlog breakdown
-- Open Tickets by Status — Backlog breakdown by workflow status
-- Open Tickets Kanban — Kanban-style view of open tickets
-- Weekly Ticket List — Per-week ticket listing
-- Backlog Age Percentiles — Open-ticket age as P50/P90/oldest calendar days
+**SLA (4)**
 
-**Quality (3 plugins)**
-- Resolution Rate — % of tickets resolved
-- Reassignment Rate — % of tickets with assignee changes
-- First-Time Resolution Rate — % resolved without any reassignment
+| Plugin | Unit | What it measures | Example |
+|--------|:----:|------------------|---------|
+| **SLA Compliance Rate** (`sla_compliance`) | % | % of tickets resolved within the configured SLA target | 40h target; 8 of 10 in time → **80%** |
+| **SLA Compliance by Priority** (`sla_by_priority`) | % | Compliance rate per priority level | High **90%**, Medium **75%**, Low **60%** |
+| **SLA Compliance by Status** (`sla_by_status`) | % | % of status durations meeting per-status targets (comments reset the clock) | `In Review` met its 8h target **70%** of the time |
+| **SLA Compliance by Status (Excl. Clones)** (`sla_by_status_excl_clone`) | % | Same, but skips tickets with "CLONE" in the summary | Excludes clone churn for a cleaner signal |
 
-**Assignee (2 plugins)**
-- Open Tickets by Assignee — Current workload distribution
-- Open Tickets by Issue Owner Team — Workload distribution by owning team
+**Turnaround (3)**
 
-**Time-Series Plugins (9 plugins)**
-- Avg Processing Hours (Weekly) — Weekly processing time trend
-- Throughput (Weekly) — Weekly throughput tracking
-- Priority Inflow (Weekly) — Weekly new-ticket inflow split by priority (P0 → P3)
-- Cumulative Flow (Daily) — Ticket status distribution over time (CFD)
-- SLA Compliance (Weekly) — Weekly SLA compliance trend
-- SLA by Status (Weekly) — Weekly per-status SLA trend
-- SLA by Status excl. clones (Weekly) — Weekly per-status SLA trend excluding cloned tickets
-- Time in Status (Daily) — Daily time-series tracking per status
-- Open Tickets by Assignee (Weekly) — Weekly workload tracking
+| Plugin | Unit | What it measures | Example |
+|--------|:----:|------------------|---------|
+| **Time In Status** (`time_in_status`) | hours | Avg business hours spent in each workflow status | `In Review` averages **16h** per ticket |
+| **No Comment Follow-up** (`no_comment_followup`) | tickets | Open tickets with no new comment for > 3 / > 7 working days | Flags **5** tickets silent for over a week |
+| **No Activity Follow-up** (`no_activity_followup`) | tickets | Open tickets with no comment *and* no status change for > 3 / > 7 working days | Stricter variant — status changes also reset the clock |
+
+**Throughput (7)**
+
+| Plugin | Unit | What it measures | Example |
+|--------|:----:|------------------|---------|
+| **Throughput** (`throughput`) | tickets | Created / Resolved / currently Open for the period | Created **40**, Resolved **35**, Open **12** |
+| **Open Tickets by Priority** (`open_tickets_by_priority`) | tickets | Non-resolved tickets per priority, split by age | High **8**, of which **3** are > 2 weeks old |
+| **Closed Tickets by Priority** (`closed_tickets_by_priority`) | tickets | Resolved tickets per priority, split by close time | Low **12** closed this period |
+| **Open Tickets by Status** (`open_tickets_by_status`) | tickets | Non-resolved tickets per workflow status, split by age | `In Progress` **10**, `Blocked` **2** |
+| **Open Tickets in Kanban View** (`open_tickets_kanban`) | tickets | Open tickets organized by Assignee / Status / Age | Kanban-style board with drill-down |
+| **Weekly Ticket List** (`weekly_ticket_list`) | tickets | Opened and closed tickets, this week vs last week | This week opened **9** / closed **7** |
+| **Backlog Age Percentiles** (`backlog_age_percentiles`) | days | Open-ticket age as P50 / P90 / oldest calendar days | P50 **12d**, P90 **45d**, oldest **200d** |
+
+**Quality (3)**
+
+| Plugin | Unit | What it measures | Example |
+|--------|:----:|------------------|---------|
+| **Resolution Rate** (`resolution_rate`) | % | % of created tickets that have been resolved | 80 of 100 resolved → **80%** |
+| **Avg. Reassignments** (`reassignment_count`) | reassignments | Average number of assignee changes per ticket | Average **1.4** hand-offs per ticket |
+| **First-Time Resolution Rate** (`first_time_resolution_rate`) | % | % resolved without any reassignment (first assignment stuck) | **62%** resolved on first assignment |
+
+**Assignee (2)**
+
+| Plugin | Unit | What it measures | Example |
+|--------|:----:|------------------|---------|
+| **Open Tickets by Assignee** (`open_tickets_by_assignee`) | tickets | Non-resolved tickets per assignee, split by age | Alice **7**, Bob **4** (2 stale) |
+| **Open Tickets by Issue Owner Team** (`open_tickets_by_issue_owner_team`) | tickets | Non-resolved tickets per owning team, split by age | Team LTIC-A **15** open |
+
+#### Time-Series / Trend Plugins (13)
+
+Trend plugins return a point per period and render as line/area charts. Several now ship in **daily, weekly, and monthly** variants.
+
+| Plugin | Interval | Unit | What it measures | Example |
+|--------|:--------:|:----:|------------------|---------|
+| **Processing Time Trend** (`processing_time_trend`) | weekly | hours | Avg business hours to resolve, per week | W02 **18h**, W03 **22h** |
+| **Throughput Trend** (`throughput_trend`) | weekly | tickets | Tickets resolved per week | W02 **9**, W03 **12** |
+| **Priority Inflow Trend** (`priority_inflow_trend`) | weekly | tickets | New tickets per week, split P0 → P3 | W03: P1 **4**, P2 **7** |
+| **Cumulative Flow Diagram** (`cumulative_flow_trend`) | daily | tickets | Tickets in each status over time (stacked CFD) | Growing `In Progress` band signals WIP buildup |
+| **SLA Trend** (`sla_trend`) | weekly | % | SLA compliance rate per week | W02 **85%**, W03 **78%** |
+| **SLA Compliance by Status Trend** (`sla_by_status_trend`) | weekly | % | Per-status SLA compliance per week, with per-status target reference lines | `In Review` dips below its target line |
+| **SLA Compliance by Status Trend (Excl. Clones)** (`sla_by_status_excl_clone_trend`) | weekly | % | Same as above, excluding "CLONE" tickets | Cleaner trend without clone noise |
+| **Time In Status Trend (Daily)** (`time_in_status_trend_daily`) | daily | hours | Avg hours per status, grouped by day | Daily `In Review` averages |
+| **Time In Status Trend (Weekly)** (`time_in_status_trend_weekly`) | weekly | hours | Avg hours per status, grouped by week | Weekly `In Review` averages |
+| **Time In Status Trend (Monthly)** (`time_in_status_trend_monthly`) | monthly | hours | Avg hours per status, grouped by month | Monthly `In Review` averages |
+| **Open Tickets by Assignee Trend** (`open_tickets_by_assignee_trend`) | weekly | tickets | Open tickets per assignee over time | Alice's backlog trending down |
+| **Open Tickets by Assignee Trend (daily)** (`open_tickets_by_assignee_trend_daily`) | daily | tickets | Same, grouped by day | Day-by-day workload shifts |
+| **Open Tickets by Assignee Trend (monthly)** (`open_tickets_by_assignee_trend_monthly`) | monthly | tickets | Same, grouped by month | Month-over-month capacity |
+
+> **Tip:** SLA-by-status trend charts draw a dashed reference line at each status's configured target, so a series dipping below its line is immediately visible.
 
 All time-based KPIs **exclude weekends and German holidays** (all 16 states supported), with configurable work hours.
 
@@ -138,12 +169,12 @@ src/lib/kpi/plugins/
 │   ├── throughput/       # 7 plugins
 │   ├── quality/          # 3 plugins
 │   └── assignee/         # 2 plugins
-├── time-series/          # Trend analysis plugins (9 plugins)
+├── time-series/          # Trend analysis plugins (13 plugins)
 │   ├── processing-time/  # 1 plugin
 │   ├── sla/              # 3 plugins
-│   ├── turnaround/       # 1 plugin
+│   ├── turnaround/       # 3 plugins (daily/weekly/monthly)
 │   ├── throughput/       # 3 plugins
-│   └── assignee/         # 1 plugin
+│   └── assignee/         # 3 plugins (daily/weekly/monthly)
 └── custom/               # Scaffolding only — runtime custom plugins load from data/custom-plugins/
 ```
 

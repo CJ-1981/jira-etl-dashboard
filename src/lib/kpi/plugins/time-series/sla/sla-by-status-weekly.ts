@@ -7,7 +7,8 @@
  * @MX:NOTE: Tracks SLA compliance trends per workflow status.
  * @MX:ANCHOR: SLA Status Trend - pinpoint bottleneck stages.
  * @MX:WARN: Only counts completed status durations to avoid partial data bias.
- * @MX:TODO: Add visualization support for target hour lines.
+ * @MX:NOTE: Each status result carries its own target via `slaTargetHours` so the
+ * chart layer can render a per-series target reference line.
  */
 
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
@@ -160,6 +161,7 @@ function calculateSlaByStatusTrend(
       value: Math.round(overallCompliance * 100) / 100,
       unit: '%',
       dimensions: { status },
+      slaTargetHours: targetHours,
       timeSeries,
       details: [
         { label: 'Target', value: targetHours, unit: 'hours' },

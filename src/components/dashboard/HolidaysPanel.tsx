@@ -19,14 +19,27 @@ import { Calendar, RefreshCw } from 'lucide-react';
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 
+// @MX:ANCHOR: Year bounds for the holiday calendar. The underlying holiday tables
+// only define entries for modern years; values outside this range are rejected.
+const CURRENT_YEAR = new Date().getFullYear();
+const MIN_YEAR = 2000;
+const MAX_YEAR = CURRENT_YEAR + 5;
+
 export function HolidaysPanel() {
   const { region, setRegion, settings } = useAppStore();
-  // @MX:TODO: Add validation for year range and support for multiple regions
-  const [year, setYear] = useState<number | undefined>(new Date().getFullYear());
+  // @MX:NOTE: Year is validated against MIN_YEAR..MAX_YEAR below. Multi-region
+  // selection is intentionally deferred: `region` is shared app-wide state that
+  // also drives KPI business-hour calculations, so it needs a product decision.
+  const [year, setYear] = useState<number | undefined>(CURRENT_YEAR);
   const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);
   const [loading, setLoading] = useState(false);
   const isMounted = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const yearError =
+    year !== undefined && (year < MIN_YEAR || year > MAX_YEAR)
+      ? `Year must be between ${MIN_YEAR} and ${MAX_YEAR}`
+      : null;
 
   // @MX:ANCHOR: Initialize region from KPI Calculation Defaults on mount
   // @MX:REASON: When user saves a preferred state in KPI Calculation Defaults, Holiday Calendar should use it
@@ -47,7 +60,7 @@ export function HolidaysPanel() {
       abortControllerRef.current.abort();
     }
 
-    if (!year) {
+    if (!year || year < MIN_YEAR || year > MAX_YEAR) {
       setHolidays([]);
       setLoading(false);
       return;
@@ -107,13 +120,17 @@ export function HolidaysPanel() {
               <Input 
                 type="number" 
                 placeholder="Year" 
+                min={MIN_YEAR}
+                max={MAX_YEAR}
                 value={year || ''} 
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
                   setYear(isNaN(val) ? undefined : val);
                 }} 
-                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-32" 
+                aria-invalid={!!yearError}
+                className={`bg-gray-100 dark:bg-slate-800 w-32 ${yearError ? 'border-red-400 dark:border-red-500' : 'border-slate-200 dark:border-slate-700'}`} 
               />
+              {yearError && <p className="text-xs text-red-500" role="alert">{yearError}</p>}
             </div>
             <div className="space-y-2 flex-1">
               <Label className="text-slate-700 dark:text-slate-300">State</Label>
