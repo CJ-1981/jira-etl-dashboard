@@ -22,17 +22,18 @@ export const DEFAULT_FIELD_CONFIG: JiraFieldConfig = {
 
 /**
  * Get field configuration from environment or defaults
- * Override by setting REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD env var
+ * Override by setting JIRA_ISSUE_OWNER_TEAM_FIELD / JIRA_STORY_POINTS_FIELD
+ * env vars (server-side, via .env — see .env.example).
  */
 export function getFieldConfig(): JiraFieldConfig {
   return {
     ...DEFAULT_FIELD_CONFIG,
     // Allow override via environment variable
-    ...(process.env.REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD && {
-      issueOwnerTeamField: process.env.REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD
+    ...(process.env.JIRA_ISSUE_OWNER_TEAM_FIELD && {
+      issueOwnerTeamField: process.env.JIRA_ISSUE_OWNER_TEAM_FIELD
     }),
-    ...(process.env.REACT_APP_JIRA_STORY_POINTS_FIELD && {
-      storyPointsField: process.env.REACT_APP_JIRA_STORY_POINTS_FIELD
+    ...(process.env.JIRA_STORY_POINTS_FIELD && {
+      storyPointsField: process.env.JIRA_STORY_POINTS_FIELD
     }),
   };
 }

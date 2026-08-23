@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,45 @@ export function ExportPanel() {
   const [dbResult, setDbResult] = useState<{
     rowCount: number; success: boolean; error?: string;
   } | null>(null);
+
+  // KPI file export mutation — POST /api/export/file, returns the raw blob.
+  // Driven via mutateAsync from exportData so the file/both orchestration and
+  // the `exporting` spinner semantics stay identical.
+  const kpiFileExportMutation = useMutation({
+    mutationFn: async (format: string) => {
+      const exportRes = await fetch('/api/export/file', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issues: extractionResult?.issues || [],
+          holidays: { regions: region === 'all' ? [] : [region] },
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          format
+        }),
+      });
+      if (!exportRes.ok) throw new Error('KPI export failed');
+      return exportRes.blob();
+    },
+  });
+
+  // Database push mutation — POST /api/pg/export. Driven via mutateAsync from
+  // handleDbPush so the dbResult/toast handling stays in one place.
+  const dbPushMutation = useMutation({
+    mutationFn: async (payload: {
+      connection: PgConnection;
+      issues: unknown[];
+      exportDataType: 'kpi' | 'tickets' | 'both';
+      holidays: { regions: string[] };
+      dateFrom?: string;
+      dateTo?: string;
+    }) => {
+      const res = await fetch('/api/pg/export', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return res.json();
+    },
+  });
 
   const handleQuickPull = (days: number) => {
     const today = new Date();
@@ -88,19 +128,7 @@ export function ExportPanel() {
         toast.success('Raw tickets CSV downloaded');
       }
     } else {
-      const exportRes = await fetch('/api/export/file', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          issues: extractionResult?.issues || [],
-          holidays: { regions: region === 'all' ? [] : [region] },
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          format
-        }),
-      });
-
-      if (!exportRes.ok) throw new Error('KPI export failed');
-      const blob = await exportRes.blob();
+      const blob = await kpiFileExportMutation.mutateAsync(format);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `jira-kpi-export.${format}`; a.click();
       URL.revokeObjectURL(url);
@@ -140,18 +168,14 @@ export function ExportPanel() {
 
     setExporting(true); setDbResult(null);
     try {
-      const res = await fetch('/api/pg/export', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connection: conn,
-          issues: extractionResult.issues,
-          exportDataType,
-          holidays: { regions: region === 'all' ? [] : [region] },
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-        }),
+      const data = await dbPushMutation.mutateAsync({
+        connection: conn,
+        issues: extractionResult.issues,
+        exportDataType,
+        holidays: { regions: region === 'all' ? [] : [region] },
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
       });
-      const data = await res.json();
       if (data.success) {
         setDbResult({ rowCount: data.rowCount || 0, success: true });
         toast.success(`Successfully pushed ${data.rowCount} rows to ${conn.name}`);

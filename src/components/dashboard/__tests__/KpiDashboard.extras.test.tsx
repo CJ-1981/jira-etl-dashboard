@@ -12,12 +12,18 @@ vi.mock('@/store/app-store', () => ({
 }));
 
 // localConfig read lazily so createMockLocalConfig() can run after imports init.
+// @MX:NOTE: Spread the real module so KEYS (and other exports) stay available —
+// KpiDashboard/useWidgetOrder read KEYS.activePlugins / KEYS.widgetOrder.
 let localConfigMock: any;
-vi.mock('@/lib/config/local-store', () => ({
-  get localConfig() {
-    return localConfigMock;
-  },
-}));
+vi.mock('@/lib/config/local-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/config/local-store')>();
+  return {
+    ...actual,
+    get localConfig() {
+      return localConfigMock;
+    },
+  };
+});
 
 // ── Hooks: lazy `let` returns so stable vi.fns can be asserted ─────────────────
 let kpiCalcReturn: any;

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -112,8 +113,7 @@ export function ConnectionsPanel() {
     activeConnectionId,
     setActiveConnectionId
   } = useAppStore();
-  const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState<string | null>(null);
+  const [loading] = useState(false);
   const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});
 
   const sensors = useSensors(
@@ -172,16 +172,20 @@ export function ConnectionsPanel() {
     setEditingId(conn.id);
   };
 
-  const handleTest = async (conn: JiraConnection) => {
-    setTesting(conn.id);
-    setTestStatus(prev => ({ ...prev, [conn.id]: null }));
-    try {
+  // Connection test mutation — POST /api/jira/test. Toast + status-icon state
+  // are handled in onSettled so success and network failure both settle them.
+  const testMutation = useMutation({
+    mutationFn: async (conn: JiraConnection) => {
       const res = await fetch('/api/jira/test', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ baseUrl: conn.baseUrl, apiToken: conn.apiToken, email: conn.email }),
       });
-      const data = await res.json();
-
+      return res.json();
+    },
+    onMutate: (conn) => {
+      setTestStatus(prev => ({ ...prev, [conn.id]: null }));
+    },
+    onSuccess: (data, conn) => {
       if (data.success) {
         setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
         const serverInfo = data.serverInfo as Record<string, unknown>;
@@ -203,30 +207,36 @@ export function ConnectionsPanel() {
           position: 'top-right'
         });
       }
-    } catch (error) {
+    },
+    onError: (_error, conn) => {
       setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
       toast.error('Network Error', {
         description: 'Could not reach the test server',
         duration: 5000,
         position: 'top-right'
       });
-    }
-    setTesting(null);
+    },
+  });
+
+  const handleTest = (conn: JiraConnection) => {
+    testMutation.mutate(conn);
   };
 
-  const handleDelete = async (id: string) => {
-    const connection = connections.find(c => c.id === id);
-    if (!connection) return;
+  const testing = testMutation.isPending && testMutation.variables
+    ? testMutation.variables.id
+    : null;
 
-    if (!confirm(`Are you sure you want to delete connection "${connection.name}"?\n\nThis will also delete all associated EXTRACTION data in the database. Configuration is only deleted in this browser.`)) {
-      return;
-    }
-
-    try {
+  // Delete mutation — DELETE /api/jira/connections/:id. On success the local
+  // list (localStorage + store) is pruned; there is no React Query cache for
+  // connections, so no query invalidation is needed.
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
       const res = await fetch(`/api/jira/connections/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Delete failed');
-
+      return data;
+    },
+    onSuccess: (_data, id) => {
       const updatedConns = connections.filter(c => c.id !== id);
       localConfig.saveJiraConnections(updatedConns);
       setConnections(updatedConns);
@@ -235,9 +245,21 @@ export function ConnectionsPanel() {
       if (activeConnectionId === id) {
         setActiveConnectionId(updatedConns.length > 0 ? updatedConns[0].id : '');
       }
-    } catch (err: any) {
+    },
+    onError: (err: Error) => {
       toast.error(err.message || 'Failed to delete connection');
+    },
+  });
+
+  const handleDelete = (id: string) => {
+    const connection = connections.find(c => c.id === id);
+    if (!connection) return;
+
+    if (!confirm(`Are you sure you want to delete connection "${connection.name}"?\n\nThis will also delete all associated EXTRACTION data in the database. Configuration is only deleted in this browser.`)) {
+      return;
     }
+
+    deleteMutation.mutate(id);
   };
 
   const handleDragEnd = (event: any) => {

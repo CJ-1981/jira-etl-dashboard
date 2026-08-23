@@ -17,6 +17,7 @@
  */
 
 import { applyFilter, getFieldValue, splitByTopLevelOperator } from './engine-utils';
+import { splitTopLevel } from './utils/split-top-level';
 import type { TransformedIssue } from './types';
 
 // ─── Limits ──────────────────────────────────────────────────────────────────
@@ -191,32 +192,15 @@ function parseFieldWhere(args: string): { field: string; predicate: Predicate } 
  * WHERE or OF. Quote-aware, mirroring splitByTopLevelOperator.
  */
 function splitTopLevelKeyword(text: string, keyword: string): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  let quoteChar = '';
-  const search = ` ${keyword} `;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if ((char === '"' || char === "'") && (i === 0 || text[i - 1] !== '\\')) {
-      if (!inQuotes) {
-        inQuotes = true;
-        quoteChar = char;
-      } else if (char === quoteChar) {
-        inQuotes = false;
-      }
-    }
-    if (!inQuotes && text.substring(i).toUpperCase().startsWith(search)) {
-      parts.push(current.trim());
-      current = '';
-      i += search.length - 1;
-    } else {
-      current += char;
-    }
-  }
-  parts.push(current.trim());
-  return parts;
+  // Quotes are preserved verbatim so each part stays a valid sub-expression;
+  // unlike splitByTopLevelOperator the trailing segment is ALWAYS emitted
+  // (empty input yields ['']), which callers rely on: parts[1] || 'true' /
+  // parts[1] || ''.
+  return splitTopLevel(text, ` ${keyword} `, {
+    keepQuotes: true,
+    caseInsensitive: true,
+    keepEmptyTrailing: true,
+  });
 }
 
 // ─── DSL condition compilation ───────────────────────────────────────────────

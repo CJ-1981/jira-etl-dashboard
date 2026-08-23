@@ -4,44 +4,27 @@
  * PluginInfoIcon — small "info" affordance for KPI widget headers.
  * Shows the plugin's description in a hover tooltip. When `description` is
  * not passed, it resolves one from the plugin registry (custom plugins in
- * localStorage, builtins via /api/kpi/plugins — fetched once, module-cached).
+ * localStorage, builtins via /api/kpi/plugins — fetched once per QueryClient
+ * via useQuery with an infinite staleTime).
  */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { localConfig } from '@/lib/config/local-store';
 
-let builtinDescriptions: Record<string, string> | null = null;
-let builtinFetch: Promise<Record<string, string>> | null = null;
-
-function fetchBuiltinDescriptions(): Promise<Record<string, string>> {
-  if (!builtinFetch) {
-    builtinFetch = fetch('/api/kpi/plugins')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((data) => {
-        const map: Record<string, string> = {};
-        if (data?.success && Array.isArray(data.plugins)) {
-          for (const p of data.plugins) {
-            if (p?.id && p.description) map[p.id] = p.description;
-          }
-        }
-        builtinDescriptions = map;
-        return map;
-      })
-      .catch(() => {
-        builtinFetch = null; // allow retry after a failed fetch
-        return {};
-      });
+async function fetchBuiltinDescriptions(): Promise<Record<string, string>> {
+  const res = await fetch('/api/kpi/plugins');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const map: Record<string, string> = {};
+  if (data?.success && Array.isArray(data.plugins)) {
+    for (const p of data.plugins) {
+      if (p?.id && p.description) map[p.id] = p.description;
+    }
   }
-  return builtinFetch;
-}
-
-function resolveDescription(pluginId: string): string | undefined {
-  // Custom formula plugins live in localStorage and are available synchronously.
-  const custom = localConfig.getKpiPlugins().find((p) => p.id === pluginId);
-  if (custom?.description) return custom.description;
-  return builtinDescriptions?.[pluginId];
+  return map;
 }
 
 export interface PluginInfoIconProps {
@@ -51,28 +34,19 @@ export interface PluginInfoIconProps {
 }
 
 export function PluginInfoIcon({ pluginId, description }: PluginInfoIconProps) {
-  const [resolved, setResolved] = useState<string | undefined>(
-    () => description || resolveDescription(pluginId)
-  );
+  // Custom formula plugins live in localStorage and resolve synchronously.
+  const customDescription = localConfig.getKpiPlugins().find((p) => p.id === pluginId)?.description;
 
-  useEffect(() => {
-    if (description) {
-      setResolved(description);
-      return;
-    }
-    const direct = resolveDescription(pluginId);
-    if (direct) {
-      setResolved(direct);
-      return;
-    }
-    let cancelled = false;
-    fetchBuiltinDescriptions().then((map) => {
-      if (!cancelled && map[pluginId]) setResolved(map[pluginId]);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [pluginId, description]);
+  const { data: builtinDescriptions } = useQuery({
+    queryKey: ['kpi-plugin-descriptions'],
+    queryFn: fetchBuiltinDescriptions,
+    staleTime: Infinity,
+    // Only hit the network when the caller didn't provide a description and
+    // the plugin isn't a locally stored custom formula plugin.
+    enabled: !description && !customDescription,
+  });
+
+  const resolved = description || customDescription || builtinDescriptions?.[pluginId];
 
   if (!resolved) return null;
 

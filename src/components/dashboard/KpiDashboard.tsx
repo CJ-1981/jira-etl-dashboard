@@ -1,72 +1,19 @@
 'use client';
 
-import { KpiCard, ChartCard } from './KpiCard';
-import { AppSettings } from '@/lib/config/local-store';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import {
-  transformForBarChart,
-  transformForPieChart,
-  transformForLineChart,
-  getKpiOptions,
-  getRecommendedChartType,
-  formatChartValue,
-  isTimeSeriesPlugin,
-  CHART_COLORS,
-  getUniqueColor,
-} from '@/lib/chart-data-utils';
-import { KpiDataTable } from './KpiDataTable';
-import { KpiErrorBoundary } from './KpiErrorBoundary';
-import { PluginInfoIcon } from './PluginInfoIcon';
-import { ViewManager } from './ViewManager';
+import { isTimeSeriesPlugin } from '@/lib/chart-data-utils';
 import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
 import { extractSelectFieldValue } from '@/lib/jira/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectGroup,
-  SelectLabel,
-  SelectSeparator,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Tooltip as UITooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area
-} from 'recharts';
-import {
-  Activity, Target, Timer, UserCheck, BarChart3, AlertTriangle,
-  TrendingUp, Calendar, EyeOff, RotateCw, Plus,
-  Download, Loader2, Sliders,
-  ArrowUp, ChevronDown, ChevronUp, Database, RefreshCw,
-  Columns, Users, X,
+  BarChart3, AlertTriangle,
+  Loader2, RefreshCw,
+  X,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { toPng } from 'html-to-image';
-import { localConfig, type SavedJql, type KpiPlugin } from '@/lib/config/local-store';
+import { localConfig, KEYS, type KpiPlugin } from '@/lib/config/local-store';
 import { ChartConfig, KpiCalcResult } from '@/types/dashboard';
-import { KpiFilterPanel } from './KpiFilterPanel';
 import { useAppStore } from '@/store/app-store';
 import { useDrillDown } from '@/hooks/useDrillDown';
 import { usePeriodAnalysis } from '@/hooks/usePeriodAnalysis';
@@ -74,17 +21,25 @@ import { usePluginVisibility } from '@/hooks/usePluginVisibility';
 import { useJqlFilters } from '@/hooks/useJqlFilters';
 import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
-import { WidgetResizeContainer } from './WidgetResizeContainer';
 import { DrillDownSheet } from './DrillDownSheet';
 import { TicketListWidget } from './TicketListWidget';
+import {
+  StatusTimeWidget,
+  StatusOpenWidget,
+  SlaPriorityWidget,
+  OtherPriorityWidget,
+  SlaStatusWidget,
+  AssigneeWidget,
+  KanbanWidget,
+  CycleTimeHistogramWidget,
+  DashboardHeader,
+  DashboardFloatingBar,
+  MetricsOverview,
+  VisualizationsSection,
+} from './widgets';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 
 // ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
-// @MX:NOTE: This is KEYS.activePlugins from local-store, inlined because the
-// KpiDashboard test suites mock '@/lib/config/local-store' without a KEYS
-// export, so importing it here would crash those tests.
-const ACTIVE_PLUGINS_STORAGE_KEY = 'cfg_active_plugins';
-
 const JQL_PATTERNS = [
   { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
   { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
@@ -191,7 +146,7 @@ export function KpiDashboard() {
 
   // ─── Plugin Visibility Hook ───────────────────────────────────────────────────
   const allPluginIds = useMemo(() => kpiResults.map(kpi => kpi.pluginId), [kpiResults]);
-  const pluginVisibility = usePluginVisibility(allPluginIds, ACTIVE_PLUGINS_STORAGE_KEY);
+  const pluginVisibility = usePluginVisibility(allPluginIds, KEYS.activePlugins);
   const { widgetOrder, toggleWidgetVisibility } = useWidgetOrder();
 
   // Automatically sync widget order with available plugins
@@ -464,6 +419,26 @@ export function KpiDashboard() {
     });
   };
 
+  // Restore every hidden dimension whose key starts with the given prefix
+  // (used by the widgets' "Restore All" buttons).
+  const restoreDimensions = useCallback((prefix: string) => {
+    setHiddenDimensions((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.forEach(k => { if (k.startsWith(prefix)) next.delete(k); });
+      return next;
+    });
+  }, [setHiddenDimensions]);
+
+  // Hide several dimension keys at once (used by the stacked-bar widgets to
+  // hide all age categories of a row together).
+  const hideDimensions = useCallback((keys: string[]) => {
+    setHiddenDimensions((prev: Set<string>) => {
+      const next = new Set(prev);
+      keys.forEach(d => next.add(d));
+      return next;
+    });
+  }, [setHiddenDimensions]);
+
   const handleAddChart = () => {
     const id = `chart-${Date.now()}`;
     setCharts([...charts, { id, kpiId: '', type: 'bar', width: 'md', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
@@ -509,6 +484,21 @@ export function KpiDashboard() {
       toast.error(err instanceof Error ? err.message : 'KPI calculation failed');
     });
   }, [runCalculation]);
+
+  // Shared "Recalculate" button handler (header, floating bar, error banner).
+  const handleRecalculate = useCallback(() => {
+    runCalculationSafe();
+    toast.info('Recalculating KPIs...');
+  }, [runCalculationSafe]);
+
+  // Quick-preset selection from the header; marks the change user-initiated so
+  // the auto-recalc logic treats it as an explicit action.
+  const handleSelectPreset = useCallback((label: string, fromStr: string, toStr: string) => {
+    hasUserInitiatedCalc.current = true;
+    setDateFrom(fromStr);
+    setDateTo(toStr);
+    setSelectedPeriodPreset(label);
+  }, [setDateFrom, setDateTo, setSelectedPeriodPreset]);
 
   // @MX:NOTE: Calculate KPI results for a specific widget with custom JQL
   // @MX:REASON: Independent widget calculations allow side-by-side data comparison
@@ -700,7 +690,7 @@ export function KpiDashboard() {
   // back into the store — the previous self-referencing filter effect caused
   // a store feedback loop and could destroy raw data on refetch boundaries.
   const hasConfiguredActivePlugins = typeof window !== 'undefined'
-    ? localStorage.getItem(ACTIVE_PLUGINS_STORAGE_KEY) !== null
+    ? localStorage.getItem(KEYS.activePlugins) !== null
     : false;
 
   const filteredKpiResults = useMemo(() => {
@@ -953,246 +943,42 @@ export function KpiDashboard() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-sm overflow-visible">
-        <CardHeader className="pb-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-blue-600 dark:from-emerald-400 dark:to-blue-400">
-                  KPI Analytics
-                </CardTitle>
-                <div className="flex items-center gap-1 no-print">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      runCalculationSafe();
-                      toast.info('Recalculating KPIs...');
-                    }}
-                    disabled={calculating}
-                    className="h-6 px-2 text-[10px] text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 gap-1 rounded-md"
-                  >
-                    <RefreshCw className={`h-3 w-3 ${calculating ? 'animate-spin' : ''}`} />
-                    Recalculate
-                  </Button>
-                  <ViewManager />
-                </div>
-              </div>
-              <CardDescription className="text-slate-600 dark:text-slate-400">
-                Detailed performance metrics based on the master dataset
-              </CardDescription>
-              {masterDatasetInfo && (
-                <div className="mt-3 flex w-fit items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-full">
-                  <Database className="h-3 w-3 text-blue-500" />
-                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tight">
-                    {masterDatasetInfo.dateRange?.from ? (
-                      <>Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} — {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}</>
-                    ) : (
-                      <>Data Inventory: Range Unspecified</>
-                    )}
-                  </span>
-                  <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400/80 border-l border-blue-200 dark:border-blue-500/30 pl-2 ml-1">
-                    {masterDatasetInfo.totalExtracted.toLocaleString()} tickets • Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
-                      year: 'numeric', month: 'short', day: 'numeric',
-                      hour: '2-digit', minute: '2-digit'
-                    })}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setFilterPanelOpen(!filterPanelOpen)}
-                className={`h-9 border-slate-200 dark:border-slate-700 transition-all ${filterPanelOpen ? 'bg-slate-100 dark:bg-slate-800 ring-2 ring-emerald-500/20' : ''}`}
-              >
-                <Sliders className={`h-4 w-4 mr-2 ${Object.keys(globalFilters).length > 0 ? 'text-emerald-500' : ''}`} />
-                Filters
-                {Object.keys(globalFilters).length > 0 && (
-                  <Badge className="ml-2 bg-emerald-500 hover:bg-emerald-600 border-none h-5 min-w-[20px] flex items-center justify-center p-0 text-[10px]">
-                    {Object.values(globalFilters).flat().length}
-                  </Badge>
-                )}
-              </Button>
-              <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-800 hidden md:block" />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 text-slate-500 hover:text-emerald-500 hover:bg-emerald-500/10 no-print"
-                onClick={onPrint}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Print
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent data-period-section>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Analysis Period</Label>
-                {periodAnalysis.requiresTruncation && (
-                  <UITooltip>
-                    <TooltipTrigger asChild>
-                      <Badge variant="outline" className="h-4 py-0 text-[9px] border-amber-500/30 text-amber-500 gap-1 animate-pulse cursor-help">
-                        <AlertTriangle className="h-2.5 w-2.5" /> Data Truncated
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs p-3 shadow-lg border-amber-200 dark:border-amber-800">
-                      <p className="text-xs">
-                        Your selected analysis starts on <strong className="text-amber-600 dark:text-amber-400">{new Date(dateFrom).toLocaleDateString()}</strong>, but your local dataset only contains data from <strong className="text-amber-600 dark:text-amber-400">{periodAnalysis.availableStartDate ? new Date(periodAnalysis.availableStartDate).toLocaleDateString() : 'N/A'}</strong> onwards.<br /><br />
-                        The charts and metrics will still render, but will only reflect the available data.
-                      </p>
-                    </TooltipContent>
-                  </UITooltip>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-3 no-print">
-                  <div className="flex items-center gap-2">
-                    <div className="relative group">
-                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                        <Calendar className="h-3.5 w-3.5" />
-                      </div>
-                      <Input
-                        type="date"
-                        value={dateFrom || ''}
-                        onChange={(e) => {
-                          setDateFrom(e.target.value);
-                          setSelectedPeriodPreset(undefined);
-                        }}
-                        className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
-                      />
-                    </div>
-                    <span className="text-slate-300 dark:text-slate-700">to</span>
-                    <div className="relative group">
-                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                        <Calendar className="h-3.5 w-3.5" />
-                      </div>
-                      <Input
-                        type="date"
-                        value={dateTo || ''}
-                        onChange={(e) => {
-                          setDateTo(e.target.value);
-                          setSelectedPeriodPreset(undefined);
-                        }}
-                        className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 min-w-[300px]">
-              <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2 block">Quick Presets</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: '7D', days: 7 },
-                  { label: '14D', days: 14 },
-                  { label: '30D', days: 30 },
-                  { label: '60D', days: 60 },
-                  { label: '90D', days: 90 },
-                  { label: '180D', days: 180 },
-                  { label: '1Y', days: 365 },
-                  { label: 'MAX', days: 0 },
-                ].map((p) => {
-                  const today = new Date();
-                  today.setHours(23, 59, 59, 999);
-
-                  const targetStart = new Date(today);
-                  targetStart.setDate(today.getDate() - p.days);
-                  targetStart.setHours(0, 0, 0, 0);
-
-                  const masterStart = masterDatasetInfo?.dateRange?.from ? new Date(masterDatasetInfo.dateRange.from) : null;
-                  // Safely handle masterEnd - use Date.now() if 'to' is missing or invalid
-                  let masterEnd: Date | null = null;
-                  if (masterDatasetInfo?.dateRange?.to) {
-                    try {
-                      const parsedEnd = new Date(masterDatasetInfo.dateRange.to);
-                      if (!isNaN(parsedEnd.getTime())) {
-                        masterEnd = parsedEnd;
-                      }
-                    } catch {
-                      // Invalid date, will use null
-                    }
-                  }
-
-                  const masterStartNormalized = masterStart ? new Date(masterStart) : null;
-                  const masterEndNormalized = masterEnd ? new Date(masterEnd) : null;
-                  if (masterStartNormalized) masterStartNormalized.setHours(0, 0, 0, 0);
-                  if (masterEndNormalized) masterEndNormalized.setHours(23, 59, 59, 999);
-
-                  const isAvailable = p.label === 'MAX' ? !!masterStartNormalized : (!masterStartNormalized || targetStart >= masterStartNormalized);
-
-                  const todayStr = today.toISOString().split('T')[0];
-                  const startStr = targetStart.toISOString().split('T')[0];
-                  const maxEndStr = masterEndNormalized ? masterEndNormalized.toISOString().split('T')[0] : todayStr;
-
-                  // Check if MAX should be active (must match both start AND end dates)
-                  const isMaxActive = masterStart && dateFrom === new Date(masterStart).toISOString().split('T')[0] && dateTo === maxEndStr;
-
-                  const isActive = p.label === 'MAX'
-                    ? isMaxActive
-                    : !isMaxActive && dateTo === todayStr && dateFrom === startStr;
-
-                  return (
-                    <Button
-                      key={p.label}
-                      variant={isActive ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        // Skip if already active to prevent unnecessary recalculation
-                        if (isActive) return;
-
-                        hasUserInitiatedCalc.current = true;
-                        if (p.label === 'MAX' && masterDatasetInfo?.dateRange) {
-                          const fromStr = new Date(masterDatasetInfo.dateRange.from).toISOString().split('T')[0];
-                          const toStr = maxEndStr;
-                          setDateFrom(fromStr);
-                          setDateTo(toStr);
-                        } else {
-                          setDateFrom(startStr);
-                          setDateTo(todayStr);
-                        }
-                        setSelectedPeriodPreset(p.label);
-                      }}
-                      className={`h-8 px-3 text-[10px] font-bold transition-all ${isActive
-                          ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20 border-transparent'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:text-emerald-500 hover:border-emerald-500/50 bg-transparent'
-                        } ${!isAvailable ? 'opacity-40 cursor-not-allowed' : ''}`}
-                      disabled={!isAvailable}
-                    >
-                      {p.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {filterPanelOpen && (
-            <KpiFilterPanel
-              jqlFilters={jqlFilters}
-              filterOptions={filterOptions}
-              globalFilters={globalFilters}
-              setGlobalFilters={setGlobalFilters}
-              jqlQuery={jqlQuery}
-              setJqlQuery={setJqlQuery}
-              jqlInputRef={jqlInputRef}
-              editingJqlId={editingJqlId}
-              setEditingJqlId={setEditingJqlId}
-              jqlToDelete={jqlToDelete}
-              setJqlToDelete={setJqlToDelete}
-              setIsViewModified={setIsViewModified}
-              handleApplyFilters={handleApplyFilters}
-            />
-          )}
-        </CardContent>
-      </Card>
+      <DashboardHeader
+        masterDatasetInfo={masterDatasetInfo}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => {
+          setDateFrom(value);
+          setSelectedPeriodPreset(undefined);
+        }}
+        onDateToChange={(value) => {
+          setDateTo(value);
+          setSelectedPeriodPreset(undefined);
+        }}
+        periodAnalysis={periodAnalysis}
+        onSelectPreset={handleSelectPreset}
+        calculating={calculating}
+        onRecalculate={handleRecalculate}
+        onPrint={onPrint}
+        globalFilters={globalFilters}
+        filterPanelOpen={filterPanelOpen}
+        onToggleFilterPanel={() => setFilterPanelOpen(!filterPanelOpen)}
+        filterPanel={{
+          jqlFilters,
+          filterOptions,
+          globalFilters,
+          setGlobalFilters,
+          jqlQuery,
+          setJqlQuery,
+          jqlInputRef,
+          editingJqlId,
+          setEditingJqlId,
+          jqlToDelete,
+          setJqlToDelete,
+          setIsViewModified,
+          handleApplyFilters,
+        }}
+      />
 
       {/* Calculation Error Banner — non-blocking; last good results stay visible below */}
       {isCalcError && !calcErrorDismissed && (
@@ -1242,56 +1028,15 @@ export function KpiDashboard() {
       )}
 
       {filteredKpiResults.length > 0 && (<>
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <button
-              onClick={() => toggleWidgetCollapse('metrics-overview')}
-              className="flex items-center gap-2 group text-left"
-              aria-expanded={!collapsedWidgets.has('metrics-overview')}
-            >
-              <Activity className="h-5 w-5 text-emerald-500 shrink-0" />
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                Metrics Overview
-              </h3>
-              {!collapsedWidgets.has('metrics-overview')
-                ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
-              <span className="text-xs text-slate-400 font-normal ml-1">
-                {!collapsedWidgets.has('metrics-overview') ? '' : `(${sortedKpiResults.reduce((acc, r) => acc + r.results.length, 0)} rows)`}
-              </span>
-            </button>
-
-            {!collapsedWidgets.has('metrics-overview') && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportKpis}
-                className="h-8 text-[10px] uppercase tracking-wider font-bold border-emerald-500/20 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
-              >
-                <Download className="h-3.5 w-3.5 mr-1.5" />
-                Export CSV
-              </Button>
-            )}
-          </div>
-          <AnimatePresence initial={false}>
-            {!collapsedWidgets.has('metrics-overview') && (
-              <motion.div
-                key="metrics-table"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2, ease: 'easeInOut' }}
-                style={{ overflow: 'hidden' }}
-              >
-                <KpiDataTable
-                  results={sortedKpiResults}
-                  onDrillDown={handleDrillDown}
-                  getPluginName={getPluginName}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        <MetricsOverview
+          isExpanded={!collapsedWidgets.has('metrics-overview')}
+          onToggleCollapse={() => toggleWidgetCollapse('metrics-overview')}
+          results={sortedKpiResults}
+          totalRows={sortedKpiResults.reduce((acc, r) => acc + r.results.length, 0)}
+          onExport={handleExportKpis}
+          onDrillDown={handleDrillDown}
+          getPluginName={getPluginName}
+        />
 
         {/* Ordered Widgets Section - follows widget display order */}
         {orderedWidgets.length > 0 && (
@@ -1299,1080 +1044,125 @@ export function KpiDashboard() {
             {orderedWidgets.map((widget) => {
               switch (widget.component) {
                 case 'status-time':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => {
-                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
-                    return (
-                      <Card key={`status-time-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="flex items-center gap-2"><Timer className="h-5 w-5 text-blue-400" />Turnaround Time by Status</CardTitle>
-                              <button
-                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
-                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                                title={isExpanded ? "Collapse" : "Expand"}
-                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
-                              >
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                              </button>
-                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
-                            </div>
-                            {Array.from(hiddenDimensions).some(k => k.startsWith(`${kpi.pluginId}|`)) && (
-                              <Button variant="ghost" size="sm" onClick={() => {
-                                setHiddenDimensions((prev: Set<string>) => {
-                                  const next = new Set(prev);
-                                  next.forEach(k => { if (k.startsWith(`${kpi.pluginId}|`)) next.delete(k); });
-                                  return next;
-                                });
-                              }} className="h-7 text-[10px] text-blue-400 hover:text-blue-500 hover:bg-blue-500/10">
-                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                              </Button>
-                            )}
-                          </div>
-                        </CardHeader>
-                        {isExpanded && (
-                          <CardContent>
-                          {!kpi.results || kpi.results.length === 0 ? (
-                            <div className="text-center py-8 text-slate-400 dark:text-slate-600">
-                              <Timer className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                              <p className="text-sm">No turnaround time data available</p>
-                              <p className="text-xs mt-1">This plugin requires resolved tickets with status transitions.</p>
-                            </div>
-                          ) : (
-                            <>
-                              {(() => {
-                                const maxValue = Math.max(...kpi.results.map(r => r.value), 1);
-                                return (
-                                  <div className="space-y-3">{kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                                    const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
-                                    if (hiddenDimensions.has(dimKey)) return null;
-
-                                    return (
-                                      <div key={idx} className="space-y-1 group">
-                                        <div className="flex items-center justify-between text-sm">
-                                          <div className="flex items-center gap-2">
-                                            <span
-                                              className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                              onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                                            >
-                                              {result.name}
-                                            </span>
-                                            <button
-                                              onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
-                                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                            >
-                                              <EyeOff className="h-3.5 w-3.5" />
-                                            </button>
-                                          </div>
-                                          <span className="font-mono font-semibold text-blue-400">{result.value.toFixed(1)} {result.unit}</span>
-                                        </div>
-                                        <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                          <div
-                                            className="absolute h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
-                                            style={{ width: `${(result.value / maxValue) * 100}%` }}
-                                          />
-                                        </div>
-                                      </div>
-                                    );
-                                  })}</div>
-                                );
-                              })()}
-                              {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`)) && (
-                                <div className="text-xs text-slate-400 italic">
-                                  {Array.from(hiddenDimensions).filter(k => k.startsWith(`${kpi.pluginId}|`)).length} status(es) hidden
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                }) : null;
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
+                    <StatusTimeWidget
+                      key={`status-time-${kpi.pluginId}`}
+                      kpi={kpi}
+                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      onToggleCollapse={toggleWidgetCollapse}
+                      hiddenDimensions={hiddenDimensions}
+                      onRestoreAll={restoreDimensions}
+                      onToggleDimension={toggleDimension}
+                      onDrillDown={handleDrillDown}
+                      pluginDescription={pluginRegistry[kpi.pluginId]?.description}
+                    />
+                  )) : null;
 
                 case 'status-open':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => {
-                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
-                    return (
-                      <Card key={`status-open-${kpi.pluginId}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-emerald-400" />Open Tickets by Status</CardTitle>
-                              <button
-                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
-                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                                title={isExpanded ? "Collapse" : "Expand"}
-                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
-                              >
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                              </button>
-                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
-                            </div>
-                            {Array.from(hiddenDimensions).some(k => k.startsWith('open_tickets_by_status|')) && (
-                              <Button variant="ghost" size="sm" onClick={() => {
-                                setHiddenDimensions((prev: Set<string>) => {
-                                  const next = new Set(prev);
-                                  next.forEach(k => { if (k.startsWith('open_tickets_by_status|')) next.delete(k); });
-                                  return next;
-                                });
-                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                              </Button>
-                            )}
-                          </div>
-                        </CardHeader>
-                        {isExpanded && (
-                        <CardContent>
-                        {/* Age Legend */}
-                        <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
-                          <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded bg-slate-500" />
-                            <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded bg-amber-500" />
-                            <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded bg-emerald-400" />
-                            <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          {(() => {
-                            // Group results by status
-                            const statusGroups: Record<string, KpiCalcResult['results'][0][]> = {};
-
-                            kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
-                              const status = result.dimensions?.status || 'Unknown';
-                              if (!statusGroups[status]) {
-                                statusGroups[status] = [];
-                              }
-                              statusGroups[status].push(result);
-                            });
-
-                            // Color mapping for age categories
-                            const ageColors: Record<string, string> = {
-                              'existing': 'bg-slate-500',
-                              'last_week': 'bg-amber-500',
-                              'this_week': 'bg-emerald-400',
-                            };
-
-                            return Object.entries(statusGroups).map(([status, results]) => {
-                              const visibleResults = results.filter((r) => !hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
-                              if (visibleResults.length === 0) return null;
-
-                              const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
-                              const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
-                              const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
-                              const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
-
-                              return (
-                                <div key={status} className="space-y-2 group">
-                                  {/* Status Header */}
-                                  <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span
-                                        className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                        onClick={() => {
-                                          // Gather all ticket keys for this status across all age categories
-                                          const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
-                                          handleDrillDown(allTicketKeys, `Status: ${status} (All)`);
-                                        }}
-                                        title="Click to see all tickets for this status"
-                                      >
-                                        {status}
-                                      </span>
-                                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
-
-                                      <div className="flex items-center gap-1.5 ml-2">
-                                        {existingCount > 0 && (
-                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title="2+ weeks old">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                                            <span>{existingCount}</span>
-                                          </Badge>
-                                        )}
-                                        {lastWeekCount > 0 && (
-                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title="1 week old">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                            <span>{lastWeekCount}</span>
-                                          </Badge>
-                                        )}
-                                        {thisWeekCount > 0 && (
-                                          <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title="This week">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                            <span>{thisWeekCount}</span>
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <button
-                                      onClick={() => {
-                                        // Hide all age categories for this status
-                                        const dimsToAdd = [`open_tickets_by_status|${status}-existing`, `open_tickets_by_status|${status}-last_week`, `open_tickets_by_status|${status}-this_week`];
-                                        setHiddenDimensions((prev: Set<string>) => {
-                                          const next = new Set(prev);
-                                          dimsToAdd.forEach(d => next.add(d));
-                                          return next;
-                                        });
-                                      }}
-                                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                      title="Hide this status"
-                                    >
-                                      <EyeOff className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-
-                                  {/* Stacked/Segmented Bar */}
-                                  <div className="space-y-1">
-                                    <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
-                                      {visibleResults
-                                        .sort((a, b) => {
-                                          // Sort by age: existing → last_week → this_week
-                                          const ageOrder: Record<string, number> = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                          const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                          const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                          return ageA - ageB;
-                                        })
-                                        .map((result, idx) => {
-                                          const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
-                                          const ageCategory = result.dimensions?.ageCategory as string;
-                                          const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-                                          const ageLabel = ageCategory === 'existing' ? '2+ weeks' : ageCategory === 'last_week' ? '1 week' : 'This week';
-
-                                          return (
-                                            <div
-                                              key={idx}
-                                              className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
-                                              style={{ width: `${width}%` }}
-                                              onClick={() => handleDrillDown(result.ticketKeys || [], `${status} (${result.dimensions?.ageCategory})`)}
-                                              title={`${ageLabel}: ${result.value} ticket(s)`}
-                                            >
-                                              {result.value > 0 && width >= 6 ? result.value : null}
-                                            </div>
-                                          );
-                                        })}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                        {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${r.dimensions?.status}-${r.dimensions.ageCategory}` : r.dimensions?.status || r.name}`)) && (
-                          <div className="text-xs text-slate-400 italic mt-2">
-                            {Array.from(hiddenDimensions).filter(k => k.startsWith('open_tickets_by_status|')).length} age category(es) hidden
-                          </div>
-                        )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                }) : null;
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi) => (
+                    <StatusOpenWidget
+                      key={`status-open-${kpi.pluginId}`}
+                      kpi={kpi}
+                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      onToggleCollapse={toggleWidgetCollapse}
+                      hiddenDimensions={hiddenDimensions}
+                      onRestoreAll={restoreDimensions}
+                      onHideDimensions={hideDimensions}
+                      onDrillDown={handleDrillDown}
+                      pluginDescription={pluginRegistry[kpi.pluginId]?.description}
+                    />
+                  )) : null;
 
                 case 'sla-priority':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
-                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
-                    return (
-                      <Card key={`sla-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" />SLA by Priority</CardTitle>
-                              <button
-                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
-                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                                title={isExpanded ? "Collapse" : "Expand"}
-                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
-                              >
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                              </button>
-                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
-                            </div>
-                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                              <Button variant="ghost" size="sm" onClick={() => {
-                                setHiddenDimensions((prev: Set<string>) => {
-                                  const next = new Set(prev);
-                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                  return next;
-                                });
-                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                              </Button>
-                            )}
-                          </div>
-                        </CardHeader>
-                        {isExpanded && (
-                          <CardContent>
-                          <div className="space-y-3">
-                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                              const dimKey = `${kpi.pluginId}|${result.dimensions?.priority || result.name}`;
-                              if (hiddenDimensions.has(dimKey)) return null;
-
-                              const priority = result.dimensions?.priority || result.name;
-                              const priorityColor: Record<string, string> = {
-                                'Highest': 'bg-red-500',
-                                'High': 'bg-orange-500',
-                                'Medium': 'bg-amber-500',
-                                'Low': 'bg-blue-500',
-                                'Lowest': 'bg-cyan-500',
-                              };
-
-                              return (
-                                <div key={idx} className="space-y-1 group">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <span
-                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                                      >
-                                        {result.name}
-                                      </span>
-                                      <Badge className="text-[9px] py-0 h-3.5 px-1.5 border border-slate-300 dark:border-slate-600">
-                                        {result.comparison?.label || 'No Target'}
-                                      </Badge>
-                                      <button
-                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.priority || result.name)}
-                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                      >
-                                        <EyeOff className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
-                                  </div>
-                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                    <div
-                                      className="absolute h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-300"
-                                      style={{ width: `${(result.value / Math.max(result.value, result.comparison?.value || 1)) * 100}%` }}
-                                    />
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 text-center">{result.value}h vs {result.comparison?.value || 'N/A'}h target</div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
-                            <div className="text-xs text-slate-400 italic">
-                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
-                            </div>
-                          )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                }) : null;
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <SlaPriorityWidget
+                      key={`sla-priority-${kpi.pluginId}-${kpiIdx}`}
+                      kpi={kpi}
+                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      onToggleCollapse={toggleWidgetCollapse}
+                      hiddenDimensions={hiddenDimensions}
+                      onRestoreAll={restoreDimensions}
+                      onToggleDimension={toggleDimension}
+                      onDrillDown={handleDrillDown}
+                      pluginDescription={pluginRegistry[kpi.pluginId]?.description}
+                    />
+                  )) : null;
 
                 case 'other-priority':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
-                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
-                    return (
-                      <Card key={`other-priority-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="flex items-center gap-2">
-                                <TrendingUp className="h-5 w-5 text-cyan-400" />
-                                {getPluginName(kpi.pluginId)}
-                              </CardTitle>
-                              <button
-                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
-                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                                title={isExpanded ? "Collapse" : "Expand"}
-                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
-                              >
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                              </button>
-                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
-                            </div>
-                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                              <Button variant="ghost" size="sm" onClick={() => {
-                                setHiddenDimensions((prev: Set<string>) => {
-                                  const next = new Set(prev);
-                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                  return next;
-                                });
-                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                              </Button>
-                            )}
-                          </div>
-                        </CardHeader>
-                        {isExpanded && (
-                        <CardContent>
-                          {/* Age Legend */}
-                          <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                              {kpi.pluginId.includes('closed') ? 'Closed Timeframe:' : 'Age Groups:'}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 rounded bg-slate-500" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">
-                                {kpi.pluginId.includes('closed') ? '2+ weeks ago' : '2+ weeks'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 rounded bg-amber-500" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">
-                                {kpi.pluginId.includes('closed') ? 'Last week' : '1 week'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 rounded bg-emerald-400" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">
-                                This week
-                              </span>
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            {(() => {
-                              // Group results by priority
-                              const priorityGroups: Record<string, KpiCalcResult['results'][0][]> = {};
-
-                              kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
-                                const priority = result.dimensions?.priority || 'Unknown';
-                                if (!priorityGroups[priority]) {
-                                  priorityGroups[priority] = [];
-                                }
-                                priorityGroups[priority].push(result);
-                              });
-
-                              // Color mapping for age categories
-                              const ageColors: Record<string, string> = {
-                                'existing': 'bg-slate-500',
-                                'last_week': 'bg-amber-500',
-                                'this_week': 'bg-emerald-400',
-                              };
-
-                              return Object.entries(priorityGroups).map(([priority, results]) => {
-                                const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority ? `${priority}-${r.dimensions.ageCategory}` : priority}`));
-                                if (visibleResults.length === 0) return null;
-
-                                const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
-                                const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
-                                const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
-                                const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
-                                const existingLabel = kpi.pluginId.includes('closed') ? '2+ weeks ago' : '2+ weeks old';
-                                const lastWeekLabel = kpi.pluginId.includes('closed') ? 'Last week' : '1 week old';
-                                const thisWeekLabel = kpi.pluginId.includes('closed') ? 'This week' : 'This week';
-
-                                return (
-                                  <div key={priority} className="space-y-2 group">
-                                    {/* Priority Header */}
-                                    <div className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span
-                                          className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                          onClick={() => {
-                                            // Gather all ticket keys for this priority across all age categories
-                                            const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
-                                            handleDrillDown(allTicketKeys, `Priority: ${priority} (All)`);
-                                          }}
-                                          title="Click to see all tickets for this priority"
-                                        >
-                                          {priority}
-                                        </span>
-                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
-
-                                        <div className="flex items-center gap-1.5 ml-2">
-                                          {existingCount > 0 && (
-                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title={existingLabel}>
-                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                                              <span>{existingCount}</span>
-                                            </Badge>
-                                          )}
-                                          {lastWeekCount > 0 && (
-                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title={lastWeekLabel}>
-                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                              <span>{lastWeekCount}</span>
-                                            </Badge>
-                                          )}
-                                          {thisWeekCount > 0 && (
-                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title={thisWeekLabel}>
-                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                              <span>{thisWeekCount}</span>
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() => {
-                                          // Hide all age categories for this priority
-                                          const dimsToAdd = [`${kpi.pluginId}|${priority}-existing`, `${kpi.pluginId}|${priority}-last_week`, `${kpi.pluginId}|${priority}-this_week`];
-                                          setHiddenDimensions((prev: Set<string>) => {
-                                            const next = new Set(prev);
-                                            dimsToAdd.forEach(d => next.add(d));
-                                            return next;
-                                          });
-                                        }}
-                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                        title="Hide this priority"
-                                      >
-                                        <EyeOff className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-
-                                    {/* Stacked/Segmented Bar */}
-                                    <div className="space-y-1">
-                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
-                                        {visibleResults
-                                          .sort((a, b) => {
-                                            // Sort by age: existing → last_week → this_week
-                                            const ageOrder: Record<string, number> = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                            return ageA - ageB;
-                                          })
-                                          .map((result, idx) => {
-                                            const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
-                                            const ageCategory = result.dimensions?.ageCategory as string;
-                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-                                            const ageLabel = ageCategory === 'existing' ? existingLabel : ageCategory === 'last_week' ? lastWeekLabel : thisWeekLabel;
-
-                                            return (
-                                              <div
-                                                key={idx}
-                                                className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
-                                                style={{ width: `${width}%` }}
-                                                onClick={() => handleDrillDown(result.ticketKeys || [], `${priority} (${result.dimensions?.ageCategory})`)}
-                                                title={`${ageLabel}: ${result.value} ticket(s)`}
-                                              >
-                                                {result.value > 0 && width >= 6 ? result.value : null}
-                                              </div>
-                                            );
-                                          })}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            })()}                          </div>
-                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
-                            <div className="text-xs text-slate-400 italic">
-                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
-                            </div>
-                          )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                }) : null;
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <OtherPriorityWidget
+                      key={`other-priority-${kpi.pluginId}-${kpiIdx}`}
+                      kpi={kpi}
+                      title={getPluginName(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      onToggleCollapse={toggleWidgetCollapse}
+                      hiddenDimensions={hiddenDimensions}
+                      onRestoreAll={restoreDimensions}
+                      onHideDimensions={hideDimensions}
+                      onDrillDown={handleDrillDown}
+                      pluginDescription={pluginRegistry[kpi.pluginId]?.description}
+                    />
+                  )) : null;
 
                 case 'sla-status':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
-                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
-                    return (
-                      <Card key={`sla-status-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="flex items-center gap-2">
-                                <Target className="h-5 w-5 text-emerald-400" />
-                                {kpi.pluginId === 'sla_by_status_excl_clone' ? 'SLA by Status (Excl. Clones)' : 'SLA by Status'}
-                              </CardTitle>
-                              <button
-                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
-                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                                title={isExpanded ? "Collapse" : "Expand"}
-                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
-                              >
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                              </button>
-                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
-                            </div>
-                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                              <Button variant="ghost" size="sm" onClick={() => {
-                                setHiddenDimensions((prev: Set<string>) => {
-                                  const next = new Set(prev);
-                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                  return next;
-                                });
-                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                              </Button>
-                            )}
-                          </div>
-                        </CardHeader>
-                        {isExpanded && (
-                        <CardContent>
-                          <div className="space-y-3">
-                            {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
-                              const dimKey = `${kpi.pluginId}|${result.dimensions?.status || result.name}`;
-                              if (hiddenDimensions.has(dimKey)) return null;
-
-                              const status = result.dimensions?.status || result.name;
-                              const statusColor: Record<string, string> = {
-                                'Done': 'bg-emerald-500',
-                                'Closed': 'bg-slate-500',
-                                'Resolved': 'bg-blue-500',
-                                'In Progress': 'bg-blue-600',
-                                'To Do': 'bg-gray-500',
-                                'In Review': 'bg-purple-500',
-                              };
-
-                              return (
-                                <div key={idx} className="space-y-1 group">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <span
-                                        className="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                        onClick={() => handleDrillDown(result.ticketKeys || [], result.name)}
-                                      >
-                                        {result.name}
-                                      </span>
-                                      <Badge className="text-[9px] py-0 h-3.5 px-1.5 border border-slate-300 dark:border-slate-600">
-                                        {result.comparison?.label || 'No Target'}
-                                      </Badge>
-                                      <button
-                                        onClick={() => toggleDimension(kpi.pluginId, result.dimensions?.status || result.name)}
-                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                      >
-                                        <EyeOff className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{result.value} {result.unit}</span>
-                                  </div>
-                                  <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                    <div
-                                      className="absolute h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
-                                      style={{ width: `${(result.value / Math.max(result.value, result.comparison?.value || 1)) * 100}%` }}
-                                    />
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 text-center">{result.value}h vs {result.comparison?.value || 'N/A'}h target</div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.status || r.name}`)) && (
-                            <div className="text-xs text-slate-400 italic">
-                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} status(es) hidden
-                            </div>
-                          )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                }) : null;
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <SlaStatusWidget
+                      key={`sla-status-${kpi.pluginId}-${kpiIdx}`}
+                      kpi={kpi}
+                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      onToggleCollapse={toggleWidgetCollapse}
+                      hiddenDimensions={hiddenDimensions}
+                      onRestoreAll={restoreDimensions}
+                      onToggleDimension={toggleDimension}
+                      onDrillDown={handleDrillDown}
+                      pluginDescription={pluginRegistry[kpi.pluginId]?.description}
+                    />
+                  )) : null;
 
                 case 'assignee':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
-                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
-                    return (
-                      <Card key={`assignee-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                        <CardHeader>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="flex items-center gap-2">
-                                <UserCheck className="h-5 w-5 text-indigo-400" />
-                                {getPluginName(kpi.pluginId)}
-                              </CardTitle>
-                              <button
-                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
-                                className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                                title={isExpanded ? "Collapse" : "Expand"}
-                                aria-label={isExpanded ? "Collapse section" : "Expand section"}
-                              >
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                              </button>
-                              <PluginInfoIcon pluginId={kpi.pluginId} description={pluginRegistry[kpi.pluginId]?.description} />
-                            </div>
-                            {Array.from(hiddenDimensions).some(k => k.startsWith(kpi.pluginId + '|')) && (
-                              <Button variant="ghost" size="sm" onClick={() => {
-                                setHiddenDimensions((prev: Set<string>) => {
-                                  const next = new Set(prev);
-                                  next.forEach(k => { if (k.startsWith(kpi.pluginId + '|')) next.delete(k); });
-                                  return next;
-                                });
-                              }} className="h-7 text-[10px] text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10">
-                                <RotateCw className="h-3 w-3 mr-1" /> Restore All
-                              </Button>
-                            )}
-                          </div>
-                        </CardHeader>
-                        {isExpanded && (
-                          <CardContent>
-                          {/* Age Legend */}
-                          <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 rounded bg-slate-500" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">2+ weeks</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 rounded bg-amber-500" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">1 week</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 rounded bg-emerald-400" />
-                              <span className="text-xs text-slate-600 dark:text-slate-400">This week</span>
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            {(() => {
-                              // Group results by assignee or team
-                              const isTeam = kpi.pluginId === 'open_tickets_by_issue_owner_team';
-                              const dimensionKey = isTeam ? 'team' : 'assignee';
-                              const groups: Record<string, KpiCalcResult['results'][0][]> = {};
-
-                              kpi.results.forEach((result: KpiCalcResult['results'][0]) => {
-                                const key = result.dimensions?.[dimensionKey] || 'Unknown';
-                                if (!groups[key]) {
-                                  groups[key] = [];
-                                }
-                                groups[key].push(result);
-                              });
-
-                              // Color mapping for age categories
-                              const ageColors: Record<string, string> = {
-                                'existing': 'bg-slate-500',
-                                'last_week': 'bg-amber-500',
-                                'this_week': 'bg-emerald-400',
-                              };
-
-                              return Object.entries(groups).map(([key, results]) => {
-                                const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] ? `${key}-${r.dimensions.ageCategory}` : key}`));
-                                if (visibleResults.length === 0) return null;
-
-                                const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
-                                const existingCount = visibleResults.find(r => r.dimensions?.ageCategory === 'existing')?.value || 0;
-                                const lastWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'last_week')?.value || 0;
-                                const thisWeekCount = visibleResults.find(r => r.dimensions?.ageCategory === 'this_week')?.value || 0;
-
-                                return (
-                                  <div key={key} className="space-y-2 group">
-                                    {/* Assignee/Team Header */}
-                                    <div className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span
-                                          className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
-                                          onClick={() => {
-                                            // Gather all ticket keys for this assignee/team across all age categories
-                                            const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);
-                                            handleDrillDown(allTicketKeys, `${isTeam ? 'Team' : 'Assignee'}: ${key} (All)`);
-                                          }}
-                                          title={`Click to see all tickets for this ${isTeam ? 'team' : 'assignee'}`}
-                                        >
-                                          {key}
-                                        </span>
-                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">({totalValue} total)</span>
-
-                                        <div className="flex items-center gap-1.5 ml-2">
-                                          {existingCount > 0 && (
-                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1 text-[11px] font-mono font-medium" title="2+ weeks old">
-                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                                              <span>{existingCount}</span>
-                                            </Badge>
-                                          )}
-                                          {lastWeekCount > 0 && (
-                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-mono font-medium" title="1 week old">
-                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                              <span>{lastWeekCount}</span>
-                                            </Badge>
-                                          )}
-                                          {thisWeekCount > 0 && (
-                                            <Badge variant="outline" className="px-1.5 py-0 h-4.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px] font-mono font-medium" title="This week">
-                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                              <span>{thisWeekCount}</span>
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() => {
-                                          // Hide all age categories for this assignee/team
-                                          const dimsToAdd = [`${kpi.pluginId}|${key}-existing`, `${kpi.pluginId}|${key}-last_week`, `${kpi.pluginId}|${key}-this_week`];
-                                          setHiddenDimensions((prev: Set<string>) => {
-                                            const next = new Set(prev);
-                                            dimsToAdd.forEach(d => next.add(d));
-                                            return next;
-                                          });
-                                        }}
-                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-opacity"
-                                        title={`Hide this ${isTeam ? 'team' : 'assignee'}`}
-                                      >
-                                        <EyeOff className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-
-                                    {/* Stacked/Segmented Bar */}
-                                    <div className="space-y-1">
-                                      <div className="relative h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
-                                        {visibleResults
-                                          .sort((a, b) => {
-                                            // Sort by age: existing → last_week → this_week
-                                            const ageOrder: Record<string, number> = { 'existing': 0, 'last_week': 1, 'this_week': 2 };
-                                            const ageA = ageOrder[a.dimensions?.ageCategory as string] ?? 999;
-                                            const ageB = ageOrder[b.dimensions?.ageCategory as string] ?? 999;
-                                            return ageA - ageB;
-                                          })
-                                          .map((result, idx) => {
-                                            const width = totalValue > 0 ? (result.value / totalValue) * 100 : 0;
-                                            const ageCategory = result.dimensions?.ageCategory as string;
-                                            const colorClass = ageColors[ageCategory] || 'bg-slate-400';
-                                            const ageLabel = ageCategory === 'existing' ? '2+ weeks' : ageCategory === 'last_week' ? '1 week' : 'This week';
-
-                                            return (
-                                              <div
-                                                key={idx}
-                                                className={`${colorClass} hover:opacity-85 transition-opacity cursor-pointer flex items-center justify-center text-xs font-bold text-white select-none overflow-hidden`}
-                                                style={{ width: `${width}%` }}
-                                                onClick={() => handleDrillDown(result.ticketKeys || [], `${key} (${result.dimensions?.ageCategory})`)}
-                                                title={`${ageLabel}: ${result.value} ticket(s)`}
-                                              >
-                                                {result.value > 0 && width >= 6 ? result.value : null}
-                                              </div>
-                                            );
-                                          })}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            })()}                          </div>
-                          {kpi.results.some((r: KpiCalcResult['results'][0]) => {
-                            const dimensionKey = kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team' : 'assignee';
-                            return hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] || r.name}`);
-                          }) && (
-                            <div className="text-xs text-slate-400 italic">
-                              {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} {kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team(s)' : 'assignee(s)'} hidden
-                            </div>
-                          )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                }) : null;
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <AssigneeWidget
+                      key={`assignee-${kpi.pluginId}-${kpiIdx}`}
+                      kpi={kpi}
+                      title={getPluginName(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      onToggleCollapse={toggleWidgetCollapse}
+                      hiddenDimensions={hiddenDimensions}
+                      onRestoreAll={restoreDimensions}
+                      onHideDimensions={hideDimensions}
+                      onDrillDown={handleDrillDown}
+                      pluginDescription={pluginRegistry[kpi.pluginId]?.description}
+                    />
+                  )) : null;
 
                 case 'kanban':
-                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => {
-                    const isExpanded = !collapsedWidgets.has(kpi.pluginId);
-
-                    // Group results by status (columns), then assignee (cards) with age breakdown
-                    interface AgeInfo { count: number; keys: string[] }
-                    interface AssigneeData {
-                      assignee: string;
-                      totalTickets: number;
-                      allKeys: string[];
-                      ageBreakdown: Record<'this_week' | 'last_week' | 'existing', AgeInfo>;
-                    }
-                    const statusMap: Record<string, Record<string, AssigneeData>> = {};
-                    let totalKanbanTickets = 0;
-
-                    kpi.results.forEach((res: any) => {
-                      const status = res.dimensions?.status || 'Unknown';
-                      const assignee = res.dimensions?.assignee || 'Unassigned';
-                      const ageCategory = res.dimensions?.ageCategory || 'existing';
-                      const keys = res.ticketKeys || [];
-                      const val = res.value || 0;
-
-                      if (!statusMap[status]) statusMap[status] = {};
-                      if (!statusMap[status][assignee]) {
-                        statusMap[status][assignee] = {
-                          assignee,
-                          totalTickets: 0,
-                          allKeys: [],
-                          ageBreakdown: {
-                            this_week: { count: 0, keys: [] },
-                            last_week: { count: 0, keys: [] },
-                            existing: { count: 0, keys: [] },
-                          },
-                        };
-                      }
-
-                      const data = statusMap[status][assignee];
-                      data.totalTickets += val;
-                      data.allKeys.push(...keys);
-                      if (data.ageBreakdown[ageCategory as 'this_week' | 'last_week' | 'existing']) {
-                        data.ageBreakdown[ageCategory as 'this_week' | 'last_week' | 'existing'].count += val;
-                        data.ageBreakdown[ageCategory as 'this_week' | 'last_week' | 'existing'].keys.push(...keys);
-                      }
-
-                      totalKanbanTickets += val;
-                    });
-
-                    return (
-                      <Card key={`kanban-${kpi.pluginId}-${kpiIdx}`} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden shadow-sm">
-                        <CardHeader className="bg-slate-50/50 dark:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="flex items-center gap-2 text-lg font-bold">
-                                <Columns className="h-5 w-5 text-indigo-500" />
-                                {getPluginName(kpi.pluginId)}
-                              </CardTitle>
-                              <Badge className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-none font-mono text-xs">
-                                {totalKanbanTickets} open tickets
-                              </Badge>
-                              <button
-                                onClick={() => toggleWidgetCollapse(kpi.pluginId)}
-                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 ml-1"
-                                title={isExpanded ? "Collapse" : "Expand"}
-                              >
-                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              </button>
-                            </div>
-
-                            {/* Age Breakdown Legend */}
-                            {isExpanded && (
-                              <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2.5 h-2.5 rounded bg-emerald-400 shadow-xs" />
-                                  <span>This week</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2.5 h-2.5 rounded bg-amber-500 shadow-xs" />
-                                  <span>1 week old</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2.5 h-2.5 rounded bg-slate-500 shadow-xs" />
-                                  <span>2+ weeks old</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </CardHeader>
-                        {isExpanded && (
-                          <CardContent className="p-6">
-                            <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 overflow-x-auto pb-2">
-                              {Object.entries(statusMap).map(([status, assigneeObj]) => {
-                                const assigneeItems = Object.values(assigneeObj);
-                                const columnTotal = assigneeItems.reduce((sum, item) => sum + item.totalTickets, 0);
-                                const allStatusKeys = assigneeItems.flatMap(item => item.allKeys);
-
-                                return (
-                                  <div key={status} className="bg-slate-100/70 dark:bg-slate-800/50 rounded-xl p-3 flex flex-col min-w-[260px] border border-slate-200/60 dark:border-slate-700/50 shadow-sm">
-                                    {/* Status Column Header */}
-                                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200 dark:border-slate-700/80 px-1">
-                                      <span
-                                        className="font-bold text-sm text-slate-800 dark:text-slate-200 cursor-pointer hover:text-indigo-500 hover:underline flex items-center gap-1.5"
-                                        onClick={() => handleDrillDown(allStatusKeys, `Status: ${status} (All Assignees)`)}
-                                        title="Click to drill down all tickets in this status"
-                                      >
-                                        <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block shadow-xs" />
-                                        {status}
-                                      </span>
-                                      <Badge variant="secondary" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-mono text-xs shadow-xs px-2 py-0.5">
-                                        {columnTotal}
-                                      </Badge>
-                                    </div>
-
-                                    {/* Assignee Cards List */}
-                                    <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[420px] pr-1">
-                                      {assigneeItems
-                                        .sort((a, b) => b.totalTickets - a.totalTickets)
-                                        .map((item, idx) => (
-                                          <div
-                                            key={idx}
-                                            className="group bg-white dark:bg-slate-900/90 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/10 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs hover:border-indigo-500/40 dark:hover:border-indigo-500/40 transition-all cursor-pointer flex flex-col gap-2.5"
-                                            onClick={() => handleDrillDown(item.allKeys, `Assignee: ${item.assignee} (${status})`)}
-                                            title={`Drill down all ${item.totalTickets} ticket(s) for ${item.assignee}`}
-                                          >
-                                            <div className="flex items-center justify-between gap-2">
-                                              <div className="flex items-center gap-2 min-w-0">
-                                                <Users className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-500 shrink-0 transition-colors" />
-                                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 truncate">
-                                                  {item.assignee}
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-1 shrink-0">
-                                                {item.ageBreakdown.existing.count > 0 && (
-                                                  <span className="text-[10px] font-mono text-slate-500 flex items-center gap-0.5 ml-0.5" title="2+ weeks old">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                                                    {item.ageBreakdown.existing.count}
-                                                  </span>
-                                                )}
-                                                {item.ageBreakdown.last_week.count > 0 && (
-                                                  <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 flex items-center gap-0.5 ml-0.5" title="1 week old">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                                    {item.ageBreakdown.last_week.count}
-                                                  </span>
-                                                )}
-                                                {item.ageBreakdown.this_week.count > 0 && (
-                                                  <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 ml-0.5" title="This week">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                                    {item.ageBreakdown.this_week.count}
-                                                  </span>
-                                                )}
-                                                <Badge variant="outline" className="text-[10px] ml-1 bg-slate-50 dark:bg-slate-800 font-mono group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 group-hover:border-indigo-300 dark:group-hover:border-indigo-800 transition-colors" title="Total tickets">
-                                                  {item.totalTickets}
-                                                </Badge>
-                                              </div>
-                                            </div>
-
-                                            {/* Segmented Age Bar */}
-                                            <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex gap-0.5 shadow-inner">
-                                              {item.ageBreakdown.existing.count > 0 && (
-                                                <div
-                                                  title={`2+ weeks old: ${item.ageBreakdown.existing.count} ticket(s)`}
-                                                  className="bg-slate-500 h-full transition-opacity hover:opacity-80"
-                                                  style={{ width: `${(item.ageBreakdown.existing.count / item.totalTickets) * 100}%` }}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDrillDown(item.ageBreakdown.existing.keys, `Assignee: ${item.assignee} (${status}) [2+ weeks]`);
-                                                  }}
-                                                />
-                                              )}
-                                              {item.ageBreakdown.last_week.count > 0 && (
-                                                <div
-                                                  title={`1 week old: ${item.ageBreakdown.last_week.count} ticket(s)`}
-                                                  className="bg-amber-500 h-full transition-opacity hover:opacity-80"
-                                                  style={{ width: `${(item.ageBreakdown.last_week.count / item.totalTickets) * 100}%` }}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDrillDown(item.ageBreakdown.last_week.keys, `Assignee: ${item.assignee} (${status}) [1 week]`);
-                                                  }}
-                                                />
-                                              )}
-                                              {item.ageBreakdown.this_week.count > 0 && (
-                                                <div
-                                                  title={`This week: ${item.ageBreakdown.this_week.count} ticket(s)`}
-                                                  className="bg-emerald-400 h-full transition-opacity hover:opacity-80"
-                                                  style={{ width: `${(item.ageBreakdown.this_week.count / item.totalTickets) * 100}%` }}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDrillDown(item.ageBreakdown.this_week.keys, `Assignee: ${item.assignee} (${status}) [This week]`);
-                                                  }}
-                                                />
-                                              )}
-                                            </div>
-                                          </div>
-                                        ))}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </CardContent>
-                        )}
-                      </Card>
-                    );
-                  }) : null;
+                  return widget.kpis.length > 0 ? widget.kpis.map((kpi, kpiIdx) => (
+                    <KanbanWidget
+                      key={`kanban-${kpi.pluginId}-${kpiIdx}`}
+                      kpi={kpi}
+                      title={getPluginName(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      onToggleCollapse={toggleWidgetCollapse}
+                      onDrillDown={handleDrillDown}
+                    />
+                  )) : null;
 
                 case 'cycle-time-histogram':
                   return widget.kpis.length > 0 ? (
-                    <div key={`cycle-time-histogram-wrapper-${widget.kpis[0].pluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
-                      <ChartCard
-                        config={{
-                          id: `cycle-time-histogram-${widget.kpis[0].pluginId}`,
-                          type: 'bar',
-                          kpiId: widget.kpis[0].pluginId,
-                          width: 'lg',
-                          height: 'md',
-                          jqlFilter: { enabled: false, query: '', mode: 'override' }
-                        }}
-                        kpiResults={filteredKpiResults}
-                        hiddenDimensions={hiddenDimensions}
-                        toggleDimension={toggleDimension}
-                        onRemove={handleRemoveChart}
-                        onChange={handleUpdateChart}
-                        onMoveUp={handleMoveChart ? (id) => handleMoveChart(id, 'up') : undefined}
-                        onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
-                        onClick={handleDrillDown}
-                        theme={theme as any}
-                        calculateWidgetJql={calculateWidgetJql}
-                      />
-                    </div>
+                    <CycleTimeHistogramWidget
+                      key={`cycle-time-histogram-wrapper-${widget.kpis[0].pluginId}`}
+                      kpis={widget.kpis}
+                      kpiResults={filteredKpiResults}
+                      hiddenDimensions={hiddenDimensions}
+                      toggleDimension={toggleDimension}
+                      onRemove={handleRemoveChart}
+                      onChange={handleUpdateChart}
+                      onMoveUp={handleMoveChart ? (id) => handleMoveChart(id, 'up') : undefined}
+                      onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
+                      onDrillDown={handleDrillDown}
+                      theme={theme}
+                      calculateWidgetJql={calculateWidgetJql}
+                    />
                   ) : null;
 
                 case 'ticket-list': {
@@ -2394,67 +1184,28 @@ export function KpiDashboard() {
                     ) : null;
                   }
               }
+
             })}
           </div>
         )}
 
 
         {/* Chart Section */}
-        {filteredKpiResults.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-emerald-500" />
-                Visualizations
-              </h3>
-            </div>
+        <VisualizationsSection
+          charts={visibleCharts}
+          kpiResults={filteredKpiResults}
+          hiddenDimensions={hiddenDimensions}
+          toggleDimension={toggleDimension}
+          onRemove={handleRemoveChart}
+          onChange={handleUpdateChart}
+          onMoveUp={handleMoveChart ? (id) => handleMoveChart(id, 'up') : undefined}
+          onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
+          onDrillDown={handleDrillDown}
+          theme={theme}
+          calculateWidgetJql={calculateWidgetJql}
+          onAddChart={handleAddChart}
+        />
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {visibleCharts.map((chartConfig) => {
-                const widthClass = {
-                  sm: 'col-span-1',      // 25% width
-                  md: 'col-span-2',       // 50% width
-                  lg: 'col-span-3',       // 75% width
-                  full: 'col-span-4',     // 100% width
-                }[chartConfig.width];
-
-                return (
-                  <div key={chartConfig.id} className={widthClass}>
-                    <ChartCard
-                      config={chartConfig}
-                      kpiResults={filteredKpiResults}
-                      hiddenDimensions={hiddenDimensions}
-                      toggleDimension={toggleDimension}
-                      onRemove={handleRemoveChart}
-                      onChange={handleUpdateChart}
-                      onMoveUp={handleMoveChart ? (id) => handleMoveChart(id, 'up') : undefined}
-                      onMoveDown={handleMoveChart ? (id) => handleMoveChart(id, 'down') : undefined}
-                      onClick={handleDrillDown}
-                      theme={theme as any}
-                      calculateWidgetJql={calculateWidgetJql}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            {visibleCharts.length < 12 && (
-              <div className="flex justify-center pt-6 no-print">
-                <Button
-                  onClick={handleAddChart}
-                  variant="outline"
-                  className="group relative border-dashed border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-500 w-full max-w-sm transition-all duration-300 py-8 h-auto flex flex-col gap-2 rounded-xl"
-                >
-                  <div className="flex items-center gap-2">
-                    <Plus className="h-5 w-5 transition-transform group-hover:scale-110" />
-                    <span className="font-semibold text-sm">Add Visualization</span>
-                  </div>
-                  <span className="text-[10px] opacity-60 font-normal">Create a new bar, line, or pie chart for your metrics</span>
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
       </>)}
       {filteredKpiResults.length === 0 && !calculating && (
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50"><CardContent className="py-16 text-center text-slate-400 dark:text-slate-500"><BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" /><p className="text-lg font-medium">No KPI results yet</p></CardContent></Card>
@@ -2471,131 +1222,31 @@ export function KpiDashboard() {
         activeConnectionId={activeConnectionId}
       />
 
-      <AnimatePresence>
-        {showFloatingBar && !isDrillDownOpen && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-0 left-1/2 -translate-x-1/2 z-[60] w-full max-w-xl px-4 pb-4"
-          >
-            <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-full shadow-2xl p-1.5 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 px-3">
-                <div
-                  className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
-                  onClick={() => {
-                    document.querySelector('[data-period-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                >
-                  <Calendar className="h-3.5 w-3.5 text-emerald-500" />
-                  {dateFrom && dateTo ? `${new Date(dateFrom).toLocaleDateString()} - ${new Date(dateTo).toLocaleDateString()}` : 'No Period'}
-                </div>
-                <Separator orientation="vertical" className="h-4 bg-slate-200 dark:bg-slate-800" />
-                <TooltipProvider delayDuration={0}>
-                  <UITooltip>
-                    <TooltipTrigger asChild>
-                      <div
-                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
-                        onClick={() => {
-                          setFilterPanelOpen(true);
-                          setTimeout(() => {
-                            document.querySelector('[data-filter-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }, 100);
-                        }}
-                      >
-                        <Sliders className="h-3.5 w-3.5 text-emerald-500" />
-                        {Object.values(globalFilters).flat().length} Filters
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-2xl max-w-xs z-[70]" hideArrow={true}>
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Applied Filters</p>
-                        {Object.keys(globalFilters).length > 0 ? (
-                          <div className="space-y-2">
-                            {(Object.entries(globalFilters) as [string, string[]][]).map(([key, values]) => (
-                              <div key={key} className="flex flex-col gap-0.5">
-                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-tight">{key}</span>
-                                <div className="flex flex-wrap gap-1">
-                                  {values.map(v => (
-                                    <Badge key={v} variant="secondary" className="text-[10px] py-0 h-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-none">
-                                      {v}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500 italic">No active filters</p>
-                        )}
-                      </div>
-                    </TooltipContent>
-                  </UITooltip>
-                </TooltipProvider>
-                <Separator orientation="vertical" className="h-4 bg-slate-200 dark:bg-slate-800" />
-                <TooltipProvider delayDuration={0}>
-                  <UITooltip>
-                    <TooltipTrigger asChild>
-                      <div
-                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
-                        onClick={() => {
-                          setActiveTab('kpi');
-                          setKpiSubTab('plugins');
-                          setTimeout(() => {
-                            document.querySelector('[data-plugins-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }, 100);
-                        }}
-                      >
-                        <BarChart3 className="h-3.5 w-3.5 text-blue-500" />
-                        {sortedKpiResults.length} Plugins
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-2xl max-w-xs z-[70] rounded-lg" sideOffset={8} hideArrow={true}>
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Active Plugins</p>
-                        {sortedKpiResults.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {sortedKpiResults.map(p => (
-                              <Badge key={p.pluginId} variant="secondary" className="text-[9px] py-0 h-4 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 border-none">
-                                {p.pluginId}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500 italic">No active plugins</p>
-                        )}
-                      </div>
-                    </TooltipContent>
-                  </UITooltip>
-                </TooltipProvider>
-              </div>
-              <div className="flex items-center gap-1.5 pr-1.5">
-                <Button
-                  size="sm"
-                  className="rounded-full h-8 px-4 bg-blue-600 hover:bg-blue-700 text-xs font-bold shadow-lg shadow-blue-600/20 gap-2"
-                  onClick={() => {
-                    runCalculationSafe();
-                    toast.info('Recalculating KPIs...');
-                  }}
-                  disabled={calculating}
-                >
-                  <RefreshCw className={`h-3 w-3 ${calculating ? 'animate-spin' : ''}`} />
-                  Recalculate
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="rounded-full h-8 px-2 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 gap-1"
-                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                >
-                  <ArrowUp className="h-3.5 w-3.5" />
-                  Top
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DashboardFloatingBar
+        visible={showFloatingBar && !isDrillDownOpen}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        globalFilters={globalFilters}
+        pluginIds={sortedKpiResults.map(p => p.pluginId)}
+        calculating={calculating}
+        onScrollToPeriod={() => {
+          document.querySelector('[data-period-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+        onOpenFilters={() => {
+          setFilterPanelOpen(true);
+          setTimeout(() => {
+            document.querySelector('[data-filter-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }}
+        onGoToPlugins={() => {
+          setActiveTab('kpi');
+          setKpiSubTab('plugins');
+          setTimeout(() => {
+            document.querySelector('[data-plugins-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }}
+        onRecalculate={handleRecalculate}
+      />
 
       {/* Recalculation Spinner */}
       {kpiCalculations.isCalculating && (

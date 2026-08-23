@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/store/app-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,12 +60,16 @@ export function ViewManager() {
     setWidgetHeights,
   } = useAppStore();
 
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [newViewName, setNewViewName] = useState('');
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   // Handle connection reference carefully - app-store uses activeConnectionId
   const activeConnectionRef = activeConnectionId;
+
+  // Query key shared by the views query and all view mutations so a successful
+  // mutation can invalidate/refetch the list.
+  const viewsQueryKey = ['dashboard-views', activeConnectionRef, storageConfig] as const;
 
   const getCurrentViewState = (): DashboardViewState => {
     return {
@@ -154,33 +159,48 @@ export function ViewManager() {
     }
   };
 
-  // @MX:NOTE: connectionRef is passed in (not read from closure) and stale responses
-  // are ignored via AbortController, so a slow response for a previous connection
-  // can never overwrite the view list of the current connection.
-  const fetchViews = async (
-    connectionRef: string,
-    restoreViewId: string | null = null,
-    signal?: AbortSignal
-  ) => {
-    if (!connectionRef) return;
-    setLoading(true);
-    try {
+  // @MX:NOTE: Views are fetched via React Query, keyed by connection +
+  // storageConfig. When the key changes (connection switch) React Query tracks
+  // each key independently, so a slow response for a previous connection can
+  // never overwrite the view list of the current one.
+  const viewsQuery = useQuery({
+    queryKey: viewsQueryKey,
+    queryFn: async () => {
       const params = new URLSearchParams({
-        connectionRef,
+        connectionRef: activeConnectionRef,
         storageConfig: JSON.stringify(storageConfig)
       });
-      const res = await fetch(`/api/dashboard/views?${params}`, { signal });
+      const res = await fetch(`/api/dashboard/views?${params}`);
       const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to fetch views');
+      return data.views as DashboardView[];
+    },
+    enabled: !!activeConnectionRef,
+    retry: false,
+  });
 
-      // Ignore responses for a connection that is no longer active
-      if (connectionRef !== activeConnectionRef) return;
+  // Keep the zustand savedViews slice in sync with the query result, and run
+  // the one-time auto-restore (last active view, else the default view) each
+  // time a connection's views arrive. A ref guards the restore so post-mutation
+  // refetches never re-apply a view on top of the user's current state.
+  const restoredForRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeConnectionRef) {
+      setSavedViews([]);
+      setActiveView(null);
+      restoredForRef.current = null;
+      return;
+    }
+    if (viewsQuery.data) {
+      setSavedViews(viewsQuery.data);
 
-      if (data.success) {
-        setSavedViews(data.views);
+      if (restoredForRef.current !== activeConnectionRef) {
+        restoredForRef.current = activeConnectionRef;
 
-        // Restore the saved view if requested
-        if (restoreViewId) {
-          const viewToRestore = data.views.find((v: DashboardView) => v.id === restoreViewId);
+        // Try to restore the last active view for this connection
+        const savedActiveViewId = localStorage.getItem(activeViewKey(activeConnectionRef));
+        if (savedActiveViewId) {
+          const viewToRestore = viewsQuery.data.find((v) => v.id === savedActiveViewId);
           if (viewToRestore) {
             loadView(viewToRestore);
             return;
@@ -188,50 +208,16 @@ export function ViewManager() {
         }
 
         // If there's a default view and no active view (or we're on initial load), load it
-        const defaultView = data.views.find((v: DashboardView) => v.isDefault);
+        const defaultView = viewsQuery.data.find((v) => v.isDefault);
         // Verify activeView belongs to current connection (not stale from previous connection)
-        const isActiveViewValid = activeView?.id && data.views.some((v: DashboardView) => v.id === activeView.id);
+        const isActiveViewValid = activeView?.id && viewsQuery.data.some((v) => v.id === activeView.id);
         if (defaultView && !isActiveViewValid) {
           loadView(defaultView);
         }
       }
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // Request was aborted on connection change/unmount — nothing to do
-        return;
-      }
-      console.error('Failed to fetch views:', error);
-    } finally {
-      // Only clear loading if this is still the request for the active connection
-      if (connectionRef === activeConnectionRef) {
-        setLoading(false);
-      }
     }
-  };
-
-  // Fetch views on connection change
-  useEffect(() => {
-    // Capture the requested connectionRef so resolve can be compared against it
-    const requestedConnectionRef = activeConnectionId;
-
-    if (requestedConnectionRef) {
-      const controller = new AbortController();
-
-      // Try to restore the last active view for this connection
-      const savedActiveViewId = localStorage.getItem(activeViewKey(requestedConnectionRef));
-
-      // @MX:WARN - Closure Risk: fetchViews must be called with fresh state
-      // @MX:REASON - Calling fetchViews() immediately after setActiveView(null) can suffer from
-      // stale closures if fetchViews depends on the activeView value from the current render.
-      fetchViews(requestedConnectionRef, savedActiveViewId, controller.signal);
-
-      // Abort in-flight fetch when the connection changes or on unmount
-      return () => controller.abort();
-    } else {
-      setSavedViews([]);
-      setActiveView(null);
-    }
-  }, [activeConnectionRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewsQuery.data, activeConnectionRef]);
 
   // Persist active view to localStorage whenever it changes
   useEffect(() => {
@@ -243,48 +229,51 @@ export function ViewManager() {
     }
   }, [activeView, activeConnectionRef]);
 
-  const handleCreateView = async () => {
-    if (!newViewName || !activeConnectionRef) return;
-    
-    setLoading(true);
-    try {
+  // Create view mutation — POST /api/dashboard/views. On success the views
+  // query cache is updated with the new view and invalidated for consistency.
+  const createViewMutation = useMutation({
+    mutationFn: async (name: string) => {
       const viewState = getCurrentViewState();
       const res = await fetch('/api/dashboard/views', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           connectionRef: activeConnectionRef,
-          name: newViewName,
+          name,
           data: JSON.stringify(viewState),
           storageConfig
         })
       });
-      
-      const data = await res.json();
+      return res.json();
+    },
+    onSuccess: (data, name) => {
       if (data.success) {
         setSavedViews([data.view, ...savedViews]);
         setActiveView(data.view);
         setIsViewModified(false);
         setNewViewName('');
         setPopoverOpen(false);
-        toast.success(`View "${newViewName}" created`);
+        toast.success(`View "${name}" created`);
+        queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
       } else {
         toast.error(data.error || 'Failed to create view');
       }
-    } catch (error) {
+    },
+    onError: () => {
       toast.error('Network error');
-    } finally {
-      setLoading(false);
-    }
+    },
+  });
+
+  const handleCreateView = () => {
+    if (!newViewName || !activeConnectionRef) return;
+    createViewMutation.mutate(newViewName);
   };
 
-  const handleSaveCurrentView = async () => {
-    if (!activeView) return;
-    
-    setLoading(true);
-    try {
+  // Save current view mutation — PATCH /api/dashboard/views/:id.
+  const saveViewMutation = useMutation({
+    mutationFn: async (view: DashboardView) => {
       const viewState = getCurrentViewState();
-      const res = await fetch(`/api/dashboard/views/${activeView.id}`, {
+      const res = await fetch(`/api/dashboard/views/${view.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -292,26 +281,30 @@ export function ViewManager() {
           storageConfig
         })
       });
-      
-      const data = await res.json();
+      return res.json();
+    },
+    onSuccess: (data, view) => {
       if (data.success) {
-        setSavedViews(savedViews.map(v => v.id === activeView.id ? data.view : v));
+        setSavedViews(savedViews.map(v => v.id === view.id ? data.view : v));
         setActiveView(data.view);
         setIsViewModified(false);
-        toast.success(`View "${activeView.name}" saved`);
+        toast.success(`View "${view.name}" saved`);
+        queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
       }
-    } catch (error) {
+    },
+    onError: () => {
       toast.error('Failed to save view');
-    } finally {
-      setLoading(false);
-    }
+    },
+  });
+
+  const handleSaveCurrentView = () => {
+    if (!activeView) return;
+    saveViewMutation.mutate(activeView);
   };
 
-  const handleDeleteView = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this view?')) return;
-    
-    try {
+  // Delete view mutation — DELETE /api/dashboard/views/:id.
+  const deleteViewMutation = useMutation({
+    mutationFn: async (id: string) => {
       // @MX:WARN - Sensitive Data: DB credentials in storageConfig
       // @MX:REASON - storageConfig contains database URLs which may include credentials.
       // We send it in the request body to avoid exposure in server logs.
@@ -320,21 +313,31 @@ export function ViewManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storageConfig })
       });
-      if (res.ok) {
-        setSavedViews(savedViews.filter(v => v.id !== id));
-        if (activeView?.id === id) {
-          setActiveView(null);
-        }
-        toast.success('View deleted');
+      if (!res.ok) throw new Error('Delete failed');
+      return res;
+    },
+    onSuccess: (_res, id) => {
+      setSavedViews(savedViews.filter(v => v.id !== id));
+      if (activeView?.id === id) {
+        setActiveView(null);
       }
-    } catch (error) {
+      toast.success('View deleted');
+      queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
+    },
+    onError: () => {
       toast.error('Failed to delete view');
-    }
+    },
+  });
+
+  const handleDeleteView = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this view?')) return;
+    deleteViewMutation.mutate(id);
   };
 
-  const toggleAutoSave = async (view: DashboardView, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
+  // Toggle auto-save mutation — PATCH /api/dashboard/views/:id.
+  const toggleAutoSaveMutation = useMutation({
+    mutationFn: async (view: DashboardView) => {
       const res = await fetch(`/api/dashboard/views/${view.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -343,57 +346,72 @@ export function ViewManager() {
           storageConfig
         })
       });
-      const data = await res.json();
+      return res.json();
+    },
+    onSuccess: (data, view) => {
       if (data.success) {
         setSavedViews(savedViews.map(v => v.id === view.id ? data.view : v));
         if (activeView?.id === view.id) {
           setActiveView(data.view);
         }
         toast.success(`Auto-save ${data.view.autoSaveEnabled ? 'enabled' : 'disabled'}`);
+        queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
       }
-    } catch (error) {
+    },
+    onError: () => {
       toast.error('Failed to update auto-save');
-    }
-  };
+    },
+  });
 
-  const handleSetDefaultView = async (view: DashboardView, e: React.MouseEvent) => {
+  const toggleAutoSave = (view: DashboardView, e: React.MouseEvent) => {
     e.stopPropagation();
-
-    try {
-      // If this view is already default, unset it
-      if (view.isDefault) {
-        const res = await fetch(`/api/dashboard/views/${view.id}/default`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storageConfig })
-        });
-        if (res.ok) {
-          setSavedViews(savedViews.map(v => ({ ...v, isDefault: false })));
-          toast.success('Default view cleared');
-        } else {
-          const errorData = await res.json();
-          toast.error(errorData.error || 'Failed to clear default view');
-        }
-      } else {
-        // Set this view as default (unset all others)
-        const res = await fetch(`/api/dashboard/views/${view.id}/default`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storageConfig })
-        });
-        if (res.ok) {
-          setSavedViews(savedViews.map(v => ({ ...v, isDefault: v.id === view.id })));
-          toast.success(`"${view.name}" set as default view`);
-        } else {
-          const errorData = await res.json();
-          toast.error(errorData.error || 'Failed to set default view');
-        }
-      }
-    } catch (error) {
-      console.error('Set default view error:', error);
-      toast.error('Failed to update default view');
-    }
+    toggleAutoSaveMutation.mutate(view);
   };
+
+  // Set/unset default view mutation — POST/DELETE /api/dashboard/views/:id/default.
+  const setDefaultViewMutation = useMutation({
+    mutationFn: async (view: DashboardView) => {
+      const method = view.isDefault ? 'DELETE' : 'POST';
+      const res = await fetch(`/api/dashboard/views/${view.id}/default`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storageConfig })
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || (view.isDefault ? 'Failed to clear default view' : 'Failed to set default view'));
+      }
+      return res;
+    },
+    onSuccess: (_res, view) => {
+      if (view.isDefault) {
+        setSavedViews(savedViews.map(v => ({ ...v, isDefault: false })));
+        toast.success('Default view cleared');
+      } else {
+        setSavedViews(savedViews.map(v => ({ ...v, isDefault: v.id === view.id })));
+        toast.success(`"${view.name}" set as default view`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
+    },
+    onError: (error: Error) => {
+      console.error('Set default view error:', error);
+      toast.error(error.message || 'Failed to update default view');
+    },
+  });
+
+  const handleSetDefaultView = (view: DashboardView, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDefaultViewMutation.mutate(view);
+  };
+
+  // Combined pending flag: initial list load plus any in-flight view mutation
+  // (mirrors the previous shared `loading` state that gated the buttons).
+  const loading = viewsQuery.isLoading ||
+    createViewMutation.isPending ||
+    saveViewMutation.isPending ||
+    deleteViewMutation.isPending ||
+    toggleAutoSaveMutation.isPending ||
+    setDefaultViewMutation.isPending;
 
   const handleBackToDefault = () => {
     // Find the default view

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,10 +32,6 @@ export function HolidaysPanel() {
   // selection is intentionally deferred: `region` is shared app-wide state that
   // also drives KPI business-hour calculations, so it needs a product decision.
   const [year, setYear] = useState<number | undefined>(CURRENT_YEAR);
-  const [holidays, setHolidays] = useState<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>>([]);
-  const [loading, setLoading] = useState(false);
-  const isMounted = useRef(true);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const yearError =
     year !== undefined && (year < MIN_YEAR || year > MAX_YEAR)
@@ -50,62 +47,53 @@ export function HolidaysPanel() {
     }
   }, []); // Run once on mount
 
+  const yearValid = year !== undefined && year >= MIN_YEAR && year <= MAX_YEAR;
+
   /**
-   * @MX:ANCHOR: loadHolidays
-   * Fetches holiday data from the API with proper error handling and mounting guards.
+   * @MX:ANCHOR: holidays query
+   * Fetches holiday data via React Query, keyed by year + region so changing
+   * either re-fetches automatically. All failure modes normalize to the same
+   * user-facing message the previous implementation toasted.
    */
-  const loadHolidays = useCallback(async () => {
-    // Abort previous request regardless of year state
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    if (!year || year < MIN_YEAR || year > MAX_YEAR) {
-      setHolidays([]);
-      setLoading(false);
-      return;
-    }
-    
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/holidays?year=${year}&region=${region}`, {
-        signal: controller.signal
-      });
-      
+  const {
+    data: holidays = [],
+    isLoading: loading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['holidays', year, region],
+    queryFn: async (): Promise<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>> => {
+      let res: Response;
+      try {
+        res = await fetch(`/api/holidays?year=${year}&region=${region}`);
+      } catch (e) {
+        console.error('[Holidays] Fetch error:', e);
+        throw new Error('Failed to load holidays');
+      }
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        throw new Error('Failed to load holidays');
       }
-      
       const data = await res.json();
-      
-      if (isMounted.current && !controller.signal.aborted) {
-        if (data.success) {
-          setHolidays(data.holidays || []);
-        } else {
-          setHolidays([]);
-          console.error('[Holidays] API returned unsuccessful payload:', data);
-          toast.error(data.error || 'Failed to load holidays');
-        }
+      if (data.success) {
+        return (data.holidays || []) as Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>;
       }
-    } catch (error: any) {
-      if (error.name === 'AbortError') return;
-      
-      if (isMounted.current) {
-        setHolidays([]);
-        console.error('[Holidays] Fetch error:', error);
-        toast.error('Failed to load holidays');
-      }
-    } finally {
-      if (isMounted.current && !controller.signal.aborted) {
-        setLoading(false);
-      }
+      console.error('[Holidays] API returned unsuccessful payload:', data);
+      throw new Error(data.error || 'Failed to load holidays');
+    },
+    enabled: yearValid,
+    retry: false,
+  });
+
+  // Surface a toast whenever a load fails (network error or unsuccessful
+  // payload). The effect re-runs only when the error instance changes, so a
+  // failed manual refresh still produces exactly one toast.
+  useEffect(() => {
+    if (isError && error) {
+      toast.error(error.message || 'Failed to load holidays');
     }
-  }, [year, region]);
-  
-  useEffect(() => { loadHolidays(); }, [loadHolidays]);
+  }, [isError, error]);
+
   const national = holidays.filter((h) => h.isNational).sort((a, b) => a.date.localeCompare(b.date));
   const regional = holidays.filter((h) => !h.isNational).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -144,7 +132,7 @@ export function HolidaysPanel() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end"><Button onClick={loadHolidays} variant="outline" className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
+            <div className="flex items-end"><Button onClick={() => refetch()} variant="outline" className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
           </div>
         </CardContent>
       </Card>

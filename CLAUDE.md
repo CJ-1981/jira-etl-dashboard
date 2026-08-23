@@ -16,7 +16,7 @@ npm run build          # Production build → .next/standalone
 npm start              # Run standalone production server
 npm test               # Vitest (run mode: npx vitest run)
 npm run test:coverage  # v8 coverage — enforces ratchet thresholds (70% lines), fails below
-npm run lint           # ESLint (critical rules re-enabled; 917 warnings, ratchet threshold 917)
+npm run lint           # ESLint (critical rules re-enabled; 846 warnings, ratchet threshold 846)
 npm run type-check     # tsc --noEmit — ALWAYS run this before committing
 npm run e2e            # Playwright e2e (reuses a running dev server locally; boots one in CI)
 npm run db:push        # Push schema to SQLite (default DATABASE_URL)
@@ -25,7 +25,7 @@ npm run db:studio      # Prisma Studio
 build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 ```
 
-CI runs `test:coverage`, `lint --max-warnings=917`, `type-check`, and the Playwright
+CI runs `test:coverage`, `lint --max-warnings=846`, `type-check`, and the Playwright
 E2E suite on push/PR to main/develop (Node 22). The e2e job installs Chromium, boots
 the dev server via the Playwright config, and uploads the HTML report as an artifact.
 
@@ -114,11 +114,15 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 1. **Build enforces type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: false`
    and ESLint has critical rules re-enabled (`no-explicit-any`, `no-unused-vars`, `no-debugger`,
    `no-fallthrough`, `no-unreachable`, etc.). `npm run type-check` and `npm run lint` are both
-   real static gates. The lint warning threshold is 917 (ratchet, tightened 2026-08
+   real static gates. The lint warning threshold is 846 (ratchet, tightened 2026-08
    from 2000 during the debt cleanup — see `docs/DEBT_CLEANUP.md`) — lower it as the codebase
    is cleaned up.
-2. **`REACT_APP_*` env vars do nothing** — leftover CRA convention in
-   `src/lib/jira/field-config.ts`; Next.js does not expose them.
+2. **Field-ID env overrides are server-side `JIRA_*` vars** — the dead
+   `REACT_APP_*` overrides in `src/lib/jira/field-config.ts` (a CRA
+   convention Next.js never exposed) were replaced by
+   `JIRA_ISSUE_OWNER_TEAM_FIELD` / `JIRA_STORY_POINTS_FIELD`, read from
+   `.env` at request time (documented in `.env.example`). Note these apply
+   server-side only; client components fall back to the defaults.
 3. **All KPI math runs server-side** via `/api/kpi/calculate` — there is no Web Worker
    (a former `kpi-worker.ts` was dead code and has been deleted). Don't build features
    assuming client-side calculation exists.
