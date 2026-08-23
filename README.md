@@ -202,6 +202,10 @@ src/lib/kpi/plugins/
 - **Anyone**: Any comment on the ticket resets the SLA clock
 Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targets by Status**
 
+**Workflow-Specific Formula KPIs** — Site-specific metrics (rework ping-pong, clone share, rejection rate, reporter workload, top resolvers, weekly WoW snapshot, reopened tickets, open-by-project, …) are implemented as sandboxed **JavaScript/DSL formula plugins** and shipped in a local `kpi-plugin-config.json` export rather than the compiled registry, so each installation can tune them without code changes. Import the file via **Settings → Configuration Management → Import**.
+
+> **Due dates are rarely used in this workflow** — most tickets carry none. Due-date metrics (*Overdue Open Tickets*, *Due-Date Adherence*) therefore cover **only the subset of tickets that have a due date set**; interpret their percentages against that subset, not against all tickets.
+
 ---
 
 ## 🏗️ Technical Architecture

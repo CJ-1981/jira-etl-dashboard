@@ -19,9 +19,10 @@ test.describe('KPI plugin registry API', () => {
     const plugins = body.plugins as Array<{ id: string; category: string }>;
     const ids = plugins.map((p) => p.id);
 
-    // New built-in analytics plugins registered this release.
+    // New built-in analytics plugins registered across v0.6.0–v0.7.x.
     expect(ids).toContain('backlog_age_percentiles');
     expect(ids).toContain('first_time_resolution_rate');
+    expect(ids).toContain('escalation_rate');
 
     // Interval variants produced by the time-series plugin factories.
     expect(ids).toContain('open_tickets_by_assignee_trend_daily');
@@ -32,9 +33,24 @@ test.describe('KPI plugin registry API', () => {
     // Guard against accidental double registration.
     expect(new Set(ids).size).toBe(ids.length);
 
-    // 26 core + 13 time-series = 39 non-custom plugins (custom plugins load
+    // 27 core + 13 time-series = 40 non-custom plugins (custom plugins load
     // asynchronously, so count only built-in/time-series categories).
     const nonCustom = plugins.filter((p) => p.category !== 'custom');
-    expect(nonCustom.length).toBe(39);
+    expect(nonCustom.length).toBe(40);
+  });
+
+  test('every plugin exposes the fields the UI depends on', async ({ request }) => {
+    const res = await request.get('/api/kpi/plugins');
+    const body = await res.json();
+
+    for (const p of body.plugins as Array<Record<string, unknown>>) {
+      const label = String(p.id);
+      expect(typeof p.name, `name of ${label}`).toBe('string');
+      expect(typeof p.unit, `unit of ${label}`).toBe('string');
+      // The widget info-icon tooltip renders the description; a missing one
+      // would silently hide the icon for that plugin.
+      expect(typeof p.description, `description of ${label}`).toBe('string');
+      expect(String(p.description).length, `description of ${label}`).toBeGreaterThan(10);
+    }
   });
 });
