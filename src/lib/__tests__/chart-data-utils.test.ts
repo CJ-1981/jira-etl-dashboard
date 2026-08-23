@@ -645,12 +645,19 @@ describe('getRecommendedChartType', () => {
     expect(getRecommendedChartType([], 'missing')).toBe('bar');
   });
 
-  it("returns 'area' for cumulative_flow", () => {
+  it("returns 'area' for cumulative_flow_trend (real plugin ID), even with time series", () => {
     const kpi: KpiResult = {
-      pluginId: 'cumulative_flow',
-      results: [{ name: 'CFD', value: 1, unit: 'count' }],
+      pluginId: 'cumulative_flow_trend',
+      results: [{
+        name: 'CFD',
+        value: 1,
+        unit: 'count',
+        timeSeries: [{ period: 'p', date: new Date(), value: 1, count: 1 }],
+      }],
     };
-    expect(getRecommendedChartType([kpi], 'cumulative_flow')).toBe('area');
+    // The area recommendation must win over the generic time-series 'line'
+    // branch — CFD is a stacked area chart by design.
+    expect(getRecommendedChartType([kpi], 'cumulative_flow_trend')).toBe('area');
   });
 
   it("returns 'line' when the first result has a time series", () => {

@@ -546,7 +546,9 @@ export function getRecommendedChartType(kpiResults: KpiResult[], kpiId: string):
   const result = kpi.results[0];
   
   // CFD - recommend area chart
-  if (kpi.pluginId === 'cumulative_flow') return 'area';
+  // @MX:NOTE: Must match the real plugin id; the previous 'cumulative_flow'
+  // literal matched nothing, so the area recommendation never fired.
+  if (kpi.pluginId === 'cumulative_flow_trend') return 'area';
 
   // Time-series data - recommend line chart
   if (result?.timeSeries && result.timeSeries.length > 0) return 'line';

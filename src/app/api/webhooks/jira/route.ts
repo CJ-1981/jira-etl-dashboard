@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDefaultDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-config';
+import { extractSelectFieldValue } from '@/lib/jira/client';
 import crypto from 'crypto';
 
 /**
@@ -107,7 +109,19 @@ export async function POST(req: Request) {
     const dueDate = fields.duedate ? new Date(fields.duedate) : null;
     // @MX:REASON: Coerce once and reuse — story points may arrive as numeric strings
     // but the DB column is Float; non-numeric values map to null instead of NaN.
-    const storyPoints = coerceStoryPoints(fields.customfield_10016 ?? fields.customfield_10002 ?? fields.storyPoints);
+    // customfield_10016 is an instance-specific override; getStoryPointsField()
+    // supplies the configured default (customfield_10002) like the extract pipeline.
+    const storyPoints = coerceStoryPoints(fields.customfield_10016 ?? fields[getStoryPointsField()] ?? fields.storyPoints);
+
+    // @MX:WARN: Data parity with the extract pipeline — issueOwnerTeam must be
+    // persisted here too.
+    // @MX:REASON: The extract route stores the Issue Owner Team field; webhook
+    // updates that skipped it silently dropped team attribution on every
+    // webhook-touched ticket (open_tickets_by_issue_owner_team undercounted).
+    const teamFieldId = getIssueOwnerTeamField();
+    const issueOwnerTeam = fields[teamFieldId] !== undefined
+      ? extractSelectFieldValue(fields[teamFieldId]) || null
+      : null;
 
     // Save to MasterTicket
     // @MX:NOTE: Uses getDefaultDb() to obtain the real Prisma client.
@@ -132,6 +146,7 @@ export async function POST(req: Request) {
         resolved: resolvedDate,
         dueDate: dueDate,
         storyPoints: storyPoints,
+        issueOwnerTeam: issueOwnerTeam,
         labels: JSON.stringify(fields.labels || []),
         components: JSON.stringify((fields.components || []).map((c: any) => c.name)),
         rawData: JSON.stringify(issue),
@@ -151,6 +166,7 @@ export async function POST(req: Request) {
         resolved: resolvedDate,
         dueDate: dueDate,
         storyPoints: storyPoints,
+        issueOwnerTeam: issueOwnerTeam,
         labels: JSON.stringify(fields.labels || []),
         components: JSON.stringify((fields.components || []).map((c: any) => c.name)),
         rawData: JSON.stringify(issue),

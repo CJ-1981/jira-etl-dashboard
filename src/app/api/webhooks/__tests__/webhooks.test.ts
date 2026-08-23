@@ -250,3 +250,49 @@ describe('POST /api/webhooks/jira', () => {
     expect(mockDb().masterTicket.upsert).not.toHaveBeenCalled();
   });
 });
+
+describe('POST /api/webhooks/jira — field mapping parity with the extract pipeline', () => {
+  // The extract route persists issueOwnerTeam (customfield_10132 by default).
+  // Webhook-created/updated master tickets must carry the same attribution,
+  // otherwise open_tickets_by_issue_owner_team silently undercounts tickets
+  // that last changed via webhook.
+
+  async function postIssue(fields: Record<string, unknown>) {
+    const res = await POST(
+      webhookRequest({
+        body: { webhookEvent: 'jira:issue_updated', issue: { key: 'TEST-9', fields } },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockDb().masterTicket.upsert).toHaveBeenCalledTimes(1);
+    return mockDb().masterTicket.upsert.mock.calls[0][0];
+  }
+
+  it('persists issueOwnerTeam from a select-shaped team field', async () => {
+    const call = await postIssue({ summary: 'S', customfield_10132: { value: 'LTIC-Team-A' } });
+    expect(call.update.issueOwnerTeam).toBe('LTIC-Team-A');
+    expect(call.create.issueOwnerTeam).toBe('LTIC-Team-A');
+  });
+
+  it('persists issueOwnerTeam from a plain-string team field', async () => {
+    const call = await postIssue({ summary: 'S', customfield_10132: 'LTIC-Team-B' });
+    expect(call.update.issueOwnerTeam).toBe('LTIC-Team-B');
+    expect(call.create.issueOwnerTeam).toBe('LTIC-Team-B');
+  });
+
+  it('stores null issueOwnerTeam when the team field is absent', async () => {
+    const call = await postIssue({ summary: 'S' });
+    expect(call.update.issueOwnerTeam).toBeNull();
+    expect(call.create.issueOwnerTeam).toBeNull();
+  });
+
+  it('still coerces story points and falls back to the configured field', async () => {
+    // customfield_10016 (instance-specific) wins when present...
+    const both = await postIssue({ summary: 'S', customfield_10016: '5', customfield_10002: 3 });
+    expect(both.update.storyPoints).toBe(5);
+    // ...otherwise the field-config default (customfield_10002) is used.
+    mockDb().masterTicket.upsert.mockClear();
+    const fallback = await postIssue({ summary: 'S', customfield_10002: 3 });
+    expect(fallback.update.storyPoints).toBe(3);
+  });
+});
