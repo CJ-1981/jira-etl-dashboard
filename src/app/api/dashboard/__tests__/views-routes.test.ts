@@ -780,3 +780,78 @@ describe('POST /api/dashboard/views/bulk idempotency', () => {
     expect(calls[0][0].where.id).toBe('explicit-1');
   });
 });
+
+// ─── Error handling (normalized envelope via handleApiError) ─────────────────
+// Unexpected failures surface as { success:false, error } with status 500.
+
+describe('views routes error handling', () => {
+  const ctxV1 = () => ({ params: Promise.resolve({ id: 'v1' }) });
+
+  it('GET /api/dashboard/views returns 500 + success:false when the db throws', async () => {
+    mockDb().dashboardView.findMany.mockRejectedValue(new Error('views boom'));
+    const res = await viewsGet(makeRequest('/api/dashboard/views?connectionRef=c1'));
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('views boom');
+  });
+
+  it('POST /api/dashboard/views returns 500 + success:false when create throws', async () => {
+    mockDb().dashboardView.create.mockRejectedValue(new Error('create boom'));
+    const res = await viewsPost(
+      makeRequest('/api/dashboard/views', {
+        method: 'POST',
+        body: { connectionRef: 'c1', name: 'N', data: { x: 1 }, storageConfig: STORAGE_CONFIG },
+      }),
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('create boom');
+  });
+
+  it('POST /api/dashboard/views/bulk returns 500 + success:false when upsert throws', async () => {
+    mockDb().dashboardView.upsert.mockRejectedValue(new Error('bulk boom'));
+    const res = await bulkPost(
+      makeRequest('/api/dashboard/views/bulk', {
+        method: 'POST',
+        body: { views: [{ name: 'A', connectionRef: 'c1', data: 'x' }], storageConfig: STORAGE_CONFIG },
+      }),
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('bulk boom');
+  });
+
+  it('PATCH /api/dashboard/views/[id] returns 500 + success:false when update throws', async () => {
+    mockDb().dashboardView.findUnique.mockResolvedValue({ id: 'v1', connectionRef: 'c1' });
+    mockDb().dashboardView.update.mockRejectedValue(new Error('patch boom'));
+    const res = await PATCH(
+      makeRequest('/api/dashboard/views/v1', {
+        method: 'PATCH',
+        body: { name: 'X', storageConfig: STORAGE_CONFIG },
+      }),
+      ctxV1(),
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('patch boom');
+  });
+
+  it('DELETE /api/dashboard/views/[id] returns 500 + success:false when delete throws', async () => {
+    mockDb().dashboardView.delete.mockRejectedValue(new Error('delete boom'));
+    const res = await DELETE(
+      makeRequest('/api/dashboard/views/v1', {
+        method: 'DELETE',
+        body: { storageConfig: STORAGE_CONFIG },
+      }),
+      ctxV1(),
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('delete boom');
+  });
+});

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPluginWatcher } from '@/lib/kpi/plugin-watcher';
+import { handleApiError } from '@/lib/api-error';
 
 /**
  * GET /api/kpi/plugins/events
@@ -35,10 +36,6 @@ export async function GET(request: Request) {
       message: hasChanges ? 'Plugin changes detected' : 'No changes',
     });
   } catch (error) {
-    console.error('[API] Failed to check plugin events:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to check plugin events' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

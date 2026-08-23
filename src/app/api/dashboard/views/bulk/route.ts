@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { StorageConfigSchema } from '@/lib/validation/schemas';
+import { handleApiError } from '@/lib/api-error';
 
 /** Narrow slice of a DashboardView row — only the fields this handler reads. */
 interface DashboardViewRow {
@@ -40,8 +41,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, views });
   } catch (error) {
-    console.error('[Views Bulk API] Error fetching all views:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch views' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -150,7 +150,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, count: results.length });
   } catch (error) {
-    console.error('[Views Bulk API] Error importing views:', error);
-    return NextResponse.json({ success: false, error: 'Failed to import views' }, { status: 500 });
+    return handleApiError(error);
   }
 }

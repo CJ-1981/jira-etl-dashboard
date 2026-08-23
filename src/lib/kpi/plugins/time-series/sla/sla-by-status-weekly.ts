@@ -16,12 +16,15 @@
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
 import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-import { 
-  getPeriodKey, 
-  getPeriodEnd, 
-  isPeriodComplete, 
-  enumeratePeriodKeys 
-} from '../../../utils/time-series-utils';
+import { getPeriodKey } from '../../../utils/time-series-utils';
+import {
+  resolveTrendPeriods,
+  buildSnapshotPoints,
+  weightedMeanOfCompletePeriods,
+  round2,
+  INCOMPLETE_PERIOD_DETAIL,
+} from '../../../utils/trend-scaffold';
+import { enumeratePeriodKeys } from '../../../utils/time-series-utils';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -145,49 +148,34 @@ export function calculateSlaByStatusTrend(
   const statusResults: TimeSeriesResult[] = [];
   let hasIncompletePeriod = false;
 
+  // Resolve the shared period axis once (chronological, zero-filled above)
+  const periods = resolveTrendPeriods(Object.keys(periodStatusData).sort(), interval);
+
   // For each status that has a target
   for (const [status, targetHours] of targetEntries) {
-    const timeSeries: TimeSeriesResult['timeSeries'] = [];
-    
-    // Sort period keys to ensure chronological order
-    const sortedPeriods = Object.keys(periodStatusData).sort();
-
-    for (const periodKey of sortedPeriods) {
-      const statusData = periodStatusData[periodKey][status];
-      if (!statusData) continue;
-
-      const periodEnd = getPeriodEnd(periodKey, interval);
-      const isComplete = isPeriodComplete(periodEnd);
-
-      if (!isComplete) {
-        hasIncompletePeriod = true;
+    const { points: timeSeries, hasIncompletePeriod: incomplete } = buildSnapshotPoints(
+      periods,
+      (period) => {
+        const statusData = periodStatusData[period.key]?.[status];
+        if (!statusData) {
+          return { value: 0, count: 0 };
+        }
+        const complianceRate = statusData.total > 0
+          ? (statusData.withinSla / statusData.total) * 100
+          : 0;
+        return { value: round2(complianceRate), count: statusData.total };
       }
-
-      const complianceRate = statusData.total > 0 
-        ? (statusData.withinSla / statusData.total) * 100 
-        : 0;
-
-      timeSeries.push({
-        period: periodKey,
-        date: periodEnd,
-        value: Math.round(complianceRate * 100) / 100,
-        count: statusData.total,
-        isComplete,
-      });
-    }
+    );
+    if (incomplete) hasIncompletePeriod = true;
 
     if (timeSeries.length === 0) continue;
 
     // Calculate overall compliance for this status from complete periods only
-    const completePoints = timeSeries.filter(p => p.isComplete);
-    const totalCountInComplete = completePoints.reduce((sum, point) => sum + point.count, 0);
-    const overallCompliance = totalCountInComplete > 0
-      ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) / totalCountInComplete
-      : 0;
+    const overallCompliance = weightedMeanOfCompletePeriods(timeSeries);
 
     statusResults.push({
       name: `SLA Compliance - ${status}`,
-      value: Math.round(overallCompliance * 100) / 100,
+      value: round2(overallCompliance),
       unit: '%',
       dimensions: { status },
       slaTargetHours: targetHours,
@@ -203,7 +191,7 @@ export function calculateSlaByStatusTrend(
   statusResults.sort((a, b) => a.name.localeCompare(b.name));
 
   if (hasIncompletePeriod && statusResults.length > 0) {
-    statusResults[0].details?.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
+    statusResults[0].details?.push({ ...INCOMPLETE_PERIOD_DETAIL });
   }
 
   return statusResults;

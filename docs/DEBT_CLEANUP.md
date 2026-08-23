@@ -325,14 +325,101 @@ the real distribution path.
 
 ---
 
+## Phase 6 — Error handling, trend scaffold, state fix, doc hygiene (branch `refactor/phase6-consolidation`)
+
+Four parallel workstreams with disjoint file ownership.
+
+### 6A. API error-handling unification
+**Why:** `src/lib/api-error.ts` existed but only 1 of 25 routes used it;
+~19 routes hand-rolled try/catch with inconsistent shapes and status codes.
+
+**Changes:**
+- Helper hardened: the fragile `"not found" → 404` substring heuristic
+  removed (routes throw `NotFoundError` explicitly instead); new
+  `getApiErrorStatus()` forwards typed `ApiError` statuses and valid numeric
+  `.status`/`.statusCode` from upstream errors; zod detection typed (no
+  `any`).
+- **21 route files converted** to `handleApiError`; loopback guards,
+  validation responses, and success responses preserved exactly.
+- Consumer-safety decisions: `extract/latest` "no extractions" now a proper
+  404 (verified no runtime consumer); bare-`{error}` shapes in
+  `webhooks/jira` + `export/file` normalized to `{success:false,error}`
+  (consumers checked first); the webhook keeps a generic 500 message so
+  internal error text cannot leak to external Jira servers; upstream Jira
+  statuses (401/429/5xx) still forwarded by `jira/extract`.
+- Not converted (bespoke contracts): `debug/health`, `pg/test`, `jira/test`.
+- 31 new tests: helper contract suite (14) + error-path coverage across all
+  converted routes. Gates: API suites 180 passing; lint scope 104 → 94.
+
+### 6B. Time-series scaffold deduplication
+**Why:** ~8 of 9 trend plugins hand-rolled the same zero-fill →
+complete-period aggregation → incomplete-marker pipeline (~1,280 lines).
+
+**Changes:**
+- New `src/lib/kpi/utils/trend-scaffold.ts` (195 lines): period
+  preparation/enumeration, flow vs snapshot point builders, plain and
+  count-weighted means over complete periods, the shared incomplete-period
+  detail marker — 12 unit tests (RED confirmed first).
+- **8 plugins migrated** (throughput, avg-processing-hours, sla-compliance,
+  priority-inflow, time-in-status, open-tickets-by-assignee,
+  cumulative-flow, sla-by-status); each keeps its bespoke metric
+  extraction/details/naming. `sla-by-status-excl-clone-weekly` already just
+  delegates, so nothing to extract there.
+- Existing plugin tests pass **unchanged** after each migration —
+  byte-equivalent output (names, values, units, dimensions, details,
+  ticketKeys, point order).
+- Delta: 376 lines of hand-rolled boilerplate replaced by one tested
+  implementation; lint 933 → 916.
+
+### 6C. kpiResults dual-write fix
+**Why:** the store's `kpiResults` slice was synced by React Query in
+`useKpiCalculations` while a plugin-filter effect in `KpiDashboard` mutated
+the same slice (with the slice in its own deps, guarded only by a ref) — a
+feedback loop and likely bug source.
+
+**Changes:**
+- The store slice is now documented and enforced as the RAW calculation
+  payload, owned solely by the React Query sync. Plugin-visibility
+  filtering moved to render-time derived memos in `KpiDashboard.tsx`
+  (`filteredKpiResults`, `visibleCharts`); consumers (section gates,
+  `KpiDataTable`, both `ChartCard` props, CSV export) rewired to the derived
+  list.
+- The self-referencing filter effect and its `lastFilteredPlugins` guard ref
+  were deleted entirely; cross-tab reactivity is preserved via the existing
+  storage-event listener in `usePersistedList`.
+- TDD: 6 new component tests (5 confirmed RED against the old code) assert
+  filtering never writes to the store; +2 characterization tests lock the
+  hook side of the contract. Deliberately preserved: chart configs of
+  deactivated plugins stay stored but hidden; never-configured state shows
+  all; recalculation triggers unchanged.
+- Gates: type-check clean; full suite **1,023 tests passing**; lint 933 →
+  **924** (net-zero from this workstream).
+
+### 6D. Root markdown hygiene
+**Why:** six AI-session working notes at the repo root were not project
+documentation and contained stale content.
+
+**Changes:**
+- Deleted `TIME_SERIES_ENHANCEMENTS.md`, `TIME_SERIES_FIXES.md`,
+  `TIME_SERIES_PLUGIN.md`, `TREND_PLUGIN_FIX.md`,
+  `BUGFIX_TIME_SERIES_DATE_PARSING.md`,
+  `SLA_STATUS_TREND_IMPLEMENTATION.md` — each verified reference-free
+  before removal.
+- Durable facts extracted into the appendix below (date-parsing bug
+  symptom + original patch location; SLA semantics pointers).
+- `custom_plugin_guide.md` kept (referenced by README/CLAUDE.md);
+  CLAUDE.md hygiene note updated accordingly.
+
+---
+
 ## Final results
 
-| Metric | v0.9.0 baseline | After phases 1–5 | Delta |
+| Metric | v0.9.0 baseline | After phases 1–6 | Delta |
 |---|---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **933** (threshold tightened to 933) | −154 warnings, threshold −1,067 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **917** (threshold tightened to 917) | −170 warnings, threshold −1,083 |
 | Type errors | 0 | 0 | — |
-| Tests | 918 | **1,003** | coverage preserved |
-| Coverage (lines) | 70.98% | 71.8% (floor 70%) | dead code removed from both numerator and denominator |
+| Tests | 918 | **1,054** | +136 net |
+| Coverage (lines) | 70.98% | **73.5%** (floor 70%) | improved despite deletions |
 | npm dependencies | 89 | 58 | −31 packages |
 | shadcn components | 48 | 21 | −27 files (−7,100 lines) |
 | Mutating API routes with loopback guard | 4 of ~15 | **all** | security gap closed |
@@ -342,6 +429,10 @@ the real distribution path.
 | `(db as any)` route casts | ~150 | **0** (45 retired in phase 5A) | routes typed against `DbClient` |
 | `transformIssueForKpi` casts | 19 | **0** | typed `KpiIssueInput` union |
 | Electron path | broken/abandoned | **removed** | caxa is the only distribution path |
+| Routes using shared error handler | 1 of 25 | **22 of 25** (3 bespoke by design) | shapes + status codes normalized |
+| Trend plugins hand-rolling the scaffold | 8 | **0** (8 migrated to `trend-scaffold.ts`) | one tested implementation |
+| kpiResults store dual-write | yes (effect mutated the Query-synced slice) | **no** (derived filtering) | feedback loop removed |
+| Root working-note markdown files | 7 | **0** (kept `custom_plugin_guide.md`) | durable facts in appendix |
 
 Commits: phases 1–3 on `refactor/debt-cleanup` (merged to main at `bf1d343`,
 released as v0.10.0 including phase 4), phase 5 on
@@ -359,23 +450,16 @@ branch/review:
 - Move 40 raw `fetch` call sites onto the already-configured React Query
   (dedupe the three independent 5-second pollers first — two of them hit the
   same `/api/jira/poll` endpoint).
-- Fix the `kpiResults` dual-write loop: the store slice is synced by React
-  Query in `useKpiCalculations` while a plugin-filter effect in
-  `KpiDashboard` mutates the same slice (guarded only by refs); make the
-  filtering a derived selector instead.
 - Replace the `Set`/`Map` values in zustand with plain arrays/records to
   remove clone boilerplate and `instanceof Map` test-compat branches.
-- Adopt `handleApiError` from `src/lib/api-error.ts` across the 19 routes
-  still using raw try/catch; normalize error shapes (`{error}` vs
-  `{success:false,error}`) and the 200-vs-404 "no extractions" mismatch.
-- Time-series scaffold hand-rolled in 8 of 9 trend plugins (zero-fill →
-  weighted average over complete periods → incomplete-period detail, ~1,280
-  lines); `sla-by-status-excl-clone-weekly` shows the delegation pattern.
 - Three near-identical quote-aware string splitters (`engine-utils.ts`
   `applyFilter`, `splitByTopLevelOperator`, `custom-formula.ts`
   `splitTopLevelKeyword`) — consolidate into one shared parser helper.
-- Root-level working-note markdown files (`TIME_SERIES_*.md`, etc.) → move to
-  `docs/` or delete.
+- Root-level working-note markdown files — CLOSED in phase 6: six files
+  deleted (`TIME_SERIES_*.md`, `TREND_PLUGIN_FIX.md`,
+  `BUGFIX_TIME_SERIES_DATE_PARSING.md`, `SLA_STATUS_TREND_IMPLEMENTATION.md`);
+  durable facts preserved in the appendix below; `custom_plugin_guide.md`
+  kept (referenced by README/CLAUDE.md).
 - Orphaned dev-DB migration record `20260528000000_add_ticket_snapshot_rawdata_owner_team`
   — CLOSED: verified it exists only as a row in the local dev DB's
   `_prisma_migrations` table; the repo's `prisma/migrations/` is clean and
@@ -388,6 +472,11 @@ branch/review:
   mirroring `KEYS.*` (see 5C) — update the mocks to import the real module
   shape so the literals can move into `KEYS`.
 
+Done in phase 6 (previously listed here): API error-handling unification
+(21 routes on `handleApiError`), time-series scaffold deduplication (8
+plugins → one tested helper), kpiResults dual-write fix (derived filtering),
+root markdown hygiene (six working notes deleted).
+
 Done in phase 5 (previously listed here): `(db as any)` cast retirement,
 typed `transformIssueForKpi` discriminator, chart-data-utils cast/dead-code
 cleanup, frontend hook + localStorage consolidation, Electron removal.
@@ -395,3 +484,32 @@ cleanup, frontend hook + localStorage consolidation, Electron removal.
 Done in phase 4 (previously listed here): cascade-delete deduplication,
 age-breakdown deduplication, typed dual Prisma client (foundation), E2E
 wired into CI.
+
+---
+
+## Appendix — Historical notes from deleted working-note files
+
+The root-level AI-session working notes were deleted during the phase-6
+consolidation. This appendix preserves the only durable facts they carried
+that are not otherwise recorded.
+
+### Time-series date-parsing bug (formerly `BUGFIX_TIME_SERIES_DATE_PARSING.md`)
+
+Original symptom: runtime `TypeError: a.date.getTime is not a function` when
+displaying time-series trend KPIs. Cause: `TimeSeriesDataPoint.date` is typed
+`Date` but arrives as a string after the API JSON round-trip. The first patch
+hydrated date strings back to `Date` objects at the frontend boundary only
+(`src/app/page.tsx` when setting `kpiResults` from the calculate API), leaving
+every other consumer unsafe. Phase 3 (above) fixed this at the type level: the
+field was widened to `Date | string` and all six unsafe `.getTime()` sites were
+normalized, with regression tests locking in string-date sorting.
+
+### SLA Compliance by Status Trend (formerly `SLA_STATUS_TREND_IMPLEMENTATION.md`)
+
+Implementation notes for the per-status SLA trend plugin. All durable
+semantics live in the code and tests: per-status targets with the 40-hour
+default fallback (`src/lib/kpi/plugins/time-series/sla/`), the comment-based
+SLA clock reset shared with the builtin cards (see phase 1B), and the
+incomplete-current-period exclusion used by all weekly trend plugins. Plugin
+file locations and IDs in the note were stale at deletion time (plugins moved
+to `src/lib/kpi/plugins/time-series/` during consolidation).

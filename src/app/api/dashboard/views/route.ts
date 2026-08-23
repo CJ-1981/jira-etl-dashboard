@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { StorageConfigSchema } from '@/lib/validation/schemas';
+import { handleApiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
   try {
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
     if (storageConfigRaw) {
       try {
         storageConfig = JSON.parse(storageConfigRaw);
-      } catch (e) {
+      } catch {
         console.warn('[Views API] Failed to parse storageConfig, using default');
       }
     }
@@ -35,8 +36,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, views });
   } catch (error) {
-    console.error('[Views API] Error fetching views:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch views' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -98,7 +98,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, view });
   } catch (error) {
-    console.error('[Views API] Error creating view:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create view' }, { status: 500 });
+    return handleApiError(error);
   }
 }

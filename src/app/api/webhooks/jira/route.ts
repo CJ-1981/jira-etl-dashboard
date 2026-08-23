@@ -3,6 +3,7 @@ import { getDefaultDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-config';
 import { extractSelectFieldValue } from '@/lib/jira/client';
+import { handleApiError, InternalServerError } from '@/lib/api-error';
 import crypto from 'crypto';
 
 /**
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
     const issue = payload.issue;
 
     if (!issue || !issue.key) {
-      return NextResponse.json({ error: 'Invalid payload: No issue data' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Invalid payload: No issue data' }, { status: 400 });
     }
 
     console.log(`[Webhook] Received ${eventType} for ${issue.key} (Connection: ${connectionId})`);
@@ -180,9 +181,13 @@ export async function POST(req: Request) {
       message: `Processed ${eventType} for ${jiraKey}`,
       timestamp: new Date().toISOString()
     });
-  } catch (error: any) {
-    console.error('[Webhook Error]', error, error.stack);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error) {
+    // Log full details server-side, but return a generic message to the caller:
+    // this endpoint can be invoked by an external Jira server (when a webhook
+    // secret is configured), so internal (e.g. Prisma/SQL) error text must not
+    // leak across the boundary.
+    console.error('[Webhook Error]', error);
+    return handleApiError(new InternalServerError('Internal server error'));
   }
 }
 

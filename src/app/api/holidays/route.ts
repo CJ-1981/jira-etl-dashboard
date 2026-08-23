@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getGermanHolidays, getHolidaysInRange, GERMAN_STATES, type GermanState } from '@/lib/holidays/german-holidays';
+import { handleApiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
   try {
@@ -47,9 +48,6 @@ export async function GET(request: Request) {
       states: Object.entries(GERMAN_STATES).map(([key, value]) => ({ key, code: value })),
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

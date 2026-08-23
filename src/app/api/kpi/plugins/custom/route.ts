@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { getCustomPluginDir } from '@/lib/kpi/plugin-paths';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { handleApiError } from '@/lib/api-error';
 
 /**
  * GET /api/kpi/plugins/custom
@@ -31,11 +32,7 @@ export async function GET() {
       }))
     });
   } catch (error) {
-    console.error('[API] Failed to fetch custom plugins:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch custom plugins' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -114,11 +111,7 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    console.error('[API] Failed to create custom plugin:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to create custom plugin' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -183,11 +176,7 @@ export async function PUT(request: Request) {
       }
     });
   } catch (error) {
-    console.error('[API] Failed to update plugin:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update plugin' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -264,11 +253,7 @@ export async function DELETE(request: Request) {
       message: 'Plugin deleted successfully'
     });
   } catch (error) {
-    console.error('[API] Failed to delete plugin:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete plugin' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 

@@ -14,12 +14,13 @@
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
 import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-import { 
-  getPeriodEnd, 
-  isPeriodComplete, 
-  groupByTimeInterval, 
-  enumeratePeriodKeys 
-} from '../../../utils/time-series-utils';
+import {
+  preparePeriods,
+  buildTrendPoints,
+  weightedMeanOfCompletePeriods,
+  round2,
+  INCOMPLETE_PERIOD_DETAIL,
+} from '../../../utils/trend-scaffold';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -50,69 +51,38 @@ function calculateSlaTrend(
     }];
   }
 
-  // 1. Group issues by time interval
-  const grouped = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved);
-
-  // 2. Ensure all periods in range are represented
+  // Group issues by interval and zero-fill all periods in range
   const resolvedDates = resolvedIssues.map(i => new Date(i.resolved!).getTime());
   const minDate = new Date(Math.min(...resolvedDates));
   const maxDate = new Date(Math.max(...resolvedDates, context.period.end.getTime()));
-  
-  const allPeriodKeys = enumeratePeriodKeys(minDate, maxDate, interval);
-  for (const key of allPeriodKeys) {
-    if (!grouped[key]) {
-      grouped[key] = [];
+  const grouped = preparePeriods(resolvedIssues, interval, (issue) => issue.resolved, minDate, maxDate);
+
+  const { points: timeSeries, hasIncompletePeriod } = buildTrendPoints(
+    grouped,
+    interval,
+    (issues) => {
+      let complianceRate = 0;
+      if (issues.length > 0) {
+        const withinSla = issues.filter((issue) => {
+          const hours = calculateBusinessHours(issue.created, issue.resolved!, {
+            regions: context.holidays.regions,
+            workStartHour: context.holidays.workStartHour,
+            workEndHour: context.holidays.workEndHour,
+            workDaysPerWeek: context.holidays.workDaysPerWeek,
+          });
+          return hours <= slaTargetHours;
+        }).length;
+        complianceRate = (withinSla / issues.length) * 100;
+      }
+      return { value: round2(complianceRate), count: issues.length };
     }
-  }
+  );
 
-  // 3. Calculate SLA compliance per period
-  const timeSeries: TimeSeriesResult['timeSeries'] = [];
-  let hasIncompletePeriod = false;
-
-  for (const [periodKey, issues] of Object.entries(grouped)) {
-    const periodEnd = getPeriodEnd(periodKey, interval);
-    const isComplete = isPeriodComplete(periodEnd);
-
-    if (!isComplete) {
-      hasIncompletePeriod = true;
-    }
-
-    let complianceRate = 0;
-    if (issues.length > 0) {
-      const withinSla = issues.filter((issue) => {
-        const hours = calculateBusinessHours(issue.created, issue.resolved!, {
-          regions: context.holidays.regions,
-          workStartHour: context.holidays.workStartHour,
-          workEndHour: context.holidays.workEndHour,
-          workDaysPerWeek: context.holidays.workDaysPerWeek,
-        });
-        return hours <= slaTargetHours;
-      }).length;
-      complianceRate = (withinSla / issues.length) * 100;
-    }
-
-    timeSeries.push({
-      period: periodKey,
-      date: periodEnd,
-      value: Math.round(complianceRate * 100) / 100,
-      count: issues.length,
-      isComplete,
-    });
-  }
-
-  // Sort by date
-  // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
-  timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  // Calculate overall compliance from complete periods only
-  const completePoints = timeSeries.filter(p => p.isComplete);
-  const totalCountInComplete = completePoints.reduce((sum, point) => sum + point.count, 0);
-  const overallCompliance = totalCountInComplete > 0
-    ? completePoints.reduce((sum, point) => sum + point.value * point.count, 0) / totalCountInComplete
-    : 0;
+  // Calculate overall compliance from complete periods only (weighted by count)
+  const overallCompliance = weightedMeanOfCompletePeriods(timeSeries);
 
   const details: TimeSeriesResult['details'] = [
-    { label: 'Complete Periods', value: completePoints.length },
+    { label: 'Complete Periods', value: timeSeries.filter(p => p.isComplete).length },
     { label: 'Total Resolved', value: resolvedIssues.length },
     { label: 'SLA Target', value: slaTargetHours, unit: 'hours' },
   ];
@@ -122,6 +92,7 @@ function calculateSlaTrend(
     details.push({ label: `Priority Filter (${priorityFilter.join(', ')})`, value: priorityFilter.length });
   }
 
+  const completePoints = timeSeries.filter(p => p.isComplete);
   if (completePoints.length > 0) {
     const validPoints = completePoints.filter(p => p.count > 0);
     if (validPoints.length > 0) {
@@ -135,12 +106,12 @@ function calculateSlaTrend(
   }
 
   if (hasIncompletePeriod) {
-    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
+    details.push({ ...INCOMPLETE_PERIOD_DETAIL });
   }
 
   return [{
     name: 'SLA Compliance',
-    value: Math.round(overallCompliance * 100) / 100,
+    value: round2(overallCompliance),
     unit: '%',
     timeSeries,
     details,

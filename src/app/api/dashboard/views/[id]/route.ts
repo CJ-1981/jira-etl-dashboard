@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { StorageConfigSchema } from '@/lib/validation/schemas';
+import { handleApiError } from '@/lib/api-error';
 
 /** Narrow slice of a DashboardView row — only the fields this handler reads. */
 interface DashboardViewRow {
@@ -69,8 +70,7 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, view });
   } catch (error) {
-    console.error('[Views API] Error updating view:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update view' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -108,7 +108,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[Views API] Error deleting view:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete view' }, { status: 500 });
+    return handleApiError(error);
   }
 }

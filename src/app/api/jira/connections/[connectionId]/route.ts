@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { deleteConnectionData } from '@/lib/db-cascade';
+import { handleApiError } from '@/lib/api-error';
 
 export async function DELETE(
   request: Request,
@@ -54,10 +55,6 @@ export async function DELETE(
       message: `Cleared ${result.runCount} extractions and ${result.masterTicketCount} master tickets (${result.deletedCount} records).`,
     });
   } catch (error) {
-    console.error('[Connections DELETE] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete connection data' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

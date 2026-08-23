@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { StorageConfigSchema } from '@/lib/validation/schemas';
+import { handleApiError } from '@/lib/api-error';
 
 /** Narrow slice of a DashboardView row — only the fields this handler reads. */
 interface DashboardViewRow {
@@ -63,8 +64,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, view });
   } catch (error) {
-    console.error('[Views API] Error setting default view:', error);
-    return NextResponse.json({ success: false, error: 'Failed to set default view' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -108,7 +108,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, view });
   } catch (error) {
-    console.error('[Views API] Error clearing default view:', error);
-    return NextResponse.json({ success: false, error: 'Failed to clear default view' }, { status: 500 });
+    return handleApiError(error);
   }
 }

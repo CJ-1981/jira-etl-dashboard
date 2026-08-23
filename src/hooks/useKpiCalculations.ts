@@ -215,6 +215,10 @@ export function useKpiCalculations(
    * @MX:NOTE: Syncs empty results too so stale results are cleared. Skips while
    * the query has no definitive result yet (loading/disabled) or is in an error
    * state, so last good data is kept instead of being wiped by failures.
+   * @MX:NOTE: This is the ONLY writer of the store's kpiResults slice during
+   * normal dashboard operation — it always writes the FULL, unfiltered query
+   * payload. Plugin visibility filtering is derived at render time by
+   * KpiDashboard and never written back to the store.
    */
   useEffect(() => {
     if (data === undefined || isQueryError) return;

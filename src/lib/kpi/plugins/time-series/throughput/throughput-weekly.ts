@@ -6,12 +6,13 @@
 
 import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-import { 
-  getPeriodEnd, 
-  isPeriodComplete, 
-  groupByTimeInterval, 
-  enumeratePeriodKeys 
-} from '../../../utils/time-series-utils';
+import {
+  preparePeriods,
+  buildTrendPoints,
+  meanOfCompletePeriods,
+  round2,
+  INCOMPLETE_PERIOD_DETAIL,
+} from '../../../utils/trend-scaffold';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -30,57 +31,26 @@ function calculateThroughputTrend(
     }];
   }
 
-  // 1. Group issues by time interval
-  const grouped = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved);
-
-  // 2. Ensure all periods in range are represented (even with zero throughput)
-  // Compute date range from issues or context period
+  // Group issues by interval and zero-fill all periods in range
   const resolvedDates = resolvedIssues.map(i => new Date(i.resolved!).getTime());
   const minDate = new Date(Math.min(...resolvedDates));
   const maxDate = new Date(Math.max(...resolvedDates, context.period.end.getTime()));
-  
-  const allPeriodKeys = enumeratePeriodKeys(minDate, maxDate, interval);
-  for (const key of allPeriodKeys) {
-    if (!grouped[key]) {
-      grouped[key] = [];
-    }
-  }
+  const grouped = preparePeriods(resolvedIssues, interval, (issue) => issue.resolved, minDate, maxDate);
 
-  // 3. Build time-series data
-  const timeSeries: TimeSeriesResult['timeSeries'] = [];
-  let hasIncompletePeriod = false;
-
-  for (const [periodKey, issues] of Object.entries(grouped)) {
-    const periodEnd = getPeriodEnd(periodKey, interval);
-    const isComplete = isPeriodComplete(periodEnd);
-
-    if (!isComplete) {
-      hasIncompletePeriod = true;
-    }
-
-    timeSeries.push({
-      period: periodKey,
-      date: periodEnd,
-      value: issues.length,
-      count: issues.length,
-      isComplete,
-    });
-  }
-
-  // Sort by date (chronological)
-  // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
-  timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const { points: timeSeries, hasIncompletePeriod } = buildTrendPoints(
+    grouped,
+    interval,
+    (issues) => ({ value: issues.length, count: issues.length })
+  );
 
   const completePoints = timeSeries.filter(p => p.isComplete);
-  const totalResolvedInComplete = completePoints.reduce((sum, p) => sum + p.value, 0);
-  
-  // Average throughput now includes zero-value periods because we enumerated them
-  const avgThroughput = completePoints.length > 0 ? totalResolvedInComplete / completePoints.length : 0;
+  // Average throughput includes zero-value periods because we enumerated them
+  const avgThroughput = meanOfCompletePeriods(timeSeries);
 
   const details: TimeSeriesResult['details'] = [
     { label: 'Complete Periods', value: completePoints.length },
     { label: 'Total Resolved', value: resolvedIssues.length },
-    { label: 'Avg Throughput (Complete)', value: Math.round(avgThroughput * 100) / 100, unit: 'tickets/period' },
+    { label: 'Avg Throughput (Complete)', value: round2(avgThroughput), unit: 'tickets/period' },
   ];
 
   if (completePoints.length > 0) {
@@ -88,12 +58,12 @@ function calculateThroughputTrend(
   }
 
   if (hasIncompletePeriod) {
-    details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
+    details.push({ ...INCOMPLETE_PERIOD_DETAIL });
   }
 
   return [{
     name: 'Throughput',
-    value: Math.round(avgThroughput * 100) / 100,
+    value: round2(avgThroughput),
     unit: 'tickets/period',
     timeSeries,
     details,

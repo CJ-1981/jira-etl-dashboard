@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { handleApiError } from '@/lib/api-error';
 
 function fileUrlToPath(url: string): string {
   let p = url.replace(/^file:(\/\/)?/, '');
@@ -34,10 +35,6 @@ export async function GET() {
         : undefined,
     });
   } catch (error) {
-    console.error('[DB Location API] Error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to determine database location' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

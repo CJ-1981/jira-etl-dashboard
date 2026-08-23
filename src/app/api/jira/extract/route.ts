@@ -5,6 +5,7 @@ import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-co
 import { getDb, type DbClient } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { handleApiError } from '@/lib/api-error';
 
 /** Narrow slice of an EtlRun row — only the fields this handler reads. */
 interface EtlRunRow {
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     let body;
     try {
       body = await request.json();
-    } catch (e) {
+    } catch {
       return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
     }
 
@@ -241,7 +242,7 @@ export async function POST(request: Request) {
 
       try {
         await dbClient.ticketSnapshot.createMany({ data: snapshotData });
-      } catch (err) {
+      } catch {
         // createMany may not support all drivers — fall back to a single transaction
         await dbClient.$transaction(
           snapshotData.map((data: any) => dbClient.ticketSnapshot.create({ data }))
@@ -275,7 +276,7 @@ export async function POST(request: Request) {
       if (transitionData.length > 0) {
         try {
           await dbClient.ticketTransition.createMany({ data: transitionData });
-        } catch (err) {
+        } catch {
           await dbClient.$transaction(
             transitionData.map((data: any) => dbClient.ticketTransition.create({ data }))
           );
@@ -560,7 +561,6 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    console.error('[Extract API] Critical error:', error);
     // If the run row was already created, mark it failed so it never stays 'extracting'
     // nor masquerades as a completed run.
     if (etlRun && db) {
@@ -577,9 +577,9 @@ export async function POST(request: Request) {
         console.error('[Extract API] Failed to mark ETL run as failed:', markFailedError);
       }
     }
-    // Preserve the upstream Jira HTTP status (401/403/429/5xx) so the client
-    // can show a tailored toast; fall back to 500 for unexpected errors.
-    const httpStatus = (error as any)?.status ?? 500;
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: httpStatus });
+    // handleApiError forwards the upstream Jira HTTP status (401/403/429/5xx)
+    // carried on the error so the client can show a tailored toast, and falls
+    // back to 500 for unexpected errors.
+    return handleApiError(error);
   }
 }

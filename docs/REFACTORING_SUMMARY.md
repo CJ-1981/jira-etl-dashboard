@@ -175,20 +175,20 @@ Both pre-existing, both fixed TDD-style (RED confirmed first):
 
 ## Metrics before → after
 
-| Metric | v0.9.0 (`085a0d7`) | After (`phase 5`) |
+| Metric | v0.9.0 (`085a0d7`) | After (`phase 6`) |
 |---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **933** (threshold 933) |
-| `no-explicit-any` warnings | 703 | 568 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **917** (threshold 917) |
 | Type errors | 0 | 0 |
-| Unit tests | 918 | **1,003** (all passing) |
-| Coverage (lines) | 70.98% | 71.8% (floor 70%) |
+| Unit tests | 918 | **1,054** (all passing) |
+| Coverage (lines) | 70.98% | **73.5%** (floor 70%) |
 | E2E tests | 22 (local only) | 22, **also in CI** |
 | npm dependencies | 89 | 58 |
 | shadcn components | 48 | 21 |
 | Mutating routes with loopback guard | 4 of ~15 | **all** |
 | Transactional cascade deletes | 1 of 4 sites | **all 4** |
 | `(db as any)` route casts | ~150 | **0** |
-| Net line change | — | **≈ −8,900** |
+| Routes on shared error handler | 1 of 25 | **22 of 25** |
+| kpiResults store dual-write | yes | **no** (derived filtering) |
 
 ---
 
@@ -241,30 +241,57 @@ Commit ID: filled in below at commit time.
 | Workstream | Commit |
 |---|---|
 | Phase 5 (all four streams) | `d58fd56` |
-| Phase 5 docs finalization | _(this commit)_ |
+| Phase 5 docs finalization | `1420055` |
+| Phase 5 merge to main | `c54a3de` |
+
+---
+
+## Phase 6 — error handling, trend scaffold, state fix, doc hygiene
+
+Branch `refactor/phase6-consolidation` (based on `c54a3de`), four parallel
+workstreams with disjoint file ownership:
+
+- **6A — API error-handling unification**: 21 routes converted to
+  `handleApiError`; helper hardened (substring-404 heuristic removed, typed
+  status forwarding); shapes/status codes normalized after consumer checks;
+  31 new tests.
+- **6B — Time-series scaffold dedup**: new `trend-scaffold.ts` helper; 8
+  trend plugins migrated with byte-equivalent output (existing tests
+  unchanged); 12 new helper tests.
+- **6C — kpiResults dual-write fix**: store slice is now the raw React-Query
+  payload; plugin filtering became render-time derived memos; the
+  self-referencing effect and its guard ref deleted (6 RED-first tests).
+- **6D — Doc hygiene**: six root working-note files deleted, durable facts
+  extracted into the `DEBT_CLEANUP.md` appendix.
+
+**Gates:** type-check 0 errors; **1,054 tests passing** (71 files);
+coverage **73.5% lines** (floor 70%); lint **933 → 917** (ratchet tightened
+to 917 in CI, the pre-push hook, CLAUDE.md, README).
+
+Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 6 section).
+
+| Workstream | Commit |
+|---|---|
+| Phase 6 (all four streams) | `6d2eb8f` |
 
 ---
 
 ## Remaining debt (tracked in `docs/DEBT_CLEANUP.md`)
 
 Top items, ranked:
-1. Retire the remaining 48 `(db as any)` route casts (needs one
-   `$transaction` array overload on `DbClient` — then all sites are
-   removable).
-2. Adopt the existing `handleApiError` helper across the 19 routes still
-   using raw try/catch; normalize error shapes.
-3. Decompose `KpiDashboard.tsx` (2,691 lines, 9 copy-paste widget cases),
-   `KpiCard.tsx` (1,735), `ExtractPanel.tsx` (25 `useState` calls).
-4. Route the 40 raw `fetch` call sites through the configured React Query;
-   dedupe the three 5-second pollers.
-5. Fix the `kpiResults` dual-write loop (store mutated by a filter effect
-   while React Query also syncs it).
-6. Shared trend-scaffold helper for the 8 time-series plugins still
-   hand-rolling zero-fill/weighted-average/incomplete-period logic.
-7. Typed discriminator for `transformIssueForKpi` (18 `as any` casts).
-8. Consolidate localStorage access through `localConfig`; merge the
-   structural-clone hooks `usePluginVisibility`/`useWidgetOrder`.
-9. Electron removal decision (documented as broken; caxa is the real
-   distribution path).
-10. Hygiene: 7 orphaned root markdown notes, one-off scripts, stale
-    `REACT_APP_*` env mechanism in `field-config.ts`.
+1. Decompose `KpiDashboard.tsx` (2.7k lines, 9 copy-paste widget cases),
+   `KpiCard.tsx`/`ChartCard` (1.7k), `ExtractPanel.tsx` (25 `useState`
+   calls).
+2. Route the ~40 raw `fetch` call sites through the configured React Query;
+   dedupe the three 5-second pollers (two hit the same endpoint).
+3. Replace `Set`/`Map` values in zustand with plain arrays/records (removes
+   clone boilerplate and `instanceof Map` test-compat branches).
+4. Consolidate the three near-identical quote-aware string splitters
+   (`engine-utils.ts` ×2, `custom-formula.ts`).
+5. Update KpiDashboard test mocks to export `KEYS` so the remaining storage
+   key constants can move into `local-store.ts` `KEYS`.
+6. One-off scripts cleanup (`reproduce-issue.mjs`, `backfill-issue-owner-team.js`,
+   stale `test-*.bat`); stale `REACT_APP_*` env mechanism in `field-config.ts`.
+7. Product decision needed: UTC-ISO-week (trends) vs local-Monday-week (card
+   buckets) divergence — documented with `@MX:WARN`, intentionally not
+   changed unilaterally.

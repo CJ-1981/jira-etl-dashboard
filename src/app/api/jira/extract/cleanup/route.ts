@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { deleteEtlRunsWithChildren } from '@/lib/db-cascade';
+import { handleApiError } from '@/lib/api-error';
 
 export async function POST(request: Request) {
   // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
@@ -60,7 +61,6 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    console.error('Cleanup error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to cleanup data' }, { status: 500 });
+    return handleApiError(error);
   }
 }

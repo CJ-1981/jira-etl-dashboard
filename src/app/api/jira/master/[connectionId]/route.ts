@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { deleteConnectionData } from '@/lib/db-cascade';
+import { handleApiError } from '@/lib/api-error';
 
 /** Narrow slice of a MasterTicket row read directly (outside the map lambda). */
 interface MasterTicketMeta {
@@ -33,7 +34,7 @@ export async function POST(
     let body;
     try {
       body = await request.json();
-    } catch (e) {
+    } catch {
       return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
     }
     
@@ -165,11 +166,7 @@ export async function POST(
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
 
   } catch (error) {
-    console.error('[Master API] Error:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to process master dataset request'
-    }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -202,7 +199,6 @@ export async function DELETE(
       message: `Cleared ${runCount} extractions, ${masterTicketCount} master tickets, and ${deletedCount} related records.`
     });
   } catch (error) {
-    console.error('[Master API] DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Delete failed' }, { status: 500 });
+    return handleApiError(error);
   }
 }
