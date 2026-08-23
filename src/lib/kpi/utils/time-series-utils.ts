@@ -2,6 +2,18 @@
  * Time-Series utility functions for KPI plugins
  * @MX:ANCHOR: Shared time-series logic
  * @MX:REASON: Centralizes complex ISO week and period calculations to prevent duplication and bugs
+ *
+ * @MX:WARN: TWO WEEK DEFINITIONS COEXIST IN THIS CODEBASE — DO NOT "UNIFY"
+ * THEM WITHOUT A PRODUCT DECISION:
+ * - The time-series trend plugins (this module) bucket periods using
+ *   UTC ISO-8601 weeks (getWeekNumber / getISOWeekYear / getPeriodKey).
+ * - The engine's weekly card buckets and weekly plugins (KpiEngine,
+ *   weekly_ticket_list, age-category breakdowns) use LOCAL-time Monday-based
+ *   weeks via getLocalMondayWeekBounds (src/lib/utils/week-boundaries.ts).
+ * Values near week edges (and around DST transitions) can therefore differ
+ * between a trend chart bucket and a weekly card bucket for the same instant.
+ * @MX:REASON: Unifying would silently change reported KPI numbers; the split
+ * is documented here instead of fixed so the divergence is a conscious choice.
  */
 
 import { type TransformedIssue } from '../types';
@@ -47,7 +59,9 @@ export function getPeriodKey(date: Date, interval: TimeInterval): string {
     case 'monthly':
       return `${year}-${month.toString().padStart(2, '0')}`;
     default:
-      return `${year}-${month}`;
+      // @MX:WARN: Pad like the monthly case — unpadded months would break
+      // lexicographic sorting of period keys (e.g. '2026-9' > '2026-10').
+      return `${year}-${month.toString().padStart(2, '0')}`;
   }
 }
 

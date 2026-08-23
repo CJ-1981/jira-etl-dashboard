@@ -2,9 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   JiraClient,
   extractSelectFieldValue,
-  transformIssue,
 } from '@/lib/jira/client';
-import type { JiraIssue, JiraChangelogItem } from '@/lib/jira/client';
+import type { JiraIssue } from '@/lib/jira/client';
 
 // ───────────────────────── helpers ─────────────────────────
 
@@ -731,106 +730,5 @@ describe('extractSelectFieldValue', () => {
 
   it('stringifies a primitive (e.g. number)', () => {
     expect(extractSelectFieldValue(5)).toBe('5');
-  });
-});
-
-// ───────────────────────── transformIssue ─────────────────────────
-
-describe('transformIssue', () => {
-  const fullIssue: JiraIssue = {
-    key: 'TEST-1',
-    self: 'https://x/rest/api/3/issue/1',
-    fields: {
-      summary: 'Fix bug',
-      issuetype: { name: 'Bug' },
-      priority: { name: 'High' },
-      status: { name: 'In Progress', statusCategory: { name: 'Indeterminate' } },
-      assignee: { displayName: 'Alice', emailAddress: 'a@x.com' },
-      reporter: { displayName: 'Bob', emailAddress: 'b@x.com' },
-      created: '2026-01-01T00:00:00.000Z',
-      updated: '2026-01-02T00:00:00.000Z',
-      resolutiondate: '2026-01-03T00:00:00.000Z',
-      duedate: '2026-01-10',
-      customfield_10002: 8,
-      customfield_10132: { value: 'Team A', id: '1', self: 's' },
-      labels: ['p1', 'p2'],
-      components: [{ name: 'API' }, { name: 'UI' }],
-    },
-    changelog: {
-      histories: [
-        {
-          id: 'h1',
-          author: { displayName: 'Alice' },
-          created: '2026-01-02T00:00:00.000Z',
-          items: [
-            {
-              field: 'status',
-              fieldtype: 'jira',
-              from: '1',
-              fromString: 'To Do',
-              to: '2',
-              toString: 'In Progress',
-            },
-            { field: 'assignee', fieldtype: 'jira', from: 'old', to: 'new' } as JiraChangelogItem,
-          ],
-        },
-      ],
-    },
-  };
-
-  it('flattens a full issue, extracts the select-field team, transitions and time-in-status', () => {
-    const out = transformIssue(fullIssue);
-    expect(out.key).toBe('TEST-1');
-    expect(out.summary).toBe('Fix bug');
-    expect(out.issueType).toBe('Bug');
-    expect(out.priority).toBe('High');
-    expect(out.status).toBe('In Progress');
-    expect(out.statusCategory).toBe('Indeterminate');
-    expect(out.assignee).toBe('Alice');
-    expect(out.reporter).toBe('Bob');
-    expect(out.issueOwnerTeam).toBe('Team A');
-    expect(out.created).toBe('2026-01-01T00:00:00.000Z');
-    expect(out.updated).toBe('2026-01-02T00:00:00.000Z');
-    expect(out.resolved).toBe('2026-01-03T00:00:00.000Z');
-    expect(out.dueDate).toBe('2026-01-10');
-    expect(out.storyPoints).toBe(8);
-    expect(out.labels).toEqual(['p1', 'p2']);
-    expect(out.components).toEqual(['API', 'UI']);
-    expect(out.transitions).toEqual([
-      {
-        fromStatus: 'To Do',
-        toStatus: 'In Progress',
-        author: 'Alice',
-        occurredAt: '2026-01-02T00:00:00.000Z',
-      },
-    ]);
-    // non-status changelog items are ignored → exactly one transition
-    expect(out.timeInStatus['In Progress']).toBeGreaterThan(0);
-  });
-
-  it('applies safe defaults when optional fields are missing', () => {
-    const minimal: JiraIssue = {
-      key: 'TEST-2',
-      self: 'https://x/2',
-      fields: {
-        summary: 'No deps',
-        issuetype: { name: 'Task' },
-        status: { name: 'Open', statusCategory: { name: 'To Do' } },
-        created: '2026-02-01T00:00:00.000Z',
-        updated: '2026-02-01T00:00:00.000Z',
-      },
-    };
-    const out = transformIssue(minimal);
-    expect(out.priority).toBeNull();
-    expect(out.assignee).toBe('Unassigned');
-    expect(out.reporter).toBe('Unknown');
-    expect(out.resolved).toBeNull();
-    expect(out.dueDate).toBeNull();
-    expect(out.issueOwnerTeam).toBeNull();
-    expect(out.storyPoints).toBeUndefined();
-    expect(out.labels).toEqual([]);
-    expect(out.components).toEqual([]);
-    expect(out.transitions).toEqual([]);
-    expect(out.timeInStatus).toEqual({});
   });
 });

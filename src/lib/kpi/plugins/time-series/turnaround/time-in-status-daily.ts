@@ -123,7 +123,8 @@ function calculateTimeInStatusTrend(
     }
 
     // Sort by date (already sorted by keys, but safe)
-    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+    // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
+    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Calculate overall average for this status from complete periods only
     const completePoints = timeSeries.filter(p => p.isComplete && p.count > 0);

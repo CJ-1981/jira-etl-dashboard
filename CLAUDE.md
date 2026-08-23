@@ -16,7 +16,7 @@ npm run build          # Production build → .next/standalone
 npm start              # Run standalone production server
 npm test               # Vitest (run mode: npx vitest run)
 npm run test:coverage  # v8 coverage — enforces ratchet thresholds (70% lines), fails below
-npm run lint           # ESLint (critical rules re-enabled; 1087 pre-existing warnings, threshold 2000)
+npm run lint           # ESLint (critical rules re-enabled; 1068 warnings, ratchet threshold 1068)
 npm run type-check     # tsc --noEmit — ALWAYS run this before committing
 npm run e2e            # Playwright e2e (reuses a running dev server locally; boots one in CI)
 npm run db:push        # Push schema to SQLite (default DATABASE_URL)
@@ -25,7 +25,7 @@ npm run db:studio      # Prisma Studio
 build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 ```
 
-CI runs `test:coverage`, `lint --max-warnings=2000`, and `type-check` on push/PR to main/develop (Node 22). E2E is not wired into CI yet.
+CI runs `test:coverage`, `lint --max-warnings=1068`, and `type-check` on push/PR to main/develop (Node 22). E2E is not wired into CI yet.
 
 **Quality gates:** a `pre-push` hook runs the same CI trio locally before every push (installed automatically on `npm install` via `scripts/hooks/install-hooks.mjs`, or manually with `npm run hooks:install`; bypass with `git push --no-verify`). The release workflow additionally waits for the CI run of the tagged commit to finish and aborts the release if it is red — so tagging cannot outrun CI.
 
@@ -42,7 +42,14 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
 - `dashboard/views` — saved views persisted in the DB (`DashboardView` model); at most one default view per connection, enforced transactionally (including bulk import)
 - `pg/export`, `pg/test`, `webhooks/jira`, `holidays`, `export/file`, `debug/health`
 
-**Cross-origin protection:** all mutating endpoints (`kpi/calculate`, `jira/extract`, `kpi/plugins/custom`, `webhooks/jira`, `jira/connections/*`) reject requests whose `Origin`/`Referer` header points outside loopback (401). Header-less requests (server-side fetch, curl) pass. When adding a new mutating route, copy the `isLoopbackOriginRequest` guard from `kpi/calculate/route.ts`.
+**Cross-origin protection:** every mutating endpoint rejects requests whose
+`Origin`/`Referer` header points outside loopback (401) — all POST/PATCH/PUT/DELETE
+handlers under `src/app/api/` are guarded (views CRUD, bulk import, extract, cleanup,
+master delete, poll, kpi/calculate, custom plugins CRUD, pg/export, webhooks).
+Header-less requests (server-side fetch, curl) pass. When adding a new mutating route,
+copy the `isLoopbackOriginRequest` guard from `kpi/calculate/route.ts`. The webhook
+route composes a stricter variant (`isWebhookLoopbackRequest`) that additionally
+requires BOTH headers to be loopback and http(s) only.
 
 ### Dual Prisma storage (read this before touching `src/lib/db.ts`)
 - Source schemas: `prisma/schema.sqlite.prisma` and `prisma/schema.postgresql.prisma`.
@@ -102,12 +109,14 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 1. **Build enforces type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: false`
    and ESLint has critical rules re-enabled (`no-explicit-any`, `no-unused-vars`, `no-debugger`,
    `no-fallthrough`, `no-unreachable`, etc.). `npm run type-check` and `npm run lint` are both
-   real static gates. The lint warning threshold is 2000 (ratchet) — lower it as the codebase
+   real static gates. The lint warning threshold is 1068 (ratchet, tightened 2026-08
+   from 2000 during the debt cleanup — see `docs/DEBT_CLEANUP.md`) — lower it as the codebase
    is cleaned up.
 2. **`REACT_APP_*` env vars do nothing** — leftover CRA convention in
    `src/lib/jira/field-config.ts`; Next.js does not expose them.
-3. **`src/lib/kpi/kpi-worker.ts` is dead code** — never instantiated; all KPI math runs
-   server-side via `/api/kpi/calculate`. Don't build features assuming a Web Worker exists.
+3. **All KPI math runs server-side** via `/api/kpi/calculate` — there is no Web Worker
+   (a former `kpi-worker.ts` was dead code and has been deleted). Don't build features
+   assuming client-side calculation exists.
 4. **Custom plugin upload = server-side file write** into the custom-plugin directory
    (`data/custom-plugins/`) with the plugin's `calculate` body interpolated, activated at
    restart. Formula execution itself is sandboxed (see KPI engine section), but the file-write
@@ -115,8 +124,9 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 5. **Electron path is abandoned/broken** — `electron/main.js` loads `../out/index.html`, but
    no `output: 'export'` build exists (production is `standalone`). The caxa pipeline
    (`build-exe.*` + `launcher.cjs`) is the real distribution path.
-6. **Jira custom field IDs** — `transformIssue` in `src/lib/jira/client.ts` now accepts an
-   optional `fieldMapping` parameter and uses `JIRA_FIELD_MAP` defaults consistently. However,
+6. **Jira custom field IDs** — `transformIssueForKpi` in `src/lib/kpi/engine-utils.ts`
+   accepts an optional `fieldMapping` parameter and uses `JIRA_FIELD_MAP` defaults
+   (the legacy `transformIssue` in `jira/client.ts` was deleted as dead code). However,
    `customfield_10002`, `customfield_10132`, `customfield_10020`, `customfield_10014/10016`
    are still hardcoded as defaults in `JIRA_FIELD_MAP` and `field-config.ts` — check both when
    changing field handling.

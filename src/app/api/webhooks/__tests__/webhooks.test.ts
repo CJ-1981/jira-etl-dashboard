@@ -164,11 +164,64 @@ describe('POST /api/webhooks/jira', () => {
         issue: { key: 'TEST-5', fields: {} },
       }),
     });
-    const res = await POST(req as any);
+    const res = await POST(req);
     expect(res.status).toBe(401);
     const json = await readJson(res);
     expect(json.success).toBe(false);
     expect(json.error).toMatch(/loopback requests only/);
+    expect(mockDb().masterTicket.upsert).not.toHaveBeenCalled();
+  });
+
+  it('accepts a localhost origin when no secret is configured', async () => {
+    const req = new Request('http://localhost/api/webhooks/jira?connectionId=c1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+      body: JSON.stringify({
+        webhookEvent: 'jira:issue_updated',
+        issue: { key: 'TEST-6', fields: {} },
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect((await readJson(res)).success).toBe(true);
+    expect(mockDb().masterTicket.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects when the Referer is non-loopback even if the Origin is loopback (stricter than the shared guard)', async () => {
+    // The webhook-specific composition checks BOTH headers; the shared guard
+    // alone would trust whichever header is present first.
+    const req = new Request('http://localhost/api/webhooks/jira?connectionId=c1', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'http://localhost:3000',
+        Referer: 'https://evil.example/page',
+      },
+      body: JSON.stringify({
+        webhookEvent: 'jira:issue_updated',
+        issue: { key: 'TEST-7', fields: {} },
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/loopback requests only/);
+    expect(mockDb().masterTicket.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-http(s) origin schemes (exotic schemes are not trusted)', async () => {
+    const req = new Request('http://localhost/api/webhooks/jira?connectionId=c1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'ftp://localhost' },
+      body: JSON.stringify({
+        webhookEvent: 'jira:issue_updated',
+        issue: { key: 'TEST-8', fields: {} },
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    expect((await readJson(res)).success).toBe(false);
     expect(mockDb().masterTicket.upsert).not.toHaveBeenCalled();
   });
 
@@ -179,7 +232,7 @@ describe('POST /api/webhooks/jira', () => {
       headers: { 'Content-Type': 'application/json', 'x-jira-webhook-secret': 'topsecret' },
       body: JSON.stringify({ webhookEvent: 'jira:issue_updated', issue: { key: 'TEST-4', fields: {} } }),
     });
-    const res = await POST(req as any);
+    const res = await POST(req);
     expect(res.status).toBe(400);
     const json = await readJson(res);
     expect(json.success).toBe(false);
@@ -189,7 +242,7 @@ describe('POST /api/webhooks/jira', () => {
   it('returns 400 when the payload has no issue data', async () => {
     process.env.JIRA_WEBHOOK_SECRET = 'topsecret';
     const res = await POST(
-      webhookRequest({ secret: 'topsecret', body: { webhookEvent: 'jira:issue_updated' } }) as any,
+      webhookRequest({ secret: 'topsecret', body: { webhookEvent: 'jira:issue_updated' } }),
     );
     expect(res.status).toBe(400);
     const json = await readJson(res);

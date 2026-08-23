@@ -13,7 +13,11 @@ import { vi } from 'vitest';
  *
  * Top-level `$queryRaw` / `$transaction` are also available as memoized fns.
  */
-export function createMockDb() {
+/** Every model (and the $-helpers) is a bag of memoized vi.fn mocks. */
+export type MockModel = Record<string, ReturnType<typeof vi.fn>>;
+export type MockDb = Record<string, MockModel>;
+
+export function createMockDb(): MockDb {
   const fns = new Map<string, ReturnType<typeof vi.fn>>();
 
   const getFn = (key: string, impl: (...args: any[]) => unknown) => {
@@ -74,21 +78,32 @@ export function createMockDb() {
     },
   });
 
-  return db;
+  return db as unknown as MockDb;
 }
 
 /**
  * Build a Next.js Request for a route-handler test.
  * The handler signature uses `Request` (Web standard), available globally in Node 18+.
+ *
+ * Optional `headers` are merged in; a JSON Content-Type is added automatically
+ * when a body is present (unless overridden), so tests can send e.g. `origin`
+ * to exercise the loopback-origin guard.
  */
 export function makeRequest(
   url: string,
-  init: { method?: string; body?: unknown } = {},
+  init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Request {
-  const { method = 'GET', body } = init;
+  const { method = 'GET', body, headers = {} } = init;
+  const mergedHeaders: Record<string, string> = { ...headers };
+  if (body !== undefined) {
+    const hasContentType = Object.keys(mergedHeaders).some(
+      (k) => k.toLowerCase() === 'content-type',
+    );
+    if (!hasContentType) mergedHeaders['Content-Type'] = 'application/json';
+  }
   return new Request(`http://localhost${url}`, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }

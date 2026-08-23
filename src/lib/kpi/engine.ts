@@ -20,6 +20,7 @@ import { PluginLoader } from './plugin-loader';
 import { compileCustomFormula } from './custom-formula';
 import type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition } from './types';
 import { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone } from './engine-utils';
+import { getLocalMondayWeekBounds } from '../utils/week-boundaries';
 
 export type { KpiPlugin, KpiContext, KpiResult, TransformedIssue, StatusTransition };
 export { transformIssueForKpi, applyFilter, splitByTopLevelOperator, getFieldValue, isIssueDone };
@@ -370,20 +371,9 @@ export class KpiEngine {
     const transformed = periodFilteredIssues.map(transformIssueForKpi);
 
     // 4. Weekly breakdown
-    const now = new Date();
-    const thisWeekStart = new Date(now);
-    const day = thisWeekStart.getDay();
-    const diff = thisWeekStart.getDate() - day + (day === 0 ? -6 : 1);
-    thisWeekStart.setDate(diff);
-    thisWeekStart.setHours(0, 0, 0, 0);
-
-    const thisWeekEnd = new Date(thisWeekStart);
-    thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
-
-    const lastWeekStart = new Date(thisWeekStart);
-    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-
-    const lastWeekEnd = new Date(thisWeekStart);
+    // @MX:NOTE: Shared local-time Monday-week math (see src/lib/utils/week-boundaries.ts)
+    const { thisWeekStart, thisWeekEnd, lastWeekStart, lastWeekEnd } =
+      getLocalMondayWeekBounds(new Date());
     const weekBoundaries = { thisWeekStart, thisWeekEnd, lastWeekStart, lastWeekEnd };
 
     let thisWeekIssues: JiraIssue[];
@@ -510,18 +500,7 @@ export class KpiEngine {
 
     const weekBoundaries = _preprocessed
       ? _preprocessed.weekBoundaries
-      : (() => {
-          const now = new Date();
-          const tws = new Date(now);
-          const day = tws.getDay();
-          const diff = tws.getDate() - day + (day === 0 ? -6 : 1);
-          tws.setDate(diff);
-          tws.setHours(0, 0, 0, 0);
-          const twe = new Date(tws); twe.setDate(twe.getDate() + 7);
-          const lws = new Date(tws); lws.setDate(lws.getDate() - 7);
-          const lwe = new Date(tws);
-          return { thisWeekStart: tws, thisWeekEnd: twe, lastWeekStart: lws, lastWeekEnd: lwe };
-        })();
+      : getLocalMondayWeekBounds(new Date());
 
     // ── Weekly breakdown ──────────────────────────────────────────────────────
 

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { isLoopbackOriginRequest } from '@/lib/security';
+import { StorageConfigSchema } from '@/lib/validation/schemas';
 
 export async function GET(request: Request) {
   try {
@@ -20,6 +22,11 @@ export async function GET(request: Request) {
       }
     }
 
+    // Reject parsed-but-invalid storageConfig before it reaches getDb().
+    if (storageConfig !== undefined && !StorageConfigSchema.safeParse(storageConfig).success) {
+      return NextResponse.json({ success: false, error: 'Invalid storageConfig' }, { status: 400 });
+    }
+
     const db = getDb(storageConfig);
     const views = await (db as any).dashboardView.findMany({
       where: { connectionRef },
@@ -34,6 +41,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
+  // @MX:REASON: This route mutates dashboard views in the database and the app
+  // is unauthenticated; reject cross-origin browser requests (see lib/security).
+  if (!isLoopbackOriginRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: 'Cross-origin request rejected' },
+      { status: 401 }
+    );
+  }
+
   try {
     let body;
     try {
@@ -45,6 +62,14 @@ export async function POST(request: Request) {
 
     if (!connectionRef || !name || !data) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Validate untrusted storageConfig before handing it to getDb().
+    if (storageConfig !== undefined) {
+      const parsedConfig = StorageConfigSchema.safeParse(storageConfig);
+      if (!parsedConfig.success) {
+        return NextResponse.json({ success: false, error: 'Invalid storageConfig' }, { status: 400 });
+      }
     }
 
     const db = getDb(storageConfig);

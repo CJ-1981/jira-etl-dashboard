@@ -6,28 +6,25 @@
 
 import type { KpiPlugin, KpiContext, KpiResult } from '../../../types';
 import { getPriorityOrder } from '../../../engine-utils';
+import { getLocalMondayWeekBounds } from '../../../../utils/week-boundaries';
 
 /**
  * Compute Monday-based calendar week boundaries
+ * @MX:NOTE: The local-time Monday week math lives in the shared
+ * getLocalMondayWeekBounds helper; here we only derive the inclusive
+ * Sunday 23:59:59.999 end instants from those exclusive-start bounds.
  */
 function getWeekBoundaries() {
-  const now = new Date();
+  const { thisWeekStart, lastWeekStart } = getLocalMondayWeekBounds(new Date());
 
-  // This week: Monday to Sunday
-  const thisWeekMonday = new Date(now);
-  const day = thisWeekMonday.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  thisWeekMonday.setDate(thisWeekMonday.getDate() + diff);
-  thisWeekMonday.setHours(0, 0, 0, 0);
-
+  // This week: Monday to Sunday (inclusive end)
+  const thisWeekMonday = thisWeekStart;
   const thisWeekSunday = new Date(thisWeekMonday);
   thisWeekSunday.setDate(thisWeekSunday.getDate() + 6);
   thisWeekSunday.setHours(23, 59, 59, 999);
 
   // Last week
-  const lastWeekMonday = new Date(thisWeekMonday);
-  lastWeekMonday.setDate(lastWeekMonday.getDate() - 7);
-
+  const lastWeekMonday = lastWeekStart;
   const lastWeekSunday = new Date(thisWeekMonday);
   lastWeekSunday.setDate(lastWeekSunday.getDate() - 1);
   lastWeekSunday.setHours(23, 59, 59, 999);

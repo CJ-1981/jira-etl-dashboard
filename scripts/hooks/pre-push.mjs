@@ -6,7 +6,7 @@
  *
  * Checks (mirrors .github/workflows/ci.yml):
  *   1. npm test               (vitest run)
- *   2. npm run lint -- --max-warnings=2000
+ *   2. npm run lint -- --max-warnings=1068
  *   3. npm run type-check
  */
 import { spawn } from 'node:child_process';
@@ -27,7 +27,7 @@ function run(cmd, args) {
 
 const steps = [
   { label: 'Unit tests (vitest run)', cmd: 'npm', args: ['test'] },
-  { label: 'ESLint (--max-warnings=2000)', cmd: 'npm', args: ['run', 'lint', '--', '--max-warnings=2000'] },
+  { label: 'ESLint (--max-warnings=1068)', cmd: 'npm', args: ['run', 'lint', '--', '--max-warnings=1068'] },
   { label: 'TypeScript (tsc --noEmit)', cmd: 'npm', args: ['run', 'type-check'] },
 ];
 

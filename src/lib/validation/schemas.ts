@@ -265,3 +265,33 @@ export async function validateRequest<TBody, TQuery>(
     throw new Error('Invalid request data');
   }
 }
+
+/**
+ * Storage configuration schemas
+ *
+ * @MX:WARN: SECURITY BOUNDARY — storageConfig is untrusted client input that is
+ * handed directly to getDb() to select the database the request operates on.
+ * @MX:REASON: Models exactly the union getDb() accepts (a raw connection URL
+ * string, or an object with provider/connection fields — see src/lib/db.ts) plus
+ * the directUrl/isCustom fields the app store attaches. Anything else is rejected
+ * before it can reach getDb(), so malformed or unexpected shapes fail with a 400
+ * instead of falling through to the default database or an obscure driver error.
+ */
+export const StorageConfigSchema = z.union([
+  // Raw connection URL, e.g. 'file:./db/custom.db' or 'postgresql://...'.
+  z.string().min(1),
+  z.object({
+    provider: z.enum(['sqlite', 'postgresql']).optional(),
+    connectionId: z.string().optional(),
+    url: z.string().optional(),
+    directUrl: z.string().optional(),
+    isCustom: z.boolean().optional(),
+    host: z.string().optional(),
+    port: z.number().int().positive().optional(),
+    database: z.string().optional(),
+    username: z.string().optional(),
+    password: z.string().optional(),
+  }),
+]);
+
+export type StorageConfig = z.infer<typeof StorageConfigSchema>;

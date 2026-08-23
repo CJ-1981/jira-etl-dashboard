@@ -51,29 +51,6 @@ export const countPlugin: KpiPlugin = {
 };
 
 /**
- * Plugin with dependencies
- */
-export const dependentPlugin: KpiPlugin = {
-  id: 'dependent-metric',
-  name: 'Dependent Metric',
-  category: 'builtin' as KpiCategory,
-  domain: 'custom' as KpiDomain,
-  version: '1.0.0',
-  unit: 'count',
-  dependencies: ['issue-count'],
-  calculate: (context: KpiContext): KpiResult => ({
-    name: 'Double Count',
-    value: context.issues.length * 2,
-    unit: 'count',
-    ticketKeys: context.issues.map((i) => i.key),
-  }),
-  metadata: {
-    description: 'Depends on issue-count plugin',
-    tags: ['test', 'mock', 'dependent'],
-  },
-};
-
-/**
  * Plugin that returns multiple results
  */
 export const multiValuePlugin: KpiPlugin = {
@@ -109,64 +86,6 @@ export const multiValuePlugin: KpiPlugin = {
 };
 
 /**
- * Plugin that uses context dimensions
- */
-export const dimensionPlugin: KpiPlugin = {
-  id: 'dimension-metric',
-  name: 'Dimension Metric',
-  category: 'custom' as KpiCategory,
-  domain: 'custom' as KpiDomain,
-  version: '1.0.0',
-  unit: 'count',
-  calculate: (context: KpiContext): KpiResult => ({
-    name: 'Count by Dimension',
-    value: context.issues.length,
-    unit: 'count',
-    dimensions: context.dimensions,
-    ticketKeys: context.issues.map((i) => i.key),
-  }),
-  metadata: {
-    description: 'Uses context dimensions',
-    tags: ['test', 'mock', 'dimension'],
-  },
-};
-
-/**
- * Plugin with details breakdown
- */
-export const detailsPlugin: KpiPlugin = {
-  id: 'details-metric',
-  name: 'Details Metric',
-  category: 'builtin' as KpiCategory,
-  domain: 'throughput' as KpiDomain,
-  version: '1.0.0',
-  unit: 'count',
-  calculate: (context: KpiContext): KpiResult => {
-    const byPriority = context.issues.reduce((acc, issue) => {
-      const priority = issue.priority || 'Unknown';
-      acc[priority] = (acc[priority] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    return {
-      name: 'Issues by Priority',
-      value: context.issues.length,
-      unit: 'count',
-      details: Object.entries(byPriority).map(([label, value]) => ({
-        label,
-        value,
-        unit: 'count',
-      })),
-      ticketKeys: context.issues.map((i) => i.key),
-    };
-  },
-  metadata: {
-    description: 'Breaks down results by priority',
-    tags: ['test', 'mock', 'details'],
-  },
-};
-
-/**
  * Create a mock plugin with custom configuration
  */
 export function createMockPlugin(
@@ -183,43 +102,6 @@ export function createMockPlugin(
     calculate: () => ({ name: 'Mock', value: 0, unit: 'count' }),
     ...overrides,
   };
-}
-
-/**
- * Create a set of interdependent plugins for testing dependency resolution
- */
-export function createDependentPluginSet(): KpiPlugin[] {
-  return [
-    {
-      id: 'plugin-a',
-      name: 'Plugin A',
-      category: 'builtin' as KpiCategory,
-      domain: 'custom' as KpiDomain,
-      version: '1.0.0',
-      unit: 'count',
-      calculate: () => ({ name: 'A', value: 1, unit: 'count' }),
-    },
-    {
-      id: 'plugin-b',
-      name: 'Plugin B',
-      category: 'builtin' as KpiCategory,
-      domain: 'custom' as KpiDomain,
-      version: '1.0.0',
-      unit: 'count',
-      dependencies: ['plugin-a'],
-      calculate: () => ({ name: 'B', value: 2, unit: 'count' }),
-    },
-    {
-      id: 'plugin-c',
-      name: 'Plugin C',
-      category: 'builtin' as KpiCategory,
-      domain: 'custom' as KpiDomain,
-      version: '1.0.0',
-      unit: 'count',
-      dependencies: ['plugin-a', 'plugin-b'],
-      calculate: () => ({ name: 'C', value: 3, unit: 'count' }),
-    },
-  ];
 }
 
 /**

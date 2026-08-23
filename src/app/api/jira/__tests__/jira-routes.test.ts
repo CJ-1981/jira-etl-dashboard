@@ -165,6 +165,43 @@ describe('POST /api/jira/extract/cleanup', () => {
     expect(json.success).toBe(false);
     expect(json.error).toBe('Invalid cleanup parameters');
   });
+
+  describe('loopback-origin guard', () => {
+    const body = { retentionDays: 30 };
+
+    it('rejects an external origin with 401', async () => {
+      const res = await cleanupPOST(
+        makeRequest('/api/jira/extract/cleanup', {
+          method: 'POST',
+          body,
+          headers: { origin: 'https://evil.example' },
+        })
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(holder.db.etlRun.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await cleanupPOST(
+        makeRequest('/api/jira/extract/cleanup', { method: 'POST', body })
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await cleanupPOST(
+        makeRequest('/api/jira/extract/cleanup', {
+          method: 'POST',
+          body,
+          headers: { origin: 'http://localhost:3000' },
+        })
+      );
+      expect(res.status).toBe(200);
+    });
+  });
 });
 
 // ───────────────────────── POST /api/jira/extract/latest/[connectionId] ─────────────────────────
@@ -201,7 +238,7 @@ describe('POST /api/jira/extract/latest/[connectionId]', () => {
     ]);
     const res = await latestPOST(
       makeRequest('/api/jira/extract/latest/c1', { method: 'POST', body: {} }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     const json = await readJson(res);
@@ -215,7 +252,7 @@ describe('POST /api/jira/extract/latest/[connectionId]', () => {
     // findFirst defaults to null
     const res = await latestPOST(
       makeRequest('/api/jira/extract/latest/c1', { method: 'POST', body: {} }),
-      ctx('c1') as any
+      ctx('c1')
     );
     const json = await readJson(res);
     expect(json.success).toBe(false);
@@ -251,7 +288,7 @@ describe('POST /api/jira/master/[connectionId]', () => {
     ]);
     const res = await masterPOST(
       makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'get' } }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     const json = await readJson(res);
@@ -266,7 +303,7 @@ describe('POST /api/jira/master/[connectionId]', () => {
     // findMany defaults to []
     const res = await masterPOST(
       makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'get' } }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     const json = await readJson(res);
@@ -279,7 +316,7 @@ describe('POST /api/jira/master/[connectionId]', () => {
     holder.db.etlRun.findMany.mockResolvedValue([{ id: 'r1' }]);
     const res = await masterPOST(
       makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'delete' } }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     const json = await readJson(res);
@@ -292,12 +329,50 @@ describe('POST /api/jira/master/[connectionId]', () => {
   it('rejects an unknown action', async () => {
     const res = await masterPOST(
       makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'noop' } }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(400);
     const json = await readJson(res);
     expect(json.success).toBe(false);
     expect(json.error).toBe('Invalid action');
+  });
+
+  describe('loopback-origin guard', () => {
+    it('rejects an external origin with 401', async () => {
+      const res = await masterPOST(
+        makeRequest('/api/jira/master/c1', {
+          method: 'POST',
+          body: { action: 'delete' },
+          headers: { origin: 'https://evil.example' },
+        }),
+        ctx('c1')
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(holder.db.masterTicket.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await masterPOST(
+        makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'get' } }),
+        ctx('c1')
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await masterPOST(
+        makeRequest('/api/jira/master/c1', {
+          method: 'POST',
+          body: { action: 'get' },
+          headers: { origin: 'http://localhost:3000' },
+        }),
+        ctx('c1')
+      );
+      expect(res.status).toBe(200);
+    });
   });
 });
 
@@ -307,13 +382,41 @@ describe('DELETE /api/jira/master/[connectionId]', () => {
     holder.db.etlRun.findMany.mockResolvedValue([{ id: 'r1' }]);
     const res = await masterDELETE(
       makeRequest('/api/jira/master/c1', { method: 'DELETE' }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     const json = await readJson(res);
     expect(json.success).toBe(true);
     expect(holder.db.masterTicket.deleteMany).toHaveBeenCalled();
     expect(holder.db.etlRun.deleteMany).toHaveBeenCalled();
+  });
+
+  describe('loopback-origin guard', () => {
+    it('rejects an external origin with 401', async () => {
+      const res = await masterDELETE(
+        makeRequest('/api/jira/master/c1', {
+          method: 'DELETE',
+          headers: { origin: 'https://evil.example' },
+        }),
+        ctx('c1')
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+      expect(holder.db.masterTicket.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await masterDELETE(
+        makeRequest('/api/jira/master/c1', {
+          method: 'DELETE',
+          headers: { origin: 'http://localhost:3000' },
+        }),
+        ctx('c1')
+      );
+      expect(res.status).toBe(200);
+    });
   });
 });
 
@@ -323,7 +426,7 @@ describe('DELETE /api/jira/connections/[connectionId]', () => {
     holder.db.etlRun.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
     const res = await connectionsDELETE(
       makeRequest('/api/jira/connections/c1', { method: 'DELETE' }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     const json = await readJson(res);
@@ -338,7 +441,7 @@ describe('DELETE /api/jira/connections/[connectionId]', () => {
   it('deletes KPI results by connectionRef (covers orphaned rows with NULL etlRunId)', async () => {
     const res = await connectionsDELETE(
       makeRequest('/api/jira/connections/c1', { method: 'DELETE' }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     expect(holder.db.kpiResult.deleteMany).toHaveBeenCalledWith({
@@ -349,7 +452,7 @@ describe('DELETE /api/jira/connections/[connectionId]', () => {
   it('deletes dashboard views for the connection', async () => {
     const res = await connectionsDELETE(
       makeRequest('/api/jira/connections/c1', { method: 'DELETE' }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     expect(holder.db.dashboardView.deleteMany).toHaveBeenCalledWith({
@@ -362,7 +465,7 @@ describe('DELETE /api/jira/connections/[connectionId]', () => {
     holder.db.ticketSnapshot.findMany.mockResolvedValue([{ id: 's1' }]);
     const res = await connectionsDELETE(
       makeRequest('/api/jira/connections/c1', { method: 'DELETE' }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     // Expected FK-safe order: referencing rows are removed before the rows
@@ -386,7 +489,7 @@ describe('DELETE /api/jira/connections/[connectionId]', () => {
     // findMany defaults to []
     const res = await connectionsDELETE(
       makeRequest('/api/jira/connections/c1', { method: 'DELETE' }),
-      ctx('c1') as any
+      ctx('c1')
     );
     expect(res.status).toBe(200);
     const json = await readJson(res);
@@ -405,7 +508,7 @@ describe('DELETE /api/jira/connections/[connectionId]', () => {
       method: 'DELETE',
       headers: { origin: 'https://evil.com' },
     });
-    const res = await connectionsDELETE(req, ctx('c1') as any);
+    const res = await connectionsDELETE(req, ctx('c1'));
     expect(res.status).toBe(401);
     const json = await readJson(res);
     expect(json.success).toBe(false);
@@ -509,6 +612,40 @@ describe('/api/jira/poll', () => {
     const json = await readJson(res);
     expect(json.success).toBe(true);
     expect(json.polling).toBeDefined();
+  });
+
+  describe('loopback-origin guard', () => {
+    it('rejects an external origin with 401', async () => {
+      const res = await pollPOST(
+        makeRequest('/api/jira/poll', {
+          method: 'POST',
+          body: { enabled: false },
+          headers: { origin: 'https://evil.example' },
+        })
+      );
+      expect(res.status).toBe(401);
+      const json = await readJson(res);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Cross-origin request rejected');
+    });
+
+    it('accepts a header-less request', async () => {
+      const res = await pollPOST(
+        makeRequest('/api/jira/poll', { method: 'POST', body: { enabled: false } })
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts a localhost origin', async () => {
+      const res = await pollPOST(
+        makeRequest('/api/jira/poll', {
+          method: 'POST',
+          body: { enabled: false },
+          headers: { origin: 'http://localhost:3000' },
+        })
+      );
+      expect(res.status).toBe(200);
+    });
   });
 });
 

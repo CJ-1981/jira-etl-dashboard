@@ -75,7 +75,17 @@ export interface KpiResult {
  */
 export interface TimeSeriesDataPoint {
   period: string;
-  date: Date;
+  /**
+   * Period end date.
+   * @MX:WARN: Typed `Date | string` because KPI results cross a JSON
+   * serialization boundary (API responses / storage): after a round-trip a
+   * `Date` arrives as an ISO-8601 string. Consumers must never call Date
+   * methods on this field directly — normalize first, e.g.
+   * `new Date(point.date).getTime()`.
+   * @MX:REASON: Prevents the "type lie" where the static type promised Date
+   * but runtime values were strings, crashing `.getTime()` callers.
+   */
+  date: Date | string;
   value: number;
   count: number;
   isComplete?: boolean;

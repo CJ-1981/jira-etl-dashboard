@@ -13,6 +13,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import slaByStatusWeeklyPlugin from '../sla/sla-by-status-weekly';
 import slaByStatusExclCloneWeeklyPlugin from '../sla/sla-by-status-excl-clone-weekly';
 import slaComplianceWeeklyPlugin from '../sla/sla-compliance-weekly';
+import slaByStatusPlugin from '../../builtin/sla/sla-by-status';
+import slaByStatusExclClonePlugin from '../../builtin/sla/sla-by-status-excl-clone';
 import { createMockContext } from '../../../__tests__/mocks';
 import type { TransformedIssue, HolidayContext } from '../../../types';
 
@@ -157,6 +159,41 @@ describe('sla_by_status_trend (weekly) Plugin', () => {
     expect(r.timeSeries.some((p: any) => p.isComplete === false)).toBe(true);
     expect(r.details?.some((d: any) => String(d.label).includes('incomplete'))).toBe(true);
   });
+
+  it('resets the SLA clock to the last assignee comment, matching the builtin card', () => {
+    // In Progress for 12 business hours (Jan 16 09:00 -> Jan 17 13:00) -> breach of the 8h
+    // target unless the assignee comment at Jan 17 10:00 resets the clock (then 3h -> met).
+    const issues = [
+      makeIssue({
+        key: 'RESET',
+        assignee: 'Alice',
+        created: D(2024, 0, 16, 9),
+        resolved: D(2024, 0, 17, 13),
+        status: 'Done',
+        statusCategory: 'Done',
+        transitions: [
+          { fromStatus: 'Open', toStatus: 'In Progress', author: 'x', occurredAt: D(2024, 0, 16, 9) },
+          { fromStatus: 'In Progress', toStatus: 'Done', author: 'x', occurredAt: D(2024, 0, 17, 13) },
+        ],
+        comments: [{ author: 'Alice', created: D(2024, 0, 17, 10) }],
+      }),
+    ];
+    const context = createMockContext(0, { issues: issues as any, period, slaTargets: statusTargets });
+
+    // The builtin card honors the comment-based reset -> within SLA
+    const cardResults = slaByStatusPlugin.calculate(context) as any[];
+    expect(cardResults).toHaveLength(1);
+    expect(cardResults[0].value).toBe(100);
+
+    // The weekly trend bucket must use the same rules
+    const results = slaByStatusWeeklyPlugin.calculate(context) as any[];
+    expect(results).toHaveLength(1);
+    const r = results[0];
+    expect(r.value).toBe(100);
+    const week = r.timeSeries.find((p: any) => p.count === 1);
+    expect(week).toBeDefined();
+    expect(week.value).toBe(100);
+  });
 });
 
 describe('sla_by_status_excl_clone_trend (weekly) Plugin', () => {
@@ -204,6 +241,79 @@ describe('sla_by_status_excl_clone_trend (weekly) Plugin', () => {
     // The met week has count 1 (not 2) -> confirms clone exclusion
     const metWeek = r.timeSeries.find((p: any) => p.value === 100 && p.count === 1);
     expect(metWeek).toBeDefined();
+  });
+
+  it('resets the SLA clock to the last assignee comment, matching the builtin excl-clone card', () => {
+    // In Progress for 12 business hours (Jan 16 09:00 -> Jan 17 13:00) -> breach of the 8h
+    // target unless the assignee comment at Jan 17 10:00 resets the clock (then 3h -> met).
+    const issues = [
+      makeIssue({
+        key: 'RESET',
+        assignee: 'Alice',
+        created: D(2024, 0, 16, 9),
+        resolved: D(2024, 0, 17, 13),
+        status: 'Done',
+        statusCategory: 'Done',
+        transitions: [
+          { fromStatus: 'Open', toStatus: 'In Progress', author: 'x', occurredAt: D(2024, 0, 16, 9) },
+          { fromStatus: 'In Progress', toStatus: 'Done', author: 'x', occurredAt: D(2024, 0, 17, 13) },
+        ],
+        comments: [{ author: 'Alice', created: D(2024, 0, 17, 10) }],
+      }),
+    ];
+    const context = createMockContext(0, { issues: issues as any, period, slaTargets: statusTargets });
+
+    // The builtin excl-clone card honors the comment-based reset -> within SLA
+    const cardResults = slaByStatusExclClonePlugin.calculate(context) as any[];
+    expect(cardResults).toHaveLength(1);
+    expect(cardResults[0].value).toBe(100);
+
+    // The weekly trend bucket must use the same rules
+    const results = slaByStatusExclCloneWeeklyPlugin.calculate(context) as any[];
+    expect(results).toHaveLength(1);
+    const r = results[0];
+    expect(r.value).toBe(100);
+    const week = r.timeSeries.find((p: any) => p.count === 1);
+    expect(week).toBeDefined();
+    expect(week.value).toBe(100);
+  });
+
+  it('applies useAnyoneCommentsForSla to the comment-based reset like the builtin card', () => {
+    // Non-assignee comment at Jan 17 10:00; only counts when useAnyoneCommentsForSla is set.
+    const resetIssue = () =>
+      makeIssue({
+        key: 'RESET',
+        assignee: 'Alice',
+        created: D(2024, 0, 16, 9),
+        resolved: D(2024, 0, 17, 13), // 12 business hours -> breach without reset
+        status: 'Done',
+        statusCategory: 'Done',
+        transitions: [
+          { fromStatus: 'Open', toStatus: 'In Progress', author: 'x', occurredAt: D(2024, 0, 16, 9) },
+          { fromStatus: 'In Progress', toStatus: 'Done', author: 'x', occurredAt: D(2024, 0, 17, 13) },
+        ],
+        comments: [{ author: 'Bob', created: D(2024, 0, 17, 10) }],
+      });
+
+    // default: only assignee comments count -> Bob ignored -> breach
+    const ctxAssigneeOnly = createMockContext(0, {
+      issues: [resetIssue()] as any,
+      period,
+      slaTargets: statusTargets,
+      useAnyoneCommentsForSla: false,
+    });
+    const r1 = (slaByStatusExclCloneWeeklyPlugin.calculate(ctxAssigneeOnly) as any[])[0];
+    expect(r1.value).toBe(0);
+
+    // anyone mode: Bob's comment resets the clock -> within SLA
+    const ctxAnyone = createMockContext(0, {
+      issues: [resetIssue()] as any,
+      period,
+      slaTargets: statusTargets,
+      useAnyoneCommentsForSla: true,
+    });
+    const r2 = (slaByStatusExclCloneWeeklyPlugin.calculate(ctxAnyone) as any[])[0];
+    expect(r2.value).toBe(100);
   });
 });
 

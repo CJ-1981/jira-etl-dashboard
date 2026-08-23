@@ -90,7 +90,8 @@ function calculateOpenTicketsByAssigneeTrend(
     }
 
     // Sort by date
-    timeSeries.sort((a, b) => a.date.getTime() - b.date.getTime());
+    // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
+    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Current value issues (at last complete period end)
     const completePoints = timeSeries.filter(p => p.isComplete);
