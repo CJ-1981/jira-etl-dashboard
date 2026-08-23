@@ -101,7 +101,7 @@ describe('first_time_resolution_rate', () => {
     const results = firstTimeResolutionPlugin.calculate(makeContext(issues, now));
 
     expect(results).toHaveLength(1);
-    const r = results[0];
+    const r = (results as any[])[0];
     expect(r.name).toBe('First-Time Resolution Rate');
     // 2 first-time of 3 resolved → 66.67%
     expect(r.value).toBe(66.67);
@@ -130,14 +130,14 @@ describe.skipIf(!hasFixture)('first_time_resolution_rate — real data smoke tes
     const results = firstTimeResolutionPlugin.calculate(makeContext(issues, new Date()));
 
     expect(results).toHaveLength(1);
-    const r = results[0];
+    const r = (results as any[])[0];
     expect(r.value).toBeGreaterThanOrEqual(0);
     expect(r.value).toBeLessThanOrEqual(100);
 
-    const firstTime = r.details?.find((d) => d.label === 'First-Time Resolved')?.value ?? -1;
-    const reassigned = r.details?.find((d) => d.label === 'Reassigned Before Resolution')?.value ?? -1;
-    const totalResolved = r.details?.find((d) => d.label === 'Total Resolved')?.value ?? -1;
-    const resolvedInFixture = issues.filter((i) => i.resolved).length;
+    const firstTime = r.details?.find((d: any) => d.label === 'First-Time Resolved')?.value ?? -1;
+    const reassigned = r.details?.find((d: any) => d.label === 'Reassigned Before Resolution')?.value ?? -1;
+    const totalResolved = r.details?.find((d: any) => d.label === 'Total Resolved')?.value ?? -1;
+    const resolvedInFixture = issues.filter((i: any) => i.resolved).length;
     expect(firstTime + reassigned).toBe(totalResolved);
     expect(totalResolved).toBe(resolvedInFixture);
 

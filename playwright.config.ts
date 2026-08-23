@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test';
 
 const isCI = !!process.env.CI;
 
+// Allow overriding the base URL via environment variable for different environments
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
+
 // E2E tests for the JIRA ETL Dashboard.
 //
 // The dev server is bootstrapped (or reused) via the webServer option below.
@@ -24,7 +27,7 @@ export default defineConfig({
     timeout: 10_000,
   },
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -39,7 +42,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3000',
+    url: baseURL,
     reuseExistingServer: !isCI,
     // First boot runs the predev prisma setup + an initial Next.js compile,
     // so give it plenty of room.

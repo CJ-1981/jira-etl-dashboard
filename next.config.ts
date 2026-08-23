@@ -21,11 +21,12 @@ const nextConfig: NextConfig = {
   },
   // TypeScript configuration
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
 
-  // React strict mode (recommended to keep true for better error detection)
-  reactStrictMode: false,
+  // React strict mode helps catch side-effect bugs and unsafe lifecycle usage
+  // during development. Double-render checks are stripped in production builds.
+  reactStrictMode: true,
 
   // Webpack configuration for production builds
   webpack: (config, { dev, isServer }) => {
@@ -50,19 +51,6 @@ const nextConfig: NextConfig = {
         'node:http': false,
         'node:zlib': false,
       };
-      
-      // Explicitly tell webpack to ignore node: schemes
-      config.externals = [
-        ...(config.externals || []),
-        { 
-          'node:fs': 'empty', 
-          'node:path': 'empty', 
-          'node:crypto': 'empty',
-          'node:https': 'empty',
-          'node:http': 'empty',
-          'node:zlib': 'empty'
-        }
-      ];
     }
 
     if (!dev && !isServer) {
@@ -124,21 +112,23 @@ const nextConfig: NextConfig = {
           {
             key: 'Referrer-Policy',
             value: 'origin-when-cross-origin'
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload'
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(), payment=()'
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.jira.com https://*.atlassian.net"
           }
         ]
       }
     ];
   },
-
-  // Redirects
-  async redirects() {
-    return [];
-  },
-
-  // Rewrites for API proxying if needed
-  async rewrites() {
-    return [];
-  }
 };
 
 export default nextConfig;

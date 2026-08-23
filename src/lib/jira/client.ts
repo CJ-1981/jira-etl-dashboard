@@ -92,7 +92,10 @@ export class JiraClient {
   }
 
   private getHeaders(): HeadersInit {
-    const auth = Buffer.from(`${this.config.email}:${this.config.apiToken}`).toString('base64');
+    // Use btoa for browser compatibility; Buffer is Node.js only
+    const auth = typeof Buffer !== 'undefined'
+      ? Buffer.from(`${this.config.email}:${this.config.apiToken}`).toString('base64')
+      : btoa(`${this.config.email}:${this.config.apiToken}`);
     return {
       Authorization: `Basic ${auth}`,
       'Content-Type': 'application/json',
@@ -643,14 +646,23 @@ export function extractSelectFieldValue(field: any): string | null {
 
 /**
  * Transform raw Jira issues into a flat, analysis-ready format
+ * @param fieldMapping Optional field mapping to override default field IDs
  */
-export function transformIssue(issue: JiraIssue) {
+export function transformIssue(issue: JiraIssue, fieldMapping?: Partial<JiraFieldMapping>) {
   const transitions = extractTransitions(issue);
 
+  // Use the field mapping consistently instead of hardcoded field IDs
+  const mapping: JiraFieldMapping = {
+    storyPointsField: fieldMapping?.storyPointsField || JIRA_FIELD_MAP.storyPointsField,
+    issueOwnerTeamField: fieldMapping?.issueOwnerTeamField || JIRA_FIELD_MAP.issueOwnerTeamField,
+    sprintField: fieldMapping?.sprintField || JIRA_FIELD_MAP.sprintField,
+    epicLinkField: fieldMapping?.epicLinkField || JIRA_FIELD_MAP.epicLinkField,
+  };
+
   // Extract Issue Owner Team value from select field object
-  // @MX:NOTE: Use hardcoded customfield_10132 for Issue Owner Team (LTIC)
-  // @MX:REASON: Custom Jira field that varies by instance; use REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD env var to override
-  const issueOwnerTeam = extractSelectFieldValue(issue.fields.customfield_10132);
+  const issueOwnerTeam = extractSelectFieldValue(
+    (issue.fields as Record<string, unknown>)[mapping.issueOwnerTeamField]
+  );
 
   return {
     key: issue.key,
@@ -666,7 +678,7 @@ export function transformIssue(issue: JiraIssue) {
     updated: issue.fields.updated,
     resolved: issue.fields.resolutiondate || null,
     dueDate: issue.fields.duedate || null,
-    storyPoints: (issue.fields as Record<string, unknown>)[JIRA_FIELD_MAP.storyPointsField] as number | null,
+    storyPoints: (issue.fields as Record<string, unknown>)[mapping.storyPointsField] as number | null,
     labels: issue.fields.labels || [],
     components: issue.fields.components?.map((c) => c.name) || [],
     transitions,
@@ -674,9 +686,11 @@ export function transformIssue(issue: JiraIssue) {
   };
 }
 
-const JIRA_FIELD_MAP = {
+const JIRA_FIELD_MAP: JiraFieldMapping = {
   storyPointsField: 'customfield_10002',
   issueOwnerTeamField: 'customfield_10132', // Issue Owner Team (LTIC) - select field
+  sprintField: 'customfield_10020',
+  epicLinkField: 'customfield_10014',
 };
 
 function extractTransitions(issue: JiraIssue): Array<{

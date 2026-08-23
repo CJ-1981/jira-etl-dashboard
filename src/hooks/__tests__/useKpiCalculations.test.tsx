@@ -1008,7 +1008,6 @@ describe('useKpiCalculations - React Query Integration', () => {
       () => {
         const queries = queryClient.getQueryCache().findAll();
         expect(queries.length).toBeGreaterThan(0);
-        // @MX:NOTE: Query key uses serialized strings for stable comparison
         expect(queries[0].queryKey[0]).toBe('kpi-results');
         expect(queries[0].queryKey[1]).toBe('test-conn-1');
         expect(queries[0].queryKey[2]).toBe('US');

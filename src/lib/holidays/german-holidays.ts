@@ -194,7 +194,8 @@ function getBusinessHoursCacheKey(
   workEndHour: number,
   holidayDateSet?: Set<string>
 ): string {
-  const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'none';
+  // Copy before sorting to avoid mutating the caller's array
+  const regionsKey = regions.length > 0 ? [...regions].sort().join(',') : 'none';
   // Use sorted holiday dates to create a stable, unique cache key
   const holidayKey = holidayDateSet ? `set-${Array.from(holidayDateSet).sort().join(',')}` : 'dynamic';
   return `${startDate.getTime()}-${endDate.getTime()}-${regionsKey}-${workStartHour}-${workEndHour}-${holidayKey}`;
