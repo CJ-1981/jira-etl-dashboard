@@ -4,6 +4,11 @@ import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { StorageConfigSchema } from '@/lib/validation/schemas';
 
+/** Narrow slice of a DashboardView row — only the fields this handler reads. */
+interface DashboardViewRow {
+  id: string;
+}
+
 /**
  * GET /api/dashboard/views/bulk
  * Fetches ALL dashboard views across all connections.
@@ -29,7 +34,7 @@ export async function GET(request: Request) {
     }
 
     const db = getDb(storageConfig);
-    const views = await (db as any).dashboardView.findMany({
+    const views = await db.dashboardView.findMany({
       orderBy: { updatedAt: 'desc' }
     });
 
@@ -102,8 +107,8 @@ export async function POST(request: Request) {
     // without one receive a deterministic content-derived id (see stableViewId)
     // so re-importing the same payload updates existing rows instead of
     // duplicating them.
-    const results: any[] = await (db as any).$transaction(async (tx: any) => {
-      const upserted: any[] = [];
+    const results = await db.$transaction(async (tx) => {
+      const upserted: DashboardViewRow[] = [];
       for (const viewData of views) {
         const { id, name, connectionRef, data, isDefault, autoSaveEnabled } = viewData;
         const effectiveId = id || stableViewId(viewData);
@@ -125,7 +130,7 @@ export async function POST(request: Request) {
             isDefault: !!isDefault,
             autoSaveEnabled: !!autoSaveEnabled,
           }
-        });
+        }) as DashboardViewRow;
 
         // @MX:WARN - Concurrency Risk: Atomic default view enforcement required
         // @MX:REASON - Importing multiple views flagged isDefault would otherwise leave several

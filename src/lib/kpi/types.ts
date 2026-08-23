@@ -5,6 +5,75 @@
  */
 
 import type { GermanState } from '../holidays/german-holidays';
+import type { JiraIssue } from '../jira/client';
+
+// ─── KPI Issue Input Shapes ───────────────────────────────────────────────────
+/**
+ * @MX:ANCHOR: KPI issue input union
+ * @MX:REASON: transformIssueForKpi historically accepted two shapes and relied
+ * on `as any` fallback chains to read them. This union makes both shapes
+ * explicit so the transform can be written with zero `as any` casts.
+ */
+
+/**
+ * Flat, normalized issue representation (e.g. webhook/master-derived data that
+ * has already been flattened to top-level scalar fields). Discriminated from a
+ * real Jira issue via the `'fields' in issue` check: flat issues carry their
+ * data at the top level and have no `fields` object.
+ */
+export interface FlatIssue {
+  key: string;
+  summary?: string;
+  issueType?: string;
+  priority?: string | null;
+  status?: string;
+  statusCategory?: string;
+  assignee?: string;
+  reporter?: string;
+  issueOwnerTeam?: string | null;
+  /** ISO-8601 date string */
+  created?: string;
+  /** ISO-8601 date string */
+  updated?: string;
+  /** ISO-8601 date string */
+  resolved?: string | null;
+  /** ISO-8601 date string */
+  dueDate?: string | null;
+  storyPoints?: number | null;
+  labels?: string[];
+  /** Component names (already flattened, unlike JiraIssue's `{ name }[]`) */
+  components?: string[];
+  /** Raw changelog, same structure as on a Jira issue when present */
+  changelog?: JiraIssue['changelog'];
+}
+
+/**
+ * Jira issue as consumed by the KPI transform. Structurally identical to the
+ * client's JiraIssue, plus the extra `fields` properties that real Jira
+ * payloads carry but the minimal client type does not declare (`project`,
+ * `comment`, a named `issueOwnerTeam`, and arbitrary `customfield_*` IDs used
+ * for dynamic field lookup). Every addition is optional, so any value typed as
+ * the client JiraIssue is directly assignable to this shape.
+ */
+export interface KpiJiraIssue extends Omit<JiraIssue, 'fields'> {
+  fields: JiraIssue['fields'] & {
+    project?: { name?: string; key?: string };
+    comment?: {
+      comments?: Array<{
+        author?: { displayName?: string };
+        created: string | number | Date;
+      }>;
+    };
+    issueOwnerTeam?: unknown;
+    [customFieldId: string]: unknown;
+  };
+}
+
+/**
+ * Explicit union of the two issue shapes accepted by transformIssueForKpi.
+ * Use `'fields' in issue` to discriminate: `true` -> KpiJiraIssue, `false` -> FlatIssue.
+ */
+export type KpiIssueInput = KpiJiraIssue | FlatIssue;
 
 /**
  * Domain categories for KPI plugins

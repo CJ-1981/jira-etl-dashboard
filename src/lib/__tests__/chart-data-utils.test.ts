@@ -17,6 +17,8 @@ import {
   getKpiOptions,
   getRecommendedChartType,
   formatChartValue,
+  extractWeeklyBreakdown,
+  WEEKLY_BREAKDOWN_LABELS,
   type KpiResult,
 } from '../chart-data-utils';
 import { KEYS } from '../config/local-store';
@@ -157,6 +159,30 @@ describe('transformForBarChart', () => {
     expect(out[0].thisWeek).toBe(3);
     expect(out[0].prevWeek).toBe(2);
     expect(out[0].existing).toBe(5);
+  });
+
+  it('adds weekly breakdown from details using the OLD label format (This Week/Previous Week)', () => {
+    // Legacy plugins emit 'This Week'/'Previous Week' instead of the newer
+    // '1 week old' labels; the shared helper must recognize both.
+    const kpi: KpiResult = {
+      pluginId: 'open_tickets',
+      results: [
+        {
+          name: 'Total',
+          value: 9,
+          unit: 'count',
+          details: [
+            { label: 'This Week', value: 4 },
+            { label: 'Previous Week', value: 5 },
+          ],
+        },
+      ],
+    };
+    const out = transformForBarChart([kpi], 'open_tickets');
+    expect(out).toHaveLength(1);
+    expect(out[0].thisWeek).toBe(4);
+    expect(out[0].prevWeek).toBe(5);
+    expect(out[0].existing).toBeUndefined();
   });
 
   it('maps multiple distribution results to palette-colored bars', () => {
@@ -523,12 +549,27 @@ describe('isTimeSeriesPlugin', () => {
     expect(isTimeSeriesPlugin('plugin-throughput_trend')).toBe(true);
   });
 
-  it('returns true for the curated time-series plugin ids', () => {
-    expect(isTimeSeriesPlugin('open_tickets_by_assignee_trend')).toBe(true);
-    expect(isTimeSeriesPlugin('open_tickets_by_priority_trend')).toBe(true);
-    expect(isTimeSeriesPlugin('open_tickets_by_status_trend')).toBe(true);
+  it('classifies real *_trend plugin ids as time-series (curated list removed)', () => {
+    // The former hardcoded timeSeriesPluginIds list was deleted: every real
+    // trend plugin id contains 'trend', so the includes('trend') check above
+    // already catches them. Verify the real ids still classify correctly.
     expect(isTimeSeriesPlugin('throughput_trend')).toBe(true);
-    expect(isTimeSeriesPlugin('cumulative_flow')).toBe(true);
+    expect(isTimeSeriesPlugin('sla_by_status_trend')).toBe(true);
+    expect(isTimeSeriesPlugin('sla_by_status_excl_clone_trend')).toBe(true);
+    expect(isTimeSeriesPlugin('sla_trend')).toBe(true);
+    expect(isTimeSeriesPlugin('processing_time_trend')).toBe(true);
+    expect(isTimeSeriesPlugin('priority_inflow_trend')).toBe(true);
+    expect(isTimeSeriesPlugin('open_tickets_by_assignee_trend')).toBe(true);
+    expect(isTimeSeriesPlugin('cumulative_flow_trend')).toBe(true);
+  });
+
+  it('no longer treats the removed dead id "cumulative_flow" as time-series', () => {
+    // 'cumulative_flow' (no _trend suffix) matched no real plugin; the real id
+    // is 'cumulative_flow_trend'. After deleting the curated list it is only
+    // time-series if the registry says so.
+    expect(isTimeSeriesPlugin('cumulative_flow')).toBe(false);
+    // The real plugin id still classifies.
+    expect(isTimeSeriesPlugin('cumulative_flow_trend')).toBe(true);
   });
 
   it('returns false for a plain distribution plugin', () => {
@@ -624,12 +665,12 @@ describe('getKpiOptions', () => {
       { pluginId: 'open_tickets_by_status', results: [{ name: 'x', value: 1, unit: 'count' }] },
       { pluginId: 'throughput_trend', results: [{ name: 'x', value: 1, unit: 'count' }] },
       { pluginId: 'aging_report', results: [{ name: 'x', value: 1, unit: 'count' }] },
-      { pluginId: 'cumulative_flow', results: [{ name: 'x', value: 1, unit: 'count' }] },
+      { pluginId: 'cumulative_flow_trend', results: [{ name: 'x', value: 1, unit: 'count' }] },
     ];
     const { timeSeries, regular } = getKpiOptions(kpis);
-    // Time-series: throughput_trend + cumulative_flow, sorted by label.
+    // Time-series: cumulative_flow_trend + throughput_trend, sorted by label.
     expect(timeSeries).toEqual([
-      { id: 'cumulative_flow', label: '📈 Cumulative Flow' },
+      { id: 'cumulative_flow_trend', label: '📈 Cumulative Flow Trend' },
       { id: 'throughput_trend', label: '📈 Throughput Trend' },
     ]);
     // Regular: aging_report + open_tickets_by_status, sorted alphabetically.
@@ -735,5 +776,49 @@ describe('formatChartValue', () => {
     expect(formatChartValue(42)).toBe('42.0');
     expect(formatChartValue(42, 'ms')).toBe('42.0ms');
     expect(formatChartValue(42, undefined)).toBe('42.0');
+  });
+});
+
+describe('WEEKLY_BREAKDOWN_LABELS', () => {
+  it('covers both the legacy and the current detail label formats', () => {
+    expect(WEEKLY_BREAKDOWN_LABELS).toContain('This Week');
+    expect(WEEKLY_BREAKDOWN_LABELS).toContain('Previous Week'); // legacy
+    expect(WEEKLY_BREAKDOWN_LABELS).toContain('1 week old'); // current
+    expect(WEEKLY_BREAKDOWN_LABELS).toContain('2+ weeks old'); // current
+  });
+});
+
+describe('extractWeeklyBreakdown', () => {
+  it('returns an empty object for undefined or empty details', () => {
+    expect(extractWeeklyBreakdown(undefined)).toEqual({});
+    expect(extractWeeklyBreakdown([])).toEqual({});
+  });
+
+  it('parses the new format (This Week / 1 week old / 2+ weeks old)', () => {
+    const out = extractWeeklyBreakdown([
+      { label: 'This Week', value: 3 },
+      { label: '1 week old', value: 2 },
+      { label: '2+ weeks old', value: 5 },
+    ]);
+    expect(out).toEqual({ thisWeek: 3, prevWeek: 2, existing: 5 });
+  });
+
+  it('parses the legacy format (This Week / Previous Week)', () => {
+    const out = extractWeeklyBreakdown([
+      { label: 'This Week', value: 4 },
+      { label: 'Previous Week', value: 5 },
+    ]);
+    expect(out).toEqual({ thisWeek: 4, prevWeek: 5 });
+    expect(out.existing).toBeUndefined();
+  });
+
+  it('rounds values to 2 decimals and omits absent buckets', () => {
+    const out = extractWeeklyBreakdown([
+      { label: 'This Week', value: 1.23456 },
+      { label: '2+ weeks old', value: 7 },
+    ]);
+    expect(out.thisWeek).toBe(1.23);
+    expect(out.prevWeek).toBeUndefined();
+    expect(out.existing).toBe(7);
   });
 });

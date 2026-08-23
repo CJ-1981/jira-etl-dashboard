@@ -3,6 +3,11 @@ import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
 import { StorageConfigSchema } from '@/lib/validation/schemas';
 
+/** Narrow slice of a DashboardView row — only the fields this handler reads. */
+interface DashboardViewRow {
+  connectionRef: string;
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -33,7 +38,7 @@ export async function PATCH(
     const db = getDb(storageConfig);
     
     // Fetch current view to get connectionRef if we need to update isDefault
-    const currentView = await (db as any).dashboardView.findUnique({ where: { id } });
+    const currentView = await db.dashboardView.findUnique({ where: { id } }) as DashboardViewRow | null;
     if (!currentView) {
       return NextResponse.json({ success: false, error: 'View not found' }, { status: 404 });
     }
@@ -45,7 +50,7 @@ export async function PATCH(
     
     if (isDefault !== undefined) updateData.isDefault = !!isDefault;
 
-    const view = await (db as any).$transaction(async (tx: any) => {
+    const view = await db.$transaction(async (tx) => {
       // @MX:WARN - Concurrency Risk: Atomic default view update required
       // @MX:REASON - Unsetting other defaults and setting the new one must happen in a single 
       // transaction to prevent race conditions where multiple views might be marked as default.
@@ -99,7 +104,7 @@ export async function DELETE(
     }
 
     const db = getDb(storageConfig);
-    await (db as any).dashboardView.delete({ where: { id } });
+    await db.dashboardView.delete({ where: { id } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -12,7 +12,7 @@
  * `no-cors` text/plain request to the localhost server. Browsers attach an
  * `origin` (or `referer`) header to such cross-origin POSTs, so we reject
  * every request whose origin is not a loopback address. Requests without
- * these headers (server-side fetches, curl, Electron main process) pass.
+ * these headers (server-side fetches, curl, packaged-app launcher) pass.
  */
 export function isLoopbackOriginRequest(request: Request): boolean {
   const headerValue =

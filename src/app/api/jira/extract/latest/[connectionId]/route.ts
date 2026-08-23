@@ -5,6 +5,20 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
+/** Narrow slice of the EtlRun row (with snapshots) this handler reads. */
+interface LatestRunRow {
+  id: string;
+  jql: string | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  completedAt: string | Date | null;
+  ticketsProcessed: number | null;
+  ticketSnapshots?: Array<{
+    jiraKey: string;
+    transitions?: unknown[];
+  }>;
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ connectionId: string }> }
@@ -17,7 +31,7 @@ export async function POST(
 
   try {
     // Find the latest completed ETL run for this specific connection
-    const latestRun = await (db as any).etlRun.findFirst({
+    const latestRun = await db.etlRun.findFirst({
       where: { 
         connectionRef: connectionId,
         status: 'completed',
@@ -31,7 +45,7 @@ export async function POST(
           }
         }
       }
-    }) as any;
+    }) as LatestRunRow | null;
 
     if (!latestRun) {
       return NextResponse.json({ success: false, error: 'No saved extractions for this connection' });
@@ -41,7 +55,7 @@ export async function POST(
     // @MX:REASON: TicketSnapshot has no rawData or issueOwnerTeam columns, so restoring from
     // snapshots silently dropped all custom fields and owner-team values. MasterTicket stores
     // the full raw issue JSON plus all flattened fields incl. issueOwnerTeam.
-    const masterTickets = await (db as any).masterTicket.findMany({
+    const masterTickets = await db.masterTicket.findMany({
       where: { connectionRef: connectionId }
     });
 

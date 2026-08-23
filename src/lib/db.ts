@@ -40,7 +40,14 @@ export interface DbClient {
   masterTicket: PrismaModelDelegate;
   kpiResult: PrismaModelDelegate;
   dashboardView: PrismaModelDelegate;
+  /** Interactive transaction: the callback receives a transactional client. */
   $transaction<T>(fn: (tx: DbClient) => Promise<T>): Promise<T>;
+  /**
+   * Batch transaction: executes an array of promise-like model operations
+   * (PrismaPromise[]) atomically. Kept structural/loose on purpose — the
+   * concrete Prisma promise types are deliberately not imported here.
+   */
+  $transaction<R = unknown>(operations: ReadonlyArray<PromiseLike<R>>): Promise<R[]>;
   $queryRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
   $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   $disconnect(): Promise<void>;
@@ -225,9 +232,10 @@ export function getDb(config?: string | { provider?: string, connectionId?: stri
   try {
     if (provider === 'postgres') {
       // Single cast at the boundary: the generated client structurally matches
-      // the DbClient model surface; only $transaction's extra batch overload
-      // (PrismaPromise[]) prevents direct assignability, which is harmless here
-      // because callers only use the interactive (callback) form.
+      // the DbClient model surface; the remaining mismatches (branded
+      // PrismaPromise[] in the batch $transaction overload, fully-generic
+      // model method signatures) are nominal-only and harmless because the
+      // structural DbClient type is what every caller programs against.
       client = new PostgresClient({
         datasources: { db: { url: effectiveUrl } },
         log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],

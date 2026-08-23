@@ -145,7 +145,14 @@ export const KEYS = {
   collapsedGroups: 'cfg_collapsed_plugin_groups',
   widgetOrder: 'widget_display_order',
   theme: 'jira-etl-theme',
+  // Per-connection active dashboard view (prefix; the connection id is appended)
+  activeView: 'activeView_',
 };
+
+/** Builds the per-connection localStorage key that stores the active view id. */
+export function activeViewKey(connectionId: string): string {
+  return `${KEYS.activeView}${connectionId}`;
+}
 
 // @MX:ANCHOR: DEFAULT_SETTINGS
 // @MX:NOTE: DEFAULT_SETTINGS defines the baseline application configuration, including rate limits and SLA thresholds, used for initialization and state merging.

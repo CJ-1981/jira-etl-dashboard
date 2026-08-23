@@ -5,7 +5,12 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
-import { deleteConnectionData, type DbLike } from '@/lib/db-cascade';
+import { deleteConnectionData } from '@/lib/db-cascade';
+
+/** Narrow slice of a MasterTicket row read directly (outside the map lambda). */
+interface MasterTicketMeta {
+  lastUpdatedAt: Date | null;
+}
 
 export async function POST(
   request: Request,
@@ -39,7 +44,7 @@ export async function POST(
       const includeRawData = body.includeRawData === true;
       console.log(`[Master API] Fetching tickets for connection: ${connectionId} (rawData=${includeRawData})`);
       
-      const masterTickets = await (db as any).masterTicket.findMany({
+      const masterTickets = await db.masterTicket.findMany({
         where: { connectionRef: connectionId },
         orderBy: { lastUpdatedAt: 'desc' },
         select: {
@@ -63,7 +68,7 @@ export async function POST(
           // (e.g. customfield_10032, customfield_10627) in the lightweight path.
           rawData: true,
         }
-      });
+      }) as MasterTicketMeta[];
 
       if (!masterTickets || masterTickets.length === 0) {
         return NextResponse.json({
@@ -149,7 +154,7 @@ export async function POST(
       console.log(`[Master API] Deleting data for connection: ${connectionId}`);
       // Transactional FK-safe cascade (shared with the connections route).
       const { runCount, masterTicketCount, deletedCount } =
-        await deleteConnectionData(db as unknown as DbLike, connectionId);
+        await deleteConnectionData(db, connectionId);
 
       return NextResponse.json({
         success: true,
@@ -190,7 +195,7 @@ export async function DELETE(
 
     // Transactional FK-safe cascade (shared with the connections route).
     const { runCount, masterTicketCount, deletedCount } =
-      await deleteConnectionData(db as unknown as DbLike, connectionId);
+      await deleteConnectionData(db, connectionId);
 
     return NextResponse.json({
       success: true,

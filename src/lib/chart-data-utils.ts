@@ -19,6 +19,8 @@ export interface KpiResult {
     };
     details?: Array<{ label: string; value: number; unit?: string }>;
     ticketKeys?: string[];
+    /** Present on results that represent a completed period */
+    isComplete?: boolean;
     timeSeries?: Array<{
       period: string;
       /**
@@ -30,6 +32,8 @@ export interface KpiResult {
       value: number;
       count: number;
       isComplete?: boolean;
+      /** Ticket keys contributing to this time-series point */
+      ticketKeys?: string[];
     }>;
   }>;
 }
@@ -162,6 +166,36 @@ export function getColorForValue(value: number, unit: string): string {
 }
 
 /**
+ * Detail-row labels that signal a weekly age breakdown. Two label formats exist:
+ * the legacy 'This Week'/'Previous Week' and the newer 'This Week'/'1 week old'/
+ * '2+ weeks old'. Both are recognized everywhere a weekly breakdown is detected
+ * or parsed.
+ */
+export const WEEKLY_BREAKDOWN_LABELS = ['This Week', 'Previous Week', '1 week old', '2+ weeks old'];
+
+/**
+ * Extract the weekly age breakdown (thisWeek / prevWeek / existing) from a
+ * result's `details` rows, supporting both the legacy and the newer label
+ * formats (see WEEKLY_BREAKDOWN_LABELS).
+ * @MX:ANCHOR: Weekly age-breakdown detail parsing
+ * @MX:REASON: This dual-format parsing was duplicated verbatim across the bar
+ * chart paths; a single helper keeps the label handling consistent.
+ */
+export function extractWeeklyBreakdown(
+  details: Array<{ label: string; value: number; unit?: string }> | undefined,
+): { thisWeek?: number; prevWeek?: number; existing?: number } {
+  if (!details) return {};
+  const tw = details.find((d) => d.label === 'This Week');
+  const lw = details.find((d) => d.label === '1 week old' || d.label === 'Previous Week');
+  const existing = details.find((d) => d.label === '2+ weeks old');
+  const out: { thisWeek?: number; prevWeek?: number; existing?: number } = {};
+  if (tw) out.thisWeek = Number(tw.value.toFixed(2));
+  if (lw) out.prevWeek = Number(lw.value.toFixed(2));
+  if (existing) out.existing = Number(existing.value.toFixed(2));
+  return out;
+}
+
+/**
  * Transform KPI results for bar chart
  */
 export function transformForBarChart(
@@ -187,7 +221,7 @@ export function transformForBarChart(
       r.name.includes('(Existing)') ||
       r.name.includes('(Last Week)') ||
       r.name.includes('(This Week)') ||
-      r.details?.some((d: any) => ['This Week', '1 week old', '2+ weeks old', 'Previous Week'].includes(d.label))
+      r.details?.some(d => WEEKLY_BREAKDOWN_LABELS.includes(d.label))
     );
 
     if (hasAgeBreakdown) {
@@ -220,36 +254,35 @@ export function transformForBarChart(
         }
 
         const group = grouped.get(baseName)!;
-        const resultWithKeys = result as any;
 
         // Categorize by age based on naming pattern or dimensions
         // Check both naming pattern and dimensions.ageCategory
         const isExisting = result.name.includes('(Existing)') ||
                           result.name.toLowerCase().includes('existing') ||
                           result.dimensions?.ageCategory === 'existing' ||
-                          result.details?.some((d: any) => d.label === '2+ weeks old');
+                          result.details?.some((d) => d.label === '2+ weeks old');
         const isLastWeek = result.name.includes('(Last Week)') ||
                            result.name.toLowerCase().includes('last week') ||
                            result.dimensions?.ageCategory === 'last_week' ||
-                           result.details?.some((d: any) => d.label === '1 week old' || d.label === 'Previous Week');
+                           result.details?.some((d) => d.label === '1 week old' || d.label === 'Previous Week');
         const isThisWeek = result.name.includes('(This Week)') ||
                            result.name.toLowerCase().includes('this week') ||
                            result.dimensions?.ageCategory === 'this_week' ||
-                           result.details?.some((d: any) => d.label === 'This Week');
+                           result.details?.some((d) => d.label === 'This Week');
 
         if (isExisting) {
           group.existing += result.value;
-          group.ticketKeys.push(...(resultWithKeys.ticketKeys || []));
+          group.ticketKeys.push(...(result.ticketKeys || []));
         } else if (isLastWeek) {
           group.prevWeek += result.value;
-          group.ticketKeys.push(...(resultWithKeys.ticketKeys || []));
+          group.ticketKeys.push(...(result.ticketKeys || []));
         } else if (isThisWeek) {
           group.thisWeek += result.value;
-          group.ticketKeys.push(...(resultWithKeys.ticketKeys || []));
+          group.ticketKeys.push(...(result.ticketKeys || []));
         } else {
           // Fallback: use as total value (shouldn't happen for age breakdown plugins)
           group.existing += result.value;
-          group.ticketKeys.push(...(resultWithKeys.ticketKeys || []));
+          group.ticketKeys.push(...(result.ticketKeys || []));
         }
       }
 
@@ -287,20 +320,15 @@ export function transformForBarChart(
         name: dimensionName,
         value: Number(result.value.toFixed(2)),
         fill: color,
-        ticketKeys: (result as any).ticketKeys || [],
+        ticketKeys: result.ticketKeys || [],
       };
 
       // Add isComplete if it's a timeSeries point (unlikely for distribution but good for consistency)
-      if ((result as any).isComplete !== undefined) dataPoint.isComplete = (result as any).isComplete;
+      if (result.isComplete !== undefined) dataPoint.isComplete = result.isComplete;
 
-      // Add weekly breakdown if available in details
-      // Support both old format (This Week/Previous Week) and new format (This Week/1 week old/2+ weeks old)
-      const tw = result.details?.find(d => d.label === 'This Week');
-      const lw = result.details?.find(d => d.label === '1 week old' || d.label === 'Previous Week');
-      const existing = result.details?.find(d => d.label === '2+ weeks old');
-      if (tw) dataPoint.thisWeek = Number(tw.value.toFixed(2));
-      if (lw) dataPoint.prevWeek = Number(lw.value.toFixed(2));
-      if (existing) dataPoint.existing = Number(existing.value.toFixed(2));
+      // Add weekly breakdown if available in details (handles both the old
+      // 'This Week/Previous Week' and new '1 week old/2+ weeks old' labels)
+      Object.assign(dataPoint, extractWeeklyBreakdown(result.details));
 
       return dataPoint;
     });
@@ -312,16 +340,12 @@ export function transformForBarChart(
     name: result.name,
     value: Number(result.value.toFixed(2)),
     fill: getColorForValue(result.value, result.unit),
-    ticketKeys: (result as any).ticketKeys || [],
+    ticketKeys: result.ticketKeys || [],
   };
 
-  // Support both old format (This Week/Previous Week) and new format (This Week/1 week old/2+ weeks old)
-  const tw = result.details?.find(d => d.label === 'This Week');
-  const lw = result.details?.find(d => d.label === '1 week old' || d.label === 'Previous Week');
-  const existing = result.details?.find(d => d.label === '2+ weeks old');
-  if (tw) dataPoint.thisWeek = Number(tw.value.toFixed(2));
-  if (lw) dataPoint.prevWeek = Number(lw.value.toFixed(2));
-  if (existing) dataPoint.existing = Number(existing.value.toFixed(2));
+  // Weekly breakdown (handles both the old 'This Week/Previous Week' and new
+  // '1 week old/2+ weeks old' labels)
+  Object.assign(dataPoint, extractWeeklyBreakdown(result.details));
 
   return [dataPoint];
 }
@@ -351,7 +375,7 @@ export function transformForPieChart(
       value: Number(result.value.toFixed(2)),
       fill: getUniqueColor(index),
       unit: result.unit, // Pass unit for better formatting in Pie labels
-      ticketKeys: (result as any).ticketKeys || [],
+      ticketKeys: result.ticketKeys || [],
     };
   });
 }
@@ -384,7 +408,7 @@ export function transformForLineChart(
       value: Number(point.value.toFixed(2)),
       date: point.date,
       isComplete: point.isComplete,
-      ticketKeys: (point as any).ticketKeys || [],
+      ticketKeys: point.ticketKeys || [],
     }));
   }
 
@@ -403,7 +427,7 @@ export function transformForLineChart(
       return {
         name: dimensionName,
         value: Number((result.value || 0).toFixed(2)),
-        ticketKeys: (result as any).ticketKeys || [],
+        ticketKeys: result.ticketKeys || [],
       };
     });
   }
@@ -414,7 +438,7 @@ export function transformForLineChart(
     {
       name: result.name,
       value: Number((result.value || 0).toFixed(2)),
-      ticketKeys: (result as any).ticketKeys || [],
+      ticketKeys: result.ticketKeys || [],
     },
   ];
 }
@@ -463,19 +487,6 @@ export function isTimeSeriesPlugin(pluginId: string): boolean {
 
   // Check if plugin ID contains '_weekly' or other time-series patterns
   if (normalizedId.includes('_weekly') || normalizedId.includes('_monthly') || normalizedId.includes('_daily')) {
-    return true;
-  }
-
-  // Check for specific time-series plugin IDs
-  const timeSeriesPluginIds = [
-    'open_tickets_by_assignee_trend',
-    'open_tickets_by_priority_trend',
-    'open_tickets_by_status_trend',
-    'throughput_trend',
-    'cumulative_flow'
-  ];
-
-  if (timeSeriesPluginIds.includes(normalizedId)) {
     return true;
   }
 

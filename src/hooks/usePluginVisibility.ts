@@ -3,6 +3,9 @@
  *
  * Manages active plugins ordering and plugin filtering logic.
  *
+ * Thin wrapper around the generic usePersistedList hook, which implements the
+ * shared localStorage persistence / cross-instance synchronization mechanics.
+ *
  * @example
  * ```tsx
  * function MyComponent() {
@@ -14,7 +17,8 @@
  * }
  * ```
  */
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { usePersistedList } from './usePersistedList';
 
 export interface UsePluginVisibilityResult {
   /** Array of active plugin IDs in current order */
@@ -28,6 +32,10 @@ export interface UsePluginVisibilityResult {
   /** Set filter string for searching plugins */
   setPluginFilter: (filter: string) => void;
 }
+
+// Structural validation for values read back from storage
+const isStringArray = (parsed: unknown): boolean =>
+  Array.isArray(parsed) && parsed.every(item => typeof item === 'string');
 
 /**
  * Hook for managing plugin visibility and ordering.
@@ -48,122 +56,45 @@ export function usePluginVisibility(
   allPlugins: string[],
   storageKey: string
 ): UsePluginVisibilityResult {
-  // Initialize from local storage or default to all plugins
-  const [activePlugins, setActivePlugins] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return allPlugins;
-
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed;
-      }
-      return allPlugins;
-    } catch (error) {
-      // If localStorage is corrupted or unavailable, fall back to all plugins
-      console.error(`Failed to load ${storageKey} from localStorage:`, error);
-      return allPlugins;
-    }
-  });
-
   const [filter, setFilter] = useState<string>('');
-  // Guard: true while this hook is writing to storage to avoid reacting to its own events
-  const isSelfWriting = useRef(false);
 
-  // Re-sync from localStorage whenever the storage key changes externally
-  // (e.g. Plugin Config tab saves a new selection, then user returns to Dashboard)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  // Rebuild the options only when the fallback list changes; keeps the generic
+  // hook's storage-key effect stable across unrelated re-renders.
+  const options = useMemo(
+    () => ({
+      fallback: allPlugins,
+      isValid: isStringArray,
+      // Re-sync immediately on mount / storageKey change (e.g. Plugin Config
+      // tab saves a new selection, then user returns to Dashboard).
+      syncOnMount: true,
+      // An externally removed key means "never configured" → all plugins active.
+      resetOnMissingKey: true,
+      // The self-write flag must stay up through synchronously-dispatched
+      // storage events from other writers (e.g. PluginsPanel's save).
+      deferSelfWriteReset: true,
+    }),
+    [allPlugins]
+  );
 
-    const syncFromStorage = () => {
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved === null) {
-          setActivePlugins(allPlugins);
-          return;
-        }
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
-          setActivePlugins(parsed);
-        } else {
-          console.error(`Invalid structure in ${storageKey} localStorage data, resetting to default.`);
-          setActivePlugins(allPlugins);
-        }
-      } catch (error) {
-        console.error(`Failed to sync ${storageKey} from localStorage, resetting to default:`, error);
-        setActivePlugins(allPlugins);
-      }
-    };
-
-    // Immediate sync on mount / storageKey change
-    syncFromStorage();
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === storageKey && !isSelfWriting.current) {
-        syncFromStorage();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [storageKey, allPlugins]);
-
-  // Persist to local storage on change
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    try {
-      isSelfWriting.current = true;
-      localStorage.setItem(storageKey, JSON.stringify(activePlugins));
-      // Reset on next microtask so the storage event (dispatched synchronously by PluginsPanel)
-      // is processed before we clear the flag
-      Promise.resolve().then(() => { isSelfWriting.current = false; });
-    } catch (error) {
-      isSelfWriting.current = false;
-      console.error(`Failed to save ${storageKey} to localStorage:`, error);
-    }
-  }, [activePlugins, storageKey]);
+  const { list, reorder, toggle } = usePersistedList<string>(storageKey, options);
 
   // Filter plugins based on search term
   const filteredPlugins = useMemo(() => {
-    if (!filter) return activePlugins;
-    return activePlugins.filter(id =>
+    if (!filter) return list;
+    return list.filter(id =>
       id.toLowerCase().includes(filter.toLowerCase())
     );
-  }, [activePlugins, filter]);
-
-  // Reorder plugins by moving item from sourceIndex to destIndex
-  const reorderPlugins = useCallback((sourceIndex: number, destIndex: number) => {
-    setActivePlugins(prev => {
-      const newOrder = [...prev];
-      const [removed] = newOrder.splice(sourceIndex, 1);
-      newOrder.splice(destIndex, 0, removed);
-      return newOrder;
-    });
-  }, []);
-
-  // Toggle plugin visibility (add if not active, remove if active)
-  const togglePluginVisibility = useCallback((pluginId: string) => {
-    setActivePlugins(prev => {
-      if (prev.includes(pluginId)) {
-        // Remove from active plugins
-        return prev.filter(id => id !== pluginId);
-      } else {
-        // Add to active plugins
-        return [...prev, pluginId];
-      }
-    });
-  }, []);
+  }, [list, filter]);
 
   const setPluginFilter = useCallback((newFilter: string) => {
     setFilter(newFilter);
   }, []);
 
   return {
-    activePlugins,
+    activePlugins: list,
     filteredPlugins,
-    reorderPlugins,
-    togglePluginVisibility,
+    reorderPlugins: reorder,
+    togglePluginVisibility: toggle,
     setPluginFilter,
   };
 }

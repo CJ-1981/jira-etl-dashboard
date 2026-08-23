@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
-import { deleteEtlRunsWithChildren, type DbLike } from '@/lib/db-cascade';
+import { deleteEtlRunsWithChildren } from '@/lib/db-cascade';
 
 export async function POST(request: Request) {
   // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     }
 
     // Find runs to delete
-    const runsToDelete = await (db as unknown as DbLike).etlRun.findMany({
+    const runsToDelete = await db.etlRun.findMany({
       where: {
         completedAt: {
           lt: cutoffDate
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
     if (etlRunIds.length > 0) {
       // Delete associated data in a single transaction (FK-safe child order).
-      await (db as unknown as DbLike).$transaction((tx) =>
+      await db.$transaction((tx) =>
         deleteEtlRunsWithChildren(tx, etlRunIds)
       );
     }

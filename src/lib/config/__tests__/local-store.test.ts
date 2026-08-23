@@ -12,6 +12,7 @@ import {
   DEFAULT_SETTINGS,
   buildPgConnectionUrl,
   isSupabaseUrl,
+  activeViewKey,
   type JiraConnection,
   type PgConnection,
   type KpiPlugin,
@@ -58,6 +59,8 @@ describe('KEYS / DEFAULT_SETTINGS', () => {
     expect(KEYS.jira).toBe('cfg_jira_connections');
     expect(KEYS.activePlugins).toBe('cfg_active_plugins');
     expect(KEYS.theme).toBe('jira-etl-theme');
+    expect(KEYS.widgetOrder).toBe('widget_display_order');
+    expect(KEYS.activeView).toBe('activeView_');
   });
 
   it('ships sensible default settings', () => {
@@ -515,13 +518,20 @@ describe('buildPgConnectionUrl', () => {
 
 describe('isSupabaseUrl', () => {
   it('returns true for supabase URLs', () => {
-    expect(isSupabaseUrl('postgresql://user@db.supabase.com:5432/postgres')).toBe(true);
+    expect(isSupabaseUrl('postgresql://u@db.supabase.com:5432/postgres')).toBe(true);
     expect(isSupabaseUrl('https://api.supabase.com/v1')).toBe(true);
   });
 
   it('returns false for non-supabase URLs', () => {
-    expect(isSupabaseUrl('postgresql://user@db.example.com:5432/app')).toBe(false);
+    expect(isSupabaseUrl('postgresql://u@db.example.com:5432/app')).toBe(false);
     expect(isSupabaseUrl('')).toBe(false);
+  });
+});
+
+describe('activeViewKey', () => {
+  it('builds a per-connection key with the activeView_ prefix', () => {
+    expect(activeViewKey('conn-1')).toBe('activeView_conn-1');
+    expect(activeViewKey('abc')).toBe(`${KEYS.activeView}abc`);
   });
 });
 

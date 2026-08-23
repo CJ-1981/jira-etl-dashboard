@@ -2,9 +2,20 @@ import { NextResponse } from 'next/server';
 import { extractSelectFieldValue } from '@/lib/jira/client';
 import { JiraClient } from '@/lib/jira/client';
 import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-config';
-import { getDb } from '@/lib/db';
+import { getDb, type DbClient } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 import { isLoopbackOriginRequest } from '@/lib/security';
+
+/** Narrow slice of an EtlRun row — only the fields this handler reads. */
+interface EtlRunRow {
+  id: string;
+}
+
+/** Narrow slice of a TicketSnapshot row — only the fields this handler reads. */
+interface TicketSnapshotRow {
+  id: string;
+  jiraKey: string;
+}
 
 // Constants for sizeBytes estimation
 // @MX:NOTE: These are heuristic estimates for storage sizing, not exact byte measurements
@@ -21,8 +32,8 @@ export async function POST(request: Request) {
   }
 
   // Hoisted so the outer catch can mark a created run as failed
-  let db: any = null;
-  let etlRun: any = null;
+  let db: DbClient | null = null;
+  let etlRun: EtlRunRow | null = null;
   try {
     let body;
     try {
@@ -50,6 +61,9 @@ export async function POST(request: Request) {
     } = body;
 
     db = getDb(storageConfig);
+    // Single non-null handle for the rest of the handler: `db` (the let above)
+    // is only kept hoisted so the outer catch can mark a created run as failed.
+    const dbClient = db;
 
     if (!connectionRef) {
       return NextResponse.json({ success: false, error: 'connectionRef is required' }, { status: 400 });
@@ -146,7 +160,7 @@ export async function POST(request: Request) {
     // extraction fails mid-run.
 
     // Get existing keys and timestamps
-    const existingMasterTickets = await (db as any).masterTicket.findMany({
+    const existingMasterTickets = await dbClient.masterTicket.findMany({
       where: { connectionRef: connectionRef },
       select: { jiraKey: true, updated: true }
     });
@@ -156,7 +170,7 @@ export async function POST(request: Request) {
       if (t.jiraKey) existingMap.set(t.jiraKey, t.updated);
     });
     
-    etlRun = await (db as any).etlRun.create({
+    const createdRun = await dbClient.etlRun.create({
       data: {
         connectionRef: connectionRef,
         // @MX:NOTE: Run starts as 'extracting' and is promoted to 'completed' only after the
@@ -183,7 +197,10 @@ export async function POST(request: Request) {
           extractParams: { jql: finalJql, dateFrom: effectiveDateFrom, dateTo: effectiveDateTo, daysBack },
         }),
       },
-    });
+    }) as EtlRunRow;
+    // Hoisted alias so the outer catch can mark the run failed; `createdRun`
+    // (const, non-null) is used below so closures can capture it safely.
+    etlRun = createdRun;
 
     // Chunked processing for database stability
     const CHUNK_SIZE = 100;
@@ -204,7 +221,7 @@ export async function POST(request: Request) {
         const storyPoints = typeof rawSp === 'number' ? rawSp : (typeof rawSp === 'string' && !isNaN(parseFloat(rawSp)) ? parseFloat(rawSp) : null);
 
         return {
-          etlRunId: etlRun.id,
+          etlRunId: createdRun.id,
           jiraKey: issue.key,
           summary: fields.summary || 'No Summary',
           issueType: fields.issuetype?.name || 'Task',
@@ -223,17 +240,17 @@ export async function POST(request: Request) {
       });
 
       try {
-        await (db as any).ticketSnapshot.createMany({ data: snapshotData });
+        await dbClient.ticketSnapshot.createMany({ data: snapshotData });
       } catch (err) {
         // createMany may not support all drivers — fall back to a single transaction
-        await (db as any).$transaction(
-          snapshotData.map((data: any) => (db as any).ticketSnapshot.create({ data }))
+        await dbClient.$transaction(
+          snapshotData.map((data: any) => dbClient.ticketSnapshot.create({ data }))
         );
       }
 
-      const snapshots = await (db as any).ticketSnapshot.findMany({ 
-        where: { etlRunId: etlRun.id, jiraKey: { in: chunk.map(c => c.key) } } 
-      });
+      const snapshots = await dbClient.ticketSnapshot.findMany({ 
+        where: { etlRunId: createdRun.id, jiraKey: { in: chunk.map(c => c.key) } } 
+      }) as TicketSnapshotRow[];
 
       const transitionData: any[] = [];
       for (const issue of chunk) {
@@ -257,10 +274,10 @@ export async function POST(request: Request) {
 
       if (transitionData.length > 0) {
         try {
-          await (db as any).ticketTransition.createMany({ data: transitionData });
+          await dbClient.ticketTransition.createMany({ data: transitionData });
         } catch (err) {
-          await (db as any).$transaction(
-            transitionData.map((data: any) => (db as any).ticketTransition.create({ data }))
+          await dbClient.$transaction(
+            transitionData.map((data: any) => dbClient.ticketTransition.create({ data }))
           );
         }
       }
@@ -311,9 +328,9 @@ export async function POST(request: Request) {
       });
 
       // Execute all upserts in a single transaction — O(1) lock acquisitions vs O(N)
-      await (db as any).$transaction(
+      await dbClient.$transaction(
         masterRows.map(row =>
-          (db as any).masterTicket.upsert({
+          dbClient.masterTicket.upsert({
             where: { connectionRef_jiraKey: { connectionRef: row.connectionRef, jiraKey: row.jiraKey } },
             create: {
               ...row,
@@ -358,7 +375,7 @@ export async function POST(request: Request) {
         const keysToRemove = existingKeys.filter(k => !currentKeys.has(k));
         deletedCount = keysToRemove.length;
         if (deletedCount > 0) {
-          await (db as any).masterTicket.deleteMany({
+          await dbClient.masterTicket.deleteMany({
             where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
           });
         }
@@ -377,7 +394,7 @@ export async function POST(request: Request) {
         const startDate = new Date(effectiveDateFrom);
         const endDate = effectiveDateTo ? new Date(new Date(effectiveDateTo).setHours(23, 59, 59, 999)) : new Date();
 
-        const dbTicketsInPeriod = await (db as any).masterTicket.findMany({
+        const dbTicketsInPeriod = await dbClient.masterTicket.findMany({
           where: { connectionRef: connectionRef, [dateField]: { gte: startDate, lte: endDate } },
           select: { jiraKey: true }
         });
@@ -387,7 +404,7 @@ export async function POST(request: Request) {
         deletedCount = keysToRemove.length;
 
         if (deletedCount > 0) {
-          await (db as any).masterTicket.deleteMany({
+          await dbClient.masterTicket.deleteMany({
             where: { connectionRef: connectionRef, jiraKey: { in: keysToRemove } }
           });
         }
@@ -422,10 +439,10 @@ export async function POST(request: Request) {
         ];
       }
 
-      const masterTickets = await (db as any).masterTicket.findMany({ 
+      const masterTickets = await dbClient.masterTicket.findMany({ 
         where: whereClause,
         select: { rawData: true }
-      });
+      }) as Array<{ rawData: string }>;
       
       const allIssues: any[] = [];
       for (const t of masterTickets) {
@@ -459,7 +476,7 @@ export async function POST(request: Request) {
         for (const res of results) {
           kpiData.push({
             connectionRef: connectionRef,
-            etlRunId: etlRun.id,
+            etlRunId: createdRun.id,
             kpiId: kpiId,
             kpiName: plugin?.name || res.name,
             value: res.value,
@@ -474,7 +491,7 @@ export async function POST(request: Request) {
       if (kpiData.length > 0) {
         // Chunk KPI inserts
         for (let i = 0; i < kpiData.length; i += CHUNK_SIZE) {
-          await (db as any).kpiResult.createMany({ data: kpiData.slice(i, i + CHUNK_SIZE) });
+          await dbClient.kpiResult.createMany({ data: kpiData.slice(i, i + CHUNK_SIZE) });
         }
       }
     } catch (kpiError) {
@@ -482,8 +499,8 @@ export async function POST(request: Request) {
     }
 
     // All data written successfully — promote the run to 'completed'
-    await (db as any).etlRun.update({
-      where: { id: etlRun.id },
+    await dbClient.etlRun.update({
+      where: { id: createdRun.id },
       data: { status: 'completed', completedAt: new Date() },
     });
 
@@ -494,8 +511,8 @@ export async function POST(request: Request) {
         const normalize = (j: string) => j.replace(/created\s*[<>]=\s*"[^"]*"/g, '').replace(/\s+/g, ' ').trim();
         const currentTemplate = normalize(finalJql);
 
-        const allRuns = await (db as any).etlRun.findMany({
-          where: { connectionRef: connectionRef, id: { not: etlRun.id } },
+        const allRuns = await dbClient.etlRun.findMany({
+          where: { connectionRef: connectionRef, id: { not: createdRun.id } },
           select: { id: true, jql: true },
           take: 50 // Only look at recent runs to prune
         });
@@ -506,19 +523,19 @@ export async function POST(request: Request) {
         if (oldRunIds.length > 0) {
           console.log(`[Extract API] Pruning ${oldRunIds.length} old runs...`);
           // Note: Many DBs handle cascading via schema, but we do it manually for SQLite safety
-          const snapshotIds = await (db as any).ticketSnapshot.findMany({
+          const snapshotIds = await dbClient.ticketSnapshot.findMany({
             where: { etlRunId: { in: oldRunIds } },
             select: { id: true }
           });
 
           if (snapshotIds.length > 0) {
-            await (db as any).ticketTransition.deleteMany({
+            await dbClient.ticketTransition.deleteMany({
               where: { ticketSnapshotId: { in: snapshotIds.map((s: any) => s.id) } }
             });
           }
-          await (db as any).ticketSnapshot.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
-          await (db as any).kpiResult.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
-          await (db as any).etlRun.deleteMany({ where: { id: { in: oldRunIds } } });
+          await dbClient.ticketSnapshot.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
+          await dbClient.kpiResult.deleteMany({ where: { etlRunId: { in: oldRunIds } } });
+          await dbClient.etlRun.deleteMany({ where: { id: { in: oldRunIds } } });
         }
       } catch (pruneError) {
         console.warn('[Extract API] Pruning failed:', pruneError);
@@ -527,7 +544,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      etlRunId: etlRun.id,
+      etlRunId: createdRun.id,
       summary: {
         totalExtracted: issues.length,
         added: addedCount,
@@ -548,7 +565,7 @@ export async function POST(request: Request) {
     // nor masquerades as a completed run.
     if (etlRun && db) {
       try {
-        await (db as any).etlRun.update({
+        await db.etlRun.update({
           where: { id: etlRun.id },
           data: {
             status: 'failed',

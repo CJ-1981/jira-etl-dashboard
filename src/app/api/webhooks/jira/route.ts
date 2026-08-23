@@ -128,7 +128,7 @@ export async function POST(req: Request) {
     // @MX:REASON: The `db` export is a proxy exposing only `.client`; calling
     // model accessors on it directly yields undefined and crashes at runtime.
     const prisma = getDefaultDb();
-    await (prisma as any).masterTicket.upsert({
+    await prisma.masterTicket.upsert({
       where: {
         connectionRef_jiraKey: {
           connectionRef: connectionId,

@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
-import { deleteConnectionData, type DbLike } from '@/lib/db-cascade';
+import { deleteConnectionData } from '@/lib/db-cascade';
 
 export async function DELETE(
   request: Request,
@@ -45,7 +45,7 @@ export async function DELETE(
     // Run the whole cascade in a single transaction so a failure mid-way
     // cannot leave the connection's data half-deleted.
     const result = await deleteConnectionData(
-      db as unknown as DbLike,
+      db,
       connectionId
     );
 
