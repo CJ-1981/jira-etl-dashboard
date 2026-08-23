@@ -31,9 +31,11 @@ import openTicketsByPriorityPlugin from './plugins/builtin/throughput/open-ticke
 import closedTicketsByPriorityPlugin from './plugins/builtin/throughput/closed-tickets-by-priority';
 import openTicketsByStatusPlugin from './plugins/builtin/throughput/open-tickets-by-status';
 import openTicketsKanbanPlugin from './plugins/builtin/throughput/open-tickets-kanban';
-import weeklyTicketListPlugin from './plugins/builtin/throughput/weekly-ticket-list';
+import weeklyTicketListPlugin from './plugins/builtin/throughput/weekly-ticket-list'
+import backlogAgePercentilesPlugin from './plugins/builtin/throughput/backlog-age-percentiles';
 import resolutionRatePlugin from './plugins/builtin/quality/resolution-rate';
-import reassignmentPlugin from './plugins/builtin/quality/reassignment';
+import reassignmentPlugin from './plugins/builtin/quality/reassignment'
+import firstTimeResolutionPlugin from './plugins/builtin/quality/first-time-resolution';
 import openTicketsByAssigneePlugin from './plugins/builtin/assignee/open-tickets-by-assignee';
 import openTicketsByIssueOwnerTeamPlugin from './plugins/builtin/assignee/open-tickets-by-issue-owner-team';
 
