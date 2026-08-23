@@ -97,7 +97,7 @@ describe.skipIf(!hasFixture)('resolution_time_by_priority — real data smoke te
 
     expect(results.length).toBeGreaterThan(0);
     const totalResolved = results.reduce((sum, r) => sum + (r.details?.find((d) => d.label === 'Resolved Tickets')?.value ?? 0), 0);
-    const resolvedInFixture = issues.filter((i) => i.resolved).length;
+    const resolvedInFixture = issues.filter((i: any) => i.resolved).length;
     expect(totalResolved).toBe(resolvedInFixture);
 
     for (const r of results) {

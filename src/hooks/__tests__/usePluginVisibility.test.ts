@@ -23,8 +23,6 @@ describe('usePluginVisibility', () => {
     localStorage.clear();
   });
 
-  // @MX:NOTE: Characterization test - initial state behavior
-  // @MX:REASON: Documents actual initialization behavior from existing implementation
   describe('initialization', () => {
     it('should initialize with all plugins active when no saved state exists', () => {
       const { result } = renderHook(() =>
@@ -55,8 +53,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-  // @MX:NOTE: Characterization test - plugin reordering behavior
-  // @MX:REASON: Documents actual reordering logic from existing implementation
   describe('reorderPlugins', () => {
     it('should move plugin from source index to destination index', () => {
       const { result } = renderHook(() =>
@@ -110,8 +106,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-  // @MX:NOTE: Characterization test - plugin toggle behavior
-  // @MX:REASON: Documents actual toggle behavior from SPEC requirements
   describe('togglePluginVisibility', () => {
     it('should remove plugin from active plugins when it is currently active', () => {
       const { result } = renderHook(() =>
@@ -154,8 +148,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-  // @MX:NOTE: Characterization test - plugin filtering behavior
-  // @MX:REASON: Documents actual filtering logic from SPEC requirements
   describe('setPluginFilter', () => {
     it('should filter plugins case-insensitively by search term', () => {
       const { result } = renderHook(() =>
@@ -210,8 +202,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-  // @MX:NOTE: Characterization test - localStorage persistence behavior
-  // @MX:REASON: Documents actual persistence behavior from existing implementation
   describe('localStorage persistence', () => {
     it('should save initial state to localStorage on mount', () => {
       renderHook(() =>
@@ -251,8 +241,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-  // @MX:NOTE: Characterization test - edge cases
-  // @MX:REASON: Documents actual edge case behavior from existing implementation
   describe('edge cases', () => {
     it('should handle empty allPlugins array', () => {
       const { result } = renderHook(() =>
@@ -309,3 +297,4 @@ describe('usePluginVisibility', () => {
     });
   });
 });
+

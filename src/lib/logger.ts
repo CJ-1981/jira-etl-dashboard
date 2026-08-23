@@ -58,8 +58,23 @@ class Logger {
     const contextStr = context ? ` [${context}]` : '';
     const dataStr = data ? `\n${JSON.stringify(data, null, 2)}` : '';
     const errorStr = error ? `\n${error.stack || error.message}` : '';
+    const formattedMessage = `${prefix}${contextStr}: ${message}${dataStr}${errorStr}`;
 
-    console.log(`${prefix}${contextStr}: ${message}${dataStr}${errorStr}`);
+    // Use the appropriate console method so errors appear in stderr and
+    // get proper stack trace formatting in terminal/browser environments
+    switch (level) {
+      case 'error':
+        console.error(formattedMessage);
+        break;
+      case 'warn':
+        console.warn(formattedMessage);
+        break;
+      case 'debug':
+        console.debug(formattedMessage);
+        break;
+      default:
+        console.log(formattedMessage);
+    }
   }
 
   debug(message: string, context?: string, data?: unknown): void {

@@ -117,7 +117,13 @@ export function ConnectionsPanel() {
   const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      // Require a small drag distance before activating so clicks on
+      // buttons inside sortable items don't accidentally trigger reordering
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
