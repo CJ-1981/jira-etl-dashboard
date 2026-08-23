@@ -42,7 +42,14 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
 - `dashboard/views` — saved views persisted in the DB (`DashboardView` model); at most one default view per connection, enforced transactionally (including bulk import)
 - `pg/export`, `pg/test`, `webhooks/jira`, `holidays`, `export/file`, `debug/health`
 
-**Cross-origin protection:** all mutating endpoints (`kpi/calculate`, `jira/extract`, `kpi/plugins/custom`, `webhooks/jira`, `jira/connections/*`) reject requests whose `Origin`/`Referer` header points outside loopback (401). Header-less requests (server-side fetch, curl) pass. When adding a new mutating route, copy the `isLoopbackOriginRequest` guard from `kpi/calculate/route.ts`.
+**Cross-origin protection:** every mutating endpoint rejects requests whose
+`Origin`/`Referer` header points outside loopback (401) — all POST/PATCH/PUT/DELETE
+handlers under `src/app/api/` are guarded (views CRUD, bulk import, extract, cleanup,
+master delete, poll, kpi/calculate, custom plugins CRUD, pg/export, webhooks).
+Header-less requests (server-side fetch, curl) pass. When adding a new mutating route,
+copy the `isLoopbackOriginRequest` guard from `kpi/calculate/route.ts`. The webhook
+route composes a stricter variant (`isWebhookLoopbackRequest`) that additionally
+requires BOTH headers to be loopback and http(s) only.
 
 ### Dual Prisma storage (read this before touching `src/lib/db.ts`)
 - Source schemas: `prisma/schema.sqlite.prisma` and `prisma/schema.postgresql.prisma`.
@@ -106,8 +113,9 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
    is cleaned up.
 2. **`REACT_APP_*` env vars do nothing** — leftover CRA convention in
    `src/lib/jira/field-config.ts`; Next.js does not expose them.
-3. **`src/lib/kpi/kpi-worker.ts` is dead code** — never instantiated; all KPI math runs
-   server-side via `/api/kpi/calculate`. Don't build features assuming a Web Worker exists.
+3. **All KPI math runs server-side** via `/api/kpi/calculate` — there is no Web Worker
+   (a former `kpi-worker.ts` was dead code and has been deleted). Don't build features
+   assuming client-side calculation exists.
 4. **Custom plugin upload = server-side file write** into the custom-plugin directory
    (`data/custom-plugins/`) with the plugin's `calculate` body interpolated, activated at
    restart. Formula execution itself is sandboxed (see KPI engine section), but the file-write
@@ -115,8 +123,9 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 5. **Electron path is abandoned/broken** — `electron/main.js` loads `../out/index.html`, but
    no `output: 'export'` build exists (production is `standalone`). The caxa pipeline
    (`build-exe.*` + `launcher.cjs`) is the real distribution path.
-6. **Jira custom field IDs** — `transformIssue` in `src/lib/jira/client.ts` now accepts an
-   optional `fieldMapping` parameter and uses `JIRA_FIELD_MAP` defaults consistently. However,
+6. **Jira custom field IDs** — `transformIssueForKpi` in `src/lib/kpi/engine-utils.ts`
+   accepts an optional `fieldMapping` parameter and uses `JIRA_FIELD_MAP` defaults
+   (the legacy `transformIssue` in `jira/client.ts` was deleted as dead code). However,
    `customfield_10002`, `customfield_10132`, `customfield_10020`, `customfield_10014/10016`
    are still hardcoded as defaults in `JIRA_FIELD_MAP` and `field-config.ts` — check both when
    changing field handling.
