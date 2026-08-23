@@ -240,7 +240,8 @@ Commit ID: filled in below at commit time.
 
 | Workstream | Commit |
 |---|---|
-| Phase 5 (all four streams + docs) | _(this commit)_ |
+| Phase 5 (all four streams) | `d58fd56` |
+| Phase 5 docs finalization | _(this commit)_ |
 
 ---
 
