@@ -223,6 +223,93 @@ Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targ
 | Charts | Recharts 2.15 (Interactive Layers) |
 | Exports | html-to-image (PNG), CSV/JSON |
 
+### System Architecture
+
+```mermaid
+graph TB
+    subgraph Browser["Browser (React SPA)"]
+        UI[Dashboard UI<br/>shadcn/ui + Tailwind]
+        Store[Zustand Store]
+        RQ[TanStack React Query]
+    end
+
+    subgraph NextJS["Next.js Server"]
+        API[API Routes<br/>/api/*]
+        Engine[KPI Engine<br/>40 plugins]
+        Sandbox[Sandboxed Formula<br/>Interpreter]
+    end
+
+    subgraph Storage["Dual Prisma Storage"]
+        SQLite[(SQLite<br/>local)]
+        PG[(PostgreSQL<br/>Supabase)]
+    end
+
+    Jira[Jira Cloud/Server]
+
+    UI --> Store
+    UI --> RQ
+    RQ -->|fetch| API
+    API --> Engine
+    Engine --> Sandbox
+    API -->|getDb| SQLite
+    API -->|getDb| PG
+    Jira -->|REST API| API
+    API -->|webhooks| Jira
+```
+
+### ETL Data Flow
+
+```mermaid
+flowchart LR
+    A[Jira API] -->|JQL Query| B[Extract Issues]
+    B --> C{Update Only?}
+    C -->|Yes| D[Fetch modified<br/>since last sync]
+    C -->|No| E[Fetch full range]
+    D --> F[MasterTicket<br/>Upsert]
+    E --> F
+    F --> G[TicketSnapshot<br/>+ Transitions]
+    G --> H[KPI Calculate]
+    H --> I[KpiResult<br/>Storage]
+    I --> J[Dashboard<br/>Display]
+
+    style A fill:#e1f5fe
+    style J fill:#e8f5e9
+```
+
+### KPI Plugin Architecture
+
+```mermaid
+graph TB
+    subgraph Plugins["Plugin Registry"]
+        B[Builtin Plugins<br/>27 core]
+        TS[Time-Series<br/>13 trend]
+        C[Custom Plugins<br/>data/custom-plugins/]
+    end
+
+    subgraph Domains["Business Domains"]
+        PT[Processing Time]
+        SLA[SLA]
+        TA[Turnaround]
+        TP[Throughput]
+        Q[Quality]
+        AS[Assignee]
+    end
+
+    subgraph Engine["KPI Engine"]
+        Calc[calculateAll]
+        Cache[Weekly Cache]
+        Holiday[German Holiday<br/>Calendar]
+    end
+
+    B --> PT & SLA & TA & TP & Q & AS
+    TS --> PT & SLA & TA & TP & AS
+    C -->|file watcher| Calc
+
+    Calc --> Cache
+    Calc --> Holiday
+    Calc -->|results| UI[Dashboard UI]
+```
+
 ---
 
 ## 🛠️ Getting Started
