@@ -53,8 +53,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-
-
   describe('reorderPlugins', () => {
     it('should move plugin from source index to destination index', () => {
       const { result } = renderHook(() =>
@@ -108,8 +106,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-
-
   describe('togglePluginVisibility', () => {
     it('should remove plugin from active plugins when it is currently active', () => {
       const { result } = renderHook(() =>
@@ -151,8 +147,6 @@ describe('usePluginVisibility', () => {
       expect(saved).toBe(JSON.stringify(['plugin-2', 'plugin-3']));
     });
   });
-
-
 
   describe('setPluginFilter', () => {
     it('should filter plugins case-insensitively by search term', () => {
@@ -208,8 +202,6 @@ describe('usePluginVisibility', () => {
     });
   });
 
-
-
   describe('localStorage persistence', () => {
     it('should save initial state to localStorage on mount', () => {
       renderHook(() =>
@@ -248,8 +240,6 @@ describe('usePluginVisibility', () => {
       expect(localStorage.getItem(otherKey)).toBe('should-remain-unchanged');
     });
   });
-
-
 
   describe('edge cases', () => {
     it('should handle empty allPlugins array', () => {
@@ -307,3 +297,4 @@ describe('usePluginVisibility', () => {
     });
   });
 });
+
