@@ -59,6 +59,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Scheduled Polling Resilience** — Server-side background sync persists storage configurations across sessions, ensuring data lands in the correct engine automatically.
 - **Resilient Error Boundaries** — Individual widget isolation ensures that a single metric failure or calculation error never crashes the entire dashboard.
 - **Hardened Local API Surface** — Unauthenticated endpoints accept loopback-origin requests only (CSRF protection), Jira issue keys are validated before use, and ETL runs are marked complete only after a fully successful load.
+- **Security Headers** — HSTS, Content-Security-Policy, Permissions-Policy, X-Frame-Options, X-Content-Type-Options, and Referrer-Policy are set on all responses.
 - **Server-Side Calculation with Smart Caching** — KPI computation runs on the server via the calculation API, with TanStack Query handling caching, background refetching, and consistent loading states to keep the UI responsive even with tens of thousands of tickets.
 
 ---
@@ -250,6 +251,7 @@ Copy `.env.example` to `.env` and adjust the values as needed:
 | `CUSTOM_PLUGIN_DIR` | Directory scanned for custom KPI plugins (defaults to `data/custom-plugins/`) |
 | `PORT` | Port the server listens on |
 | `HOSTNAME` | Hostname/IP the server binds to |
+| `PLAYWRIGHT_BASE_URL` | Override e2e test base URL (defaults to `http://localhost:3000`) |
 
 ### Database Initialization
 If you are using an external PostgreSQL database (like Supabase), initialize the schema once.
@@ -277,11 +279,13 @@ build-exe.bat
 npm test               # Vitest unit/integration suite
 npm run test:coverage  # Coverage with enforced minimum thresholds (ratchet)
 npm run e2e            # Playwright end-to-end suite (reuses a running dev server)
-npm run lint           # ESLint
+npm run lint           # ESLint (critical rules enabled; 1087 pre-existing warnings, threshold 2000)
 npm run type-check     # TypeScript strict check
 ```
 
 Unit tests live in `__tests__/` directories next to the code they cover (shared mocks in `src/test/`); E2E specs live in `e2e/`. CI runs coverage, lint, and type-check on every push to `main`/`develop`.
+
+**E2E base URL:** Set `PLAYWRIGHT_BASE_URL` to override the default `http://localhost:3000` when running e2e tests against a different server.
 
 ---
 

@@ -16,7 +16,7 @@ npm run build          # Production build → .next/standalone
 npm start              # Run standalone production server
 npm test               # Vitest (run mode: npx vitest run)
 npm run test:coverage  # v8 coverage — enforces ratchet thresholds (70% lines), fails below
-npm run lint           # ESLint (note: most rules are disabled in eslint.config.mjs)
+npm run lint           # ESLint (critical rules re-enabled; 1087 pre-existing warnings, threshold 2000)
 npm run type-check     # tsc --noEmit — ALWAYS run this before committing
 npm run e2e            # Playwright e2e (reuses a running dev server locally; boots one in CI)
 npm run db:push        # Push schema to SQLite (default DATABASE_URL)
@@ -25,7 +25,7 @@ npm run db:studio      # Prisma Studio
 build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 ```
 
-CI runs `test:coverage`, `lint --max-warnings=10`, and `type-check` on push/PR to main/develop (Node 22). E2E is not wired into CI yet.
+CI runs `test:coverage`, `lint --max-warnings=2000`, and `type-check` on push/PR to main/develop (Node 22). E2E is not wired into CI yet.
 
 **Quality gates:** a `pre-push` hook runs the same CI trio locally before every push (installed automatically on `npm install` via `scripts/hooks/install-hooks.mjs`, or manually with `npm run hooks:install`; bypass with `git push --no-verify`). The release workflow additionally waits for the CI run of the tagged commit to finish and aborts the release if it is red — so tagging cannot outrun CI.
 
@@ -99,8 +99,11 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 
 ## Gotchas & Known Issues
 
-1. **Build ignores type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: true`
-   and ESLint disables most rules. `npm run type-check` is the only real static gate.
+1. **Build enforces type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: false`
+   and ESLint has critical rules re-enabled (`no-explicit-any`, `no-unused-vars`, `no-debugger`,
+   `no-fallthrough`, `no-unreachable`, etc.). `npm run type-check` and `npm run lint` are both
+   real static gates. The lint warning threshold is 2000 (ratchet) — lower it as the codebase
+   is cleaned up.
 2. **`REACT_APP_*` env vars do nothing** — leftover CRA convention in
    `src/lib/jira/field-config.ts`; Next.js does not expose them.
 3. **`src/lib/kpi/kpi-worker.ts` is dead code** — never instantiated; all KPI math runs
@@ -112,9 +115,11 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 5. **Electron path is abandoned/broken** — `electron/main.js` loads `../out/index.html`, but
    no `output: 'export'` build exists (production is `standalone`). The caxa pipeline
    (`build-exe.*` + `launcher.cjs`) is the real distribution path.
-6. **Jira custom field IDs are hardcoded** in several places (`customfield_10002`,
-   `customfield_10132`, `customfield_10020`, `customfield_10014/10016`) despite the
-   field-config mapping — check both when changing field handling.
+6. **Jira custom field IDs** — `transformIssue` in `src/lib/jira/client.ts` now accepts an
+   optional `fieldMapping` parameter and uses `JIRA_FIELD_MAP` defaults consistently. However,
+   `customfield_10002`, `customfield_10132`, `customfield_10020`, `customfield_10014/10016`
+   are still hardcoded as defaults in `JIRA_FIELD_MAP` and `field-config.ts` — check both when
+   changing field handling.
 7. **Port handling** — dev is pinned to 3000. All production launchers scan **3200–3299**
    for a free port (`launcher.cjs` for the caxa exe, generated launchers for the portable
    folder builds); set `PORT` to force a specific port. `launcher.cjs` binds 127.0.0.1
