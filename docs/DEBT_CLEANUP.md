@@ -256,13 +256,17 @@ branch/review:
   `ChartCard` (1.4k lines), `ExtractPanel.tsx` (26 `useState` calls).
 - Consolidate the three widget-order/plugin-visibility sync mechanisms into a
   single zustand slice.
-- Move ~36 raw `fetch` call sites onto the already-configured React Query.
-- Retire the ~150 `(db as any)` casts route-by-route — the structural
-  `DbClient` type from phase 4C makes this incremental work now; this is
-  still the largest single `no-explicit-any` source.
-- Time-series scaffold duplicated across 5 trend plugins (zero-fill →
-  weighted average over complete periods → incomplete-period detail);
-  `sla-by-status-weekly` now shows the delegation pattern to follow.
+- Move 40 raw `fetch` call sites onto the already-configured React Query
+  (dedupe the three independent 5-second pollers first — two of them hit the
+  same `/api/jira/poll` endpoint).
+- Retire the 48 remaining `(db as any)`/`(tx as any)`/`(prisma as any)` cast
+  sites across 11 route files — the structural `DbClient` type from phase 4C
+  covers every model method used; the only prerequisite is adding the batch
+  `$transaction` overload (`PrismaPromise[]`) to `DbClient` (one line), after
+  which all sites are verified removable. Biggest `no-explicit-any` source.
+- Time-series scaffold hand-rolled in 8 of 9 trend plugins (zero-fill →
+  weighted average over complete periods → incomplete-period detail, ~1,280
+  lines); `sla-by-status-excl-clone-weekly` shows the delegation pattern.
 - Three near-identical quote-aware string splitters (`engine-utils.ts`
   `applyFilter`, `splitByTopLevelOperator`, `custom-formula.ts`
   `splitTopLevelKeyword`).
@@ -274,7 +278,10 @@ branch/review:
   is the real distribution path).
 - Root-level working-note markdown files (`TIME_SERIES_*.md`, etc.) → move to
   `docs/` or delete.
-- Orphaned dev-DB migration record `20260528000000_add_ticket_snapshot_rawdata_owner_team`.
+- Orphaned dev-DB migration record `20260528000000_add_ticket_snapshot_rawdata_owner_team`
+  — CLOSED: verified it exists only as a row in the local dev DB's
+  `_prisma_migrations` table; the repo's `prisma/migrations/` is clean and
+  fresh databases migrate cleanly. No repo change needed.
 - UTC-ISO-week vs local-Monday-week divergence (documented with `@MX:WARN`
   in `time-series-utils.ts` / `week-boundaries.ts`) — needs a product
   decision before unifying.
