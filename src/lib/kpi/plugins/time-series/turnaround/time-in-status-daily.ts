@@ -14,13 +14,14 @@
 import { calculateBusinessHours } from '../../../../holidays/german-holidays';
 import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-import { 
-  getPeriodKey, 
-  getPeriodEnd, 
-  isPeriodComplete, 
-  groupByTimeInterval, 
-  enumeratePeriodKeys 
-} from '../../../utils/time-series-utils';
+import {
+  preparePeriods,
+  resolveTrendPeriods,
+  buildSnapshotPoints,
+  weightedMeanOfCompletePeriods,
+  round2,
+  INCOMPLETE_PERIOD_DETAIL,
+} from '../../../utils/trend-scaffold';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -39,22 +40,13 @@ function calculateTimeInStatusTrend(
     }];
   }
 
-  // 1. Group issues by time interval (based on resolution date)
-  const groupedByPeriod = groupByTimeInterval(resolvedIssues, interval, (issue) => issue.resolved);
-
-  // 2. Ensure all periods in range are represented
+  // Group issues by interval (resolution date) and zero-fill all periods in range
   const resolvedDates = resolvedIssues.map(i => i.resolved!.getTime());
   const minDate = new Date(Math.min(...resolvedDates));
   const maxDate = new Date(Math.max(...resolvedDates, context.period.end.getTime()));
-  
-  const allPeriodKeys = enumeratePeriodKeys(minDate, maxDate, interval);
-  for (const key of allPeriodKeys) {
-    if (!groupedByPeriod[key]) {
-      groupedByPeriod[key] = [];
-    }
-  }
+  const groupedByPeriod = preparePeriods(resolvedIssues, interval, (issue) => issue.resolved, minDate, maxDate);
 
-  // 3. For each period, calculate time in each status
+  // For each period, calculate time in each status
   const periodStatusData: Record<string, Record<string, { totalHours: number; count: number }>> = {};
 
   for (const [periodKey, periodIssues] of Object.entries(groupedByPeriod)) {
@@ -95,60 +87,36 @@ function calculateTimeInStatusTrend(
   }
   const allStatuses = Array.from(allStatusesSet);
 
+  // Resolve the shared period axis once (chronological, zero-filled above)
+  const periods = resolveTrendPeriods(Object.keys(periodStatusData).sort(), interval);
+
   // For each status, create a time-series result
   for (const status of allStatuses) {
-    const timeSeries: TimeSeriesResult['timeSeries'] = [];
-    const sortedPeriodKeys = Object.keys(periodStatusData).sort();
-
-    for (const periodKey of sortedPeriodKeys) {
-      const periodData = periodStatusData[periodKey];
-      const statusData = periodData[status] || { totalHours: 0, count: 0 };
-
-      const periodEnd = getPeriodEnd(periodKey, interval);
-      const isComplete = isPeriodComplete(periodEnd);
-
-      if (!isComplete) {
-        hasIncompletePeriod = true;
+    const { points: timeSeries, hasIncompletePeriod: incomplete } = buildSnapshotPoints(
+      periods,
+      (period) => {
+        const statusData = periodStatusData[period.key]?.[status] ?? { totalHours: 0, count: 0 };
+        const avgHours = statusData.count > 0 ? statusData.totalHours / statusData.count : 0;
+        return { value: round2(avgHours), count: statusData.count };
       }
-
-      const avgHours = statusData.count > 0 ? statusData.totalHours / statusData.count : 0;
-
-      timeSeries.push({
-        period: periodKey,
-        date: periodEnd,
-        value: Math.round(avgHours * 100) / 100,
-        count: statusData.count,
-        isComplete,
-      });
-    }
-
-    // Sort by date (already sorted by keys, but safe)
-    // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
-    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    );
+    if (incomplete) hasIncompletePeriod = true;
 
     // Calculate overall average for this status from complete periods only
-    const completePoints = timeSeries.filter(p => p.isComplete && p.count > 0);
-    const weightedSum = completePoints.reduce((sum, point) => sum + point.value * point.count, 0);
-    const totalCount = completePoints.reduce((sum, point) => sum + point.count, 0);
-    const overallAvg = totalCount > 0 ? weightedSum / totalCount : 0;
+    const overallAvg = weightedMeanOfCompletePeriods(timeSeries, true);
 
     statusResults.push({
       name: `Time in ${status}`,
-      value: Math.round(overallAvg * 100) / 100,
+      value: round2(overallAvg),
       unit: 'hours',
       dimensions: { status },
       timeSeries,
     });
   }
 
-  const details: TimeSeriesResult['details'] = [
-    { label: 'Statuses Analyzed', value: statusResults.length },
-    { label: 'Total Resolved', value: resolvedIssues.length },
-  ];
-
   if (hasIncompletePeriod && statusResults.length > 0) {
     statusResults[0].details = statusResults[0].details || [];
-    statusResults[0].details.push({ label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' });
+    statusResults[0].details.push({ ...INCOMPLETE_PERIOD_DETAIL });
   }
 
   // Return multiple results (one per status) for multi-line chart
@@ -191,7 +159,7 @@ function createTimeInStatusTrendPlugin(
   };
 }
 
-// ─── Plugin Definitions ────────────────────────────────────────────────────────
+// ─── Plugin Definitions ────────────────────────────────────────────────────────────
 
 export const timeInStatusWeeklyPlugin = createTimeInStatusTrendPlugin('weekly');
 export const timeInStatusMonthlyPlugin = createTimeInStatusTrendPlugin('monthly');

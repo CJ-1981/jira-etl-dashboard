@@ -4,6 +4,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { handleApiError } from '@/lib/api-error';
 
 /** Narrow slice of the EtlRun row (with snapshots) this handler reads. */
 interface LatestRunRow {
@@ -48,7 +49,10 @@ export async function POST(
     }) as LatestRunRow | null;
 
     if (!latestRun) {
-      return NextResponse.json({ success: false, error: 'No saved extractions for this connection' });
+      return NextResponse.json(
+        { success: false, error: 'No saved extractions for this connection' },
+        { status: 404 }
+      );
     }
 
     // @MX:NOTE: Field data/rawData are reconstructed from MasterTicket, not TicketSnapshot.
@@ -157,7 +161,6 @@ export async function POST(
       }
     });
   } catch (error) {
-    console.error('Latest extraction error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to retrieve latest extraction' }, { status: 500 });
+    return handleApiError(error);
   }
 }

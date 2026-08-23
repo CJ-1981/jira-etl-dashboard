@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getKpiEngine } from '@/lib/kpi/engine';
+import { handleApiError } from '@/lib/api-error';
 
 // @MX:NOTE: CSV injection guard — spreadsheet apps (Excel/Calc) execute cells that start
 // with = + - @ as formulas. Jira-derived values (KPI names, dimensions, ticket fields) are
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     const { issues, holidays, dateFrom, dateTo, format = 'csv' } = await request.json();
 
     if (!issues || !Array.isArray(issues)) {
-      return NextResponse.json({ error: 'Issues array is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Issues array is required' }, { status: 400 });
     }
 
     const engine = getKpiEngine();
@@ -96,9 +97,6 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error('Export error:', error);
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Export failed' 
-    }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -69,6 +69,10 @@ interface AppState {
   showFloatingBar: boolean;
   setShowFloatingBar: (show: boolean) => void;
 
+  // @MX:NOTE: RAW KPI calculation results. Owned by the React Query sync in
+  // useKpiCalculations (plus intentional clears in ExtractPanel). Never write
+  // a plugin-filtered subset back here — consumers derive visibility filtering
+  // at render time (see KpiDashboard's filteredKpiResults memo).
   kpiResults: KpiCalcResult[];
   setKpiResults: (results: KpiCalcResult[]) => void;
 

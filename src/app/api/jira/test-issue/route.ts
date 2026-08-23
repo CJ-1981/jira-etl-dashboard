@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { JiraClient } from '@/lib/jira/client';
+import { handleApiError } from '@/lib/api-error';
 
 /**
  * POST /api/jira/test-issue
@@ -54,10 +55,6 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    console.error('Test issue error:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch issue'
-    }, { status: 500 });
+    return handleApiError(error);
   }
 }

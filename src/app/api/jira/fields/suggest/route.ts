@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { JiraClient } from '@/lib/jira/client';
+import { handleApiError } from '@/lib/api-error';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,8 +21,7 @@ export async function POST(req: NextRequest) {
     const fields = await client.discoverCustomFields(jql || '');
 
     return NextResponse.json({ success: true, fields });
-  } catch (err: any) {
-    console.error('[Fields Suggest API]', err);
-    return NextResponse.json({ success: false, error: err.message || 'Unknown error' }, { status: 500 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

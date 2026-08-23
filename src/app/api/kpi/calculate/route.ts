@@ -3,6 +3,7 @@ import { KpiEngine } from '@/lib/kpi/engine';
 import type { JiraIssue } from '@/lib/jira/client';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { handleApiError } from '@/lib/api-error';
 
 export async function POST(request: Request) {
   if (!isLoopbackOriginRequest(request)) {
@@ -149,9 +150,6 @@ export async function POST(request: Request) {
       results: flat,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

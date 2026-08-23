@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { handleApiError } from '@/lib/api-error';
 
 export async function POST(request: Request) {
   // @MX:WARN: SECURITY BOUNDARY — loopback-origin guard (CSRF protection).
@@ -121,10 +122,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, rowCount });
   } catch (error) {
-    console.error('Database export error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown database error' 
-    }, { status: 500 });
+    return handleApiError(error);
   }
 }

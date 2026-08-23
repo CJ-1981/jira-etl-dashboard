@@ -68,10 +68,10 @@ jobs:
         run: npm ci
 
       - name: Run ESLint
-        # Ratchet: 933 warnings — tightened from 1032 after the phase-5
+        # Ratchet: 917 warnings — tightened from 933 after the phase-6
         # deduplication pass (docs/DEBT_CLEANUP.md). Lower this threshold as
         # the codebase is cleaned up further.
-        run: npm run lint -- --max-warnings=933
+        run: npm run lint -- --max-warnings=917
 
   type-check:
     runs-on: ubuntu-latest

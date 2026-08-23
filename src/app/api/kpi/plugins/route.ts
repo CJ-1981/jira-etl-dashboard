@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getKpiEngine } from '@/lib/kpi/engine';
+import { handleApiError } from '@/lib/api-error';
 
 export async function GET() {
   try {
@@ -20,6 +21,6 @@ export async function GET() {
 
     return NextResponse.json({ success: true, plugins: pluginList });
   } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to fetch built-in plugins' }, { status: 500 });
+    return handleApiError(error);
   }
 }

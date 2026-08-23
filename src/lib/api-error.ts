@@ -67,6 +67,35 @@ export function isError(error: unknown): error is Error {
 }
 
 /**
+ * Type guard for a value that is a plausible HTTP status code (100–599).
+ */
+function isValidHttpStatus(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599;
+}
+
+/**
+ * Resolve an explicit HTTP status carried by an error, if any.
+ *
+ * Precedence:
+ *  1. Typed {@link ApiError} subclasses -> their `statusCode`.
+ *  2. Any error object carrying a valid numeric `.statusCode` or `.status`
+ *     (e.g. upstream Jira HTTP errors) -> that status, so callers can forward
+ *     upstream 401/429/5xx instead of flattening everything to 500.
+ *
+ * Returns `undefined` when no explicit status is present, in which case the
+ * caller applies its default. This supersedes the previous fragile
+ * `message.includes('not found') -> 404` heuristic; routes that mean "not
+ * found" should throw {@link NotFoundError} explicitly.
+ */
+export function getApiErrorStatus(error: unknown): number | undefined {
+  if (isApiError(error)) return error.statusCode;
+  if (typeof error !== 'object' || error === null) return undefined;
+  const record = error as { statusCode?: unknown; status?: unknown };
+  const candidate = record.statusCode ?? record.status;
+  return isValidHttpStatus(candidate) ? candidate : undefined;
+}
+
+/**
  * Format error for API response
  */
 export interface ErrorResponse {
@@ -107,34 +136,50 @@ export function formatErrorResponse(error: unknown, includeStack = false): Error
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 
+/**
+ * Minimal structural shape of a Zod issue, so we can normalize details without
+ * depending on a specific Zod version's exported types.
+ */
+interface ZodIssueLike {
+  path?: Array<string | number>;
+  message?: string;
+  code?: string;
+}
+
+/**
+ * Extract Zod issues from an error, if present.
+ *
+ * Handles both a genuine `ZodError` instance and the (rare) case where the
+ * error is a ZodError that fails the `instanceof` check (e.g. duplicated zod
+ * copies) by recovering the issues from the serialized message or a duck-typed
+ * `.issues` array.
+ */
+function extractZodIssues(error: unknown): ZodIssueLike[] {
+  if (error instanceof ZodError && Array.isArray(error.issues)) {
+    return error.issues as unknown as ZodIssueLike[];
+  }
+  if (isError(error) && error.name === 'ZodError') {
+    try {
+      const parsed: unknown = JSON.parse(error.message);
+      if (Array.isArray(parsed)) return parsed as ZodIssueLike[];
+    } catch {
+      const maybeIssues = (error as { issues?: unknown }).issues;
+      if (Array.isArray(maybeIssues)) return maybeIssues as ZodIssueLike[];
+    }
+  }
+  return [];
+}
+
 export function handleApiError(error: unknown, includeStack = false): NextResponse {
   console.error('[API Error]:', error);
 
-  // Handle Zod validation errors - check multiple ways
-  let zodErrors: any[] = [];
-
-  if (error instanceof ZodError && error.issues) {
-    zodErrors = error.issues;
-  } else if (isError(error) && error.name === 'ZodError') {
-    try {
-      const parsed = JSON.parse(error.message);
-      if (Array.isArray(parsed)) {
-        zodErrors = parsed;
-      }
-    } catch {
-      // Try to access error.issues if it exists (when instanceof check fails)
-      if ('issues' in error && Array.isArray((error as any).issues)) {
-        zodErrors = (error as any).issues;
-      }
-    }
-  }
-
-  // If we found Zod errors, format them
-  if (zodErrors.length > 0) {
-    const details = zodErrors.map((err) => ({
-      path: Array.isArray(err.path) ? err.path.join('.') : err.path || 'unknown',
-      message: err.message || 'Validation error',
-      code: err.code || 'invalid',
+  // Zod validation errors -> 400 with structured per-field details.
+  const zodIssues = extractZodIssues(error);
+  if (zodIssues.length > 0) {
+    const details = zodIssues.map((issue) => ({
+      path: Array.isArray(issue.path) && issue.path.length > 0 ? issue.path.join('.') : 'unknown',
+      message: issue.message || 'Validation error',
+      code: issue.code || 'invalid',
     }));
 
     return NextResponse.json(
@@ -147,20 +192,12 @@ export function handleApiError(error: unknown, includeStack = false): NextRespon
     );
   }
 
-  // Handle custom API errors
-  if (isApiError(error)) {
-    return NextResponse.json(
-      formatErrorResponse(error, includeStack),
-      { status: error.statusCode }
-    );
-  }
+  // Status resolution: prefer an explicit status carried by the error (a typed
+  // ApiError, or an upstream error exposing `.status`/`.statusCode`); default
+  // to 500. We intentionally do NOT infer semantics from the message text.
+  const statusCode = getApiErrorStatus(error) ?? 500;
 
-  // Handle generic errors
-  const statusCode = isError(error) && error.message.includes('not found') ? 404 : 500;
-  return NextResponse.json(
-    formatErrorResponse(error, includeStack),
-    { status: statusCode }
-  );
+  return NextResponse.json(formatErrorResponse(error, includeStack), { status: statusCode });
 }
 
 /**

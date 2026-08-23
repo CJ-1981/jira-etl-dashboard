@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { handleApiError } from '@/lib/api-error';
 
 // ─── Persistent Polling State (using global to survive hot reloads in dev) ────
 
@@ -239,7 +240,7 @@ export async function POST(request: Request) {
     let body;
     try {
       body = await request.json();
-    } catch (e) {
+    } catch {
       return NextResponse.json({ success: false, error: 'Malformed JSON payload' }, { status: 400 });
     }
 
@@ -347,9 +348,6 @@ export async function POST(request: Request) {
       polling: sanitizeState(),
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

@@ -124,7 +124,7 @@ export function KpiDashboard() {
     connections, extractionResult, masterDatasetInfo, setMasterDatasetInfo,
     dateFrom, setDateFrom, dateTo, setDateTo, region, setRegion,
     selectedPeriodPreset, setSelectedPeriodPreset,
-    activeConnectionId, settings, kpiResults, setKpiResults, storageConfig,
+    activeConnectionId, settings, kpiResults, storageConfig,
     globalFilters, setGlobalFilters, hiddenDimensions, setHiddenDimensions,
     dashboardCharts: charts, setDashboardCharts: setCharts,
     dashboardJqlQuery: jqlQuery, setDashboardJqlQuery: setJqlQuery,
@@ -692,91 +692,40 @@ export function KpiDashboard() {
     customWidgetResults, calculateWidgetJql, activeConnectionId
   ]);
 
-  // Filter KPI results and dashboard charts based on active plugins
-  const lastFilteredPlugins = useRef<Set<string>>(new Set());
+  // ─── Derived plugin filtering ────────────────────────────────────────────────
+  // @MX:ANCHOR: Derived (never stored) plugin filtering
+  // @MX:NOTE: The store's kpiResults slice holds the RAW calculation results
+  // (owned by the React Query sync in useKpiCalculations). Visibility by
+  // active plugins is DERIVED here at render time instead of being written
+  // back into the store — the previous self-referencing filter effect caused
+  // a store feedback loop and could destroy raw data on refetch boundaries.
+  const hasConfiguredActivePlugins = typeof window !== 'undefined'
+    ? localStorage.getItem(ACTIVE_PLUGINS_STORAGE_KEY) !== null
+    : false;
 
-  useEffect(() => {
-    const filterByActivePlugins = () => {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_PLUGINS_STORAGE_KEY) : null;
-      
-      // If never configured (null), show all plugins by default
-      if (raw === null) {
-        lastFilteredPlugins.current = new Set(['__DEFAULT_ALL__']);
-        return;
-      }
+  const filteredKpiResults = useMemo(() => {
+    // Never configured → show everything in original order.
+    if (!hasConfiguredActivePlugins) return kpiResults;
+    // Explicitly none selected → hide everything.
+    if (pluginVisibility.activePlugins.length === 0) return [];
+    return kpiResults.filter(r => pluginVisibility.activePlugins.includes(r.pluginId));
+  }, [kpiResults, pluginVisibility.activePlugins, hasConfiguredActivePlugins]);
 
-      let activePlugins: string[];
-      try {
-        activePlugins = JSON.parse(raw) as string[];
-      } catch (error) {
-        // Corrupted config - fall back to showing all plugins instead of crashing
-        console.error('Failed to parse cfg_active_plugins, falling back to all plugins:', error);
-        lastFilteredPlugins.current = new Set(['__DEFAULT_ALL__']);
-        return;
-      }
-      if (!Array.isArray(activePlugins)) {
-        console.error('Invalid cfg_active_plugins structure, falling back to all plugins');
-        lastFilteredPlugins.current = new Set(['__DEFAULT_ALL__']);
-        return;
-      }
-      const activePluginsSet = new Set<string>(activePlugins);
-
-      // Skip ONLY if both active plugins haven't changed AND kpiResults/charts are already likely filtered
-      // But we must allow filtering if kpiResults just got updated with full data
-      const isPluginsSame = activePluginsSet.size === lastFilteredPlugins.current.size &&
-          Array.from(activePluginsSet).every(p => lastFilteredPlugins.current.has(p));
-      
-      // If plugins are same, we still check if we need to filter kpiResults
-      // (e.g. if kpiResults contains items not in activePluginsSet)
-      if (isPluginsSame) {
-        const needsKpiFilter = kpiResults.some(kpi => !activePluginsSet.has(kpi.pluginId));
-        // Chart configs are intentionally preserved when no plugins are active (see below)
-        const needsChartFilter = activePlugins.length > 0 && charts.some(chart => chart.kpiId && !activePluginsSet.has(chart.kpiId));
-        if (!needsKpiFilter && !needsChartFilter) return;
-      }
-
-      lastFilteredPlugins.current = activePluginsSet;
-
-      // Filter kpiResults to only include active plugins
-      if (activePlugins.length === 0) {
-        if (kpiResults.length > 0) setKpiResults([]);
-      } else {
-        const filteredResults = kpiResults.filter(kpi => activePlugins.includes(kpi.pluginId));
-        if (filteredResults.length !== kpiResults.length) {
-          setKpiResults(filteredResults);
-        }
-      }
-
-      // Filter dashboard charts to only include active plugins.
-      // @MX:NOTE: When all plugins are hidden we deliberately keep chart configs intact.
-      // @MX:REASON: "No plugins selected" is a visibility state, not a user deletion of charts.
-      // Wiping charts here would persist an empty array via page-level effects and permanently
-      // destroy user chart configurations. The chart section is not rendered while kpiResults
-      // is empty, so configs are simply restored once plugins are re-enabled.
-      if (activePlugins.length > 0) {
-        const filteredCharts = charts.filter(chart => !chart.kpiId || activePlugins.includes(chart.kpiId));
-        if (filteredCharts.length !== charts.length) {
-          setCharts(filteredCharts);
-        }
-      }
-    };
-
-    // Filter on mount and when storage changes
-    filterByActivePlugins();
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === ACTIVE_PLUGINS_STORAGE_KEY) {
-        filterByActivePlugins();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [kpiResults, charts, setKpiResults, setCharts]);
+  // Chart configs are filtered for display only.
+  // @MX:NOTE: When all plugins are hidden we deliberately keep chart configs intact.
+  // @MX:REASON: "No plugins selected" is a visibility state, not a user deletion of charts.
+  // The chart section is not rendered while no results are visible, so configs
+  // are simply restored once plugins are re-enabled.
+  const visibleCharts = useMemo(() => {
+    if (!hasConfiguredActivePlugins) return charts;
+    if (pluginVisibility.activePlugins.length === 0) return charts;
+    return charts.filter(chart => !chart.kpiId || pluginVisibility.activePlugins.includes(chart.kpiId));
+  }, [charts, pluginVisibility.activePlugins, hasConfiguredActivePlugins]);
 
   const handleExportKpis = () => {
     const rows: string[][] = [['Metric', 'Value', 'Unit', 'Category']];
-    kpiResults.forEach(kpi => {
+    // Export the derived (visible) results — same data the user sees in the table.
+    filteredKpiResults.forEach(kpi => {
       kpi.results.forEach((res: any) => {
         rows.push([
           `"${res.name}"`,
@@ -840,23 +789,14 @@ export function KpiDashboard() {
   });
 
   const sortedKpiResults = useMemo(() => {
-    // Use activePlugins from usePluginVisibility hook
+    if (filteredKpiResults.length === 0) return [];
+
+    // Never configured → original order, no sorting.
+    if (!hasConfiguredActivePlugins) return filteredKpiResults;
+
+    // Sort the derived filtered results by the configured active-plugin order.
     const activeOrder = pluginVisibility.activePlugins;
-
-    // If explicitly none selected
-    if (activeOrder.length === 0) return [];
-
-    // Check if there is a saved list in localStorage (i.e. the user configured plugins)
-    const hasSavedList = typeof window !== 'undefined'
-      ? localStorage.getItem(ACTIVE_PLUGINS_STORAGE_KEY) !== null
-      : false;
-
-    // If never configured, show all in original order (no filter applied)
-    if (!hasSavedList) return kpiResults;
-
-    // Filter to only active plugins, then sort by configured order
-    const filtered = kpiResults.filter(r => activeOrder.includes(r.pluginId));
-    return filtered.sort((a, b) => {
+    return [...filteredKpiResults].sort((a, b) => {
       const idxA = activeOrder.indexOf(a.pluginId);
       const idxB = activeOrder.indexOf(b.pluginId);
       if (idxA === -1 && idxB === -1) return 0;
@@ -864,7 +804,7 @@ export function KpiDashboard() {
       if (idxB === -1) return -1;
       return idxA - idxB;
     });
-  }, [kpiResults, pluginVisibility.activePlugins]);
+  }, [filteredKpiResults, pluginVisibility.activePlugins, hasConfiguredActivePlugins]);
 
   const mainKpis = useMemo(() =>
     sortedKpiResults.filter((r: KpiCalcResult) =>
@@ -1301,7 +1241,7 @@ export function KpiDashboard() {
         </div>
       )}
 
-      {kpiResults.length > 0 && (<>
+      {filteredKpiResults.length > 0 && (<>
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <button
@@ -2421,7 +2361,7 @@ export function KpiDashboard() {
                           height: 'md',
                           jqlFilter: { enabled: false, query: '', mode: 'override' }
                         }}
-                        kpiResults={kpiResults}
+                        kpiResults={filteredKpiResults}
                         hiddenDimensions={hiddenDimensions}
                         toggleDimension={toggleDimension}
                         onRemove={handleRemoveChart}
@@ -2460,7 +2400,7 @@ export function KpiDashboard() {
 
 
         {/* Chart Section */}
-        {kpiResults.length > 0 && (
+        {filteredKpiResults.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
@@ -2470,7 +2410,7 @@ export function KpiDashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {charts.map((chartConfig) => {
+              {visibleCharts.map((chartConfig) => {
                 const widthClass = {
                   sm: 'col-span-1',      // 25% width
                   md: 'col-span-2',       // 50% width
@@ -2482,7 +2422,7 @@ export function KpiDashboard() {
                   <div key={chartConfig.id} className={widthClass}>
                     <ChartCard
                       config={chartConfig}
-                      kpiResults={kpiResults}
+                      kpiResults={filteredKpiResults}
                       hiddenDimensions={hiddenDimensions}
                       toggleDimension={toggleDimension}
                       onRemove={handleRemoveChart}
@@ -2498,7 +2438,7 @@ export function KpiDashboard() {
               })}
             </div>
 
-            {charts.length < 12 && (
+            {visibleCharts.length < 12 && (
               <div className="flex justify-center pt-6 no-print">
                 <Button
                   onClick={handleAddChart}
@@ -2516,7 +2456,7 @@ export function KpiDashboard() {
           </div>
         )}
       </>)}
-      {kpiResults.length === 0 && !calculating && (
+      {filteredKpiResults.length === 0 && !calculating && (
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50"><CardContent className="py-16 text-center text-slate-400 dark:text-slate-500"><BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" /><p className="text-lg font-medium">No KPI results yet</p></CardContent></Card>
       )}
 

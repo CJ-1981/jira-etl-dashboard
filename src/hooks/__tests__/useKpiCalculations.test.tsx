@@ -1377,6 +1377,107 @@ describe('useKpiCalculations - TypeScript Type Safety', () => {
   });
 });
 
+describe('useKpiCalculations - Store Slice Invariant', () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnWindowFocus: false,
+          staleTime: Infinity,
+          gcTime: Infinity,
+        },
+      },
+    });
+  });
+
+  it('the store slice always equals the raw query data (every write is a full query sync)', async () => {
+    const { dateFrom, dateTo } = createTestDates();
+    const filters = createTestFilters();
+    const queryResults = [
+      { pluginId: 'alpha', results: [{ name: 'A', value: 1 }] },
+      { pluginId: 'beta', results: [{ name: 'B', value: 2 }] },
+    ];
+
+    mockSuccessResponse(queryResults);
+
+    const { result, rerender } = renderHook(
+      () => useKpiCalculations(dateFrom, dateTo, filters),
+      {
+        wrapper: createWrapper(queryClient),
+      }
+    );
+
+    await waitFor(
+      () => {
+        expect(mockState.setKpiResults).toHaveBeenCalledWith(queryResults);
+      },
+      { timeout: 3000 }
+    );
+
+    // The store slice holds the raw query payload.
+    expect(mockState.kpiResults).toEqual(queryResults);
+
+    // Every write to the store slice must carry the FULL query payload —
+    // never a subset (e.g. a plugin-filtered array).
+    expect(mockState.setKpiResults.mock.calls.length).toBeGreaterThan(0);
+    for (const call of mockState.setKpiResults.mock.calls) {
+      expect(call[0]).toEqual(queryResults);
+    }
+
+    // The hook exposes the (unfiltered) store slice on the next render.
+    rerender();
+    expect(result.current.kpiResults).toEqual(queryResults);
+  });
+
+  it('keeps the store slice equal to query data across refetches', async () => {
+    const { dateFrom, dateTo } = createTestDates();
+    const filters = createTestFilters();
+    const firstResults = [{ pluginId: 'alpha', results: [{ name: 'A', value: 1 }] }];
+
+    mockSuccessResponse(firstResults);
+
+    const { result } = renderHook(
+      () => useKpiCalculations(dateFrom, dateTo, filters),
+      {
+        wrapper: createWrapper(queryClient),
+      }
+    );
+
+    await waitFor(
+      () => {
+        expect(mockState.kpiResults).toEqual(firstResults);
+      },
+      { timeout: 3000 }
+    );
+
+    // A refetch with new data must replace the slice with the new raw payload.
+    const secondResults = [
+      { pluginId: 'alpha', results: [{ name: 'A', value: 1 }] },
+      { pluginId: 'beta', results: [{ name: 'B', value: 2 }] },
+    ];
+    mockSuccessResponse(secondResults);
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    await waitFor(
+      () => {
+        expect(mockState.kpiResults).toEqual(secondResults);
+      },
+      { timeout: 3000 }
+    );
+
+    for (const call of mockState.setKpiResults.mock.calls) {
+      const written = call[0];
+      expect([firstResults, secondResults]).toContainEqual(written);
+    }
+  });
+});
+
 describe('useKpiCalculations - Connection Gating', () => {
   let queryClient: QueryClient;
   let originalConnId: unknown;

@@ -246,8 +246,22 @@ describe('POST /api/webhooks/jira', () => {
     );
     expect(res.status).toBe(400);
     const json = await readJson(res);
+    // Normalized envelope: the bare {error} shape now carries success:false.
+    expect(json.success).toBe(false);
     expect(json.error).toMatch(/No issue data/);
     expect(mockDb().masterTicket.upsert).not.toHaveBeenCalled();
+  });
+
+  it('returns the normalized error envelope with 500 on an internal failure', async () => {
+    // No secret -> loopback path; force the upsert to throw.
+    mockDb().masterTicket.upsert.mockRejectedValue(new Error('db exploded'));
+    const res = await POST(webhookRequest({ body: sampleIssue() }) as any);
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    // Generic message: this endpoint can be called by an external Jira server,
+    // so internal error text must not leak across the boundary.
+    expect(json.error).toBe('Internal server error');
   });
 });
 

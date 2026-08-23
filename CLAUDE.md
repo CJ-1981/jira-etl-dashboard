@@ -16,7 +16,7 @@ npm run build          # Production build → .next/standalone
 npm start              # Run standalone production server
 npm test               # Vitest (run mode: npx vitest run)
 npm run test:coverage  # v8 coverage — enforces ratchet thresholds (70% lines), fails below
-npm run lint           # ESLint (critical rules re-enabled; 933 warnings, ratchet threshold 933)
+npm run lint           # ESLint (critical rules re-enabled; 917 warnings, ratchet threshold 917)
 npm run type-check     # tsc --noEmit — ALWAYS run this before committing
 npm run e2e            # Playwright e2e (reuses a running dev server locally; boots one in CI)
 npm run db:push        # Push schema to SQLite (default DATABASE_URL)
@@ -25,7 +25,7 @@ npm run db:studio      # Prisma Studio
 build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 ```
 
-CI runs `test:coverage`, `lint --max-warnings=933`, `type-check`, and the Playwright
+CI runs `test:coverage`, `lint --max-warnings=917`, `type-check`, and the Playwright
 E2E suite on push/PR to main/develop (Node 22). The e2e job installs Chromium, boots
 the dev server via the Playwright config, and uploads the HTML report as an artifact.
 
@@ -114,7 +114,7 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 1. **Build enforces type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: false`
    and ESLint has critical rules re-enabled (`no-explicit-any`, `no-unused-vars`, `no-debugger`,
    `no-fallthrough`, `no-unreachable`, etc.). `npm run type-check` and `npm run lint` are both
-   real static gates. The lint warning threshold is 933 (ratchet, tightened 2026-08
+   real static gates. The lint warning threshold is 917 (ratchet, tightened 2026-08
    from 2000 during the debt cleanup — see `docs/DEBT_CLEANUP.md`) — lower it as the codebase
    is cleaned up.
 2. **`REACT_APP_*` env vars do nothing** — leftover CRA convention in
@@ -167,9 +167,11 @@ Keep both suites green before committing; `npm run type-check` must stay at zero
 
 ## Repository hygiene notes
 
-- The repo contains committed AI-tooling scaffolding (`.claude/`, `.moai/`, `.kilo/`,
+- The repo formerly contained committed AI-tooling scaffolding (`.claude/`, `.moai/`, `.kilo/`,
   `.antigravitycli/`) and working-note markdown files at the root (`TIME_SERIES_*.md`,
-  `TREND_PLUGIN_FIX.md`, etc.). Don't rely on them as project documentation; `docs/` is the
-  canonical documentation folder.
+  `TREND_PLUGIN_FIX.md`, etc.) — the working notes were deleted in phase 6 of the debt
+  cleanup (durable facts preserved in `docs/DEBT_CLEANUP.md`'s appendix). Don't rely on
+  AI-tooling leftovers as project documentation; `docs/` is the canonical documentation
+  folder.
 - `plan/`, `scratch/`, `_workspace/`, `docu/`, `enhancements/` are scratch areas.
 - Screenshots referenced by the README live in `docs/screenshots/`.

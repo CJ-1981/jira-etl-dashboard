@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { handleApiError } from '@/lib/api-error';
 
 /** Shape of the etlRun aggregate result this handler reads. */
 interface EtlRunSizeAggregate {
@@ -118,8 +119,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error('Storage info error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to retrieve storage info' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 

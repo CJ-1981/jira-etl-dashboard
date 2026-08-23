@@ -119,6 +119,20 @@ describe('POST /api/jira/extract/storage', () => {
     expect(json.success).toBe(true);
     expect(json.storage.byConnection).toEqual([]);
   });
+
+  it('returns the normalized error shape with 500 when the db throws', async () => {
+    holder.db.masterTicket.count.mockRejectedValue(new Error('storage boom'));
+    const res = await storagePOST(
+      makeRequest('/api/jira/extract/storage', {
+        method: 'POST',
+        body: { activeConnections: [{ id: 'c1', name: 'Conn1' }] },
+      })
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('storage boom');
+  });
 });
 
 // ───────────────────────── POST /api/jira/extract/cleanup ─────────────────────────
@@ -227,6 +241,20 @@ describe('POST /api/jira/extract/cleanup', () => {
     expect(json.error).toBe('Invalid cleanup parameters');
   });
 
+  it('returns the normalized error shape with 500 when the db throws', async () => {
+    holder.db.etlRun.findMany.mockRejectedValue(new Error('cleanup boom'));
+    const res = await cleanupPOST(
+      makeRequest('/api/jira/extract/cleanup', {
+        method: 'POST',
+        body: { retentionDays: 30 },
+      })
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('cleanup boom');
+  });
+
   describe('loopback-origin guard', () => {
     const body = { retentionDays: 30 };
 
@@ -309,15 +337,30 @@ describe('POST /api/jira/extract/latest/[connectionId]', () => {
     expect(json.data.etlRunId).toBe('run-1');
   });
 
-  it('returns a no-data response when no saved extraction exists', async () => {
+  it('returns a 404 no-data response when no saved extraction exists', async () => {
     // findFirst defaults to null
     const res = await latestPOST(
       makeRequest('/api/jira/extract/latest/c1', { method: 'POST', body: {} }),
       ctx('c1')
     );
+    // "No saved extractions" is a genuine not-found condition, surfaced as 404
+    // (it used to be 200 with success:false). Consumers read `data.success`.
+    expect(res.status).toBe(404);
     const json = await readJson(res);
     expect(json.success).toBe(false);
     expect(json.error).toMatch(/No saved extractions/i);
+  });
+
+  it('returns the normalized error shape with 500 when the lookup throws', async () => {
+    holder.db.etlRun.findFirst.mockRejectedValue(new Error('db exploded'));
+    const res = await latestPOST(
+      makeRequest('/api/jira/extract/latest/c1', { method: 'POST', body: {} }),
+      ctx('c1')
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('db exploded');
   });
 });
 
@@ -438,6 +481,18 @@ describe('POST /api/jira/master/[connectionId]', () => {
     const json = await readJson(res);
     expect(json.success).toBe(false);
     expect(json.error).toBe('Invalid action');
+  });
+
+  it('returns the normalized error shape with 500 when the db throws', async () => {
+    holder.db.masterTicket.findMany.mockRejectedValue(new Error('master boom'));
+    const res = await masterPOST(
+      makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'get' } }),
+      ctx('c1')
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('master boom');
   });
 
   describe('loopback-origin guard', () => {
@@ -660,6 +715,18 @@ describe('DELETE /api/jira/connections/[connectionId]', () => {
     expect(json.error).toBe('Cross-origin request rejected');
     // Nothing was deleted.
     expect(holder.db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('returns the normalized error shape with 500 when the cascade throws', async () => {
+    holder.db.etlRun.findMany.mockRejectedValue(new Error('connections boom'));
+    const res = await connectionsDELETE(
+      makeRequest('/api/jira/connections/c1', { method: 'DELETE' }),
+      ctx('c1')
+    );
+    expect(res.status).toBe(500);
+    const json = await readJson(res);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('connections boom');
   });
 });
 

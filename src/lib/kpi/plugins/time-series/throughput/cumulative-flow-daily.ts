@@ -6,12 +6,10 @@
 
 import { type KpiPlugin, type KpiContext } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-import { 
-  getPeriodKey, 
-  getPeriodEnd, 
-  isPeriodComplete, 
-  enumeratePeriodKeys 
-} from '../../../utils/time-series-utils';
+import {
+  enumerateTrendPeriods,
+  buildSnapshotPoints,
+} from '../../../utils/trend-scaffold';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -23,13 +21,8 @@ function calculateCumulativeFlow(
   const { start, end } = context.period;
   const allIssues = context.issues;
 
-  // 1. Generate periods
-  const allPeriodKeys = enumeratePeriodKeys(start, end, interval);
-  const periods = allPeriodKeys.map(key => ({
-    key,
-    end: getPeriodEnd(key, interval)
-  }));
-
+  // 1. Generate periods (point-in-time snapshots)
+  const periods = enumerateTrendPeriods(start, end, interval);
   if (periods.length === 0) return [];
 
   // 2. Identify all statuses
@@ -42,8 +35,6 @@ function calculateCumulativeFlow(
     });
   });
   const allStatuses = Array.from(allStatusesSet);
-
-  const INITIAL_STATUS_DEFAULT = 'Open';
 
   // 3. Precompute status intervals for each issue (O(Issues * Transitions))
   const issueTimelines = allIssues.map(issue => {
@@ -84,12 +75,12 @@ function calculateCumulativeFlow(
 
   // Calculate counts using precomputed intervals
   issueTimelines.forEach(timeline => {
-    timeline.forEach(interval => {
+    timeline.forEach(intervalEntry => {
       // Find range of periods that fall into this interval
       for (const period of periods) {
         const time = period.end.getTime();
-        if (time >= interval.start && time < interval.end) {
-          const s = interval.status;
+        if (time >= intervalEntry.start && time < intervalEntry.end) {
+          const s = intervalEntry.status;
           periodCounts[period.key][s] = (periodCounts[period.key][s] || 0) + 1;
         }
       }
@@ -98,15 +89,9 @@ function calculateCumulativeFlow(
 
   // 5. Convert to TimeSeriesResult format
   return allStatuses.map(status => {
-    const timeSeries: TimeSeriesResult['timeSeries'] = periods.map(period => {
+    const { points: timeSeries } = buildSnapshotPoints(periods, (period) => {
       const count = periodCounts[period.key][status] || 0;
-      return {
-        period: period.key,
-        date: period.end,
-        value: count,
-        count: count,
-        isComplete: isPeriodComplete(period.end),
-      };
+      return { value: count, count };
     });
 
     const lastCompletePoint = [...timeSeries].reverse().find(p => p.isComplete);

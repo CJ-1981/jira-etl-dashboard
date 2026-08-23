@@ -241,7 +241,33 @@ Commit ID: filled in below at commit time.
 | Workstream | Commit |
 |---|---|
 | Phase 5 (all four streams) | `d58fd56` |
-| Phase 5 docs finalization | _(this commit)_ |
+| Phase 5 docs finalization | `1420055` |
+| Phase 5 merge to main | `c54a3de` |
+
+---
+
+## Phase 6 — error handling, trend scaffold, state fix, doc hygiene
+
+Branch `refactor/phase6-consolidation` (based on `c54a3de`), four parallel
+workstreams with disjoint file ownership:
+
+- **6A — API error-handling unification**: adopt `handleApiError`/error
+  classes across the ~19 raw try/catch routes, normalize response shapes,
+  fix status-code inconsistencies (consumer-checked).
+- **6B — Time-series scaffold dedup**: shared helper for the zero-fill →
+  complete-period aggregation → incomplete-marker pipeline hand-rolled in
+  ~8 trend plugins; migrated one plugin at a time against existing tests.
+- **6C — kpiResults dual-write fix**: store slice is now the raw React-Query
+  payload; plugin filtering became render-time derived memos; the
+  self-referencing effect and its guard ref deleted (6 RED-first tests).
+- **6D — Doc hygiene**: six root working-note files deleted, durable facts
+  extracted into the `DEBT_CLEANUP.md` appendix.
+
+Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 6 section).
+
+| Workstream | Commit |
+|---|---|
+| Phase 6 | _(pending)_ |
 
 ---
 

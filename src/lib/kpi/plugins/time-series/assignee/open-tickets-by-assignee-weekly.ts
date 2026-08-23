@@ -12,13 +12,13 @@
  */
 
 import { isIssueDone } from '../../../engine-utils';
-import { type KpiPlugin, type KpiContext } from '../../../types';
+import { type KpiPlugin, type KpiContext, type TransformedIssue } from '../../../types';
 import type { TimeSeriesResult, TimeInterval } from '../../../types-time-series';
-import { 
-  getPeriodEnd, 
-  isPeriodComplete, 
-  enumeratePeriodKeys 
-} from '../../../utils/time-series-utils';
+import {
+  enumerateTrendPeriods,
+  buildSnapshotPoints,
+  INCOMPLETE_PERIOD_DETAIL,
+} from '../../../utils/trend-scaffold';
 
 // ─── Calculation Function ───────────────────────────────────────────────────────
 
@@ -39,24 +39,15 @@ function calculateOpenTicketsByAssigneeTrend(
     }];
   }
 
-  // Define the time range to analyze
+  // Generate periods (point-in-time snapshots) across the dashboard range
   const { start, end } = context.period;
-
-  // Generate periods
-  const allPeriodKeys = enumeratePeriodKeys(start, end, interval);
-  const periods = allPeriodKeys.map(key => ({
-    key,
-    end: getPeriodEnd(key, interval)
-  }));
+  const periods = enumerateTrendPeriods(start, end, interval);
 
   // Get all unique assignees
   const allAssignees = new Set<string>();
   allIssues.forEach(i => allAssignees.add(i.assignee || 'Unassigned'));
 
-  const assigneeResults: TimeSeriesResult[] = [];
-  let hasIncompletePeriod = false;
-
-  const isOpenAtEnd = (issue: any, periodEnd: Date) => {
+  const isOpenAtEnd = (issue: TransformedIssue, periodEnd: Date) => {
     const createdDate = issue.created;
     const resolvedDate = issue.resolved;
 
@@ -67,35 +58,25 @@ function calculateOpenTicketsByAssigneeTrend(
     return wasCreated && wasNotYetResolved;
   };
 
+  const lastCompletePeriod = periods.filter(p => p.isComplete).pop();
+
+  const assigneeResults: TimeSeriesResult[] = [];
+  let hasIncompletePeriod = false;
+
   for (const assignee of allAssignees) {
-    const timeSeries: TimeSeriesResult['timeSeries'] = [];
     const assigneeIssues = allIssues.filter(i => (i.assignee || 'Unassigned') === assignee);
 
-    for (const period of periods) {
-      const isComplete = isPeriodComplete(period.end);
-      if (!isComplete) {
-        hasIncompletePeriod = true;
+    // Count issues open at the end of each period (snapshot semantics)
+    const { points: timeSeries, hasIncompletePeriod: incomplete } = buildSnapshotPoints(
+      periods,
+      (period) => {
+        const openAtEnd = assigneeIssues.filter(i => isOpenAtEnd(i, period.end)).length;
+        return { value: openAtEnd, count: openAtEnd };
       }
+    );
+    if (incomplete) hasIncompletePeriod = true;
 
-      // Count issues that were created before/at period end AND (not resolved OR resolved after period end)
-      const openAtEnd = assigneeIssues.filter(i => isOpenAtEnd(i, period.end)).length;
-
-      timeSeries.push({
-        period: period.key,
-        date: period.end,
-        value: openAtEnd,
-        count: openAtEnd,
-        isComplete,
-      });
-    }
-
-    // Sort by date
-    // @MX:WARN: `new Date(...)` normalizes `Date | string` (ISO string after JSON API round-trip)
-    timeSeries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    // Current value issues (at last complete period end)
     const completePoints = timeSeries.filter(p => p.isComplete);
-    const lastCompletePeriod = periods.filter(p => isPeriodComplete(p.end)).pop();
     const currentTicketKeys = lastCompletePeriod
       ? assigneeIssues.filter(i => isOpenAtEnd(i, lastCompletePeriod.end)).map(i => i.key)
       : [];
@@ -116,7 +97,7 @@ function calculateOpenTicketsByAssigneeTrend(
   // Add info to details if incomplete period is shown
   if (hasIncompletePeriod && assigneeResults.length > 0) {
     assigneeResults[0].details = [
-      { label: 'ℹ️ Current period incomplete', value: 1, unit: 'partial' }
+      { ...INCOMPLETE_PERIOD_DETAIL },
     ];
   }
 
@@ -153,7 +134,7 @@ function createOpenTicketsByAssigneeTrendPlugin(
   };
 }
 
-// ─── Plugin Definitions ────────────────────────────────────────────────────────
+// ─── Plugin Definitions ────────────────────────────────────────────────────────────
 
 export const openTicketsByAssigneeDailyPlugin = createOpenTicketsByAssigneeTrendPlugin('daily');
 export const openTicketsByAssigneeMonthlyPlugin = createOpenTicketsByAssigneeTrendPlugin('monthly');

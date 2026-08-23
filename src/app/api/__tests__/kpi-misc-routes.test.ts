@@ -315,6 +315,18 @@ describe('GET /api/kpi/plugins', () => {
       isActive: true,
     });
   });
+
+  it('returns the normalized error envelope with 500 when the engine throws', async () => {
+    engineMocks.fns.getAllPlugins.mockImplementation(() => {
+      throw new Error('plugins boom');
+    });
+    const { GET } = await import('@/app/api/kpi/plugins/route');
+    const res = await GET();
+    expect(res.status).toBe(500);
+    const body = await readJson(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('plugins boom');
+  });
 });
 
 // ─── /api/kpi/plugins/custom (GET/POST/PUT/DELETE) ────────────────────────────
@@ -341,6 +353,18 @@ describe('/api/kpi/plugins/custom', () => {
       const body = await readJson(res);
       expect(body.success).toBe(true);
       expect(body.plugins).toEqual([]);
+    });
+
+    it('returns the normalized error envelope with 500 when the engine throws', async () => {
+      engineMocks.fns.getAllPlugins.mockImplementation(() => {
+        throw new Error('custom plugins boom');
+      });
+      const { GET } = await import('@/app/api/kpi/plugins/custom/route');
+      const res = await GET();
+      expect(res.status).toBe(500);
+      const body = await readJson(res);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('custom plugins boom');
     });
   });
 
@@ -632,6 +656,18 @@ describe('GET /api/kpi/plugins/events', () => {
     // Already active -> must not start again.
     expect(watcherMock.start).not.toHaveBeenCalled();
   });
+
+  it('returns the normalized error envelope with 500 when the watcher throws', async () => {
+    watcherMock.isActive.mockImplementation(() => {
+      throw new Error('watcher boom');
+    });
+    const { GET } = await import('@/app/api/kpi/plugins/events/route');
+    const res = await GET(makeRequest('/api/kpi/plugins/events'));
+    expect(res.status).toBe(500);
+    const body = await readJson(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('watcher boom');
+  });
 });
 
 // ─── POST /api/kpi/calculate ──────────────────────────────────────────────────
@@ -684,6 +720,23 @@ describe('POST /api/kpi/calculate', () => {
     const body = await readJson(res);
     expect(body.success).toBe(false);
     expect(body.error).toContain('Cross-origin');
+  });
+
+  it('returns the normalized error envelope with 500 when the engine throws', async () => {
+    engineMocks.fns.calculateAll.mockImplementation(() => {
+      throw new Error('calculate boom');
+    });
+    const { POST } = await import('@/app/api/kpi/calculate/route');
+    const res = await POST(
+      makeRequest('/api/kpi/calculate', {
+        method: 'POST',
+        body: { issues: [SAMPLE_ISSUE] },
+      }),
+    );
+    expect(res.status).toBe(500);
+    const body = await readJson(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('calculate boom');
   });
 });
 
@@ -740,7 +793,26 @@ describe('POST /api/export/file', () => {
     );
     expect(res.status).toBe(400);
     const body = await readJson(res);
+    // Normalized envelope: validation errors carry `success:false` too.
+    expect(body.success).toBe(false);
     expect(body.error).toContain('Issues array is required');
+  });
+
+  it('returns the normalized error envelope with 500 when the engine throws', async () => {
+    engineMocks.fns.calculateAll.mockImplementation(() => {
+      throw new Error('kpi engine exploded');
+    });
+    const { POST } = await import('@/app/api/export/file/route');
+    const res = await POST(
+      makeRequest('/api/export/file', {
+        method: 'POST',
+        body: { issues: [SAMPLE_ISSUE], format: 'json' },
+      }),
+    );
+    expect(res.status).toBe(500);
+    const body = await readJson(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('kpi engine exploded');
   });
 });
 
@@ -806,5 +878,17 @@ describe('POST /api/pg/export', () => {
     const body = await readJson(res);
     expect(body.success).toBe(false);
     expect(body.error).toContain('Database connection details are required');
+  });
+
+  it('returns the normalized error envelope with 500 when the db throws', async () => {
+    dbRef.current!.masterTicket.upsert.mockRejectedValue(new Error('pg export boom'));
+    const { POST } = await import('@/app/api/pg/export/route');
+    const res = await POST(
+      makeRequest('/api/pg/export', { method: 'POST', body: exportBody }),
+    );
+    expect(res.status).toBe(500);
+    const body = await readJson(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('pg export boom');
   });
 });
