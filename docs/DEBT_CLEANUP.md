@@ -102,23 +102,76 @@ Each deletion verified reference-free across `src/`, `scripts/`, `e2e/`,
 
 ## Phase 2 — Dependency & UI component pruning
 
-**Why:** 26 of 48 shadcn/ui components are never imported; several npm
-dependencies are unused (`next-intl`, `react-markdown`,
-`react-syntax-highlighter`, `@reactuses/core`).
+**Why:** 26 of 48 shadcn/ui components were never imported; several npm
+dependencies had zero references.
 
-**Changes:** _(filled in after execution)_
+**Changes:**
+- Deleted 28 files, each verified zero-import before removal: the 26 unused
+  shadcn components (accordion, aspect-ratio, avatar, breadcrumb, calendar,
+  carousel, chart, collapsible, context-menu, drawer, dropdown-menu, form,
+  hover-card, input-otp, menubar, navigation-menu, pagination, progress,
+  resizable, sidebar, slider, sonner, textarea, toaster, toggle,
+  toggle-group) plus the orphaned cascade `toast.tsx` and
+  `src/hooks/use-toast.ts`. The remaining 21 components were verified used.
+- Uninstalled 26 npm packages:
+  - unused outright: `next-intl`, `react-markdown`,
+    `react-syntax-highlighter`, `@reactuses/core`, `date-fns`
+  - cascade from deleted components: `@radix-ui/react-{accordion,
+    aspect-ratio, avatar, collapsible, context-menu, dropdown-menu,
+    hover-card, menubar, navigation-menu, progress, slider, toggle,
+    toggle-group, toast}`, `embla-carousel-react`, `input-otp`, `vaul`,
+    `react-resizable-panels`, `react-day-picker`, `react-hook-form`,
+    `@hookform/resolvers`
+- Verified kept: `cmdk` (used by the kept command palette + JQL
+  autocomplete), `zod` (validation schemas), `sonner` (app imports toast
+  directly from the package).
 
 ---
 
 ## Phase 3 — Date/week handling unification
 
-**Why:** three competing "week" definitions exist (local-time Monday weeks in
-the engine and `weekly-ticket-list`, UTC ISO weeks in `time-series-utils`),
-and `TimeSeriesDataPoint.date` is typed `Date` but arrives as a string after
-the API JSON round-trip (root cause of the issue documented in
-`BUGFIX_TIME_SERIES_DATE_PARSING.md`, patched in one consumer only).
+**Why:** `TimeSeriesDataPoint.date` was typed `Date` but arrives as a string
+after the API JSON round-trip (root cause of the issue documented in
+`BUGFIX_TIME_SERIES_DATE_PARSING.md`, patched in one consumer only), and the
+local-time Monday week computation was copy-pasted three times (engine
+`buildPreprocessed`, engine `calculate`, `weekly_ticket_list` plugin).
 
-**Changes:** _(filled in after execution)_
+**Changes (TDD; no KPI numbers changed):**
+- `TimeSeriesDataPoint.date` widened to `Date | string` with `@MX:WARN`
+  documentation. The compiler surfaced exactly 6 unsafe `.getTime()` sort
+  sites in the time-series plugins; all fixed via `new Date(...)`
+  normalization (no `any`, no suppressions). `chart-data-utils.ts` chart
+  point types widened to match; string-date sorting locked in by new
+  regression tests.
+- New `src/lib/utils/week-boundaries.ts` — `getLocalMondayWeekBounds()` with
+  8 unit tests, including a behavior oracle comparing against a verbatim
+  copy of the legacy engine algorithm. Replaces all three duplicated
+  computations.
+- `getPeriodKey` default case now zero-pads; the UTC-ISO-week (trend
+  plugins) vs local-Monday-week (engine card buckets) split is documented
+  with `@MX:WARN` at the top of `time-series-utils.ts`. Changing which
+  definition wins is a product decision and was deliberately NOT made here.
+
+---
+
+## Final results
+
+| Metric | v0.9.0 baseline | After cleanup | Delta |
+|---|---|---|---|
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **1,068** (threshold tightened to 1,068) | −19 warnings, threshold −932 |
+| Type errors | 0 | 0 | — |
+| Tests | 918 | **917** (+73 new, −74 dead-code tests removed) | coverage preserved |
+| Coverage (lines) | 70.98% | 70.3% (floor 70%) | dead code removed from both numerator and denominator |
+| npm dependencies | 89 | 63 | −26 packages |
+| shadcn components | 48 | 21 | −27 files (−7,100 lines) |
+| Mutating API routes with loopback guard | 4 of ~15 | **all** | security gap closed |
+| Card/trend SLA rule divergence | excl-clone AND plain pairs diverged | both consistent | metric bug fixed |
+
+Commits on `refactor/debt-cleanup`:
+1. `52d2350` — phase 1: security guards, SLA parity, dead code removal
+2. `a954224` — phase 2: unused UI components + dependency pruning
+3. `c713c0f` — phase 3: honest time-series date typing + shared week bounds
+4. _(this commit)_ — ratchet tightening + docs
 
 ---
 
