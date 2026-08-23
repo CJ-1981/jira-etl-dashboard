@@ -16,7 +16,7 @@ npm run build          # Production build → .next/standalone
 npm start              # Run standalone production server
 npm test               # Vitest (run mode: npx vitest run)
 npm run test:coverage  # v8 coverage — enforces ratchet thresholds (70% lines), fails below
-npm run lint           # ESLint (critical rules re-enabled; 1068 warnings, ratchet threshold 1068)
+npm run lint           # ESLint (critical rules re-enabled; 1032 warnings, ratchet threshold 1032)
 npm run type-check     # tsc --noEmit — ALWAYS run this before committing
 npm run e2e            # Playwright e2e (reuses a running dev server locally; boots one in CI)
 npm run db:push        # Push schema to SQLite (default DATABASE_URL)
@@ -25,7 +25,9 @@ npm run db:studio      # Prisma Studio
 build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 ```
 
-CI runs `test:coverage`, `lint --max-warnings=1068`, and `type-check` on push/PR to main/develop (Node 22). E2E is not wired into CI yet.
+CI runs `test:coverage`, `lint --max-warnings=1032`, `type-check`, and the Playwright
+E2E suite on push/PR to main/develop (Node 22). The e2e job installs Chromium, boots
+the dev server via the Playwright config, and uploads the HTML report as an artifact.
 
 **Quality gates:** a `pre-push` hook runs the same CI trio locally before every push (installed automatically on `npm install` via `scripts/hooks/install-hooks.mjs`, or manually with `npm run hooks:install`; bypass with `git push --no-verify`). The release workflow additionally waits for the CI run of the tagged commit to finish and aborts the release if it is red — so tagging cannot outrun CI.
 
@@ -109,7 +111,7 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 1. **Build enforces type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: false`
    and ESLint has critical rules re-enabled (`no-explicit-any`, `no-unused-vars`, `no-debugger`,
    `no-fallthrough`, `no-unreachable`, etc.). `npm run type-check` and `npm run lint` are both
-   real static gates. The lint warning threshold is 1068 (ratchet, tightened 2026-08
+   real static gates. The lint warning threshold is 1032 (ratchet, tightened 2026-08
    from 2000 during the debt cleanup — see `docs/DEBT_CLEANUP.md`) — lower it as the codebase
    is cleaned up.
 2. **`REACT_APP_*` env vars do nothing** — leftover CRA convention in

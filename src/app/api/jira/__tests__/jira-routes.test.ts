@@ -142,6 +142,67 @@ describe('POST /api/jira/extract/cleanup', () => {
     expect(holder.db.etlRun.deleteMany).toHaveBeenCalled();
   });
 
+  it('runs the cascade deletion inside a transaction', async () => {
+    holder.db.etlRun.findMany.mockResolvedValue([
+      { id: 'r1', sizeBytes: 1048576 },
+      { id: 'r2', sizeBytes: 2048 },
+    ]);
+    holder.db.ticketSnapshot.findMany.mockResolvedValue([{ id: 's1' }]);
+    const res = await cleanupPOST(
+      makeRequest('/api/jira/extract/cleanup', {
+        method: 'POST',
+        body: { retentionDays: 30 },
+      })
+    );
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.success).toBe(true);
+    // The whole cascade is wrapped in a transaction.
+    expect(holder.db.$transaction).toHaveBeenCalled();
+    // FK-safe order: children before parents.
+    const ordered = [
+      holder.db.kpiResult.deleteMany,
+      holder.db.ticketTransition.deleteMany,
+      holder.db.ticketSnapshot.deleteMany,
+      holder.db.etlRun.deleteMany,
+    ];
+    ordered.forEach((fn) => expect(fn).toHaveBeenCalled());
+    const invocations = ordered.map((fn) => fn.mock.invocationCallOrder[0]);
+    for (let i = 0; i < invocations.length - 1; i++) {
+      expect(invocations[i]).toBeLessThan(invocations[i + 1]);
+    }
+  });
+
+  it('locks the deleted-count response shape (etlRuns + freedSpaceMB)', async () => {
+    holder.db.etlRun.findMany.mockResolvedValue([
+      { id: 'r1', sizeBytes: 1048576 },
+      { id: 'r2', sizeBytes: 1048576 },
+    ]);
+    const res = await cleanupPOST(
+      makeRequest('/api/jira/extract/cleanup', {
+        method: 'POST',
+        body: { retentionDays: 30 },
+      })
+    );
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.deleted).toEqual({ etlRuns: 2, freedSpaceMB: 2 });
+  });
+
+  it('skips the transaction entirely when no runs match the cutoff', async () => {
+    // etlRun.findMany defaults to []
+    const res = await cleanupPOST(
+      makeRequest('/api/jira/extract/cleanup', {
+        method: 'POST',
+        body: { retentionDays: 30 },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(holder.db.$transaction).not.toHaveBeenCalled();
+    expect(holder.db.kpiResult.deleteMany).not.toHaveBeenCalled();
+    expect(holder.db.etlRun.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('uses beforeDate as the cutoff when provided', async () => {
     const res = await cleanupPOST(
       makeRequest('/api/jira/extract/cleanup', {
@@ -326,6 +387,48 @@ describe('POST /api/jira/master/[connectionId]', () => {
     expect(holder.db.masterTicket.deleteMany).toHaveBeenCalled();
   });
 
+  it('action:delete runs the cascade inside a transaction', async () => {
+    holder.db.etlRun.findMany.mockResolvedValue([{ id: 'r1' }]);
+    const res = await masterPOST(
+      makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'delete' } }),
+      ctx('c1')
+    );
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.success).toBe(true);
+    // The whole cascade is wrapped in a transaction.
+    expect(holder.db.$transaction).toHaveBeenCalled();
+    expect(holder.db.etlRun.findMany).toHaveBeenCalled();
+    expect(holder.db.masterTicket.deleteMany).toHaveBeenCalled();
+  });
+
+  it('action:delete locks the response message shape and aggregated counts', async () => {
+    holder.db.etlRun.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    holder.db.ticketSnapshot.findMany.mockResolvedValue([{ id: 's1' }]);
+    // kpiResult is targeted twice (by connectionRef, then by etlRunId); the
+    // second pass is a no-op in production, so model it as matching 0 rows.
+    holder.db.kpiResult.deleteMany.mockImplementation(
+      async (args: { where: Record<string, unknown> }) =>
+        'connectionRef' in args.where ? { count: 3 } : { count: 0 }
+    );
+    holder.db.dashboardView.deleteMany.mockResolvedValue({ count: 4 });
+    holder.db.ticketTransition.deleteMany.mockResolvedValue({ count: 5 });
+    holder.db.ticketSnapshot.deleteMany.mockResolvedValue({ count: 6 });
+    holder.db.etlRun.deleteMany.mockResolvedValue({ count: 2 });
+    holder.db.masterTicket.deleteMany.mockResolvedValue({ count: 7 });
+    const res = await masterPOST(
+      makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'delete' } }),
+      ctx('c1')
+    );
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.success).toBe(true);
+    // deletedCount aggregates every deleteMany, including master tickets.
+    expect(json.message).toBe(
+      'Cleared 2 extractions, 7 master tickets, and 27 related records.'
+    );
+  });
+
   it('rejects an unknown action', async () => {
     const res = await masterPOST(
       makeRequest('/api/jira/master/c1', { method: 'POST', body: { action: 'noop' } }),
@@ -389,6 +492,48 @@ describe('DELETE /api/jira/master/[connectionId]', () => {
     expect(json.success).toBe(true);
     expect(holder.db.masterTicket.deleteMany).toHaveBeenCalled();
     expect(holder.db.etlRun.deleteMany).toHaveBeenCalled();
+  });
+
+  it('runs the cascade inside a transaction', async () => {
+    holder.db.etlRun.findMany.mockResolvedValue([{ id: 'r1' }]);
+    const res = await masterDELETE(
+      makeRequest('/api/jira/master/c1', { method: 'DELETE' }),
+      ctx('c1')
+    );
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.success).toBe(true);
+    // The whole cascade is wrapped in a transaction.
+    expect(holder.db.$transaction).toHaveBeenCalled();
+    expect(holder.db.masterTicket.deleteMany).toHaveBeenCalled();
+    expect(holder.db.etlRun.deleteMany).toHaveBeenCalled();
+  });
+
+  it('locks the response message shape and aggregated counts', async () => {
+    holder.db.etlRun.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    holder.db.ticketSnapshot.findMany.mockResolvedValue([{ id: 's1' }]);
+    // kpiResult is targeted twice (by connectionRef, then by etlRunId); the
+    // second pass is a no-op in production, so model it as matching 0 rows.
+    holder.db.kpiResult.deleteMany.mockImplementation(
+      async (args: { where: Record<string, unknown> }) =>
+        'connectionRef' in args.where ? { count: 3 } : { count: 0 }
+    );
+    holder.db.dashboardView.deleteMany.mockResolvedValue({ count: 4 });
+    holder.db.ticketTransition.deleteMany.mockResolvedValue({ count: 5 });
+    holder.db.ticketSnapshot.deleteMany.mockResolvedValue({ count: 6 });
+    holder.db.etlRun.deleteMany.mockResolvedValue({ count: 2 });
+    holder.db.masterTicket.deleteMany.mockResolvedValue({ count: 7 });
+    const res = await masterDELETE(
+      makeRequest('/api/jira/master/c1', { method: 'DELETE' }),
+      ctx('c1')
+    );
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.success).toBe(true);
+    // deletedCount aggregates every deleteMany, including master tickets.
+    expect(json.message).toBe(
+      'Cleared 2 extractions, 7 master tickets, and 27 related records.'
+    );
   });
 
   describe('loopback-origin guard', () => {

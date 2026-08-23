@@ -366,11 +366,11 @@ build-exe.bat
 npm test               # Vitest unit/integration suite
 npm run test:coverage  # Coverage with enforced minimum thresholds (ratchet)
 npm run e2e            # Playwright end-to-end suite (reuses a running dev server)
-npm run lint           # ESLint (critical rules enabled; ratchet threshold 1068)
+npm run lint           # ESLint (critical rules enabled; ratchet threshold 1032)
 npm run type-check     # TypeScript strict check
 ```
 
-Unit tests live in `__tests__/` directories next to the code they cover (shared mocks in `src/test/`); E2E specs live in `e2e/`. CI runs coverage, lint, and type-check on every push to `main`/`develop`.
+Unit tests live in `__tests__/` directories next to the code they cover (shared mocks in `src/test/`); E2E specs live in `e2e/`. CI runs coverage, lint, type-check, and the Playwright E2E suite on every push to `main`/`develop`.
 
 **E2E base URL:** Set `PLAYWRIGHT_BASE_URL` to override the default `http://localhost:3000` when running e2e tests against a different server.
 

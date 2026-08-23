@@ -15,6 +15,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isLoopbackOriginRequest } from '@/lib/security';
+import { deleteConnectionData, type DbLike } from '@/lib/db-cascade';
 
 export async function DELETE(
   request: Request,
@@ -43,68 +44,10 @@ export async function DELETE(
 
     // Run the whole cascade in a single transaction so a failure mid-way
     // cannot leave the connection's data half-deleted.
-    const result = await (db as any).$transaction(async (tx: any) => {
-      // Gather all ETL runs for this connection so child records can be
-      // cascade-deleted in the correct (FK-safe) order.
-      const etlRuns = await tx.etlRun.findMany({
-        where: { connectionRef: connectionId },
-        select: { id: true },
-      });
-      const etlRunIds = etlRuns.map((r: any) => r.id);
-
-      let deletedCount = 0;
-
-      // 1. KPI results — deleted by connectionRef, which covers both results
-      //    linked to an ETL run and orphaned rows whose etlRunId is NULL.
-      const kpiResults = await tx.kpiResult.deleteMany({
-        where: { connectionRef: connectionId },
-      });
-      deletedCount += kpiResults.count;
-
-      // 2. Dashboard views (reference connectionRef)
-      const dashboardViews = await tx.dashboardView.deleteMany({
-        where: { connectionRef: connectionId },
-      });
-      deletedCount += dashboardViews.count;
-
-      if (etlRunIds.length > 0) {
-        // 3. Ticket transitions (reference ticketSnapshotId) — resolve ids first
-        const snapshots = await tx.ticketSnapshot.findMany({
-          where: { etlRunId: { in: etlRunIds } },
-          select: { id: true },
-        });
-        if (snapshots.length > 0) {
-          const transitions = await tx.ticketTransition.deleteMany({
-            where: { ticketSnapshotId: { in: snapshots.map((s: any) => s.id) } },
-          });
-          deletedCount += transitions.count;
-        }
-
-        // 4. Ticket snapshots (reference etlRunId)
-        const deletedSnapshots = await tx.ticketSnapshot.deleteMany({
-          where: { etlRunId: { in: etlRunIds } },
-        });
-        deletedCount += deletedSnapshots.count;
-
-        // 5. ETL runs themselves
-        const runs = await tx.etlRun.deleteMany({
-          where: { id: { in: etlRunIds } },
-        });
-        deletedCount += runs.count;
-      }
-
-      // 6. Master tickets (reference connectionRef directly)
-      const masterTickets = await tx.masterTicket.deleteMany({
-        where: { connectionRef: connectionId },
-      });
-      deletedCount += masterTickets.count;
-
-      return {
-        runCount: etlRunIds.length,
-        masterTicketCount: masterTickets.count,
-        deletedCount,
-      };
-    });
+    const result = await deleteConnectionData(
+      db as unknown as DbLike,
+      connectionId
+    );
 
     return NextResponse.json({
       success: true,

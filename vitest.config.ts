@@ -14,6 +14,7 @@ export default defineConfig({
       exclude: [
         'node_modules/',
         '.next/',
+        'prisma/generated/',
         'src/types/**',
         'src/test/**',
         '**/*.d.ts',
