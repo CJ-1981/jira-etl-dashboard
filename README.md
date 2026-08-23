@@ -73,7 +73,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
-**33 built-in plugins** (24 core + 9 time-series) organized by business domain:
+**35 built-in plugins** (26 core + 9 time-series) organized by business domain:
 
 **Processing Time (7 plugins)**
 - Avg Processing Hours — Average business hours from creation to resolution
@@ -95,17 +95,19 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - No Comment Follow-up — Open tickets with no new comment for >3 / >7 working days (status changes do not reset the clock)
 - No Activity Follow-up — Open tickets with no comment and no status change for >3 / >7 working days
 
-**Throughput (6 plugins)**
+**Throughput (7 plugins)**
 - Throughput — Count of tickets completed in period
 - Open Tickets by Priority — Current backlog breakdown
 - Closed Tickets by Priority — Resolved backlog breakdown
 - Open Tickets by Status — Backlog breakdown by workflow status
 - Open Tickets Kanban — Kanban-style view of open tickets
 - Weekly Ticket List — Per-week ticket listing
+- Backlog Age Percentiles — Open-ticket age as P50/P90/oldest calendar days
 
-**Quality (2 plugins)**
+**Quality (3 plugins)**
 - Resolution Rate — % of tickets resolved
 - Reassignment Rate — % of tickets with assignee changes
+- First-Time Resolution Rate — % resolved without any reassignment
 
 **Assignee (2 plugins)**
 - Open Tickets by Assignee — Current workload distribution
@@ -129,12 +131,12 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 
 ```
 src/lib/kpi/plugins/
-├── builtin/              # Core plugins (24 plugins)
+├── builtin/              # Core plugins (26 plugins)
 │   ├── processing-time/  # 7 plugins
 │   ├── sla/              # 4 plugins
 │   ├── turnaround/       # 3 plugins
-│   ├── throughput/       # 6 plugins
-│   ├── quality/          # 2 plugins
+│   ├── throughput/       # 7 plugins
+│   ├── quality/          # 3 plugins
 │   └── assignee/         # 2 plugins
 ├── time-series/          # Trend analysis plugins (9 plugins)
 │   ├── processing-time/  # 1 plugin
