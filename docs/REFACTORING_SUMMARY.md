@@ -349,7 +349,8 @@ Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 8 section).
 
 | Workstream | Commit |
 |---|---|
-| Phase 8 (all four streams) | _(this commit)_ |
+| Phase 8 (all four streams) | `7b2bb5f` |
+| Phase 8 docs finalization | _(this commit)_ |
 
 ---
 
