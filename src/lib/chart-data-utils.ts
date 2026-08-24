@@ -196,6 +196,94 @@ export function extractWeeklyBreakdown(
 }
 
 /**
+ * A single row of a merged multi-series time-series dataset.
+ *
+ * `series<N>` holds the value of result N for this period and
+ * `ticketKeys<N>` the drill-down keys of that point (see mergeTimeSeries).
+ */
+export interface MergedTimeSeriesPoint {
+  /** Period label (x-axis category) */
+  name: string;
+  /**
+   * false when at least one series reported an incomplete point for this
+   * period. Only present when `trackCompleteness` is enabled.
+   */
+  isComplete?: boolean;
+  /** series<N> / ticketKeys<N> fields keyed by result index */
+  [key: string]: unknown;
+}
+
+/**
+ * Minimal per-result shape consumed by {@link mergeTimeSeries} and
+ * {@link hasMultipleTimeSeries}. Both the lib `KpiResult` rows and the
+ * dashboard's `KpiCalcResult` rows satisfy it, so the helpers work on either.
+ */
+export interface TimeSeriesSource {
+  timeSeries?: Array<{
+    period: string;
+    value: number;
+    isComplete?: boolean;
+    /** Ticket keys contributing to this time-series point */
+    ticketKeys?: string[];
+  }>;
+}
+
+/**
+ * Merge the time series of multiple KPI results into one row per period.
+ *
+ * Collects every distinct period across all results, sorts them
+ * lexicographically and emits one row per period with a `series<idx>` value
+ * and `ticketKeys<idx>` array per result (idx = position in `results`).
+ * Missing points default to 0 / [].
+ *
+ * @param trackCompleteness when true (default) each row carries `isComplete`,
+ *   which becomes false if any series flagged the period as incomplete. Pass
+ *   false to omit the field (e.g. stacked area charts ignore completeness).
+ */
+export function mergeTimeSeries(
+  results: TimeSeriesSource[],
+  options: { trackCompleteness?: boolean } = {},
+): MergedTimeSeriesPoint[] {
+  const trackCompleteness = options.trackCompleteness !== false;
+
+  const allPeriods = new Set<string>();
+  results.forEach((result) => {
+    result.timeSeries?.forEach((point) => allPeriods.add(point.period));
+  });
+
+  const sortedPeriods = Array.from(allPeriods).sort();
+  return sortedPeriods.map((period) => {
+    const dataPoint: MergedTimeSeriesPoint = { name: period };
+    let isComplete = true;
+    results.forEach((result, idx) => {
+      const point = result.timeSeries?.find((p) => p.period === period);
+      dataPoint[`series${idx}`] = point?.value || 0;
+      dataPoint[`ticketKeys${idx}`] = point?.ticketKeys || [];
+      if (point && point.isComplete === false) isComplete = false;
+    });
+    if (trackCompleteness) {
+      dataPoint.isComplete = isComplete;
+    }
+    return dataPoint;
+  });
+}
+
+/**
+ * True when a KPI has multiple results that all carry non-empty time series —
+ * the condition under which charts render one series per result instead of a
+ * single aggregated line/area/bar set.
+ */
+export function hasMultipleTimeSeries(
+  results: TimeSeriesSource[] | undefined,
+): boolean {
+  return (
+    !!results &&
+    results.length > 1 &&
+    results.every((r) => r.timeSeries && r.timeSeries.length > 0)
+  );
+}
+
+/**
  * Transform KPI results for bar chart
  */
 export function transformForBarChart(

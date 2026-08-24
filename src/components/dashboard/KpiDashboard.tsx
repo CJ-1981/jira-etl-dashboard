@@ -38,16 +38,7 @@ import {
   VisualizationsSection,
 } from './widgets';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
-
-// ─── Pre-compiled JQL patterns for client-side filtering ──────────────────────
-const JQL_PATTERNS = [
-  { regex: /(\w+)\s*=\s*"([^"]+)"/, op: '=' },
-  { regex: /(\w+)\s*!=\s*"([^"]+)"/, op: '!=' },
-  { regex: /(\w+)\s+NOT\s+CONTAINS\s+"([^"]+)"/i, op: 'NOT CONTAINS' },
-  { regex: /(\w+)\s+CONTAINS\s+"([^"]+)"/i, op: 'CONTAINS' },
-  { regex: /(\w+)\s+NOT\s+IN\s+\(([^)]+)\)/i, op: 'NOT IN' },
-  { regex: /(\w+)\s+IN\s+\(([^)]+)\)/i, op: 'IN' },
-];
+import { filterIssuesForWidget } from '@/lib/jql-widget-eval';
 
 // @MX:NOTE: Normalizes data for saved view change detection
 // @MX:REASON - Normalize data before comparison to prevent false positives from Set/Array ordering
@@ -509,97 +500,15 @@ export function KpiDashboard() {
     setCalculatingWidgets(prev => { const s = new Set(prev); s.add(widgetId); return s; });
 
     try {
-      // @MX:NOTE: Implement basic client-side JQL filtering
-      // @MX:REASON: API doesn't support customJql, so we filter issues client-side
-      // Supports: field = "v", field != "v", field CONTAINS "v", field NOT CONTAINS "v",
-      //           field IN (v1,v2), field NOT IN (v1,v2)
-      // Fields are resolved from both flat (issue.field) and nested (issue.fields.field) shapes.
-      let filteredIssues = masterDatasetInfo.issues;
-
-      if (jqlFilter.enabled && jqlFilter.mode !== 'override' && globalFilters) {
-        Object.entries(globalFilters).forEach(([key, values]) => {
-          if (values && values.length > 0) {
-            filteredIssues = filteredIssues.filter((issue: any) => {
-              const rawValue = issue[key] ?? issue.fields?.[key];
-              let normalizedValue = rawValue;
-              if (rawValue && typeof rawValue === 'object') {
-                if (Array.isArray(rawValue)) {
-                  normalizedValue = rawValue.map((v: any) => v.displayName || v.name || v.value || String(v)).join(',');
-                } else {
-                  normalizedValue = rawValue.displayName || rawValue.name || rawValue.value || rawValue.key || String(rawValue);
-                }
-              }
-              const issueValue = String(normalizedValue || '').trim().toLowerCase();
-              // Array dimensions like components/labels might need partial match, but globalFilters uses exact match
-              return values.some(v => {
-                const lowerV = v.toLowerCase();
-                return issueValue === lowerV || issueValue.split(',').includes(lowerV);
-              });
-            });
-          }
-        });
-      }
-
-      if (jqlFilter.enabled && jqlFilter.query) {
-        const query = jqlFilter.query.trim();
-        let field = '';
-        let operator = '';
-        let value = '';
-
-        // IMPORTANT: More specific patterns must come first!
-        for (const pattern of JQL_PATTERNS) {
-          const match = query.match(pattern.regex);
-          if (match) {
-            field = match[1];
-            operator = pattern.op;
-            value = (operator === 'IN' || operator === 'NOT IN') ? match[2] : match[2].toLowerCase();
-            break;
-          }
-        }
-
-        if (field && operator && value) {
-          // @MX:NOTE: Refine on top of the already globally-filtered issues (global filters first,
-          // then widget-level JQL). Override mode skipped the global filtering above, so this
-          // correctly starts from the full dataset in that case.
-          filteredIssues = filteredIssues.filter((issue: any) => {
-            // Support both flat (issue.summary) and nested (issue.fields.summary) issue shapes
-            const rawValue = issue[field] ?? issue.fields?.[field];
-            let normalizedValue = rawValue;
-            if (rawValue && typeof rawValue === 'object') {
-              if (Array.isArray(rawValue)) {
-                normalizedValue = rawValue.map((v: any) => v.displayName || v.name || v.value || String(v)).join(',');
-              } else {
-                normalizedValue = rawValue.displayName || rawValue.name || rawValue.value || rawValue.key || String(rawValue);
-              }
-            }
-            const issueValue = String(normalizedValue || '').trim().toLowerCase();
-
-            switch (operator) {
-              case '=':            return issueValue.toLowerCase() === value;
-              case '!=':           return issueValue.toLowerCase() !== value;
-              case 'CONTAINS':     return issueValue.toLowerCase().includes(value);
-              case 'NOT CONTAINS': return !issueValue.toLowerCase().includes(value);
-              case 'IN': {
-                const values = value.split(',').map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
-                return values.some(v => v.toLowerCase() === issueValue.toLowerCase());
-              }
-              case 'NOT IN': {
-                const values = value.split(',').map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
-                return !values.some(v => v.toLowerCase() === issueValue.toLowerCase());
-              }
-              default: return true;
-            }
-          });
-        } else {
-          // Fallback: full-text search across summary, key, description
-          // (also applied on top of the globally filtered issues in refine mode)
-          const queryLower = query.toLowerCase();
-          filteredIssues = filteredIssues.filter((issue: any) => {
-            const text = `${issue.summary ?? issue.fields?.summary ?? ''} ${issue.key} ${issue.description ?? issue.fields?.description ?? ''}`.toLowerCase();
-            return text.includes(queryLower);
-          });
-        }
-      }
+      // @MX:NOTE: Client-side JQL filtering — engine extracted to lib/jql-widget-eval.
+      // @MX:REASON: API doesn't support customJql, so we filter issues client-side.
+      // Global dashboard filters apply first (refine mode), then the widget JQL on
+      // top; override mode skips global filters and starts from the full dataset.
+      const filteredIssues = filterIssuesForWidget(
+        masterDatasetInfo.issues,
+        jqlFilter,
+        globalFilters
+      );
 
       const res = await fetch('/api/kpi/calculate', {
         method: 'POST',

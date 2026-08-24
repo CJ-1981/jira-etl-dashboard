@@ -146,7 +146,6 @@ echo   npm run type-check       - Type checking
 echo.
 echo Utilities:
 echo   scripts\memory-health.bat    - Check memory usage
-echo   scripts\test-api.bat         - Test API endpoints
 echo.
 echo ======================================
 echo.

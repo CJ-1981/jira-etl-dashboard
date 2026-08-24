@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { localConfig, CustomExtractField } from '@/lib/config/local-store';
 import { PollingStatus } from '@/types/dashboard';
 import { useAppStore } from '@/store/app-store';
+import { useJiraPollQuery, JIRA_POLL_QUERY_KEY, JiraPollResponse } from '@/hooks/useJiraPollQuery';
 
 export interface UsePollingOptions {
   extracting: boolean;
@@ -17,48 +19,38 @@ export interface UsePollingOptions {
    * (e.g. a useCallback) — it is part of the run-completion effect's deps.
    */
   onRunCompleted: () => void;
+  /** Poll cadence override (ms). Defaults to the shared 5000ms. */
+  pollIntervalMs?: number;
 }
 
 export function usePolling(options: UsePollingOptions) {
-  const { extracting, dateFrom, dateTo, jql, quickPullDays, customFields, updateOnly, onRunCompleted } = options;
+  const { extracting, dateFrom, dateTo, jql, quickPullDays, customFields, updateOnly, onRunCompleted, pollIntervalMs } = options;
   const { connections, activeConnectionId, settings, storageConfig } = useAppStore();
+  const queryClient = useQueryClient();
 
-  const [polling, setPolling] = useState<PollingStatus | null>(null);
-  const [pollEnabled, setPollEnabled] = useState(false);
+  // Shared React Query source for GET /api/jira/poll. Every consumer mounted at
+  // the same time (page-level notifications + this panel) reads the same cache
+  // entry, so only one request stream hits the endpoint. Polling pauses while
+  // an extraction is in flight — the same semantics as the old interval guard.
+  const { data: pollData } = useJiraPollQuery({ enabled: !extracting, intervalMs: pollIntervalMs });
+  const polling: PollingStatus | null = pollData?.success ? pollData.polling : null;
+  const pollEnabled = polling?.enabled ?? false;
+
   const [pollInterval, setPollInterval] = useState('15');
   const [pollSaving, setPollSaving] = useState(false);
   // Last background-run id we refreshed the list for, so each completed run
   // triggers exactly one silent reload of the displayed tickets.
   const lastRefreshedRunIdRef = useRef<number | null>(null);
 
-  // Load polling status on a 5 second interval.
+  // Keep the interval selector in sync with the server's value. Only written
+  // when it differs so the controlled input doesn't fight the user's typing.
+  const serverInterval = polling ? String(polling.intervalMinutes) : null;
   useEffect(() => {
-    let isMounted = true;
-    const loadPolling = () => {
-      if (extracting) return;
-
-      fetch('/api/jira/poll')
-        .then((r) => r.json())
-        .then((d) => {
-          if (isMounted && d.success) {
-            // Deep-equality guard avoids re-render churn from identical payloads.
-            setPolling(prev => JSON.stringify(prev) === JSON.stringify(d.polling) ? prev : d.polling);
-            setPollEnabled(d.polling.enabled);
-            setPollInterval(String(d.polling.intervalMinutes));
-          }
-        })
-        .catch(() => {
-          // Silent catch to prevent unhandled rejection during dev/reloads
-          // Failures are expected when the server is restarting/compiling
-        });
-    };
-    loadPolling();
-    const timer = setInterval(loadPolling, 5000);
-    return () => {
-      isMounted = false;
-      clearInterval(timer);
-    };
-  }, [extracting]);
+    if (serverInterval !== null && serverInterval !== pollInterval) {
+      setPollInterval(serverInterval);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverInterval]);
 
   // Shared POST helper. includeInterval=false is used by the date/JQL sync effect
   // so it never overwrites the server's interval with a stale local value.
@@ -66,7 +58,6 @@ export function usePolling(options: UsePollingOptions) {
     const activeConn = connections.find(c => c.id === activeConnectionId);
     if (nextEnabled && !activeConn) {
       toast.error('Select a connection first');
-      setPollEnabled(false);
       return;
     }
 
@@ -107,22 +98,23 @@ export function usePolling(options: UsePollingOptions) {
       });
       const data = await res.json();
       if (data.success) {
-        setPolling(data.polling);
-        setPollEnabled(data.polling.enabled);
+        // Update the shared cache so every consumer (notifications + this panel)
+        // sees the fresh server state immediately; the next poll tick converges
+        // on the same value. On failure the cache stays untouched, which keeps
+        // pollEnabled on its previous value — the same rollback as before.
+        queryClient.setQueryData<JiraPollResponse>(JIRA_POLL_QUERY_KEY, data);
         // Only the toggle path announces the change; the sync effect stays quiet.
         if (includeInterval) {
           toast.success(data.polling.enabled ? 'Polling started' : 'Polling stopped');
         }
       } else {
         toast.error(data.error);
-        setPollEnabled(polling?.enabled || false);
       }
     } catch {
       toast.error('Failed to update polling');
-      setPollEnabled(polling?.enabled || false);
     }
     setPollSaving(false);
-  }, [connections, activeConnectionId, settings, storageConfig, pollInterval, dateFrom, dateTo, jql, quickPullDays, customFields, updateOnly, polling]);
+  }, [connections, activeConnectionId, settings, storageConfig, pollInterval, dateFrom, dateTo, jql, quickPullDays, customFields, updateOnly, queryClient]);
 
   const handleTogglePolling = useCallback(async (targetState?: boolean, overrideInterval?: string) => {
     const nextEnabled = typeof targetState === 'boolean' ? targetState : !pollEnabled;
@@ -139,7 +131,7 @@ export function usePolling(options: UsePollingOptions) {
   useEffect(() => {
     if (!pollEnabled) return;
     const timer = setTimeout(() => {
-      postPollingState(true);
+      postPollingState(true, undefined, false);
     }, 1000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

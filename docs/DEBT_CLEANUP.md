@@ -517,14 +517,98 @@ exposes, so the field-ID overrides in `field-config.ts` were dead weight
 
 ---
 
+## Phase 8 — Final pass (branch `refactor/phase8-final-pass`)
+
+Four parallel workstreams with disjoint file ownership.
+
+### 8A. ChartCard decomposition
+**Why:** `KpiCard.tsx` (~1,735 lines) holds `KpiCard` + `ChartCard`
+(~1,365 lines); `renderChart()` ~780 lines across 5 chart branches; the
+time-series merge block triplicated; zoom slicing + ReferenceArea overlay
+repeated 4× each; three near-identical tooltips; 11-prop ChartCard.
+
+**Changes:**
+- New `src/components/dashboard/chart/` (9 files, ~1,340 lines): per-type
+  `Bar/Line/Area/PieChartRenderer`s (each owns its `ResponsiveContainer`
+  directly — required for recharts sizing), one variant-based
+  `ChartTooltip` replacing three inline tooltips, `chart-zoom` module
+  (`useChartZoom`, `sliceForZoom`, `ZoomSelectionArea` — the 4×
+  repetitions), `chart-shared` (legend, SLA target lines, tooltip styles,
+  active-dot drill-down), `ChartConfigControls`.
+- `chart-data-utils.ts`: tested `mergeTimeSeries` (the triplicated merge) +
+  `hasMultipleTimeSeries` with structural types (10 new tests).
+- **KpiCard.tsx 1,735 → 803 lines; ChartCard ~1,365 → ~467** (renderChart
+  ~780 → ~55-line dispatch). `any` count 51 → 0 (recharts handler typings
+  via a guarded helper). Public exports and rendered element trees
+  preserved exactly (tooltip ordering nuance included); 20 new renderer
+  tests.
+
+### 8B. Poller dedup + React Query completion
+**Why:** three independent 5-second pollers (two hitting the same
+`/api/jira/poll`), plus raw-fetch master-dataset loads in page.tsx.
+
+**Changes:**
+- Three shared query hooks: `useJiraPollQuery`, `usePluginEventsQuery`,
+  `useMasterDatasetQuery` (exported query keys; transient failures resolve
+  to `null` like the old silent catches).
+- Consumers rewired with public APIs unchanged: `usePollingNotifications`
+  (toasts once per new run id), `extract/usePolling` (pause via `enabled`,
+  toggle/sync writes via `setQueryData`), `PluginsPanel` (reload once per
+  new event counter), `page.tsx` (both master-load sites → one query, store
+  synced in a single effect; ticket-list auto-populate only on restore /
+  connection switch, never clobbering a fresh extraction preview),
+  `extract/useExtraction` (invalidation + `fetchQuery` dedup).
+- Dedup proven by `useSharedPollingQueries.test.tsx` (10 tests): two
+  simultaneously mounted `/api/jira/poll` consumers issue exactly one fetch
+  and hold one cache entry; same for plugin events.
+- Raw `fetch` call sites are now fully migrated except the bespoke
+  diagnostic endpoints; lint 845 → 784.
+
+### 8C. Client JQL engine extraction
+**Why:** `calculateWidgetJql` + `JQL_PATTERNS` (~150 lines) sat untested
+inside KpiDashboard.tsx.
+
+**Changes:**
+- New pure module `src/lib/jql-widget-eval.ts` (218 lines, no React/IO, no
+  `any` in the public API): `filterIssuesForWidget` pipeline +
+  `applyGlobalFilters` / `applyWidgetJqlQuery` stages, typed
+  `WidgetEvalIssue`/`WidgetJqlFilter`/`GlobalFilters`. KpiDashboard lost 98
+  lines (one import + one call). `src/lib/jql-parser.ts` deliberately NOT
+  merged — it's an autocomplete cursor parser with different semantics.
+- **56 tests** (12 describe blocks) characterize the real behavior, written
+  RED-first. The process surfaced five latent bugs, PINNED BY TESTS and
+  intentionally left for a product decision (they change matching
+  semantics): untrimmed global filter values, unsupported `~` operator
+  degrading to full-text, case-sensitive field names, unparsed unquoted /
+  compound `AND`/`OR` queries, and `[object Object]` normalization
+  fallback.
+
+### 8D. One-off script cleanup
+**Why:** orphaned debug/backfill/test scripts, some referencing the removed
+Electron flow or divergent env-var naming.
+
+**Changes:**
+- Deleted 7 orphaned files (each verified reference-free first):
+  `reproduce-issue.mjs`, `backfill-issue-owner-team.js` (divergent
+  `REACT_APP_*` naming), `test-api.bat`, `test-url-fix.bat`,
+  `test-validation.bat`, `test-connection-feedback.bat`, root `test.bat`
+  (stale `dist\Start Jira Dashboard.bat` electron path).
+- Removed the `test-api.bat` echo line from `scripts/windows-setup.bat`.
+- Kept `find-team-field.js` (referenced by field-config docs as the
+  automated field-finder) and `memory-health.*` (documented in
+  scripts/README.md). Known staleness noted: find-team-field's console
+  advice cites field IDs now centralized in `field-config.ts`.
+
+---
+
 ## Final results
 
-| Metric | v0.9.0 baseline | After phases 1–7 | Delta |
+| Metric | v0.9.0 baseline | After phases 1–8 | Delta |
 |---|---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **846** (threshold tightened to 846) | −241 warnings, threshold −1,154 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **785** (threshold tightened to 785) | −302 warnings, threshold −1,215 |
 | Type errors | 0 | 0 | — |
-| Tests | 918 | **1,142** | +224 net |
-| Coverage (lines) | 70.98% | **74.8%** (floor 70%) | improved despite large deletions |
+| Tests | 918 | **1,238** | +320 net |
+| Coverage (lines) | 70.98% | **75.3%** (floor 70%) | improved despite large deletions |
 | npm dependencies | 89 | 58 | −31 packages |
 | shadcn components | 48 | 21 | −27 files (−7,100 lines) |
 | Mutating API routes with loopback guard | 4 of ~15 | **all** | security gap closed |
@@ -537,51 +621,45 @@ exposes, so the field-ID overrides in `field-config.ts` were dead weight
 | Routes using shared error handler | 1 of 25 | **22 of 25** (3 bespoke by design) | shapes + status codes normalized |
 | Trend plugins hand-rolling the scaffold | 8 | **0** | one tested implementation |
 | kpiResults store dual-write | yes | **no** (derived filtering) | feedback loop removed |
-| KpiDashboard.tsx size | 2,691 lines | **1,265** (−52%) | widgets + sections extracted |
+| KpiDashboard.tsx size | 2,691 lines | **~1,170** | widgets + sections + JQL engine extracted |
 | ExtractPanel.tsx size | 1,434 lines / 25 useState | **274-line orchestrator** | 12 focused modules |
-| Small panels on React Query | 0 of 7 | **7 of 7** (21 fetch sites) | caching + invalidation |
+| KpiCard.tsx / ChartCard size | 1,735 / ~1,365 lines | **803 / ~467** | chart renderers extracted |
+| Panels on React Query | 0 | **all incl. shared pollers** | caching + dedup + invalidation |
+| Duplicate 5s pollers | 3 (2 same endpoint) | **0** (shared query sources) | one fetch per interval |
 | Storage-key literals outside `KEYS` | ~13 | **0** | test mocks fixed to allow it |
 | Quote-aware splitter copies | 3 | **1** (zero-drift verified) | 48 helper tests |
+| Client JQL engine | untested, inline | **tested lib module (56 tests)** | 5 latent bugs pinned |
+| One-off scripts | 7 orphaned | **removed** | references cleaned |
 
 Commits: phases 1–3 on `refactor/debt-cleanup` (merged to main at `bf1d343`,
 released as v0.10.0 including phase 4), phase 5 merged at `c54a3de`, phase 6
-merged at `bab3508`, phase 7 on `refactor/phase7-components`.
+merged at `bab3508`, phase 7 merged at `0b91155`, phase 8 on
+`refactor/phase8-final-pass`.
 
 ---
 
 ## Deferred backlog (remaining work)
 
-Items still open — each touches architecture broadly and needs its own
-branch/review:
+Items still open after phase 8:
 
-- Decompose `KpiCard.tsx`/`ChartCard` (~1.7k lines: `renderChart()` is ~780
-  lines with 5 chart-type branches; time-series merge block triplicated;
-  zoom slicing + ReferenceArea overlay repeated 4× each). KpiDashboard and
-  ExtractPanel were decomposed in phase 7.
-- Finish the React Query migration for the remaining call sites
-  (ExtractPanel hooks, PluginsPanel, KpiDashboard's second
-  `/api/kpi/calculate` path, page.tsx master-dataset loads) and dedupe the
-  three independent 5-second pollers — two of them hit the same
-  `/api/jira/poll` endpoint.
 - Replace the `Set`/`Map` values in zustand with plain arrays/records to
   remove clone boilerplate and `instanceof Map` test-compat branches.
-- Extract the `calculateWidgetJql` client-side JQL engine (~150 lines +
-  `JQL_PATTERNS`) out of KpiDashboard into a tested lib module.
-- One-off scripts cleanup: `reproduce-issue.mjs`,
-  `backfill-issue-owner-team.js` (its `REACT_APP_*` naming now diverges
-  from `field-config.ts` — see 7E), stale `test-*.bat` + root `test.bat`.
-- Root-level working-note markdown files — CLOSED in phase 6: six files
-  deleted (`TIME_SERIES_*.md`, `TREND_PLUGIN_FIX.md`,
-  `BUGFIX_TIME_SERIES_DATE_PARSING.md`, `SLA_STATUS_TREND_IMPLEMENTATION.md`);
-  durable facts preserved in the appendix below; `custom_plugin_guide.md`
-  kept (referenced by README/CLAUDE.md).
-- Orphaned dev-DB migration record `20260528000000_add_ticket_snapshot_rawdata_owner_team`
-  — CLOSED: verified it exists only as a row in the local dev DB's
-  `_prisma_migrations` table; the repo's `prisma/migrations/` is clean and
-  fresh databases migrate cleanly. No repo change needed.
+- Client-side widget JQL filter semantics — five latent bugs pinned by the
+  phase-8C tests (untrimmed global filter values, unsupported `~` operator,
+  case-sensitive field names, unparsed unquoted/compound `AND`/`OR` queries,
+  `[object Object]` normalization fallback). Fixing them changes matching
+  behavior users may rely on — needs a product decision + migration note.
 - UTC-ISO-week vs local-Monday-week divergence (documented with `@MX:WARN`
   in `time-series-utils.ts` / `week-boundaries.ts`) — needs a product
   decision before unifying.
+- `find-team-field.js` console advice cites field IDs now centralized in
+  `field-config.ts` — refresh or retire the script with its docs.
+
+Done in phase 8 (previously listed here): ChartCard decomposition
+(1,735→803, renderers + tested mergeTimeSeries helper), poller dedup +
+React Query completion (shared query sources, dedup proven), client JQL
+engine extraction (56 characterization tests), one-off script cleanup
+(7 orphaned files removed).
 
 Done in phase 7 (previously listed here): KpiDashboard decomposition
 (2,614→1,265, 8 widgets + 4 sections extracted), ExtractPanel decomposition

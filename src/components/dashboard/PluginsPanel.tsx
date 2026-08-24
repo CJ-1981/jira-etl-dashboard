@@ -48,6 +48,7 @@ import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
+import { usePluginEventsQuery } from '@/hooks/usePluginEventsQuery';
 import { WidgetResizeContainer } from './WidgetResizeContainer';
 import { isTimeSeriesPlugin } from '@/lib/chart-data-utils';
 
@@ -219,25 +220,21 @@ export function PluginsPanel() {
 
   useEffect(() => { loadPlugins(); }, [loadPlugins]);
 
-  // Poll for plugin changes and auto-reload
+  // Poll for plugin file changes via the shared React Query source and
+  // auto-reload when the watcher reports new events. The effect only reacts to
+  // a genuinely new eventCounter, so unchanged poll responses never retrigger it.
+  const { data: pluginEvents } = usePluginEventsQuery();
+  const lastEventCounterRef = useRef<number | null>(null);
   useEffect(() => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch('/api/kpi/plugins/events');
-        const data = await response.json();
-
-        if (data.success && data.hasChanges) {
-          console.log('[PluginsPanel] Plugin changes detected, reloading...');
-          await loadPlugins();
-          toast.info('Plugins updated due to file changes');
-        }
-      } catch (error) {
-        console.error('[PluginsPanel] Failed to poll for plugin changes:', error);
-      }
-    }, 5000); // Check every 5 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [loadPlugins]);
+    if (!pluginEvents?.success || !pluginEvents.hasChanges) return;
+    const counter = pluginEvents.eventCounter;
+    if (lastEventCounterRef.current === counter) return;
+    lastEventCounterRef.current = counter;
+    console.log('[PluginsPanel] Plugin changes detected, reloading...');
+    loadPlugins().then(() => {
+      toast.info('Plugins updated due to file changes');
+    });
+  }, [pluginEvents, loadPlugins]);
 
   const saveActivePlugins = useCallback((pluginIds: string[]) => {
     localConfig.saveActivePlugins(pluginIds);

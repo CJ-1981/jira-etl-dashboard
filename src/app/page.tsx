@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon, Loader2, ChevronDown, ChevronRight
@@ -23,6 +23,7 @@ import { JiraConnection } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 import { usePollingNotifications } from '@/hooks/usePollingNotifications';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+import { useMasterDatasetQuery } from '@/hooks/useMasterDatasetQuery';
 
 // @MX:NOTE: React Query Devtools are lazy-loaded and dev-only.
 // @MX:REASON: A static import wired the devtools' internal lazy chunk into the page's
@@ -48,7 +49,6 @@ const queryClient = new QueryClient({
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [isLoadingDb, setIsLoadingDb] = useState(false);
 
   const {
     theme, setTheme,
@@ -86,40 +86,44 @@ export default function Home() {
     }
   }, [setTheme]);
 
-  const loadMasterDataset = useCallback(async (connectionId: string, config: any, signal?: AbortSignal) => {
-    if (!connectionId) return;
-    setIsLoadingDb(true);
-    try {
-      const res = await fetch(`/api/jira/master/${connectionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig: config }),
-        signal
+  // Shared React Query source for the master dataset. Its cache entry is also
+  // refreshed (invalidateQueries/fetchQuery) by useExtraction after extractions
+  // and background polling runs, so the page and the extract panel share one
+  // request stream per connection/storage-config pair.
+  const {
+    data: masterData,
+    isLoading: isLoadingDb,
+  } = useMasterDatasetQuery(activeConnectionId, storageConfig, { enabled: mounted && !!activeConnectionId });
+
+  // Set when a load should also auto-populate the ticket list (initial restore
+  // and manual connection switches) — post-extraction refreshes must NOT
+  // overwrite the fresh extraction preview, so they never set this flag.
+  const autoPopulateTicketsRef = useRef(false);
+
+  // Single sync point from the query into the store. The store remains the
+  // source of truth for all consumers (KPI dashboard, cards, headers, export).
+  // React Query's structural sharing keeps `masterData` referentially stable
+  // when a refetch returns an identical payload, so this effect only writes on
+  // genuinely new data.
+  useEffect(() => {
+    if (!masterData) return;
+    setMasterDatasetInfo({
+      totalExtracted: masterData.totalExtracted,
+      dateRange: masterData.dateRange,
+      lastUpdated: masterData.lastUpdated,
+      issues: masterData.issues
+    });
+    if (autoPopulateTicketsRef.current) {
+      autoPopulateTicketsRef.current = false;
+      // Auto-populate extraction result to show ticket list
+      setExtractionResult({
+        total: masterData.totalExtracted,
+        issues: masterData.issues ?? [],
+        isAllTickets: true,
+        etlRunId: 'master'
       });
-      const data = await res.json();
-      if (signal?.aborted) return;
-      if (data.success && data.data) {
-        setMasterDatasetInfo({
-          totalExtracted: data.data.totalExtracted,
-          dateRange: data.data.dateRange,
-          lastUpdated: data.data.lastUpdated,
-          issues: data.data.issues
-        });
-        // Auto-populate extraction result to show ticket list
-        setExtractionResult({
-          total: data.data.totalExtracted,
-          issues: data.data.issues,
-          isAllTickets: true,
-          etlRunId: 'master'
-        });
-      }
-    } catch (e: any) {
-      if (e.name === 'AbortError') return;
-      console.error('Failed to auto-load master dataset:', e);
-    } finally {
-      if (!signal?.aborted) setIsLoadingDb(false);
     }
-  }, []);
+  }, [masterData, setMasterDatasetInfo, setExtractionResult]);
 
   const initialMountRef = useRef(false);
 
@@ -142,28 +146,20 @@ export default function Home() {
     setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
     setShowSettingsSubmenu(localConfig.getShowSettingsSubmenu());
 
-    // Start loading DB immediately if we have a saved connection
-    // Don't wait for activeConnectionId state to update
+    // Restore the dataset for the saved connection via the shared query —
+    // setting the active id is enough to enable it, and the restored ticket
+    // list should auto-populate.
+    //
+    // @MX:NOTE: Mount-only initialization. The load is driven by the
+    // master-dataset query reacting to activeConnectionId/storageConfig; we
+    // only seed those from the fresh values read directly from localConfig.
     if (savedActive) {
       initialMountRef.current = true;
-      const controller = new AbortController();
-
-      // Update state for UI consistency (non-blocking)
+      autoPopulateTicketsRef.current = true;
       setActiveConnectionId(savedActive);
-
-      // Start loading immediately with saved storage config
-      loadMasterDataset(savedActive, savedStorage || storageConfig, controller.signal);
-
-      // Cleanup if component unmounts
-      return () => controller.abort();
     }
 
     // Initially dates are empty strings from the store
-    // 
-    // @MX:NOTE: Mount-only initialization. loadMasterDataset and storageConfig 
-    // are intentionally omitted as we want to trigger initial data load 
-    // ONLY once using the fresh values read directly from localConfig.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setShowSettingsSubmenu]);
 
   // Secondary effect: Handle connection changes after initial load
@@ -182,16 +178,13 @@ export default function Home() {
     // Skip if this looks like the initial load (storageConfig not set yet)
     if (!storageConfig.provider) return;
 
-    const controller = new AbortController();
-
     // Persist active connection ID
     localConfig.setActiveConnectionId(activeConnectionId);
 
-    // Auto-load data when connection changes
-    loadMasterDataset(activeConnectionId, storageConfig, controller.signal);
-
-    return () => controller.abort();
-  }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted, loadMasterDataset]);
+    // A manual switch restores the ticket list for the new connection once its
+    // master-dataset query resolves.
+    autoPopulateTicketsRef.current = true;
+  }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted]);
 
   useEffect(() => {
     const handleScroll = () => {

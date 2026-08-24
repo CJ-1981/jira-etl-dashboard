@@ -1,11 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
 import { screen, fireEvent, waitFor, renderHook, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { JqlEditor } from '../extract/JqlEditor';
 import { MasterDatasetCard } from '../extract/MasterDatasetCard';
 import { CustomFieldDiscovery } from '../extract/CustomFieldDiscovery';
 import { useExtraction } from '../extract/useExtraction';
 import { usePolling } from '../extract/usePolling';
 import { createMockStore, createMockLocalConfig, renderWithProviders } from '@/test/mock-store';
+
+// Wrapper for renderHook — the hooks now consume the shared React Query cache.
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, refetchOnWindowFocus: false } },
+  });
+}
+function hookWrapper({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={createTestQueryClient()}>{children}</QueryClientProvider>;
+}
 
 // ── Store ref (vi.hoisted ref avoids the vitest-4 import-TDZ issue) ──────────
 const storeRef = vi.hoisted(() => ({ current: undefined as any }));
@@ -198,7 +210,8 @@ describe('useExtraction', () => {
         updateOnly: false,
         customFields: [],
         getPollEnabled: () => false,
-      })
+      }),
+      { wrapper: hookWrapper }
     );
   }
 
@@ -277,7 +290,8 @@ describe('usePolling', () => {
         updateOnly: false,
         onRunCompleted: vi.fn(),
         ...overrides,
-      })
+      }),
+      { wrapper: hookWrapper }
     );
   }
 

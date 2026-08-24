@@ -19,6 +19,8 @@ import {
   formatChartValue,
   extractWeeklyBreakdown,
   WEEKLY_BREAKDOWN_LABELS,
+  mergeTimeSeries,
+  hasMultipleTimeSeries,
   type KpiResult,
 } from '../chart-data-utils';
 import { KEYS } from '../config/local-store';
@@ -820,5 +822,129 @@ describe('extractWeeklyBreakdown', () => {
     expect(out.thisWeek).toBe(1.23);
     expect(out.prevWeek).toBeUndefined();
     expect(out.existing).toBe(7);
+  });
+});
+
+describe('mergeTimeSeries', () => {
+  // Two results with overlapping + disjoint periods.
+  const results: KpiResult['results'] = [
+    {
+      name: 'Done',
+      value: 0,
+      unit: 'count',
+      timeSeries: [
+        { period: '2026-W2', date: new Date('2026-01-12'), value: 5, count: 5, isComplete: true, ticketKeys: ['T1', 'T2'] },
+        { period: '2026-W1', date: new Date('2026-01-05'), value: 3, count: 3, isComplete: true, ticketKeys: ['T3'] },
+      ],
+    },
+    {
+      name: 'Open',
+      value: 0,
+      unit: 'count',
+      timeSeries: [
+        { period: '2026-W1', date: new Date('2026-01-05'), value: 2, count: 2, isComplete: true, ticketKeys: ['T4'] },
+        // Disjoint period: only present on this series.
+        { period: '2026-W3', date: new Date('2026-01-19'), value: 7, count: 7, isComplete: false, ticketKeys: ['T5'] },
+      ],
+    },
+  ];
+
+  it('emits one row per distinct period, sorted lexicographically', () => {
+    const out = mergeTimeSeries(results);
+    expect(out.map((d) => d.name)).toEqual(['2026-W1', '2026-W2', '2026-W3']);
+  });
+
+  it('assigns series<N>/ticketKeys<N> fields per result index', () => {
+    const out = mergeTimeSeries(results);
+    const w1 = out[0];
+    expect(w1.series0).toBe(3);
+    expect(w1.ticketKeys0).toEqual(['T3']);
+    expect(w1.series1).toBe(2);
+    expect(w1.ticketKeys1).toEqual(['T4']);
+    const w2 = out[1];
+    expect(w2.series0).toBe(5);
+    expect(w2.ticketKeys0).toEqual(['T1', 'T2']);
+  });
+
+  it('fills gaps with 0 and empty ticket keys for missing periods', () => {
+    const out = mergeTimeSeries(results);
+    // 2026-W2 only exists on series 0.
+    expect(out[1].series1).toBe(0);
+    expect(out[1].ticketKeys1).toEqual([]);
+    // 2026-W3 only exists on series 1.
+    expect(out[2].series0).toBe(0);
+    expect(out[2].ticketKeys0).toEqual([]);
+    expect(out[2].series1).toBe(7);
+  });
+
+  it('marks a row incomplete when any series flags the period incomplete', () => {
+    const out = mergeTimeSeries(results);
+    expect(out[0].isComplete).toBe(true); // both series complete
+    expect(out[1].isComplete).toBe(true); // missing points do not affect completeness
+    expect(out[2].isComplete).toBe(false); // series1 W3 is incomplete
+  });
+
+  it('omits isComplete when trackCompleteness is false', () => {
+    const out = mergeTimeSeries(results, { trackCompleteness: false });
+    expect(out.every((d) => d.isComplete === undefined)).toBe(true);
+    expect(out[0].series0).toBe(3);
+  });
+
+  it('returns [] for results without time series', () => {
+    expect(mergeTimeSeries([])).toEqual([]);
+    const noTimeSeries: KpiResult['results'] = [
+      { name: 'x', value: 1, unit: 'count' },
+    ];
+    expect(mergeTimeSeries(noTimeSeries)).toEqual([]);
+  });
+
+  it('treats a missing ticketKeys array as empty', () => {
+    const input: KpiResult['results'] = [
+      {
+        name: 'x',
+        value: 0,
+        unit: 'count',
+        timeSeries: [{ period: 'p1', date: new Date(), value: 4, count: 4 }],
+      },
+    ];
+    const out = mergeTimeSeries(input);
+    expect(out[0].ticketKeys0).toEqual([]);
+    expect(out[0].series0).toBe(4);
+  });
+});
+
+describe('hasMultipleTimeSeries', () => {
+  const withSeries = (name: string, value: number): KpiResult['results'][0] => ({
+    name,
+    value,
+    unit: 'count',
+    timeSeries: [{ period: 'p', date: new Date(), value, count: value }],
+  });
+  const withoutSeries = (name: string): KpiResult['results'][0] => ({
+    name,
+    value: 1,
+    unit: 'count',
+  });
+
+  it('returns false for undefined or a single result', () => {
+    expect(hasMultipleTimeSeries(undefined)).toBe(false);
+    expect(hasMultipleTimeSeries([withSeries('x', 1)])).toBe(false);
+  });
+
+  it('returns false when any result lacks a non-empty time series', () => {
+    expect(
+      hasMultipleTimeSeries([withSeries('a', 1), withoutSeries('b')]),
+    ).toBe(false);
+    const emptySeries: KpiResult['results'][0] = {
+      name: 'b',
+      value: 1,
+      unit: 'count',
+      timeSeries: [],
+    };
+    expect(hasMultipleTimeSeries([withSeries('a', 1), emptySeries])).toBe(false);
+  });
+
+  it('returns true when every result has a non-empty time series', () => {
+    expect(hasMultipleTimeSeries([withSeries('a', 1), withSeries('b', 2)])).toBe(true);
   });
 });
