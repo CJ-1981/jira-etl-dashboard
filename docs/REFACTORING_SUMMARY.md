@@ -351,7 +351,7 @@ Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 8 section).
 |---|---|
 | Phase 8 (all four streams) | `7b2bb5f` |
 | Phase 8 docs finalization | `ad89ce0` |
-| Phase 8 hotfix (QueryClient provider placement) | _(this commit)_ |
+| Phase 8 hotfix (QueryClient provider placement) | `8e98025` |
 
 ### Phase 8 hotfix — "No QueryClient set" startup crash
 
