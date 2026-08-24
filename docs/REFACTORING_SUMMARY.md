@@ -175,12 +175,12 @@ Both pre-existing, both fixed TDD-style (RED confirmed first):
 
 ## Metrics before → after
 
-| Metric | v0.9.0 (`085a0d7`) | After (`phase 7`) |
+| Metric | v0.9.0 (`085a0d7`) | After (`phase 8`) |
 |---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **846** (threshold 846) |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **785** (threshold 785) |
 | Type errors | 0 | 0 |
-| Unit tests | 918 | **1,142** (all passing) |
-| Coverage (lines) | 70.98% | **74.8%** (floor 70%) |
+| Unit tests | 918 | **1,238** (all passing) |
+| Coverage (lines) | 70.98% | **75.3%** (floor 70%) |
 | E2E tests | 22 (local only) | 22, **also in CI** |
 | npm dependencies | 89 | 58 |
 | shadcn components | 48 | 21 |
@@ -188,8 +188,8 @@ Both pre-existing, both fixed TDD-style (RED confirmed first):
 | Transactional cascade deletes | 1 of 4 sites | **all 4** |
 | `(db as any)` route casts | ~150 | **0** |
 | Routes on shared error handler | 1 of 25 | **22 of 25** |
-| KpiDashboard.tsx / ExtractPanel.tsx | 2,691 / 1,434 lines | **1,265 / 274** |
-| Small panels on React Query | 0 of 7 | **7 of 7** |
+| KpiDashboard / ExtractPanel / KpiCard | 2,691 / 1,434 / 1,735 | **~1,170 / 274 / 803** |
+| Duplicate 5s pollers | 3 | **0** (shared queries) |
 | kpiResults store dual-write | yes | **no** (derived filtering) |
 
 ---
@@ -313,26 +313,87 @@ Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 7 section).
 | Workstream | Commit |
 |---|---|
 | Phase 7 (all five streams) | `8f105ca` |
-| Phase 7 docs finalization | _(this commit)_ |
+| Phase 7 docs finalization | `76a9d3d` |
+| Phase 7 merge to main | `0b91155` |
+
+---
+
+## Phase 8 — final pass
+
+Branch `refactor/phase8-final-pass` (based on `0b91155`), four parallel
+workstreams with disjoint file ownership:
+
+- **8A — ChartCard decomposition**: KpiCard.tsx 1,735 → **803 lines**;
+  ChartCard ~1,365 → ~467 (renderChart ~780 → ~55-line dispatch); 9 focused
+  files under `chart/` (per-type renderers, variant tooltip, zoom module,
+  shared legend/SLA-line helpers, config controls); tested
+  `mergeTimeSeries`/`hasMultipleTimeSeries` helpers; `any` 51 → 0; 30 new
+  tests; rendered output preserved exactly.
+- **8B — Poller dedup + React Query completion**: shared
+  `useJiraPollQuery`/`usePluginEventsQuery`/`useMasterDatasetQuery`;
+  all consumers rewired (public APIs unchanged); dedup proven (two mounted
+  consumers → one fetch, one cache entry); post-extraction refreshes via
+  invalidation.
+- **8C — Client JQL engine extraction**: pure `src/lib/jql-widget-eval.ts`
+  with 56 characterization tests; KpiDashboard −98 lines; five latent filter
+  bugs pinned by tests and documented for a product decision (not silently
+  fixed).
+- **8D — One-off script cleanup**: 7 orphaned scripts deleted after
+  reference checks; stale `windows-setup.bat` mention removed.
+
+**Gates:** type-check 0 errors; **1,238 tests passing** (78 files);
+coverage **75.3% lines** (floor 70%); lint **846 → 785** (ratchet tightened
+to 785 in CI, the pre-push hook, CLAUDE.md, README).
+
+Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 8 section).
+
+| Workstream | Commit |
+|---|---|
+| Phase 8 (all four streams) | `7b2bb5f` |
+| Phase 8 docs finalization | `ad89ce0` |
+| Phase 8 hotfix (QueryClient provider placement) | `8e98025` |
+| Phase 8 hotfix 2 (duplicate chart-key dedupe) | `393a9e0` |
+
+### Phase 8 hotfix — "No QueryClient set" startup crash
+
+The phase-8 React Query migration moved `usePollingNotifications` onto
+`useQuery`, but the `QueryClientProvider` was rendered *inside* `page.tsx`'s
+`Home` component — a hook in the same component can't see a provider it
+renders (context flows to descendants only), so `GET /` crashed with a 500.
+Fixed by mounting `Providers` (`src/app/providers.tsx`, per-instance
+`QueryClient` via `useState`) in `src/app/layout.tsx` above `{children}`,
+unwrapping `page.tsx` (fragment return), and SSR-guarding the three shared
+query hooks. Verified by the user's exact failing path (dev server `GET /`
+→ 200), a 3-test regression suite, the full unit suite (1,241), and E2E
+(22/22). Process lesson recorded: **E2E is a required gate after frontend
+data-layer changes** (unit tests always wrap renders in a provider, so this
+class of regression only surfaces at page-load level).
+
+### Phase 8 hotfix 2 — duplicate chart-key console errors (`393a9e0`)
+
+Reported console error: "Encountered two children with the same key,
+`chart-resolution-by-priority`". Persisted dashboard state (localStorage
+restores, saved views, imported configs from different script generations)
+can contain two chart configs with the same id; the chart grid keys by chart
+id, violating React's unique-key rule. App logic never creates duplicates —
+they only enter via persisted data. Fixed TDD-style with a tested
+`dedupeChartsById` helper (chart-data-utils) applied at the render boundary
+(`KpiDashboard.visibleCharts`) and at both persistence entry points (page
+restore, view apply — so stored state self-heals on the next auto-save).
+True RED verified (without the fix, two cards render for one id); 7 new
+tests; full suite 1,248 passing; lint 785 (ratchet held).
 
 ---
 
 ## Remaining debt (tracked in `docs/DEBT_CLEANUP.md`)
 
-Top items, ranked:
-1. Decompose `KpiCard.tsx`/`ChartCard` (~1.7k lines; `renderChart()` ~780
-   lines, triplicated time-series merge, 4× repeated zoom/ReferenceArea
-   blocks).
-2. Finish the React Query migration (ExtractPanel hooks, PluginsPanel,
-   KpiDashboard's second calculate path, page.tsx master loads) and dedupe
-   the three 5-second pollers (two hit the same endpoint).
-3. Replace `Set`/`Map` values in zustand with plain arrays/records (removes
+The structural cleanup is essentially complete. What remains:
+1. Replace `Set`/`Map` values in zustand with plain arrays/records (removes
    clone boilerplate and `instanceof Map` test-compat branches).
-4. Extract the `calculateWidgetJql` client-side JQL engine out of
-   KpiDashboard into a tested lib module.
-5. One-off scripts cleanup (`reproduce-issue.mjs`,
-   `backfill-issue-owner-team.js` incl. its divergent `REACT_APP_*` naming,
-   stale `test-*.bat`).
-6. Product decision needed: UTC-ISO-week (trends) vs local-Monday-week (card
-   buckets) divergence — documented with `@MX:WARN`, intentionally not
-   changed unilaterally.
+2. Product decision: the five latent client-side JQL filter bugs pinned by
+   the phase-8C tests (fixing them changes matching behavior users may rely
+   on).
+3. Product decision: UTC-ISO-week (trends) vs local-Monday-week (card
+   buckets) divergence — documented with `@MX:WARN`.
+4. Minor: `find-team-field.js` console advice is stale (field IDs are now
+   centralized in `field-config.ts`).

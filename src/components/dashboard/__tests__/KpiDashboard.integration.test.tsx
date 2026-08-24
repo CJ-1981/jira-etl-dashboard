@@ -72,6 +72,15 @@ vi.mock('@/lib/chart-data-utils', () => ({
   formatChartValue: vi.fn((v) => v),
   isTimeSeriesPlugin: vi.fn(() => false),
   CHART_COLORS: [],
+  dedupeChartsById: <T extends { id?: string }>(charts: T[]) => {
+    const seen = new Set<string>();
+    return charts.filter((c) => {
+      if (!c?.id) return true;
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+  },
 }));
 
 // @MX:NOTE: Spread the real module so KEYS (and other exports) stay available —

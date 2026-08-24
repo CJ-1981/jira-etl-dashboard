@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { localConfig, CustomExtractField } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
+import { masterDatasetQueryKey } from '@/hooks/useMasterDatasetQuery';
 
 // Parses a response body as JSON, tolerating the HTML error page Next.js serves
 // for API routes while webpack is (re)compiling. That transient state is treated
@@ -60,9 +62,9 @@ export function useExtraction(options: UseExtractionOptions) {
     dateFrom,
     dateTo,
     setExtractionResult,
-    setMasterDatasetInfo,
     setKpiResults,
   } = useAppStore();
+  const queryClient = useQueryClient();
 
   const [extracting, setExtracting] = useState(false);
   // Track when the last extraction returned no results for persistent empty state
@@ -144,32 +146,23 @@ export function useExtraction(options: UseExtractionOptions) {
         }
 
         try {
-          // Retry when the dev server responds with HTML while recompiling —
-          // the extraction itself already succeeded, only this refresh failed.
-          const { res: masterRes, data: masterData } = await fetchWithDevServerRetry(
-            `/api/jira/master/${activeConnectionId}`,
-            {
+          // Refresh the shared master-dataset query; page.tsx syncs the fresh
+          // payload into the store from one place. Invalidating (instead of a
+          // side fetch) keeps this hook and the page on the same cache entry.
+          const masterKey = masterDatasetQueryKey(activeConnectionId, storageConfig);
+          await queryClient.invalidateQueries({
+            queryKey: masterKey,
+            refetchType: 'active',
+          });
+
+          // Ping only when the refresh actually produced data (same condition
+          // as the previous inline fetch path).
+          if (queryClient.getQueryData(masterKey) != null && getPollEnabled()) {
+            await fetch('/api/jira/poll', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'get', storageConfig })
-            }
-          );
-
-          if (masterRes.ok && masterData.success && masterData.data) {
-            setMasterDatasetInfo({
-              totalExtracted: masterData.data.totalExtracted,
-              dateRange: masterData.data.dateRange,
-              lastUpdated: masterData.data.lastUpdated,
-              issues: masterData.data.issues
-            });
-
-            if (getPollEnabled()) {
-              await fetch('/api/jira/poll', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'ping' })
-              }).catch(e => console.warn('Failed to ping polling system:', e));
-            }
+              body: JSON.stringify({ action: 'ping' })
+            }).catch(e => console.warn('Failed to ping polling system:', e));
           }
         } catch (error) {
           console.log('Failed to reload master dataset info:', error);
@@ -192,7 +185,7 @@ export function useExtraction(options: UseExtractionOptions) {
     } finally {
       setExtracting(false);
     }
-  }, [activeConnectionId, connections, settings, storageConfig, dateFrom, dateTo, jql, quickPullDays, saveThisExtraction, updateOnly, customFields, getPollEnabled, setExtractionResult, setMasterDatasetInfo, setKpiResults]);
+  }, [activeConnectionId, connections, settings, storageConfig, dateFrom, dateTo, jql, quickPullDays, saveThisExtraction, updateOnly, customFields, getPollEnabled, setExtractionResult, setKpiResults, queryClient]);
 
   const handleShowAllTickets = useCallback(async () => {
     if (!activeConnectionId) { toast.error('Please select a connection first'); return; }
@@ -200,62 +193,78 @@ export function useExtraction(options: UseExtractionOptions) {
     const loadingToast = toast.loading('Fetching all tickets from database...', { duration: 0 });
 
     try {
-      const { res, data } = await fetchWithDevServerRetry(
-        `/api/jira/master/${activeConnectionId}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get', storageConfig })
-        }
-      );
+      // fetchQuery hits the shared cache entry, so this load dedupes with the
+      // page-level master-dataset query instead of issuing a parallel request.
+      const data = await queryClient.fetchQuery({
+        queryKey: masterDatasetQueryKey(activeConnectionId, storageConfig),
+        queryFn: async () => {
+          const { res, data: body } = await fetchWithDevServerRetry(
+            `/api/jira/master/${activeConnectionId}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'get', storageConfig })
+            }
+          );
+          if (res.ok && body.success && body.data) return body.data;
+          const err = new Error(body.error || 'Failed to fetch tickets') as Error & { serverError?: boolean };
+          err.serverError = true;
+          throw err;
+        },
+        // The user explicitly asked for fresh data — bypass any cached copy.
+        staleTime: 0,
+        retry: 0,
+      });
 
       toast.dismiss(loadingToast);
 
-      if (res.ok && data.success && data.data) {
+      if (data) {
         setExtractionResult({
-          total: data.data.totalExtracted,
-          issues: data.data.issues,
+          total: data.totalExtracted,
+          issues: data.issues,
           isAllTickets: true
         });
-        setMasterDatasetInfo({
-          totalExtracted: data.data.totalExtracted,
-          dateRange: data.data.dateRange,
-          lastUpdated: data.data.lastUpdated,
-          issues: data.data.issues
-        });
-        toast.success(`Loaded all ${data.data.totalExtracted} tickets from database`);
-      } else {
-        toast.error(data.error || 'Failed to fetch tickets');
+        toast.success(`Loaded all ${data.totalExtracted} tickets from database`);
       }
-    } catch {
+    } catch (e: unknown) {
       toast.dismiss(loadingToast);
-      toast.error('Network error while fetching tickets');
+      const err = e as { serverError?: boolean; message?: string };
+      if (err?.serverError) {
+        toast.error(err.message || 'Failed to fetch tickets');
+      } else {
+        toast.error('Network error while fetching tickets');
+      }
     } finally {
       setExtracting(false);
     }
-  }, [activeConnectionId, storageConfig, setExtractionResult, setMasterDatasetInfo]);
+  }, [activeConnectionId, storageConfig, setExtractionResult, queryClient]);
 
   // Silent reload of the master dataset after a background polling run finishes,
   // so the displayed ticket list reflects newly pulled issues without user action.
+  // The fresh payload is synced into the store by the page-level master-dataset
+  // query; here we only mirror it into extractionResult for the ticket list.
   const refreshMasterData = useCallback(async () => {
     if (!activeConnectionId || extracting) return;
     try {
-      const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig })
+      const data = await queryClient.fetchQuery({
+        queryKey: masterDatasetQueryKey(activeConnectionId, storageConfig),
+        queryFn: async () => {
+          const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'get', storageConfig })
+          });
+          const body = await safeJson(res);
+          if (res.ok && body.success && body.data) return body.data;
+          return null;
+        },
+        staleTime: 0,
+        retry: 0,
       });
-      const data = await safeJson(res);
-      if (res.ok && data.success && data.data) {
-        setMasterDatasetInfo({
-          totalExtracted: data.data.totalExtracted,
-          dateRange: data.data.dateRange,
-          lastUpdated: data.data.lastUpdated,
-          issues: data.data.issues
-        });
+      if (data) {
         setExtractionResult({
-          total: data.data.totalExtracted,
-          issues: data.data.issues,
+          total: data.totalExtracted,
+          issues: data.issues,
           isAllTickets: true
         });
       }
@@ -263,7 +272,7 @@ export function useExtraction(options: UseExtractionOptions) {
       // Background refresh is best-effort; don't surface errors to the user.
       console.log('Silent master dataset refresh failed:', e);
     }
-  }, [activeConnectionId, extracting, storageConfig, setMasterDatasetInfo, setExtractionResult]);
+  }, [activeConnectionId, extracting, storageConfig, setExtractionResult, queryClient]);
 
   return {
     extracting,

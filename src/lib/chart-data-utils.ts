@@ -196,6 +196,94 @@ export function extractWeeklyBreakdown(
 }
 
 /**
+ * A single row of a merged multi-series time-series dataset.
+ *
+ * `series<N>` holds the value of result N for this period and
+ * `ticketKeys<N>` the drill-down keys of that point (see mergeTimeSeries).
+ */
+export interface MergedTimeSeriesPoint {
+  /** Period label (x-axis category) */
+  name: string;
+  /**
+   * false when at least one series reported an incomplete point for this
+   * period. Only present when `trackCompleteness` is enabled.
+   */
+  isComplete?: boolean;
+  /** series<N> / ticketKeys<N> fields keyed by result index */
+  [key: string]: unknown;
+}
+
+/**
+ * Minimal per-result shape consumed by {@link mergeTimeSeries} and
+ * {@link hasMultipleTimeSeries}. Both the lib `KpiResult` rows and the
+ * dashboard's `KpiCalcResult` rows satisfy it, so the helpers work on either.
+ */
+export interface TimeSeriesSource {
+  timeSeries?: Array<{
+    period: string;
+    value: number;
+    isComplete?: boolean;
+    /** Ticket keys contributing to this time-series point */
+    ticketKeys?: string[];
+  }>;
+}
+
+/**
+ * Merge the time series of multiple KPI results into one row per period.
+ *
+ * Collects every distinct period across all results, sorts them
+ * lexicographically and emits one row per period with a `series<idx>` value
+ * and `ticketKeys<idx>` array per result (idx = position in `results`).
+ * Missing points default to 0 / [].
+ *
+ * @param trackCompleteness when true (default) each row carries `isComplete`,
+ *   which becomes false if any series flagged the period as incomplete. Pass
+ *   false to omit the field (e.g. stacked area charts ignore completeness).
+ */
+export function mergeTimeSeries(
+  results: TimeSeriesSource[],
+  options: { trackCompleteness?: boolean } = {},
+): MergedTimeSeriesPoint[] {
+  const trackCompleteness = options.trackCompleteness !== false;
+
+  const allPeriods = new Set<string>();
+  results.forEach((result) => {
+    result.timeSeries?.forEach((point) => allPeriods.add(point.period));
+  });
+
+  const sortedPeriods = Array.from(allPeriods).sort();
+  return sortedPeriods.map((period) => {
+    const dataPoint: MergedTimeSeriesPoint = { name: period };
+    let isComplete = true;
+    results.forEach((result, idx) => {
+      const point = result.timeSeries?.find((p) => p.period === period);
+      dataPoint[`series${idx}`] = point?.value || 0;
+      dataPoint[`ticketKeys${idx}`] = point?.ticketKeys || [];
+      if (point && point.isComplete === false) isComplete = false;
+    });
+    if (trackCompleteness) {
+      dataPoint.isComplete = isComplete;
+    }
+    return dataPoint;
+  });
+}
+
+/**
+ * True when a KPI has multiple results that all carry non-empty time series —
+ * the condition under which charts render one series per result instead of a
+ * single aggregated line/area/bar set.
+ */
+export function hasMultipleTimeSeries(
+  results: TimeSeriesSource[] | undefined,
+): boolean {
+  return (
+    !!results &&
+    results.length > 1 &&
+    results.every((r) => r.timeSeries && r.timeSeries.length > 0)
+  );
+}
+
+/**
  * Transform KPI results for bar chart
  */
 export function transformForBarChart(
@@ -589,4 +677,32 @@ export function formatChartValue(value: number, unit?: string): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
 
   return `${value.toFixed(1)}${unit || ''}`;
+}
+
+/**
+ * Remove chart configs with duplicate `id`s, keeping the FIRST occurrence and
+ * preserving order. Entries without an id are kept (they cannot collide by id).
+ *
+ * @MX:WARN: Persisted dashboard state can legitimately contain duplicate chart
+ * ids (localStorage restores, saved views, imported configs built by
+ * different script generations). React requires unique keys; rendering two
+ * charts with the same id logs "Encountered two children with the same key"
+ * and can duplicate/drop children. Apply this at every boundary where chart
+ * arrays enter render state (KpiDashboard.visibleCharts) and where persisted
+ * arrays are loaded (page restore, view apply) so state self-heals on the
+ * next auto-save.
+ */
+export function dedupeChartsById<T extends { id?: string }>(charts: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const chart of charts) {
+    if (chart.id === undefined) {
+      out.push(chart);
+      continue;
+    }
+    if (seen.has(chart.id)) continue;
+    seen.add(chart.id);
+    out.push(chart);
+  }
+  return out;
 }

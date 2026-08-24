@@ -2,57 +2,50 @@
 
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { useJiraPollQuery } from './useJiraPollQuery';
+
+export interface UsePollingNotificationsOptions {
+  /** Poll cadence override (ms). Defaults to the shared 5000ms. */
+  intervalMs?: number;
+}
 
 /**
  * Watches the server-side polling state and surfaces a toast each time a
  * scheduled background pull finishes (success or failure). Mounted once at
  * page level so notifications appear regardless of the active tab.
+ *
+ * Data comes from the shared `jira-poll` React Query cache, so this hook and
+ * the extract panel's poller share one request stream.
  */
-export function usePollingNotifications() {
+export function usePollingNotifications(options: UsePollingNotificationsOptions = {}) {
+  const { data } = useJiraPollQuery({ intervalMs: options.intervalMs });
+
   // lastRunId we already notified the user about; null until first poll response.
   const lastSeenRunIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
+    if (!data?.success || !data.polling) return;
 
-    const check = () => {
-      fetch('/api/jira/poll')
-        .then((r) => r.json())
-        .then((d) => {
-          if (!isMounted || !d?.success || !d.polling) return;
+    const runId: number = data.polling.lastRunId ?? 0;
+    // First response only seeds the marker so stale runs don't toast.
+    if (lastSeenRunIdRef.current === null) {
+      lastSeenRunIdRef.current = runId;
+      return;
+    }
+    if (runId <= lastSeenRunIdRef.current) return;
+    lastSeenRunIdRef.current = runId;
 
-          const runId: number = d.polling.lastRunId ?? 0;
-          // First response only seeds the marker so stale runs don't toast.
-          if (lastSeenRunIdRef.current === null) {
-            lastSeenRunIdRef.current = runId;
-            return;
-          }
-          if (runId <= lastSeenRunIdRef.current) return;
-          lastSeenRunIdRef.current = runId;
-
-          const when = d.polling.lastRunAt ? new Date(d.polling.lastRunAt).toLocaleTimeString() : '';
-          if (d.polling.lastError) {
-            toast.error(`Scheduled pull failed${when ? ` at ${when}` : ''}: ${d.polling.lastError}`, { duration: 6000 });
-          } else {
-            const s = d.polling.lastRunSummary;
-            toast.success(
-              s
-                ? `Scheduled pull completed${when ? ` at ${when}` : ''} — ${s.totalExtracted} issue${s.totalExtracted === 1 ? '' : 's'} (${s.added} added, ${s.updated} updated)`
-                : `Scheduled pull completed${when ? ` at ${when}` : ''}`,
-              { duration: 5000 }
-            );
-          }
-        })
-        .catch(() => {
-          // Expected while the dev server restarts/compiles — stay silent.
-        });
-    };
-
-    check();
-    const timer = setInterval(check, 5000);
-    return () => {
-      isMounted = false;
-      clearInterval(timer);
-    };
-  }, []);
+    const when = data.polling.lastRunAt ? new Date(data.polling.lastRunAt).toLocaleTimeString() : '';
+    if (data.polling.lastError) {
+      toast.error(`Scheduled pull failed${when ? ` at ${when}` : ''}: ${data.polling.lastError}`, { duration: 6000 });
+    } else {
+      const s = data.polling.lastRunSummary;
+      toast.success(
+        s
+          ? `Scheduled pull completed${when ? ` at ${when}` : ''} — ${s.totalExtracted} issue${s.totalExtracted === 1 ? '' : 's'} (${s.added} added, ${s.updated} updated)`
+          : `Scheduled pull completed${when ? ` at ${when}` : ''}`,
+        { duration: 5000 }
+      );
+    }
+  }, [data]);
 }
