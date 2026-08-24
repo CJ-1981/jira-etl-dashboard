@@ -599,6 +599,40 @@ Electron flow or divergent env-var naming.
   scripts/README.md). Known staleness noted: find-team-field's console
   advice cites field IDs now centralized in `field-config.ts`.
 
+### 8-hotfix. "No QueryClient set" startup crash (post-merge regression)
+**Symptom:** after the phase-8 merge, `npm run dev` → `GET /` returned 500
+with `No QueryClient set, use QueryClientProvider to set one` from
+`useJiraPollQuery` → `usePollingNotifications` → `Home`.
+
+**Root cause:** the `QueryClientProvider` was rendered *inside* `Home`'s own
+JSX in `page.tsx`, but phase 8B made `usePollingNotifications()` (called at
+the top of `Home`) depend on `useQuery`. React context only flows to
+*descendants*, so a hook in the same component that renders the provider
+never sees it. Before 8B the hook used raw `fetch`/`useEffect` (no context
+needed), which is why it worked until the migration.
+
+**Fix:**
+- New `src/app/providers.tsx` (`Providers`) creates the `QueryClient` per
+  instance via `useState` (no module-scope client, which would leak across
+  SSR requests/mounts) and is mounted in `src/app/layout.tsx` wrapping
+  `{children}` — so every page/component hook sits below it.
+- Removed the module-scope client + inner provider from `page.tsx`; the
+  return now uses a fragment (`<>…</>`) since the provider no longer wraps
+  it.
+- Added `typeof window !== 'undefined'` guards to the three shared query
+  hooks (`useJiraPollQuery`, `usePluginEventsQuery`, `useMasterDatasetQuery`)
+  so SSR never attempts these client-only endpoints.
+- Regression test: `src/app/__tests__/providers.test.tsx` (3 tests) pins the
+  provider contract.
+
+**Why TDD didn't catch it (process lesson):** every unit/hook test wraps its
+render in a `QueryClientProvider` (correct harness practice), so the
+"no provider above the page" path was never exercised. The Playwright E2E
+suite *would* have caught it (page load → 500), but only unit gates
+(type-check / lint / vitest / coverage) were run after phases 7–8. **Rule
+added to CLAUDE.md: E2E is a required gate after any change to the frontend
+data layer (providers, hooks, React Query wiring) or `src/app/`.**
+
 ---
 
 ## Final results

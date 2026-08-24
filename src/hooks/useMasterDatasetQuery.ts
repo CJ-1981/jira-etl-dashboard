@@ -56,7 +56,9 @@ export function useMasterDatasetQuery(
       // a query failure — the old loader logged and moved on silently too.
       return null;
     },
-    enabled: enabled ?? !!connectionId,
+    // Client-only endpoint: `window` is undefined during SSR, so the query is
+    // disabled on the server and only loads after hydration.
+    enabled: typeof window !== 'undefined' && (enabled ?? !!connectionId),
     refetchOnWindowFocus: false,
     retry: false,
     // Every explicit load/invalidate should hit the server; there is no

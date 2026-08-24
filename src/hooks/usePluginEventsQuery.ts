@@ -43,7 +43,9 @@ export function usePluginEventsQuery(options: UsePluginEventsQueryOptions = {}) 
         return null;
       }
     },
-    enabled,
+    // Client-only endpoint: `window` is undefined during SSR, so the query is
+    // disabled on the server and only polls after hydration.
+    enabled: typeof window !== 'undefined' && enabled,
     refetchInterval: intervalMs,
     refetchOnWindowFocus: false,
     retry: false,

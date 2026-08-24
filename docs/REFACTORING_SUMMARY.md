@@ -350,7 +350,23 @@ Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 8 section).
 | Workstream | Commit |
 |---|---|
 | Phase 8 (all four streams) | `7b2bb5f` |
-| Phase 8 docs finalization | _(this commit)_ |
+| Phase 8 docs finalization | `ad89ce0` |
+| Phase 8 hotfix (QueryClient provider placement) | _(this commit)_ |
+
+### Phase 8 hotfix — "No QueryClient set" startup crash
+
+The phase-8 React Query migration moved `usePollingNotifications` onto
+`useQuery`, but the `QueryClientProvider` was rendered *inside* `page.tsx`'s
+`Home` component — a hook in the same component can't see a provider it
+renders (context flows to descendants only), so `GET /` crashed with a 500.
+Fixed by mounting `Providers` (`src/app/providers.tsx`, per-instance
+`QueryClient` via `useState`) in `src/app/layout.tsx` above `{children}`,
+unwrapping `page.tsx` (fragment return), and SSR-guarding the three shared
+query hooks. Verified by the user's exact failing path (dev server `GET /`
+→ 200), a 3-test regression suite, the full unit suite (1,241), and E2E
+(22/22). Process lesson recorded: **E2E is a required gate after frontend
+data-layer changes** (unit tests always wrap renders in a provider, so this
+class of regression only surfaces at page-load level).
 
 ---
 
