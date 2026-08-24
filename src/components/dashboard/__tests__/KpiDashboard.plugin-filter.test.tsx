@@ -21,8 +21,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMockStore, createMockLocalConfig } from '@/test/mock-store';
 import { KpiDashboard } from '../KpiDashboard';
 
-// Inlined storage key (mirrors KpiDashboard — the suites in this folder mock
-// '@/lib/config/local-store' without a KEYS export).
+// Storage key for the active-plugin list (equals KEYS.activePlugins from
+// '@/lib/config/local-store'); used to seed localStorage in these tests.
 const ACTIVE_PLUGINS_STORAGE_KEY = 'cfg_active_plugins';
 
 // Render helper that keeps the QueryClientProvider wrapper across rerenders
@@ -46,12 +46,18 @@ vi.mock('@/store/app-store', () => ({
 }));
 
 // localConfig read lazily so createMockLocalConfig() can run after imports init.
+// @MX:NOTE: Spread the real module so KEYS (and other exports) stay available —
+// KpiDashboard reads KEYS.activePlugins directly.
 let localConfigMock: any;
-vi.mock('@/lib/config/local-store', () => ({
-  get localConfig() {
-    return localConfigMock;
-  },
-}));
+vi.mock('@/lib/config/local-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/config/local-store')>();
+  return {
+    ...actual,
+    get localConfig() {
+      return localConfigMock;
+    },
+  };
+});
 
 // ── Hooks: lazy `let` returns so stable vi.fns can be asserted ─────────────────
 let kpiCalcReturn: any;

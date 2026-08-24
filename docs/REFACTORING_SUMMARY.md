@@ -175,12 +175,12 @@ Both pre-existing, both fixed TDD-style (RED confirmed first):
 
 ## Metrics before → after
 
-| Metric | v0.9.0 (`085a0d7`) | After (`phase 6`) |
+| Metric | v0.9.0 (`085a0d7`) | After (`phase 7`) |
 |---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **917** (threshold 917) |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **846** (threshold 846) |
 | Type errors | 0 | 0 |
-| Unit tests | 918 | **1,054** (all passing) |
-| Coverage (lines) | 70.98% | **73.5%** (floor 70%) |
+| Unit tests | 918 | **1,142** (all passing) |
+| Coverage (lines) | 70.98% | **74.8%** (floor 70%) |
 | E2E tests | 22 (local only) | 22, **also in CI** |
 | npm dependencies | 89 | 58 |
 | shadcn components | 48 | 21 |
@@ -188,6 +188,8 @@ Both pre-existing, both fixed TDD-style (RED confirmed first):
 | Transactional cascade deletes | 1 of 4 sites | **all 4** |
 | `(db as any)` route casts | ~150 | **0** |
 | Routes on shared error handler | 1 of 25 | **22 of 25** |
+| KpiDashboard.tsx / ExtractPanel.tsx | 2,691 / 1,434 lines | **1,265 / 274** |
+| Small panels on React Query | 0 of 7 | **7 of 7** |
 | kpiResults store dual-write | yes | **no** (derived filtering) |
 
 ---
@@ -273,25 +275,64 @@ Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 6 section).
 | Workstream | Commit |
 |---|---|
 | Phase 6 (all four streams) | `6d2eb8f` |
+| Phase 6 docs finalization | `a2ee80a` |
+| Phase 6 merge to main | `bab3508` |
+
+---
+
+## Phase 7 — component decomposition & consolidation
+
+Branch `refactor/phase7-components` (based on `bab3508`), five parallel
+workstreams with disjoint file ownership:
+
+- **7A — ExtractPanel decomposition**: 1,434 lines / 25 `useState` →
+  274-line orchestrator + 12 modules under `extract/` (typed
+  `PreviewIssue`, `useExtraction`/`usePolling` hooks, presentational
+  subcomponents); all 12 `(i: any)` lambdas typed away; 32 new tests;
+  original tests unchanged.
+- **7B — KpiDashboard decomposition**: 2,614 → **1,265 lines (−52%)**; 8
+  widget components + `WidgetCard` chrome + 4 dashboard sections extracted
+  under `widgets/`; zero assertion changes; KEYS test-mock fix landed, so
+  the last storage-key literals moved into `KEYS`.
+- **7C — React Query migration (seven small panels)**: all 21 fetch sites
+  converted (query keys, invalidation, mutation semantics preserved); only
+  one test needed adaptation.
+- **7D — Quote-aware splitter consolidation**: one tested `splitTopLevel`
+  helper replacing three copies; zero behavior drift proven by a 105-case
+  characterization harness + 48 unit tests.
+- **7E — Dead `REACT_APP_*` mechanism removed**: replaced with working
+  `JIRA_ISSUE_OWNER_TEAM_FIELD` / `JIRA_STORY_POINTS_FIELD` server-side env
+  vars; docs + CLAUDE.md gotcha updated; 6 new tests.
+
+**Gates:** type-check 0 errors; **1,142 tests passing** (75 files);
+coverage **74.8% lines** (floor 70%); lint **917 → 846** (ratchet tightened
+to 846 in CI, the pre-push hook, CLAUDE.md, README).
+
+Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 7 section).
+
+| Workstream | Commit |
+|---|---|
+| Phase 7 (all five streams) | `8f105ca` |
+| Phase 7 docs finalization | _(this commit)_ |
 
 ---
 
 ## Remaining debt (tracked in `docs/DEBT_CLEANUP.md`)
 
 Top items, ranked:
-1. Decompose `KpiDashboard.tsx` (2.7k lines, 9 copy-paste widget cases),
-   `KpiCard.tsx`/`ChartCard` (1.7k), `ExtractPanel.tsx` (25 `useState`
-   calls).
-2. Route the ~40 raw `fetch` call sites through the configured React Query;
-   dedupe the three 5-second pollers (two hit the same endpoint).
+1. Decompose `KpiCard.tsx`/`ChartCard` (~1.7k lines; `renderChart()` ~780
+   lines, triplicated time-series merge, 4× repeated zoom/ReferenceArea
+   blocks).
+2. Finish the React Query migration (ExtractPanel hooks, PluginsPanel,
+   KpiDashboard's second calculate path, page.tsx master loads) and dedupe
+   the three 5-second pollers (two hit the same endpoint).
 3. Replace `Set`/`Map` values in zustand with plain arrays/records (removes
    clone boilerplate and `instanceof Map` test-compat branches).
-4. Consolidate the three near-identical quote-aware string splitters
-   (`engine-utils.ts` ×2, `custom-formula.ts`).
-5. Update KpiDashboard test mocks to export `KEYS` so the remaining storage
-   key constants can move into `local-store.ts` `KEYS`.
-6. One-off scripts cleanup (`reproduce-issue.mjs`, `backfill-issue-owner-team.js`,
-   stale `test-*.bat`); stale `REACT_APP_*` env mechanism in `field-config.ts`.
-7. Product decision needed: UTC-ISO-week (trends) vs local-Monday-week (card
+4. Extract the `calculateWidgetJql` client-side JQL engine out of
+   KpiDashboard into a tested lib module.
+5. One-off scripts cleanup (`reproduce-issue.mjs`,
+   `backfill-issue-owner-team.js` incl. its divergent `REACT_APP_*` naming,
+   stale `test-*.bat`).
+6. Product decision needed: UTC-ISO-week (trends) vs local-Monday-week (card
    buckets) divergence — documented with `@MX:WARN`, intentionally not
    changed unilaterally.

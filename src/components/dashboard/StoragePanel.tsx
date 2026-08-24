@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +23,28 @@ import {
 import { localConfig, PgConnection, buildPgConnectionUrl, isSupabaseUrl, AppSettings } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 
+// Shape returned by /api/jira/extract/storage.
+interface StorageInfo {
+  totalExtractions: number;
+  totalSizeMB: number;
+  totalTickets: number;
+  oldestExtraction: string;
+  newestExtraction: string;
+  orphanedExtractions: number;
+  byConnection: Array<{
+    connectionId: string;
+    connectionName: string;
+    extractions: number;
+    totalSizeMB: number;
+    totalTickets: number;
+    oldestExtraction: string | null;
+    newestExtraction: string | null;
+  }>;
+}
+
+// Stable query key so cleanup mutations can invalidate the storage summary.
+const STORAGE_INFO_KEY = ['storage-info'];
+
 export function StoragePanel() {
   const {
     storageConfig,
@@ -29,9 +52,9 @@ export function StoragePanel() {
     settings,
     setSettings
   } = useAppStore();
+  const queryClient = useQueryClient();
   const [pgConnections, setPgConnections] = useState<PgConnection[]>([]);
   const [loading, setLoading] = useState(false);
-  const [testingId, setTestingId] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});
 
   const [pgForm, setPgForm] = useState({
@@ -40,35 +63,20 @@ export function StoragePanel() {
   });
   const [editingPgId, setEditingPgId] = useState<string | null>(null);
 
-  // Storage info state
-  const [storageInfo, setStorageInfo] = useState<{
-    totalExtractions: number;
-    totalSizeMB: number;
-    totalTickets: number;
-    oldestExtraction: string;
-    newestExtraction: string;
-    orphanedExtractions: number;
-    byConnection: Array<{
-      connectionId: string;
-      connectionName: string;
-      extractions: number;
-      totalSizeMB: number;
-      totalTickets: number;
-      oldestExtraction: string | null;
-      newestExtraction: string | null;
-    }>;
-  } | null>(null);
-  const [loadingStorage, setLoadingStorage] = useState(false);
-  const [dbLocation, setDbLocation] = useState<{ path: string | null; hint?: string } | null>(null);
-  const isMounted = useRef(true);
+  const isSqlite = storageConfig.provider === 'sqlite';
 
-  useEffect(() => {
-    return () => { isMounted.current = false; };
-  }, []);
-
-  const handleRefreshStorage = async () => {
-    setLoadingStorage(true);
-    try {
+  // Storage summary query — POST /api/jira/extract/storage. Keyed by
+  // storageConfig so switching provider/connection re-fetches automatically;
+  // cleanup mutations invalidate STORAGE_INFO_KEY to refresh it.
+  const {
+    data: storageInfo = null,
+    isLoading: loadingStorage,
+    isError: isStorageError,
+    error: storageError,
+    refetch: refetchStorage,
+  } = useQuery<StorageInfo | null, Error>({
+    queryKey: [...STORAGE_INFO_KEY, storageConfig],
+    queryFn: async () => {
       const activeConnections = localConfig.getJiraConnections();
       const res = await fetch('/api/jira/extract/storage', {
         method: 'POST',
@@ -76,43 +84,58 @@ export function StoragePanel() {
         body: JSON.stringify({ activeConnections, storageConfig })
       });
       const data = await res.json();
-      if (isMounted.current) {
-        if (data.success) {
-          setStorageInfo(data.storage);
-        } else {
-          toast.error(data.error);
-        }
-      }
-    } catch {
-      if (isMounted.current) toast.error('Failed to load storage info');
-    }
-    if (isMounted.current) setLoadingStorage(false);
-  };
+      if (data.success) return data.storage as StorageInfo;
+      throw new Error(data.error || 'Failed to load storage info');
+    },
+    retry: false,
+  });
 
-  const handleRefreshDbLocation = async () => {
-    try {
+  // Toast once per distinct storage-load failure.
+  useEffect(() => {
+    if (isStorageError && storageError) {
+      toast.error(storageError.message || 'Failed to load storage info');
+    }
+  }, [isStorageError, storageError]);
+
+  const handleRefreshStorage = () => { refetchStorage(); };
+
+  // DB file location query — GET /api/db/location. Only relevant for sqlite.
+  const { data: dbLocation = null } = useQuery<{ path: string | null; hint?: string } | null, Error>({
+    queryKey: ['db-location'],
+    queryFn: async () => {
       const res = await fetch('/api/db/location');
       const data = await res.json();
-      if (isMounted.current && data.success) {
-        setDbLocation({ path: data.path, hint: data.hint });
-      }
-    } catch {
-      // Displaying the location is informational only
-    }
-  };
+      if (data.success) return { path: data.path as string | null, hint: data.hint as string | undefined };
+      return null;
+    },
+    enabled: isSqlite,
+    retry: false,
+  });
 
+  // Reload the local pg connection list whenever the storage config changes
+  // (the storage summary + db location are handled by the queries above).
   useEffect(() => {
     setLoading(true);
     const updatedPgConnections = localConfig.getPgConnections();
     setPgConnections(updatedPgConnections);
     setLoading(false);
-    handleRefreshStorage();
-    if (storageConfig.provider === 'sqlite') {
-      handleRefreshDbLocation();
-    } else {
-      setDbLocation(null);
-    }
   }, [storageConfig]);
+
+  // Shared cleanup mutation — POST /api/jira/extract/cleanup. On success the
+  // storage summary is invalidated so it refetches with fresh numbers.
+  const cleanupMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const res = await fetch('/api/jira/extract/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: STORAGE_INFO_KEY });
+    },
+  });
 
   const handleCleanup = async () => {
     const retentionDays = (settings as AppSettings).persistence?.retentionDays;
@@ -122,15 +145,9 @@ export function StoragePanel() {
     }
 
     try {
-      const res = await fetch('/api/jira/extract/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ retentionDays, storageConfig }),
-      });
-      const data = await res.json();
+      const data = await cleanupMutation.mutateAsync({ retentionDays, storageConfig });
       if (data.success) {
         toast.success(`Cleaned up ${data.deleted.etlRuns} extractions, freed ~${data.deleted.freedSpaceMB} MB`);
-        handleRefreshStorage();
       } else {
         toast.error(data.error);
       }
@@ -145,15 +162,9 @@ export function StoragePanel() {
     }
 
     try {
-      const res = await fetch('/api/jira/extract/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beforeDate: new Date().toISOString(), storageConfig }),
-      });
-      const data = await res.json();
+      const data = await cleanupMutation.mutateAsync({ beforeDate: new Date().toISOString(), storageConfig });
       if (data.success) {
         toast.success(`Deleted ${data.deleted.etlRuns} extractions`);
-        handleRefreshStorage();
       } else {
         toast.error(data.error);
       }
@@ -168,15 +179,9 @@ export function StoragePanel() {
     }
 
     try {
-      const res = await fetch('/api/jira/extract/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cleanupOrphaned: true, storageConfig }),
-      });
-      const data = await res.json();
+      const data = await cleanupMutation.mutateAsync({ cleanupOrphaned: true, storageConfig });
       if (data.success) {
         toast.success(`Cleaned up ${data.deleted.etlRuns} orphaned extractions (${data.deleted.freedSpaceMB.toFixed(2)} MB freed)`);
-        handleRefreshStorage();
       } else {
         toast.error(data.error);
       }
@@ -227,14 +232,16 @@ export function StoragePanel() {
     setEditingPgId(null);
   };
 
-  const handleTestPg = async (conn: PgConnection) => {
-    setTestingId(conn.id);
-    try {
+  // PostgreSQL connectivity test mutation — POST /api/pg/test.
+  const testPgMutation = useMutation({
+    mutationFn: async (conn: PgConnection) => {
       const res = await fetch('/api/pg/test', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ host: conn.host, port: conn.port, database: conn.database, username: conn.username, password: conn.password, sslMode: conn.sslMode }),
       });
-      const data = await res.json();
+      return res.json();
+    },
+    onSuccess: (data, conn) => {
       if (data.success) {
         toast.success(`Connected to ${conn.name}`);
         setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
@@ -242,9 +249,17 @@ export function StoragePanel() {
         toast.error(data.error || 'Connection failed');
         setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
       }
-    } catch { toast.error('Network error testing connection'); }
-    setTestingId(null);
+    },
+    onError: () => { toast.error('Network error testing connection'); },
+  });
+
+  const handleTestPg = (conn: PgConnection) => {
+    testPgMutation.mutate(conn);
   };
+
+  const testingId = testPgMutation.isPending && testPgMutation.variables
+    ? testPgMutation.variables.id
+    : null;
 
   const handleSetPrimary = (conn: PgConnection) => {
     const url = buildPgConnectionUrl(conn);

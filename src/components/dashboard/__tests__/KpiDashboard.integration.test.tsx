@@ -74,17 +74,23 @@ vi.mock('@/lib/chart-data-utils', () => ({
   CHART_COLORS: [],
 }));
 
-vi.mock('@/lib/config/local-store', () => ({
-  localConfig: {
-    getDashboardJqls: vi.fn(() => []),
-    saveDashboardJqls: vi.fn(),
-    getCustomExtractFields: vi.fn(() => [
-      { id: 'default-sp', fieldId: 'customfield_10002', label: 'Story Points', role: 'storyPoints' },
-      { id: 'default-team', fieldId: 'customfield_10132', label: 'Issue Owner Team', role: 'issueOwnerTeam' }
-    ]),
-    getKpiPlugins: vi.fn(() => []),
-  },
-}));
+// @MX:NOTE: Spread the real module so KEYS (and other exports) stay available —
+// this suite exercises the real useWidgetOrder hook, which reads KEYS.widgetOrder.
+vi.mock('@/lib/config/local-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/config/local-store')>();
+  return {
+    ...actual,
+    localConfig: {
+      getDashboardJqls: vi.fn(() => []),
+      saveDashboardJqls: vi.fn(),
+      getCustomExtractFields: vi.fn(() => [
+        { id: 'default-sp', fieldId: 'customfield_10002', label: 'Story Points', role: 'storyPoints' },
+        { id: 'default-team', fieldId: 'customfield_10132', label: 'Issue Owner Team', role: 'issueOwnerTeam' }
+      ]),
+      getKpiPlugins: vi.fn(() => []),
+    },
+  };
+});
 
 describe('KpiDashboard - Integration Tests', () => {
   // Mock store state factory

@@ -16,17 +16,12 @@
  */
 
 import { useCallback, useMemo } from 'react';
+import { KEYS } from '@/lib/config/local-store';
 import { usePersistedList } from './usePersistedList';
 
 // @MX:NOTE: Custom event for same-tab synchronization
 // @MX:REASON: Storage events only fire across tabs, not within the same tab
 const WIDGET_ORDER_CHANGE_EVENT = 'widget-order-change';
-
-// @MX:NOTE: This is KEYS.widgetOrder ('widget_display_order') from local-store.
-// It is inlined because KpiDashboard's integration test mocks
-// '@/lib/config/local-store' without a KEYS export while still exercising the
-// real useWidgetOrder hook, so importing KEYS here would crash that suite.
-const WIDGET_ORDER_STORAGE_KEY = 'widget_display_order';
 
 export interface UseWidgetOrderResult {
   widgetOrder: string[];
@@ -56,7 +51,7 @@ export function useWidgetOrder(): UseWidgetOrderResult {
   );
 
   const { list, setList, reorder, toggle } = usePersistedList<string>(
-    WIDGET_ORDER_STORAGE_KEY,
+    KEYS.widgetOrder,
     options
   );
 

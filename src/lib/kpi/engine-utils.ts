@@ -7,6 +7,7 @@
 
 import { extractSelectFieldValue } from '../jira/client';
 import { getIssueOwnerTeamField } from '../jira/field-config';
+import { splitTopLevel } from './utils/split-top-level';
 import type { TransformedIssue, StatusTransition, AgeCategory, KpiIssueInput, FlatIssue } from './types';
 
 // ─── Transform Cache ────────────────────────────────────────────────────────────
@@ -264,31 +265,11 @@ export function applyFilter(issues: KpiContextIssues, condition: string): KpiCon
     const [, field, not, valuesStr] = inMatch;
     const isNot = !!not;
 
-    // Parse comma separated values respecting quotes
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    let quoteChar = '';
-
-    for (let i = 0; i < valuesStr.length; i++) {
-      const char = valuesStr[i];
-      if ((char === '"' || char === "'") && (i === 0 || valuesStr[i-1] !== '\\')) {
-        if (!inQuotes) {
-          inQuotes = true;
-          quoteChar = char;
-        } else if (char === quoteChar) {
-          inQuotes = false;
-        } else {
-          current += char;
-        }
-      } else if (char === ',' && !inQuotes) {
-        values.push(current.trim().toLowerCase());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    if (current.trim()) values.push(current.trim().toLowerCase());
+    // Parse comma separated values respecting quotes (quotes are stripped,
+    // values are trimmed + lowercased, empty trailing segments dropped).
+    const values = splitTopLevel(valuesStr, ',', {
+      transform: (part) => part.toLowerCase(),
+    });
 
     return issues.filter((issue) => {
       const fieldValue = getFieldValue(issue, field);
@@ -315,39 +296,13 @@ export function applyFilter(issues: KpiContextIssues, condition: string): KpiCon
  * @MX:REASON: Enables correct parsing of complex filter expressions with quoted values
  */
 export function splitByTopLevelOperator(condition: string, operator: 'AND' | 'OR'): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  let quoteChar = '';
-
-  const op = operator.toUpperCase();
-  const search = ` ${op} `;
-
-  for (let i = 0; i < condition.length; i++) {
-    const char = condition[i];
-
-    // Handle quotes
-    if ((char === '"' || char === "'") && (i === 0 || condition[i-1] !== '\\')) {
-      if (!inQuotes) {
-        inQuotes = true;
-        quoteChar = char;
-      } else if (char === quoteChar) {
-        inQuotes = false;
-      }
-    }
-
-    // Check for operator if not in quotes
-    if (!inQuotes && condition.substring(i).toUpperCase().startsWith(search)) {
-      parts.push(current.trim());
-      current = '';
-      i += search.length - 1; // Skip the operator
-    } else {
-      current += char;
-    }
-  }
-
-  if (current) parts.push(current.trim());
-  return parts;
+  // Quotes are preserved verbatim so each part remains a valid sub-condition
+  // for recursive parsing; matching is case-insensitive on the space-padded
+  // operator word, and a whitespace-only trailing segment is dropped.
+  return splitTopLevel(condition, ` ${operator.toUpperCase()} `, {
+    keepQuotes: true,
+    caseInsensitive: true,
+  });
 }
 
 // ─── Module-level field accessors for O(1) lookup ───────────────────────────────

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,10 +23,8 @@ import { useAppStore } from '@/store/app-store';
 
 export function SettingsPanel() {
   const { settings, setSettings, storageConfig } = useAppStore();
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [configExporting, setConfigExporting] = useState(false);
-  const [configImporting, setConfigImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [initialSettings, setInitialSettings] = useState<AppSettings | null>(settings);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -49,23 +48,24 @@ export function SettingsPanel() {
   };
 
   // @MX:ANCHOR: Configuration Management
-  const handleExport = async () => {
-    setConfigExporting(true);
-    try {
+  // Exports the full config (localStorage + database views) as a JSON file.
+  const exportConfigMutation = useMutation({
+    mutationFn: async () => {
       const localData = localConfig.exportConfig();
-      
+
       // Fetch database views
       const params = new URLSearchParams({
         storageConfig: JSON.stringify(storageConfig)
       });
       const res = await fetch(`/api/dashboard/views/bulk?${params}`);
       const dbData = await res.json();
-      
-      const finalData = {
+
+      return {
         ...localData,
         databaseViews: dbData.success ? dbData.views : []
       };
-
+    },
+    onSuccess: (finalData) => {
       const blob = new Blob([JSON.stringify(finalData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -74,13 +74,33 @@ export function SettingsPanel() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Full configuration and view settings exported');
-    } catch (err) {
+    },
+    onError: (err) => {
       console.error('Export failed:', err);
       toast.error('Failed to export view settings from database');
-    } finally {
-      setConfigExporting(false);
-    }
-  };
+    },
+  });
+
+  const handleExport = () => exportConfigMutation.mutate();
+  const configExporting = exportConfigMutation.isPending;
+
+  // Imports database views as part of a config import. Driven via mutateAsync
+  // from the FileReader flow so the surrounding import logic stays imperative.
+  const importViewsMutation = useMutation({
+    mutationFn: async (views: unknown[]) => {
+      const res = await fetch('/api/dashboard/views/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          views,
+          storageConfig
+        })
+      });
+      return res.json();
+    },
+  });
+
+  const [configImporting, setConfigImporting] = useState(false);
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,21 +111,13 @@ export function SettingsPanel() {
       setConfigImporting(true);
       try {
         const data = JSON.parse(event.target?.result as string);
-        
+
         // 1. Import localStorage config
         const result = localConfig.importConfig(data);
-        
+
         // 2. Import database views if present
         if (data.databaseViews && Array.isArray(data.databaseViews)) {
-          const res = await fetch('/api/dashboard/views/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              views: data.databaseViews,
-              storageConfig
-            })
-          });
-          const dbResult = await res.json();
+          const dbResult = await importViewsMutation.mutateAsync(data.databaseViews);
           if (!dbResult.success) {
             toast.error(`Database views import failed: ${dbResult.error}`);
           }

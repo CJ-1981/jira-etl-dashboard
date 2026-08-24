@@ -28,11 +28,15 @@ Once you have the correct field ID, update **one** of these locations:
 
 #### Option A: Environment Variable (Recommended)
 
-Create or update `.env.local`:
+Create or update `.env.local` (or `.env`):
 
 ```bash
-REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD=customfield_10200
+JIRA_ISSUE_OWNER_TEAM_FIELD=customfield_10200
 ```
+
+> Note: these variables are read server-side at request time. Use the plain
+> `JIRA_*` names — the legacy `REACT_APP_*` prefix was a Create React App
+> convention and is ignored by Next.js.
 
 #### Option B: Update Field Config Directly
 
@@ -153,7 +157,7 @@ If you need to revert to the original field:
 ```bash
 # Remove environment variable
 # .env.local
-# REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD=customfield_10200
+# JIRA_ISSUE_OWNER_TEAM_FIELD=customfield_10200
 
 # Or reset field-config.ts to:
 issueOwnerTeamField: 'customfield_10100'

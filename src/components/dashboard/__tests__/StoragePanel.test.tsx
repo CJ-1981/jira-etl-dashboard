@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StoragePanel } from '../StoragePanel';
 import { localConfig } from '@/lib/config/local-store';
 import { createMockStore, renderWithProviders } from '@/test/mock-store';
@@ -92,13 +93,19 @@ describe('StoragePanel', () => {
   });
 
   it('shows the raw-URL input after selecting PostgreSQL', () => {
-    const { rerender } = renderWithProviders(<StoragePanel />);
+    // Keep a single QueryClient + provider across rerender — a bare
+    // rerender(<StoragePanel />) would drop the provider and break useQuery.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const wrap = (ui: React.ReactElement) => (
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    );
+    const { rerender } = renderWithProviders(<StoragePanel />, queryClient);
     fireEvent.click(screen.getByText('PostgreSQL / Supabase'));
     expect(storeRef.current.setStorageConfig).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'postgresql' }),
     );
     // Mock store is not reactive on its own, so re-render to read the mutation.
-    rerender(<StoragePanel />);
+    rerender(wrap(<StoragePanel />));
     expect(screen.getByText('Custom Connection String')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('postgres://user:pass@host:port/db')).toBeInTheDocument();
     expect(screen.getByText('POSTGRESQL')).toBeInTheDocument();

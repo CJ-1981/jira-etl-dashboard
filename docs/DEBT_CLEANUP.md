@@ -412,31 +412,140 @@ documentation and contained stale content.
 
 ---
 
+## Phase 7 — Component decomposition & consolidation (branch `refactor/phase7-components`)
+
+Five parallel workstreams with disjoint file ownership.
+
+### 7A. ExtractPanel decomposition
+**Why:** 1,434 lines with 25 `useState` calls mixing five concerns; 12
+untyped `(i: any)` lambdas in the preview table.
+
+**Changes:**
+- `ExtractPanel.tsx` is now a 274-line orchestrator; 12 new modules under
+  `src/components/dashboard/extract/`: typed `PreviewIssue`/
+  `DiscoveredField` types, typed issue accessors (all 12 `any` lambdas
+  gone), `useExtraction` + `usePolling` hooks, and presentational
+  `JqlEditor`, `CustomFieldDiscovery`, `PollingSettings`,
+  `QuickDateSelector`, `MasterDatasetCard`, `EmptyExtractionCard`,
+  `ExtractionPreviewTable` components.
+- Contract preserved exactly: same export/props, localStorage keys,
+  endpoints, toasts, 5s polling semantics with the deep-equality guard;
+  DOM structure unchanged.
+- 32 new tests (subcomponents + hooks); the original `ExtractPanel.test.tsx`
+  passes unchanged. Panel's production files went from 31 lint warnings to 0.
+
+### 7B. KpiDashboard widget-switch decomposition
+**Why:** ~1,096 lines of near-identical inline widget JSX across 9 switch
+cases; the last storage-key constants blocked from `KEYS` by test mocks.
+
+**Changes:**
+- New `src/components/dashboard/widgets/` directory: 8 widget components
+  (`StatusTimeWidget`, `StatusOpenWidget`, `SlaPriorityWidget`,
+  `OtherPriorityWidget`, `SlaStatusWidget`, `AssigneeWidget`,
+  `KanbanWidget`, `CycleTimeHistogramWidget`) plus shared `WidgetCard`
+  chrome and four larger sections (`DashboardHeader`,
+  `DashboardFloatingBar`, `MetricsOverview`, `VisualizationsSection`).
+- **KpiDashboard.tsx: 2,614 → 1,265 lines (−52%)**; the switch is now pure
+  component lookup. All behavior quirks preserved verbatim (hidden-prefix
+  matching, per-widget button colors, kanban's bespoke collapse button).
+  Off-limits by design: `calculateWidgetJql`, the phase-6C derived memos,
+  shortcuts.
+- KEYS consolidation: all four KpiDashboard test mocks now spread the real
+  `local-store` module via `importOriginal`; KpiDashboard and
+  `useWidgetOrder` use `KEYS.activePlugins` / `KEYS.widgetOrder` directly —
+  the last hardcoded storage-key literals are gone. Cross-tab behavior
+  verified (51 hook tests).
+- Zero assertion changes: only the mock factories were adapted; all 41
+  KpiDashboard tests pass unchanged. Lint 917 → 846 (imports cleaned).
+
+### 7C. React Query migration (small panels)
+**Why:** seven panels made ~21 raw `fetch` calls with hand-rolled
+loading/error state while a QueryClient was already configured.
+
+**Changes:**
+- All 21 fetch sites migrated: `ViewManager` (7 — query replaces the manual
+  AbortController/stale-response logic; one-time auto-restore preserved via
+  a guarded effect; six mutations invalidate `['dashboard-views']`),
+  `StoragePanel` (6 — storage-info + db-location queries, shared cleanup
+  mutation with invalidation, PG test mutation; provider-switch cards stayed
+  imperative as they're entangled with zustand/localConfig),
+  `ExportPanel`/`SettingsPanel`/`ConnectionsPanel` mutations via
+  `useMutation`/`mutateAsync` keeping orchestration and toast semantics
+  identical, `HolidaysPanel` + `PluginInfoIcon` on `useQuery` with the same
+  enabled/retry/skeleton behavior.
+- Only ONE existing test needed adaptation (StoragePanel rerender inside the
+  QueryClientProvider); every other test passes unchanged because mutations
+  still call `fetch` internally.
+- Lint 889 → 885. The pollers and big panels (ExtractPanel/PluginsPanel/
+  KpiDashboard) are a later pass by design.
+
+### 7D. Quote-aware splitter consolidation
+**Why:** three near-identical inQuotes/quoteChar char-loops in
+`engine-utils.ts` (×2) and `custom-formula.ts`.
+
+**Changes:**
+- New `src/lib/kpi/utils/split-top-level.ts`: pure `splitTopLevel(input,
+  delimiter, options)` with parameterized differences (`caseInsensitive`,
+  `keepQuotes`, `transform`, `keepEmptyTrailing`) — behaviors were
+  parameterized, NOT unified (the variants differ deliberately, e.g. the
+  keyword splitter's unconditional trailing segment that callers rely on).
+- Verified zero drift: a 105-case adversarial characterization harness
+  compared verbatim copies of all three original loops against the helper
+  before refactoring (all matched; harness deleted afterwards), plus 48 new
+  unit tests for the helper.
+- All three call sites migrated; filter DSL and formula sandbox semantics
+  unchanged (existing suites pass untouched). Lint 916 → 889.
+
+### 7E. Dead `REACT_APP_*` env mechanism removed
+**Why:** `REACT_APP_*` is a Create React App convention that Next.js never
+exposes, so the field-ID overrides in `field-config.ts` were dead weight
+(CLAUDE.md gotcha #2).
+
+**Changes:**
+- Replaced with server-side env vars that actually work:
+  `JIRA_ISSUE_OWNER_TEAM_FIELD` / `JIRA_STORY_POINTS_FIELD` (defaults
+  unchanged: `customfield_10132` / `customfield_10002`); function
+  signatures and callers untouched.
+- `.env.example` override block renamed (and the misleading
+  `customfield_10000` example fixed), `docs/JIRA_FIELD_CONFIGURATION.md`
+  updated, CLAUDE.md gotcha #2 rewritten.
+- 6 new tests in `src/lib/jira/__tests__/field-config.test.ts` (defaults,
+  each override, both together, empty-string fallback).
+- Note: `scripts/backfill-issue-owner-team.js` still reads `REACT_APP_*` —
+  it runs under plain Node where that works, but the naming now diverges;
+  aligned in the one-off-script cleanup follow-up.
+
+---
+
 ## Final results
 
-| Metric | v0.9.0 baseline | After phases 1–6 | Delta |
+| Metric | v0.9.0 baseline | After phases 1–7 | Delta |
 |---|---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **917** (threshold tightened to 917) | −170 warnings, threshold −1,083 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **846** (threshold tightened to 846) | −241 warnings, threshold −1,154 |
 | Type errors | 0 | 0 | — |
-| Tests | 918 | **1,054** | +136 net |
-| Coverage (lines) | 70.98% | **73.5%** (floor 70%) | improved despite deletions |
+| Tests | 918 | **1,142** | +224 net |
+| Coverage (lines) | 70.98% | **74.8%** (floor 70%) | improved despite large deletions |
 | npm dependencies | 89 | 58 | −31 packages |
 | shadcn components | 48 | 21 | −27 files (−7,100 lines) |
 | Mutating API routes with loopback guard | 4 of ~15 | **all** | security gap closed |
 | Card/trend SLA rule divergence | excl-clone AND plain pairs diverged | both consistent | metric bug fixed |
 | Cascade deletes transactional | 1 of 4 sites | **all 4** | partial-delete risk removed |
 | E2E in CI | not wired | **wired + validated** | regression net on every push |
-| `(db as any)` route casts | ~150 | **0** (45 retired in phase 5A) | routes typed against `DbClient` |
+| `(db as any)` route casts | ~150 | **0** | routes typed against `DbClient` |
 | `transformIssueForKpi` casts | 19 | **0** | typed `KpiIssueInput` union |
 | Electron path | broken/abandoned | **removed** | caxa is the only distribution path |
 | Routes using shared error handler | 1 of 25 | **22 of 25** (3 bespoke by design) | shapes + status codes normalized |
-| Trend plugins hand-rolling the scaffold | 8 | **0** (8 migrated to `trend-scaffold.ts`) | one tested implementation |
-| kpiResults store dual-write | yes (effect mutated the Query-synced slice) | **no** (derived filtering) | feedback loop removed |
-| Root working-note markdown files | 7 | **0** (kept `custom_plugin_guide.md`) | durable facts in appendix |
+| Trend plugins hand-rolling the scaffold | 8 | **0** | one tested implementation |
+| kpiResults store dual-write | yes | **no** (derived filtering) | feedback loop removed |
+| KpiDashboard.tsx size | 2,691 lines | **1,265** (−52%) | widgets + sections extracted |
+| ExtractPanel.tsx size | 1,434 lines / 25 useState | **274-line orchestrator** | 12 focused modules |
+| Small panels on React Query | 0 of 7 | **7 of 7** (21 fetch sites) | caching + invalidation |
+| Storage-key literals outside `KEYS` | ~13 | **0** | test mocks fixed to allow it |
+| Quote-aware splitter copies | 3 | **1** (zero-drift verified) | 48 helper tests |
 
 Commits: phases 1–3 on `refactor/debt-cleanup` (merged to main at `bf1d343`,
-released as v0.10.0 including phase 4), phase 5 on
-`refactor/phase5-cleanup`.
+released as v0.10.0 including phase 4), phase 5 merged at `c54a3de`, phase 6
+merged at `bab3508`, phase 7 on `refactor/phase7-components`.
 
 ---
 
@@ -445,16 +554,22 @@ released as v0.10.0 including phase 4), phase 5 on
 Items still open — each touches architecture broadly and needs its own
 branch/review:
 
-- Decompose `KpiDashboard.tsx` (2.7k lines, 9 copy-paste widget cases),
-  `ChartCard` (1.4k lines), `ExtractPanel.tsx` (25 `useState` calls).
-- Move 40 raw `fetch` call sites onto the already-configured React Query
-  (dedupe the three independent 5-second pollers first — two of them hit the
-  same `/api/jira/poll` endpoint).
+- Decompose `KpiCard.tsx`/`ChartCard` (~1.7k lines: `renderChart()` is ~780
+  lines with 5 chart-type branches; time-series merge block triplicated;
+  zoom slicing + ReferenceArea overlay repeated 4× each). KpiDashboard and
+  ExtractPanel were decomposed in phase 7.
+- Finish the React Query migration for the remaining call sites
+  (ExtractPanel hooks, PluginsPanel, KpiDashboard's second
+  `/api/kpi/calculate` path, page.tsx master-dataset loads) and dedupe the
+  three independent 5-second pollers — two of them hit the same
+  `/api/jira/poll` endpoint.
 - Replace the `Set`/`Map` values in zustand with plain arrays/records to
   remove clone boilerplate and `instanceof Map` test-compat branches.
-- Three near-identical quote-aware string splitters (`engine-utils.ts`
-  `applyFilter`, `splitByTopLevelOperator`, `custom-formula.ts`
-  `splitTopLevelKeyword`) — consolidate into one shared parser helper.
+- Extract the `calculateWidgetJql` client-side JQL engine (~150 lines +
+  `JQL_PATTERNS`) out of KpiDashboard into a tested lib module.
+- One-off scripts cleanup: `reproduce-issue.mjs`,
+  `backfill-issue-owner-team.js` (its `REACT_APP_*` naming now diverges
+  from `field-config.ts` — see 7E), stale `test-*.bat` + root `test.bat`.
 - Root-level working-note markdown files — CLOSED in phase 6: six files
   deleted (`TIME_SERIES_*.md`, `TREND_PLUGIN_FIX.md`,
   `BUGFIX_TIME_SERIES_DATE_PARSING.md`, `SLA_STATUS_TREND_IMPLEMENTATION.md`);
@@ -467,10 +582,13 @@ branch/review:
 - UTC-ISO-week vs local-Monday-week divergence (documented with `@MX:WARN`
   in `time-series-utils.ts` / `week-boundaries.ts`) — needs a product
   decision before unifying.
-- KpiDashboard test mocks of `local-store` lack the `KEYS` export, which is
-  why the `cfg_active_plugins`/widget-order keys remain module constants
-  mirroring `KEYS.*` (see 5C) — update the mocks to import the real module
-  shape so the literals can move into `KEYS`.
+
+Done in phase 7 (previously listed here): KpiDashboard decomposition
+(2,614→1,265, 8 widgets + 4 sections extracted), ExtractPanel decomposition
+(1,434→274 orchestrator + 12 modules), React Query migration of the seven
+small panels (21 fetch sites), quote-aware splitter consolidation
+(zero-drift verified), KEYS test-mock fix + final storage-key consolidation,
+dead `REACT_APP_*` mechanism replaced with working `JIRA_*` env vars.
 
 Done in phase 6 (previously listed here): API error-handling unification
 (21 routes on `handleApiError`), time-series scaffold deduplication (8
