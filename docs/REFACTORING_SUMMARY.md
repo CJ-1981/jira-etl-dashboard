@@ -423,7 +423,7 @@ lint **785 → 780** (ratchet tightened to 780); coverage floors raised to
 
 | Workstream | Commit |
 |---|---|
-| Phase 9 (all three streams + defect fixes) | _(this commit)_ |
+| Phase 9 (all three streams + defect fixes) | `9eca55d` |
 
 ---
 
