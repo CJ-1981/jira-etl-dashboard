@@ -352,6 +352,7 @@ Detailed per-workstream records: `docs/DEBT_CLEANUP.md` (Phase 8 section).
 | Phase 8 (all four streams) | `7b2bb5f` |
 | Phase 8 docs finalization | `ad89ce0` |
 | Phase 8 hotfix (QueryClient provider placement) | `8e98025` |
+| Phase 8 hotfix 2 (duplicate chart-key dedupe) | `393a9e0` |
 
 ### Phase 8 hotfix — "No QueryClient set" startup crash
 
@@ -367,6 +368,20 @@ query hooks. Verified by the user's exact failing path (dev server `GET /`
 (22/22). Process lesson recorded: **E2E is a required gate after frontend
 data-layer changes** (unit tests always wrap renders in a provider, so this
 class of regression only surfaces at page-load level).
+
+### Phase 8 hotfix 2 — duplicate chart-key console errors (`393a9e0`)
+
+Reported console error: "Encountered two children with the same key,
+`chart-resolution-by-priority`". Persisted dashboard state (localStorage
+restores, saved views, imported configs from different script generations)
+can contain two chart configs with the same id; the chart grid keys by chart
+id, violating React's unique-key rule. App logic never creates duplicates —
+they only enter via persisted data. Fixed TDD-style with a tested
+`dedupeChartsById` helper (chart-data-utils) applied at the render boundary
+(`KpiDashboard.visibleCharts`) and at both persistence entry points (page
+restore, view apply — so stored state self-heals on the next auto-save).
+True RED verified (without the fix, two cards render for one id); 7 new
+tests; full suite 1,248 passing; lint 785 (ratchet held).
 
 ---
 
