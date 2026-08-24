@@ -21,6 +21,7 @@ import {
   WEEKLY_BREAKDOWN_LABELS,
   mergeTimeSeries,
   hasMultipleTimeSeries,
+  dedupeChartsById,
   type KpiResult,
 } from '../chart-data-utils';
 import { KEYS } from '../config/local-store';
@@ -946,5 +947,48 @@ describe('hasMultipleTimeSeries', () => {
 
   it('returns true when every result has a non-empty time series', () => {
     expect(hasMultipleTimeSeries([withSeries('a', 1), withSeries('b', 2)])).toBe(true);
+  });
+});
+
+describe('dedupeChartsById', () => {
+  // Persisted dashboard state (localStorage restores, saved views, imported
+  // configs) can contain two chart configs with the SAME id — rendering them
+  // as siblings triggers React's duplicate-key error and can drop/misroute
+  // updates. The helper keeps the FIRST occurrence and preserves order.
+
+  type TestChart = { id?: string; kpiId?: string; type?: string; width?: string; height?: string; customTitle?: string };
+  const chart = (id: string, extra: Partial<TestChart> = {}): TestChart =>
+    ({ id, kpiId: 'x', type: 'bar', width: 'md', height: 'md', ...extra });
+
+  it('removes later duplicates, keeping the first occurrence', () => {
+    const input: TestChart[] = [
+      chart('chart-resolution-by-priority', { customTitle: 'first' }),
+      chart('chart-other'),
+      chart('chart-resolution-by-priority', { customTitle: 'second' }),
+    ];
+    const out = dedupeChartsById(input);
+    expect(out).toHaveLength(2);
+    expect(out.map((c) => c.id)).toEqual(['chart-resolution-by-priority', 'chart-other']);
+    expect(out[0].customTitle).toBe('first');
+  });
+
+  it('preserves order and keeps unique ids untouched', () => {
+    const input: TestChart[] = [chart('c'), chart('a'), chart('b')];
+    expect(dedupeChartsById(input).map((c) => c.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('keeps entries without an id (they cannot collide by id)', () => {
+    const input: TestChart[] = [{ kpiId: 'x' }, chart('a'), { kpiId: 'y' }];
+    expect(dedupeChartsById(input)).toHaveLength(3);
+  });
+
+  it('handles empty input', () => {
+    expect(dedupeChartsById([])).toEqual([]);
+  });
+
+  it('does not mutate the input array', () => {
+    const input: TestChart[] = [chart('a'), chart('a')];
+    dedupeChartsById(input);
+    expect(input).toHaveLength(2);
   });
 });

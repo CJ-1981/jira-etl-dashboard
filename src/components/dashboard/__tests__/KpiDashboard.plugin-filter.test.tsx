@@ -85,6 +85,15 @@ vi.mock('@/lib/chart-data-utils', () => ({
   isTimeSeriesPlugin: () => false,
   CHART_COLORS: ['#000'],
   getUniqueColor: (i: number) => `c${i}`,
+  dedupeChartsById: (charts: any[]) => {
+    const seen = new Set<string>();
+    return charts.filter((c) => {
+      if (!c?.id) return true;
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+  },
 }));
 vi.mock('@/lib/jira/field-config', () => ({
   DEFAULT_FIELD_CONFIG: { storyPointsField: 'customfield_10002', issueOwnerTeamField: 'customfield_10132' },

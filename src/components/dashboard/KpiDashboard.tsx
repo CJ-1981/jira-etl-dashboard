@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { isTimeSeriesPlugin } from '@/lib/chart-data-utils';
+import { isTimeSeriesPlugin, dedupeChartsById } from '@/lib/chart-data-utils';
 import { getIssueOwnerTeamField } from '@/lib/jira/field-config';
 import { extractSelectFieldValue } from '@/lib/jira/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -616,9 +616,13 @@ export function KpiDashboard() {
   // The chart section is not rendered while no results are visible, so configs
   // are simply restored once plugins are re-enabled.
   const visibleCharts = useMemo(() => {
-    if (!hasConfiguredActivePlugins) return charts;
-    if (pluginVisibility.activePlugins.length === 0) return charts;
-    return charts.filter(chart => !chart.kpiId || pluginVisibility.activePlugins.includes(chart.kpiId));
+    // @MX:NOTE: Persisted state can contain duplicate chart ids (restored
+    // views, imported configs) — React keys must be unique, so dedupe before
+    // rendering. See dedupeChartsById in chart-data-utils.
+    const uniqueCharts = dedupeChartsById(charts);
+    if (!hasConfiguredActivePlugins) return uniqueCharts;
+    if (pluginVisibility.activePlugins.length === 0) return uniqueCharts;
+    return uniqueCharts.filter(chart => !chart.kpiId || pluginVisibility.activePlugins.includes(chart.kpiId));
   }, [charts, pluginVisibility.activePlugins, hasConfiguredActivePlugins]);
 
   const handleExportKpis = () => {

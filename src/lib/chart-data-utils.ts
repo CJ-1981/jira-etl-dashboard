@@ -678,3 +678,31 @@ export function formatChartValue(value: number, unit?: string): string {
 
   return `${value.toFixed(1)}${unit || ''}`;
 }
+
+/**
+ * Remove chart configs with duplicate `id`s, keeping the FIRST occurrence and
+ * preserving order. Entries without an id are kept (they cannot collide by id).
+ *
+ * @MX:WARN: Persisted dashboard state can legitimately contain duplicate chart
+ * ids (localStorage restores, saved views, imported configs built by
+ * different script generations). React requires unique keys; rendering two
+ * charts with the same id logs "Encountered two children with the same key"
+ * and can duplicate/drop children. Apply this at every boundary where chart
+ * arrays enter render state (KpiDashboard.visibleCharts) and where persisted
+ * arrays are loaded (page restore, view apply) so state self-heals on the
+ * next auto-save.
+ */
+export function dedupeChartsById<T extends { id?: string }>(charts: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const chart of charts) {
+    if (chart.id === undefined) {
+      out.push(chart);
+      continue;
+    }
+    if (seen.has(chart.id)) continue;
+    seen.add(chart.id);
+    out.push(chart);
+  }
+  return out;
+}

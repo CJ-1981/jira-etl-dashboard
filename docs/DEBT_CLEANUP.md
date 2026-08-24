@@ -633,6 +633,33 @@ suite *would* have caught it (page load → 500), but only unit gates
 added to CLAUDE.md: E2E is a required gate after any change to the frontend
 data layer (providers, hooks, React Query wiring) or `src/app/`.**
 
+### 8-hotfix-2. Duplicate chart-key console errors (`chart-resolution-by-priority`)
+**Symptom:** `npm run dev` console: "Encountered two children with the same
+key, `chart-resolution-by-priority`" from the KPI dashboard chart grid.
+
+**Root cause:** persisted dashboard state (localStorage restore, saved views,
+imported configs built by different script generations) can legitimately
+contain two chart configs with the SAME `id`. `VisualizationsSection` maps
+charts with `key={chartConfig.id}`, so duplicate ids violate React's
+unique-key requirement (children can be duplicated/dropped). App logic never
+creates duplicates itself (new charts get `chart-${Date.now()}`); they enter
+only via persisted data.
+
+**Fix (TDD, RED confirmed for the right reason):**
+- New tested helper `dedupeChartsById()` in `src/lib/chart-data-utils.ts`
+  (keeps the first occurrence, preserves order, keeps id-less entries).
+- Applied at the render boundary (`KpiDashboard.visibleCharts` memo) so no
+  duplicate key can ever reach React regardless of data, and at both
+  persistence entry points (`page.tsx` state restore, `ViewManager` view
+  apply) so stored state self-heals on the next auto-save.
+- Tests: 5 helper unit tests + a component regression test asserting one
+  card per unique id and zero duplicate-key console warnings (verified RED
+  without the fix: two cards rendered for the same id).
+- The four existing KpiDashboard test suites' `chart-data-utils` mocks were
+  extended with a typed `dedupeChartsById` (component contract change).
+
+**Gates:** type-check clean; 1,248 tests passing; lint 785 (ratchet held).
+
 ---
 
 ## Final results

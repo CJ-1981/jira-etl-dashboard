@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { localConfig, KEYS, type AppSettings } from '@/lib/config/local-store';
+import { dedupeChartsById } from '@/lib/chart-data-utils';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
 import { ExtractPanel } from '@/components/dashboard/ExtractPanel';
@@ -204,7 +205,7 @@ export default function Home() {
       if (isDev) console.log('[App] Found saved dashboard state');
       if (savedState.globalFilters) setGlobalFilters(savedState.globalFilters);
       if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
-      if (savedState.charts) setDashboardCharts(savedState.charts);
+      if (savedState.charts) setDashboardCharts(dedupeChartsById(savedState.charts));
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
     } else {
       if (isDev) console.log('[App] No saved dashboard state, using defaults');

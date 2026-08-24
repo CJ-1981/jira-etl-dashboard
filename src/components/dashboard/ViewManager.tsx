@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner';
 import { DashboardView, DashboardViewState } from '@/types/dashboard';
 import { activeViewKey } from '@/lib/config/local-store';
+import { dedupeChartsById } from '@/lib/chart-data-utils';
 
 export function ViewManager() {
   const {
@@ -133,7 +134,7 @@ export function ViewManager() {
 
       setRegion(state.region || 'national');
       setGlobalFilters(state.globalFilters || {});
-      setDashboardCharts(state.charts || []);
+      setDashboardCharts(dedupeChartsById(state.charts || []));
       setDashboardJqlQuery(state.dashboardJqlQuery || '');
       setKpiCardConfigs(state.kpiCardConfigs || []);
       setHiddenDimensions(new Set(state.hiddenDimensions || []));
