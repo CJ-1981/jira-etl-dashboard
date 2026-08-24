@@ -91,7 +91,7 @@ function MultiSeriesAreaChart({
             stroke={getUniqueColor(idx)}
             fill={getUniqueColor(idx)}
             fillOpacity={0.6}
-            hide={hiddenDimensions.has(`${kpiId}|${result.name}`)}
+            hide={hiddenDimensions.includes(`${kpiId}|${result.name}`)}
             activeDot={drillDownActiveDot(
               (datum) => datum[`ticketKeys${idx}`] as string[] | undefined,
               (datum) => `${result.name} - ${datum.name}`,

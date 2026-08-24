@@ -119,10 +119,15 @@ export function DashboardHeader({
                   )}
                 </span>
                 <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400/80 border-l border-blue-200 dark:border-blue-500/30 pl-2 ml-1">
-                  {masterDatasetInfo.totalExtracted.toLocaleString()} tickets • Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
-                    year: 'numeric', month: 'short', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                  })}
+                  {/* @MX:NOTE: lastUpdated can be absent/invalid (empty master
+                      dataset responses omit it) — guard before formatting. */}
+                  {masterDatasetInfo.totalExtracted.toLocaleString()} tickets
+                  {masterDatasetInfo.lastUpdated && !isNaN(new Date(masterDatasetInfo.lastUpdated).getTime()) && (
+                    <> • Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
+                      year: 'numeric', month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
+                    })}</>
+                  )}
                 </span>
               </div>
             )}

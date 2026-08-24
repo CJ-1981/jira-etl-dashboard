@@ -23,12 +23,12 @@ export default defineConfig({
     'vitest.setup.ts',
   ],
   // Coverage floor (ratchet): the suite fails if coverage drops below these.
-  // Lines 70 is the project target; the others sit just under current levels.
+  // Tightened 2026-08 after phase 9 (actuals: 73.3/61.6/66.3/75.1).
   thresholds: {
-    lines: 70,
-    statements: 68,
-    functions: 60,
-    branches: 53,
+    lines: 75,
+    statements: 73,
+    functions: 66,
+    branches: 61,
   },
 },
     include: ['**/__tests__/**/*.{test,spec}.{js,jsx,ts,tsx}', '**/*.{test,spec}.{js,jsx,ts,tsx}'],

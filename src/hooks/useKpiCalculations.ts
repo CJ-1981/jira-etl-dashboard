@@ -239,7 +239,7 @@ export function useKpiCalculations(
 
     isCalculatingRef.current.add(targetWidget);
     setCalculatingSet(new Set(isCalculatingRef.current));
-    setCalculatingWidgets(new Set(isCalculatingRef.current));
+    setCalculatingWidgets(Array.from(isCalculatingRef.current));
 
     try {
       if (widgetId) {
@@ -248,19 +248,8 @@ export function useKpiCalculations(
         const result = await fetchKpiCalculations();
         const widgetResult = { context: {}, results: result };
 
-        // Handle both Map (real store) and object (mocked store in tests)
-        const currentResults = useAppStore.getState().customWidgetResults;
-        if (currentResults instanceof Map) {
-          setCustomWidgetResults(new Map(currentResults).set(widgetId, widgetResult));
-        } else {
-          // For mocked store in tests, convert to Map first
-          const resultsRecord = currentResults as Record<string, { context: any; results: KpiCalcResult[] }>;
-          const map = new Map<string, { context: any; results: KpiCalcResult[] }>(
-            Object.entries(resultsRecord).map(([k, v]) => [k, v])
-          );
-          map.set(widgetId, widgetResult);
-          setCustomWidgetResults(map);
-        }
+        // Functional update reads the latest record — no stale-closure risk.
+        setCustomWidgetResults((prev) => ({ ...prev, [widgetId]: widgetResult }));
       } else {
         // Full KPI recalculation
         console.log('[useKpiCalculations] Triggering full KPI recalculation');
@@ -269,7 +258,7 @@ export function useKpiCalculations(
     } finally {
       isCalculatingRef.current.delete(targetWidget);
       setCalculatingSet(new Set(isCalculatingRef.current));
-      setCalculatingWidgets(new Set(isCalculatingRef.current));
+      setCalculatingWidgets(Array.from(isCalculatingRef.current));
     }
   }, [fetchKpiCalculations, refetch, setCalculatingWidgets, setCustomWidgetResults]);
 
@@ -342,28 +331,13 @@ export function useKpiCalculations(
     };
   }, []);
 
-  // @MX:NOTE: Convert Map to Record for custom widget results
-  // Uses Array.from(entries) as dependency to detect value changes when Map size stays the same
-  const customWidgetResultsRecord: Record<string, unknown> = useMemo(() => {
-    const record: Record<string, unknown> = {};
-    if (customWidgetResults instanceof Map) {
-      customWidgetResults.forEach((value, key) => {
-        record[key] = value;
-      });
-    } else {
-      // Handle mocked store (object) vs real store (Map)
-      Object.entries(customWidgetResults).forEach(([key, value]) => {
-        record[key] = value;
-      });
-    }
-    return record;
-  }, [customWidgetResults instanceof Map ? Array.from(customWidgetResults.entries()) : customWidgetResults]);
-
+  // @MX:NOTE: The store's customWidgetResults slice is already a plain record,
+  // so it can be exposed to consumers as-is.
   const isCalculating = isQueryLoading || calculatingSet.size > 0;
 
   return {
     kpiResults,
-    customWidgetResults: customWidgetResultsRecord,
+    customWidgetResults,
     isCalculating,
     isError: isQueryError,
     error: queryError,

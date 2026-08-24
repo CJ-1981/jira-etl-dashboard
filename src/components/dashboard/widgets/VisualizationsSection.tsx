@@ -10,7 +10,7 @@ export interface VisualizationsSectionProps {
   charts: ChartConfig[];
   /** Derived (visible) KPI results the charts draw from. */
   kpiResults: KpiCalcResult[];
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   toggleDimension: (pluginId: string, value: string) => void;
   onRemove: (id: string) => void;
   onChange: (id: string, newConfig: ChartConfig) => void;

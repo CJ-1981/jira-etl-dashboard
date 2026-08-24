@@ -252,7 +252,7 @@ describe('KpiDashboard - extras (filter/collapse/export/empty/view state)', () =
     storeRef.current = createMockStore({
       activeConnectionId: 'conn-1',
       kpiResults: [KPI_RESULT],
-      collapsedWidgets: new Set<string>(),
+      collapsedWidgets: [],
     });
     renderWithProviders(<KpiDashboard />);
     await screen.findByText('KPI Analytics');
@@ -269,7 +269,7 @@ describe('KpiDashboard - extras (filter/collapse/export/empty/view state)', () =
     storeRef.current = createMockStore({
       activeConnectionId: 'conn-1',
       kpiResults: [KPI_RESULT],
-      collapsedWidgets: new Set<string>(['metrics-overview']),
+      collapsedWidgets: ['metrics-overview'],
     });
     renderWithProviders(<KpiDashboard />);
     await screen.findByText('KPI Analytics');
@@ -283,7 +283,7 @@ describe('KpiDashboard - extras (filter/collapse/export/empty/view state)', () =
     storeRef.current = createMockStore({
       activeConnectionId: 'conn-1',
       kpiResults: [KPI_RESULT],
-      collapsedWidgets: new Set<string>(),
+      collapsedWidgets: [],
     });
     renderWithProviders(<KpiDashboard />);
     await screen.findByText('KPI Analytics');

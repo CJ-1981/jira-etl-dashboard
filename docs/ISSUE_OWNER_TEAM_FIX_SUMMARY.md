@@ -41,9 +41,9 @@ node scripts/find-team-field.js
 Choose **one** method:
 
 **Method A: Environment Variable (Recommended)**
-Create `.env.local`:
+Create or update `.env`:
 ```bash
-REACT_APP_JIRA_ISSUE_OWNER_TEAM_FIELD=customfield_XXXXX
+JIRA_ISSUE_OWNER_TEAM_FIELD=customfield_XXXXX
 ```
 
 **Method B: Direct Configuration**

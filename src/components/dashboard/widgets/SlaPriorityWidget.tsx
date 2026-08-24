@@ -10,7 +10,7 @@ export interface SlaPriorityWidgetProps {
   kpi: KpiCalcResult;
   isExpanded: boolean;
   onToggleCollapse: (pluginId: string) => void;
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   onRestoreAll: (prefix: string) => void;
   onToggleDimension: (pluginId: string, value: string) => void;
   onDrillDown: DrillDownHandler;
@@ -52,7 +52,7 @@ export function SlaPriorityWidget({
       <div className="space-y-3">
         {kpi.results.map((result: KpiCalcResult['results'][0], idx: number) => {
           const dimKey = `${kpi.pluginId}|${result.dimensions?.priority || result.name}`;
-          if (hiddenDimensions.has(dimKey)) return null;
+          if (hiddenDimensions.includes(dimKey)) return null;
 
           const priority = result.dimensions?.priority || result.name;
           const priorityColor: Record<string, string> = {
@@ -96,9 +96,9 @@ export function SlaPriorityWidget({
           );
         })}
       </div>
-      {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
+      {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.includes(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
         <div className="text-xs text-slate-400 italic">
-          {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
+          {hiddenDimensions.filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
         </div>
       )}
     </WidgetCard>

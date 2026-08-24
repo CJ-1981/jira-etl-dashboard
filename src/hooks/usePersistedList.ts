@@ -87,7 +87,7 @@ export function usePersistedList<T>(
   storageKey: string,
   options: UsePersistedListOptions<T>
 ): UsePersistedListResult<T> {
-  const [list, setList] = useState<T[]>(() => {
+  const [list, setListRaw] = useState<T[]>(() => {
     if (typeof window === 'undefined') return options.fallback;
 
     try {
@@ -112,6 +112,17 @@ export function usePersistedList<T>(
   const isSelfWriting = useRef(false);
   // Guard: true for exactly one persist cycle after a sync from another instance
   const isSyncing = useRef(false);
+  // @MX:WARN: Persist only after a user-initiated mutation, never on mount.
+  // @MX:REASON: Mounting with an empty fallback (e.g. plugin ids before the
+  // first calculation) used to persist [] immediately; consumers treating
+  // "key exists" as "user configured this" then filtered out everything
+  // permanently (the cfg_active_plugins self-poisoning bug).
+  const hasUserMutation = useRef(false);
+
+  const setList: Dispatch<SetStateAction<T[]>> = useCallback((action) => {
+    hasUserMutation.current = true;
+    setListRaw(action);
+  }, []);
 
   // Re-sync from localStorage whenever the storage key changes externally
   useEffect(() => {
@@ -121,22 +132,22 @@ export function usePersistedList<T>(
       try {
         const saved = localStorage.getItem(storageKey);
         if (saved === null) {
-          if (options.resetOnMissingKey) setList(options.fallback);
+          if (options.resetOnMissingKey) setListRaw(options.fallback);
           return;
         }
         const parsed = JSON.parse(saved);
         if (!options.isValid || options.isValid(parsed)) {
           if (options.suppressSyncEcho) isSyncing.current = true;
-          setList(options.onLoad ? options.onLoad(parsed) : parsed);
+          setListRaw(options.onLoad ? options.onLoad(parsed) : parsed);
         } else {
           console.error(
             `Invalid structure in ${storageKey} localStorage data, resetting to default.`
           );
-          setList(options.fallback);
+          setListRaw(options.fallback);
         }
       } catch (error) {
         console.error(`Failed to sync ${storageKey} from localStorage:`, error);
-        setList(options.fallback);
+        setListRaw(options.fallback);
       }
     };
 
@@ -180,11 +191,16 @@ export function usePersistedList<T>(
 
     // Skip exactly one persist for state updates caused by syncing from
     // another instance (avoids echo writes). Reset the flag here so that
-    // subsequent user-initiated changes persist normally.
+    // subsequent user-initiated changes persist normally. This must run
+    // before the mutation gate so sync-triggered runs still clear isSyncing.
     if (options.suppressSyncEcho && isSyncing.current) {
       isSyncing.current = false;
       return;
     }
+
+    // Never persist until the user actually changes the list. This prevents
+    // mount-time persistence of the fallback (see hasUserMutation note).
+    if (!hasUserMutation.current) return;
 
     try {
       isSelfWriting.current = true;
@@ -221,7 +237,7 @@ export function usePersistedList<T>(
       newOrder.splice(destIndex, 0, removed);
       return newOrder;
     });
-  }, []);
+  }, [setList]);
 
   // Toggle membership (add if not present, remove if present)
   const toggle = useCallback((item: T) => {
@@ -232,7 +248,7 @@ export function usePersistedList<T>(
         return [...prev, item];
       }
     });
-  }, []);
+  }, [setList]);
 
   return { list, setList, reorder, toggle };
 }

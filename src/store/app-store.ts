@@ -53,8 +53,10 @@ interface AppState {
   globalFilters: Record<string, string[]>;
   setGlobalFilters: (filters: Record<string, string[]>) => void;
   
-  hiddenDimensions: Set<string>;
-  setHiddenDimensions: (dims: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  // @MX:NOTE: Plain-data slices (arrays/records) — serializable and usable
+  // directly by persistence; setters accept the new shape or a functional updater.
+  hiddenDimensions: string[];
+  setHiddenDimensions: (dims: string[] | ((prev: string[]) => string[])) => void;
   
   dashboardCharts: ChartConfig[];
   setDashboardCharts: (charts: ChartConfig[]) => void;
@@ -80,17 +82,17 @@ interface AppState {
   setKpiSubTab: (tab: string) => void;
 
   // Custom JQL filters per widget
-  customWidgetResults: Map<string, { context: any; results: KpiCalcResult[] }>;
-  setCustomWidgetResults: (results: Map<string, { context: any; results: KpiCalcResult[] }>) => void;
+  customWidgetResults: Record<string, { context: any; results: KpiCalcResult[] }>;
+  setCustomWidgetResults: (results: Record<string, { context: any; results: KpiCalcResult[] }> | ((prev: Record<string, { context: any; results: KpiCalcResult[] }>) => Record<string, { context: any; results: KpiCalcResult[] }>)) => void;
 
-  calculatingWidgets: Set<string>;
-  setCalculatingWidgets: (widgets: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  calculatingWidgets: string[];
+  setCalculatingWidgets: (widgets: string[] | ((prev: string[]) => string[])) => void;
 
   kpiCardConfigs: KpiCardConfig[];
   setKpiCardConfigs: (configs: KpiCardConfig[]) => void;
 
-  jqlResultCache: Map<string, { results: KpiCalcResult[]; timestamp: number }>;
-  setJqlResultCache: (cache: Map<string, { results: KpiCalcResult[]; timestamp: number }>) => void;
+  jqlResultCache: Record<string, { results: KpiCalcResult[]; timestamp: number }>;
+  setJqlResultCache: (cache: Record<string, { results: KpiCalcResult[]; timestamp: number }> | ((prev: Record<string, { results: KpiCalcResult[]; timestamp: number }>) => Record<string, { results: KpiCalcResult[]; timestamp: number }>)) => void;
 
   // @MX:ANCHOR: Saved Views State
   // @MX:NOTE: Persistent dashboard layouts and configurations stored in the database.
@@ -108,8 +110,8 @@ interface AppState {
 
   // @MX:ANCHOR: Dashboard Section Collapse State
   // @MX:NOTE: Persists the collapsed/expanded state of entire sections like "Metrics Overview".
-  collapsedWidgets: Set<string>;
-  setCollapsedWidgets: (widgets: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  collapsedWidgets: string[];
+  setCollapsedWidgets: (widgets: string[] | ((prev: string[]) => string[])) => void;
 
   // @MX:ANCHOR: Widget Heights
   widgetHeights: Record<string, number>;
@@ -172,11 +174,9 @@ export const useAppStore = create<AppState>((set) => ({
   globalFilters: {},
   setGlobalFilters: (filters) => set({ globalFilters: filters }),
 
-  hiddenDimensions: new Set(),
-  // @MX:WARN: Set cloning
-  // @MX:REASON: Sets are mutable; we must create a new Set instance so Zustand detects the state change.
+  hiddenDimensions: [],
   setHiddenDimensions: (dims) => set((state) => ({
-    hiddenDimensions: new Set(typeof dims === 'function' ? dims(new Set(state.hiddenDimensions)) : dims)
+    hiddenDimensions: typeof dims === 'function' ? dims(state.hiddenDimensions) : dims
   })),
 
   // @MX:NOTE: Initial dashboard charts configuration
@@ -203,10 +203,12 @@ export const useAppStore = create<AppState>((set) => ({
   kpiSubTab: 'dashboard',
   setKpiSubTab: (tab) => set({ kpiSubTab: tab }),
 
-  customWidgetResults: new Map(),
-  setCustomWidgetResults: (results) => set({ customWidgetResults: results }),
+  customWidgetResults: {},
+  setCustomWidgetResults: (results) => set((state) => ({
+    customWidgetResults: typeof results === 'function' ? results(state.customWidgetResults) : results
+  })),
 
-  calculatingWidgets: new Set(),
+  calculatingWidgets: [],
   setCalculatingWidgets: (widgets) => set((state) => ({
     calculatingWidgets: typeof widgets === 'function' ? widgets(state.calculatingWidgets) : widgets
   })),
@@ -214,8 +216,10 @@ export const useAppStore = create<AppState>((set) => ({
   kpiCardConfigs: [],
   setKpiCardConfigs: (configs) => set({ kpiCardConfigs: configs }),
 
-  jqlResultCache: new Map(),
-  setJqlResultCache: (cache) => set({ jqlResultCache: cache }),
+  jqlResultCache: {},
+  setJqlResultCache: (cache) => set((state) => ({
+    jqlResultCache: typeof cache === 'function' ? cache(state.jqlResultCache) : cache
+  })),
 
   // @MX:ANCHOR: Saved Views
   savedViews: [],
@@ -233,9 +237,9 @@ export const useAppStore = create<AppState>((set) => ({
     widgetTitles: typeof titles === 'function' ? titles(state.widgetTitles) : titles
   })),
 
-  collapsedWidgets: new Set(),
+  collapsedWidgets: [],
   setCollapsedWidgets: (widgets) => set((state) => ({
-    collapsedWidgets: new Set(typeof widgets === 'function' ? widgets(new Set(state.collapsedWidgets)) : widgets)
+    collapsedWidgets: typeof widgets === 'function' ? widgets(state.collapsedWidgets) : widgets
   })),
 
   widgetHeights: {},

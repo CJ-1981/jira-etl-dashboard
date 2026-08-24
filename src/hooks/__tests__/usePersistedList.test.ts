@@ -24,6 +24,12 @@ function render(options: Partial<UsePersistedListOptions<string>> = {}, key = KE
   return renderHook(() => usePersistedList<string>(key, opts));
 }
 
+/** Parse the stored list (or null when the key is absent) without assertions. */
+function stored(key = KEY): string[] | null {
+  const raw = localStorage.getItem(key);
+  return raw === null ? null : JSON.parse(raw);
+}
+
 describe('usePersistedList - Initialization', () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.restoreAllMocks());
@@ -82,7 +88,7 @@ describe('usePersistedList - Reorder and Toggle', () => {
   it('persists the reordered list', () => {
     const { result } = render();
     act(() => result.current.reorder(0, 2));
-    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual(['b', 'c', 'a']);
+    expect(stored()).toEqual(['b', 'c', 'a']);
   });
 
   it('toggle removes a present item', () => {
@@ -163,7 +169,7 @@ describe('usePersistedList - Cross-Instance Synchronization', () => {
     expect(result.current.list).toEqual(['external']);
 
     act(() => result.current.toggle('added'));
-    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual(['external', 'added']);
+    expect(stored()).toEqual(['external', 'added']);
   });
 });
 
@@ -194,5 +200,75 @@ describe('usePersistedList - syncOnMount / resetOnMissingKey', () => {
     });
     // Without resetOnMissingKey the hook keeps its current value
     expect(result.current.list).toEqual(['present']);
+  });
+});
+
+describe('usePersistedList - no self-poisoning on mount', () => {
+  // Regression: mounting a hook whose fallback is empty (e.g. plugin ids
+  // before the first calculation) used to persist the fallback immediately,
+  // creating the storage key with []. Consumers that treat "key exists" as
+  // "user configured this" then filtered out everything permanently. The
+  // fallback must NOT be persisted until the user actually changes the list.
+
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not persist the fallback when nothing is stored', () => {
+    render({ fallback: [] });
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('does not persist a non-empty fallback on mount either', () => {
+    render({ fallback: ['a', 'b'] });
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('does not overwrite an existing stored value on mount', () => {
+    localStorage.setItem(KEY, JSON.stringify(['x']));
+    render({ fallback: ['a', 'b'] });
+    expect(stored()).toEqual(['x']);
+  });
+
+  it('persists after a toggle', () => {
+    const { result } = render({ fallback: ['a'] });
+    expect(localStorage.getItem(KEY)).toBeNull();
+    act(() => result.current.toggle('a'));
+    expect(stored()).toEqual([]);
+  });
+
+  it('persists after a reorder', () => {
+    const { result } = render({ fallback: ['a', 'b'] });
+    expect(localStorage.getItem(KEY)).toBeNull();
+    act(() => result.current.reorder(1, 0));
+    expect(stored()).toEqual(['b', 'a']);
+  });
+
+  it('persists after setList', () => {
+    const { result } = render({ fallback: [] });
+    act(() => result.current.setList(['z']));
+    expect(stored()).toEqual(['z']);
+  });
+
+  it('still does not persist after unmount and remount without changes', () => {
+    const first = render({ fallback: ['a'] });
+    first.unmount();
+    render({ fallback: ['a'] });
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('persists user changes after adopting a synced value', () => {
+    localStorage.setItem(KEY, JSON.stringify(['x']));
+    const { result } = render({ fallback: [], suppressSyncEcho: true });
+    // Adopt an external change
+    localStorage.setItem(KEY, JSON.stringify(['x', 'y']));
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: KEY }));
+    });
+    expect(result.current.list).toEqual(['x', 'y']);
+    // The adoption itself must not trigger an echo write of the old value
+    expect(stored()).toEqual(['x', 'y']);
+    // A subsequent user change persists normally
+    act(() => result.current.toggle('z'));
+    expect(stored()).toEqual(['x', 'y', 'z']);
   });
 });

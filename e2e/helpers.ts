@@ -9,20 +9,51 @@ import type { Page } from '@playwright/test';
  * connections, SQLite storage, dark theme) on every test without any cleanup.
  */
 
+// Wait until React has hydrated the app shell. The brand heading and the tab
+// triggers are present in the server-rendered HTML, so their mere visibility
+// does not prove the client bundle is live — event handlers are attached only
+// once hydration finishes, and clicks dispatched before then are silently
+// dropped. `next dev` also performs one client-side revalidation right after
+// the HMR socket connects, so give React a moment to settle. The top-level tab
+// triggers are client-rendered, so one carrying React props (__reactProps$
+// keys exist only on hydrated DOM nodes) proves handlers are attached.
+async function waitForHydration(page: Page) {
+  await page.waitForFunction(() => {
+    const tab = document.querySelector('[role="tab"]');
+    return !!tab && Object.keys(tab).some((key) => key.startsWith('__reactProps$'));
+  }, undefined, { timeout: 15_000 }).catch(async (err) => {
+    // A stalled dev server (mid-recompile) can delay the client bundle; fall
+    // back to a full reload, which re-requests the chunks and almost always
+    // lands on a warm build. Surface the original error if that still fails.
+    await page.reload();
+    await page.waitForFunction(() => {
+      const tab = document.querySelector('[role="tab"]');
+      return !!tab && Object.keys(tab).some((key) => key.startsWith('__reactProps$'));
+    }, undefined, { timeout: 15_000 }).catch(() => {
+      throw err;
+    });
+  });
+}
+
 // Navigate to the dashboard root and wait for the app shell to hydrate.
-// The header brand title is rendered by the client bundle, so seeing it
-// confirms hydration completed.
 export async function gotoHome(page: Page) {
-  await page.goto('/');
+  // `domcontentloaded` instead of the default `load`: on a busy `next dev`
+  // server a queued chunk compilation can hold the window load event open for
+  // tens of seconds. Interactivity is gated explicitly by waitForHydration
+  // below, so waiting for every subresource here buys nothing.
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Jira ETL Dashboard' }).waitFor({ state: 'visible' });
+  await waitForHydration(page);
 }
 
 // Click a top-level tab by its visible desktop label
 // ("Data Center" | "KPI Analytics" | "Settings").
 // Radix renders tab triggers with role="tab"; the mobile-only label span is
 // display:none at the 1280px viewport, so the accessible name is the desktop
-// label.
+// label. Waits for hydration first so the click lands on live handlers even
+// right after a hard navigation or page.reload().
 export async function clickTab(page: Page, label: string) {
+  await waitForHydration(page);
   await page.getByRole('tab', { name: label }).click();
 }
 
@@ -62,6 +93,8 @@ export function seedConnection(page: Page, conn: SeedConnectionInput) {
   };
   page.addInitScript((entry) => {
     localStorage.setItem('cfg_jira_connections', JSON.stringify([entry]));
-    localStorage.setItem('cfg_active_connection_id', entry.id);
+    // localConfig.get() JSON.parse()s every key, so the id must be stored as
+    // a JSON string — a raw string makes getActiveConnectionId() return null.
+    localStorage.setItem('cfg_active_connection_id', JSON.stringify(entry.id));
   }, connection);
 }

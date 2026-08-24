@@ -82,9 +82,9 @@ export function ViewManager() {
       charts: dashboardCharts,
       dashboardJqlQuery,
       kpiCardConfigs,
-      hiddenDimensions: Array.from(hiddenDimensions),
+      hiddenDimensions,
       widgetTitles,
-      collapsedWidgets: Array.from(collapsedWidgets),
+      collapsedWidgets,
       widgetHeights,
     };
   };
@@ -137,9 +137,11 @@ export function ViewManager() {
       setDashboardCharts(dedupeChartsById(state.charts || []));
       setDashboardJqlQuery(state.dashboardJqlQuery || '');
       setKpiCardConfigs(state.kpiCardConfigs || []);
-      setHiddenDimensions(new Set(state.hiddenDimensions || []));
+      // Saved views always serialized these as arrays; the Array.isArray
+      // guards keep restore safe against any legacy/malformed payloads.
+      setHiddenDimensions(Array.isArray(state.hiddenDimensions) ? state.hiddenDimensions : []);
       setWidgetTitles(state.widgetTitles || {});
-      setCollapsedWidgets(new Set(state.collapsedWidgets || []));
+      setCollapsedWidgets(Array.isArray(state.collapsedWidgets) ? state.collapsedWidgets : []);
 
       // Merge widget heights to preserve plugin config heights
       setWidgetHeights((prev) => ({

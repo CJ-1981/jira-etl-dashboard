@@ -11,7 +11,7 @@ export interface AssigneeWidgetProps {
   title: string;
   isExpanded: boolean;
   onToggleCollapse: (pluginId: string) => void;
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   onRestoreAll: (prefix: string) => void;
   onHideDimensions: (keys: string[]) => void;
   onDrillDown: DrillDownHandler;
@@ -92,7 +92,7 @@ export function AssigneeWidget({
           };
 
           return Object.entries(groups).map(([key, results]) => {
-            const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] ? `${key}-${r.dimensions.ageCategory}` : key}`));
+            const visibleResults = results.filter((r) => !hiddenDimensions.includes(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] ? `${key}-${r.dimensions.ageCategory}` : key}`));
             if (visibleResults.length === 0) return null;
 
             const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
@@ -189,10 +189,10 @@ export function AssigneeWidget({
         })()}                          </div>
       {kpi.results.some((r: KpiCalcResult['results'][0]) => {
         const dimensionKey = kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team' : 'assignee';
-        return hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] || r.name}`);
+        return hiddenDimensions.includes(`${kpi.pluginId}|${r.dimensions?.[dimensionKey] || r.name}`);
       }) && (
         <div className="text-xs text-slate-400 italic">
-          {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} {kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team(s)' : 'assignee(s)'} hidden
+          {hiddenDimensions.filter(k => k.startsWith(kpi.pluginId + '|')).length} {kpi.pluginId === 'open_tickets_by_issue_owner_team' ? 'team(s)' : 'assignee(s)'} hidden
         </div>
       )}
     </WidgetCard>

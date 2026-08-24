@@ -12,7 +12,7 @@ export type DrillDownHandler = (keys: string[], title: string) => void;
  */
 export interface WidgetChromeProps {
   /** Current hidden-dimension keys, e.g. "pluginId|dimensionValue". */
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   /** Remove every hidden key that starts with the given prefix. */
   onRestoreAll: (prefix: string) => void;
   /** Whether this widget's card body is expanded (not collapsed). */

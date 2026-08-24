@@ -16,7 +16,7 @@ npm run build          # Production build → .next/standalone
 npm start              # Run standalone production server
 npm test               # Vitest (run mode: npx vitest run)
 npm run test:coverage  # v8 coverage — enforces ratchet thresholds (70% lines), fails below
-npm run lint           # ESLint (critical rules re-enabled; 785 warnings, ratchet threshold 785)
+npm run lint           # ESLint (critical rules re-enabled; 780 warnings, ratchet threshold 780)
 npm run type-check     # tsc --noEmit — ALWAYS run this before committing
 npm run e2e            # Playwright e2e (reuses a running dev server locally; boots one in CI)
 npm run db:push        # Push schema to SQLite (default DATABASE_URL)
@@ -25,7 +25,7 @@ npm run db:studio      # Prisma Studio
 build-exe.bat          # Windows portable exe (caxa); build-exe.sh for macOS
 ```
 
-CI runs `test:coverage`, `lint --max-warnings=785`, `type-check`, and the Playwright
+CI runs `test:coverage`, `lint --max-warnings=780`, `type-check`, and the Playwright
 E2E suite on push/PR to main/develop (Node 22). The e2e job installs Chromium, boots
 the dev server via the Playwright config, and uploads the HTML report as an artifact.
 
@@ -114,7 +114,7 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
 1. **Build enforces type errors** — `next.config.ts` sets `typescript.ignoreBuildErrors: false`
    and ESLint has critical rules re-enabled (`no-explicit-any`, `no-unused-vars`, `no-debugger`,
    `no-fallthrough`, `no-unreachable`, etc.). `npm run type-check` and `npm run lint` are both
-   real static gates. The lint warning threshold is 785 (ratchet, tightened 2026-08
+   real static gates. The lint warning threshold is 780 (ratchet, tightened 2026-08
    from 2000 during the debt cleanup — see `docs/DEBT_CLEANUP.md`) — lower it as the codebase
    is cleaned up.
 2. **Field-ID env overrides are server-side `JIRA_*` vars** — the dead
@@ -160,7 +160,7 @@ Two layers:
 
 - **Unit/integration (Vitest)** — tests live in `__tests__/` dirs next to code. Shared mocks:
   `src/test/mock-db.ts` (smart-default Prisma proxy) and `src/test/mock-store.tsx` (zustand +
-  localConfig). Coverage is ratcheted in `vitest.config.ts` (`thresholds`: 70% lines /
+  localConfig). Coverage is ratcheted in `vitest.config.ts` (`thresholds`: 75% lines /
   68% statements / 60% functions / 53% branches) — `npm run test:coverage` fails below them.
   Do not commit test files without real assertions.
 - **E2E (Playwright)** — specs in `e2e/` (`npm run e2e`), driven against the dev server

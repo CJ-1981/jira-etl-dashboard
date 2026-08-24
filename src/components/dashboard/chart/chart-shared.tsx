@@ -54,7 +54,7 @@ export interface ChartRendererBaseProps {
   /** Pixel height resolved from the widget height setting. */
   chartHeight: number;
   theme: 'light' | 'dark';
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   onLegendClick: (entry: ChartLegendEntry) => void;
   onDrillDown: ChartDrillDown;
   /** Chart-level SLA target (fallback when a series has none of its own). */
@@ -85,11 +85,11 @@ export const SERIES_LEGEND_LAYOUT = {
  * Legend item formatter that strikes through dimensions hidden via
  * legend clicks.
  */
-export function renderLegendItem(hiddenDimensions: Set<string>, kpiId: string) {
+export function renderLegendItem(hiddenDimensions: string[], kpiId: string) {
   // Recharts legend `formatter` callback (returns ReactNode), not a component.
   // eslint-disable-next-line react/display-name
   return (value: string) => {
-    const isHidden = hiddenDimensions.has(`${kpiId}|${value}`);
+    const isHidden = hiddenDimensions.includes(`${kpiId}|${value}`);
     return (
       <span
         className={`
@@ -149,7 +149,7 @@ export function SeriesSlaTargetLines({
 }: {
   seriesResults: ChartSeriesResults;
   kpiId: string;
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   slaTarget: number | null;
   labelPrefix: string;
   keyPrefix: string;
@@ -157,7 +157,7 @@ export function SeriesSlaTargetLines({
   return (
     <>
       {seriesResults.map((result, idx) => {
-        if (hiddenDimensions.has(`${kpiId}|${result.name}`)) return null;
+        if (hiddenDimensions.includes(`${kpiId}|${result.name}`)) return null;
         const target = result.slaTargetHours ?? slaTarget;
         if (target === null || target === undefined || isNaN(target)) return null;
         return (

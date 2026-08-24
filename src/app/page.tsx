@@ -204,13 +204,15 @@ export default function Home() {
     if (savedState) {
       if (isDev) console.log('[App] Found saved dashboard state');
       if (savedState.globalFilters) setGlobalFilters(savedState.globalFilters);
-      if (savedState.hiddenDimensions) setHiddenDimensions(new Set(savedState.hiddenDimensions));
+      // Persisted shape is already a string array; coerce defensively in case
+      // of legacy/corrupt entries.
+      if (savedState.hiddenDimensions) setHiddenDimensions(Array.isArray(savedState.hiddenDimensions) ? savedState.hiddenDimensions : []);
       if (savedState.charts) setDashboardCharts(dedupeChartsById(savedState.charts));
       if (savedState.dashboardJql) setDashboardJqlQuery(savedState.dashboardJql);
     } else {
       if (isDev) console.log('[App] No saved dashboard state, using defaults');
       setGlobalFilters({});
-      setHiddenDimensions(new Set());
+      setHiddenDimensions([]);
       setDashboardCharts([{ id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' } }]);
       setDashboardJqlQuery('');
     }
@@ -249,7 +251,7 @@ export default function Home() {
 
     const state = {
       globalFilters,
-      hiddenDimensions: Array.from(hiddenDimensions),
+      hiddenDimensions,
       charts: dashboardCharts,
       dashboardJql: dashboardJqlQuery,
       dateFrom,

@@ -2,7 +2,7 @@
 
 ## Problem
 
-You're seeing unexpected values in the "Issue Owner Team" filter (like "360 view", "Cameras", "Pedal", etc.) because the custom field ID `customfield_10100` may not be the correct field in your JIRA instance.
+You're seeing unexpected values in the "Issue Owner Team" filter (like "360 view", "Cameras", "Pedal", etc.) because the configured custom field ID (default `customfield_10132`, set in `src/lib/jira/field-config.ts`) may not be the correct field in your JIRA instance.
 
 ## Solution
 
@@ -160,7 +160,7 @@ If you need to revert to the original field:
 # JIRA_ISSUE_OWNER_TEAM_FIELD=customfield_10200
 
 # Or reset field-config.ts to:
-issueOwnerTeamField: 'customfield_10100'
+issueOwnerTeamField: 'customfield_10132'
 ```
 
 Then restart the development server.
