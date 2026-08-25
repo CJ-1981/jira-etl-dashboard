@@ -1,39 +1,38 @@
 #!/usr/bin/env node
 /**
- * Script to find the correct Issue Owner Team field in your Jira instance
- * Usage: node scripts/find-team-field.js
+ * Script to find the correct Issue Owner Team field in your Jira instance.
+ *
+ * Usage (connection comes from environment variables):
+ *   JIRA_BASE_URL=https://your-domain.atlassian.net \
+ *   JIRA_EMAIL=you@company.com \
+ *   JIRA_API_TOKEN=<api-token> \
+ *   [JIRA_PROJECT_KEYS=PROJ,DEV]   (optional: scope the probe to projects) \
+ *   node scripts/find-team-field.js
  */
 
-const fs = require('fs');
-const path = require('path');
+// Read connection info from environment variables (credentials live in
+// browser localStorage in the app itself, so this standalone probe takes
+// them via env).
+function readConnectionFromEnv() {
+  const baseUrl = process.env.JIRA_BASE_URL;
+  const email = process.env.JIRA_EMAIL;
+  const apiToken = process.env.JIRA_API_TOKEN;
 
-// Read existing settings
-const dataDir = path.join(__dirname, '../data');
-
-// Find most recent connection data
-function findMostRecentConnection() {
-  if (!fs.existsSync(dataDir)) {
-    console.error('❌ Data directory not found. Please extract JIRA data first.');
+  if (!baseUrl || !email || !apiToken) {
+    console.error('❌ Missing connection environment variables.');
+    console.error('   Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN, e.g.:');
+    console.error('   JIRA_BASE_URL=https://your-domain.atlassian.net \\');
+    console.error('   JIRA_EMAIL=you@company.com JIRA_API_TOKEN=<token> \\');
+    console.error('   node scripts/find-team-field.js');
     process.exit(1);
   }
 
-  const files = fs.readdirSync(dataDir)
-    .filter(f => f.startsWith('jira-extract-') && f.endsWith('.json'))
-    .sort()
-    .reverse();
+  const projectKeys = (process.env.JIRA_PROJECT_KEYS || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(Boolean);
 
-  if (files.length === 0) {
-    console.error('❌ No JIRA extraction files found. Please extract data first.');
-    process.exit(1);
-  }
-
-  const mostRecent = files[0];
-  console.log(`📂 Using most recent extraction: ${mostRecent}`);
-
-  const filePath = path.join(dataDir, mostRecent);
-  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-
-  return data.connectionInfo;
+  return { baseUrl, email, apiToken, projectKeys };
 }
 
 // Analyze field values from extracted issues
@@ -54,7 +53,7 @@ function analyzeFieldValues(issues, fieldName) {
 async function main() {
   console.log('🔍 Searching for Issue Owner Team field...\n');
 
-  const connectionInfo = findMostRecentConnection();
+  const connectionInfo = readConnectionFromEnv();
 
   // Build API URL
   const baseUrl = connectionInfo.baseUrl.replace(/\/$/, '');
@@ -102,8 +101,10 @@ async function main() {
       const fieldId = field.id;
       const fieldName = field.name;
 
-      // Fetch a few issues with this field
-      const jql = `project in (${connectionInfo.projectKeys.join(',')})`;
+      // Fetch a few issues with this field (scoped to projects when given)
+      const jql = connectionInfo.projectKeys.length > 0
+        ? `project in (${connectionInfo.projectKeys.join(',')})`
+        : 'ORDER BY created DESC';
       const searchResponse = await fetch(`${baseUrl}/rest/api/3/search`, {
         method: 'POST',
         headers: {
