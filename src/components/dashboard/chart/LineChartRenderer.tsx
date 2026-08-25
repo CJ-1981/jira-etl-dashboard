@@ -132,7 +132,7 @@ function MultiSeriesLineChart({
                 onDrillDown,
               )}
               dot={seriesDotRenderer(color, `${idx}-`)}
-              hide={hiddenDimensions.has(`${kpiId}|${result.name}`)}
+              hide={hiddenDimensions.includes(`${kpiId}|${result.name}`)}
             />
           );
         })}

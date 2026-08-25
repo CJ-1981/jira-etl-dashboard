@@ -11,7 +11,7 @@ export interface OtherPriorityWidgetProps {
   title: string;
   isExpanded: boolean;
   onToggleCollapse: (pluginId: string) => void;
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   onRestoreAll: (prefix: string) => void;
   onHideDimensions: (keys: string[]) => void;
   onDrillDown: DrillDownHandler;
@@ -98,7 +98,7 @@ export function OtherPriorityWidget({
           };
 
           return Object.entries(priorityGroups).map(([priority, results]) => {
-            const visibleResults = results.filter((r) => !hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority ? `${priority}-${r.dimensions.ageCategory}` : priority}`));
+            const visibleResults = results.filter((r) => !hiddenDimensions.includes(`${kpi.pluginId}|${r.dimensions?.priority ? `${priority}-${r.dimensions.ageCategory}` : priority}`));
             if (visibleResults.length === 0) return null;
 
             const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
@@ -196,9 +196,9 @@ export function OtherPriorityWidget({
             );
           });
         })()}                          </div>
-      {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
+      {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.includes(`${kpi.pluginId}|${r.dimensions?.priority || r.name}`)) && (
         <div className="text-xs text-slate-400 italic">
-          {Array.from(hiddenDimensions).filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
+          {hiddenDimensions.filter(k => k.startsWith(kpi.pluginId + '|')).length} priorit(y/ies) hidden
         </div>
       )}
     </WidgetCard>

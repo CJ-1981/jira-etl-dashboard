@@ -98,15 +98,9 @@ export function KpiDashboard() {
 
   // Toggle section collapse state in the global store
   const toggleWidgetCollapse = useCallback((pluginId: string) => {
-    setCollapsedWidgets(prev => {
-      const next = new Set(prev);
-      if (next.has(pluginId)) {
-        next.delete(pluginId);
-      } else {
-        next.add(pluginId);
-      }
-      return next;
-    });
+    setCollapsedWidgets(prev =>
+      prev.includes(pluginId) ? prev.filter(id => id !== pluginId) : [...prev, pluginId]
+    );
     setIsViewModified(true);
   }, [setCollapsedWidgets, setIsViewModified]);
 
@@ -271,9 +265,9 @@ export function KpiDashboard() {
       charts,
       dashboardJqlQuery: jqlQuery,
       kpiCardConfigs,
-      hiddenDimensions: Array.from(hiddenDimensions),
+      hiddenDimensions: hiddenDimensions,
       widgetTitles,
-      collapsedWidgets: Array.from(collapsedWidgets),
+      collapsedWidgets: collapsedWidgets,
       widgetHeights,
     };
 
@@ -401,32 +395,25 @@ export function KpiDashboard() {
   }, [globalFilters]); // Only depend on globalFilters, not jqlFilters object
 
   const toggleDimension = (pluginId: string, value: string) => {
-    setHiddenDimensions((prev: Set<string>) => {
-      const next = new Set(prev);
+    setHiddenDimensions((prev: string[]) => {
       const key = `${pluginId}|${value}`;
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
+      return prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
     });
   };
 
   // Restore every hidden dimension whose key starts with the given prefix
   // (used by the widgets' "Restore All" buttons).
   const restoreDimensions = useCallback((prefix: string) => {
-    setHiddenDimensions((prev: Set<string>) => {
-      const next = new Set(prev);
-      next.forEach(k => { if (k.startsWith(prefix)) next.delete(k); });
-      return next;
-    });
+    setHiddenDimensions((prev: string[]) => prev.filter(k => !k.startsWith(prefix)));
   }, [setHiddenDimensions]);
 
   // Hide several dimension keys at once (used by the stacked-bar widgets to
   // hide all age categories of a row together).
   const hideDimensions = useCallback((keys: string[]) => {
-    setHiddenDimensions((prev: Set<string>) => {
-      const next = new Set(prev);
-      keys.forEach(d => next.add(d));
-      return next;
+    setHiddenDimensions((prev: string[]) => {
+      // Dedupe against existing keys to mirror the previous Set semantics.
+      const additions = keys.filter(k => !prev.includes(k));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
     });
   }, [setHiddenDimensions]);
 
@@ -496,8 +483,12 @@ export function KpiDashboard() {
   const calculateWidgetJql = useCallback(async (widgetId: string, jqlFilter: any) => {
     if (!activeConnectionId || !masterDatasetInfo?.issues) return;
 
+    // Bind the narrowed issues array locally so closures below (functional
+    // store updates) keep seeing the non-undefined type.
+    const datasetIssues = masterDatasetInfo.issues;
+
     // Track loading state
-    setCalculatingWidgets(prev => { const s = new Set(prev); s.add(widgetId); return s; });
+    setCalculatingWidgets(prev => prev.includes(widgetId) ? prev : [...prev, widgetId]);
 
     try {
       // @MX:NOTE: Client-side JQL filtering — engine extracted to lib/jql-widget-eval.
@@ -505,7 +496,7 @@ export function KpiDashboard() {
       // Global dashboard filters apply first (refine mode), then the widget JQL on
       // top; override mode skips global filters and starts from the full dataset.
       const filteredIssues = filterIssuesForWidget(
-        masterDatasetInfo.issues,
+        datasetIssues,
         jqlFilter,
         globalFilters
       );
@@ -538,27 +529,29 @@ export function KpiDashboard() {
         }))
       }));
 
-      // @MX:NOTE: Use getState() to read the latest map — avoids stale closure from useCallback snapshot
-      const latestMap = new Map(useAppStore.getState().customWidgetResults);
-      latestMap.set(widgetId, {
-        results,
-        context: {
-          query: jqlFilter.query,
-          mode: jqlFilter.mode,
-          dateFrom,
-          dateTo,
-          region,
-          globalFilters: (jqlFilter.enabled && jqlFilter.mode === 'override') ? undefined : globalFilters,
-          activeConnectionId,
-          issuesLength: masterDatasetInfo.issues.length
+      // @MX:NOTE: Functional update reads the latest record from the store —
+      // avoids the stale-closure problem the previous getState()+Map workaround solved.
+      setCustomWidgetResults(prev => ({
+        ...prev,
+        [widgetId]: {
+          results,
+          context: {
+            query: jqlFilter.query,
+            mode: jqlFilter.mode,
+            dateFrom,
+            dateTo,
+            region,
+            globalFilters: (jqlFilter.enabled && jqlFilter.mode === 'override') ? undefined : globalFilters,
+            activeConnectionId,
+            issuesLength: datasetIssues.length
+          }
         }
-      });
-      setCustomWidgetResults(latestMap);
+      }));
     } catch (error) {
       console.error(`Failed to calculate widget ${widgetId}:`, error);
       toast.error(`Failed to apply custom JQL filter`);
     } finally {
-      setCalculatingWidgets(prev => { const s = new Set(prev); s.delete(widgetId); return s; });
+      setCalculatingWidgets(prev => prev.filter(id => id !== widgetId));
     }
   }, [activeConnectionId, masterDatasetInfo, calculatingWidgets, jqlQuery, dateFrom, dateTo, region, globalFilters, settings, storageConfig, setCalculatingWidgets, setCustomWidgetResults]);
 
@@ -566,7 +559,7 @@ export function KpiDashboard() {
   useEffect(() => {
     if (!calculateWidgetJql || !masterDatasetInfo?.issues?.length) return;
 
-    customWidgetResults.forEach((entry: any, widgetId: string) => {
+    Object.entries(customWidgetResults).forEach(([widgetId, entry]) => {
       const ctx = entry?.context;
       if (!ctx) return;
 
@@ -942,7 +935,7 @@ export function KpiDashboard() {
 
       {filteredKpiResults.length > 0 && (<>
         <MetricsOverview
-          isExpanded={!collapsedWidgets.has('metrics-overview')}
+          isExpanded={!collapsedWidgets.includes('metrics-overview')}
           onToggleCollapse={() => toggleWidgetCollapse('metrics-overview')}
           results={sortedKpiResults}
           totalRows={sortedKpiResults.reduce((acc, r) => acc + r.results.length, 0)}
@@ -961,7 +954,7 @@ export function KpiDashboard() {
                     <StatusTimeWidget
                       key={`status-time-${kpi.pluginId}`}
                       kpi={kpi}
-                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.includes(kpi.pluginId)}
                       onToggleCollapse={toggleWidgetCollapse}
                       hiddenDimensions={hiddenDimensions}
                       onRestoreAll={restoreDimensions}
@@ -976,7 +969,7 @@ export function KpiDashboard() {
                     <StatusOpenWidget
                       key={`status-open-${kpi.pluginId}`}
                       kpi={kpi}
-                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.includes(kpi.pluginId)}
                       onToggleCollapse={toggleWidgetCollapse}
                       hiddenDimensions={hiddenDimensions}
                       onRestoreAll={restoreDimensions}
@@ -991,7 +984,7 @@ export function KpiDashboard() {
                     <SlaPriorityWidget
                       key={`sla-priority-${kpi.pluginId}-${kpiIdx}`}
                       kpi={kpi}
-                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.includes(kpi.pluginId)}
                       onToggleCollapse={toggleWidgetCollapse}
                       hiddenDimensions={hiddenDimensions}
                       onRestoreAll={restoreDimensions}
@@ -1007,7 +1000,7 @@ export function KpiDashboard() {
                       key={`other-priority-${kpi.pluginId}-${kpiIdx}`}
                       kpi={kpi}
                       title={getPluginName(kpi.pluginId)}
-                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.includes(kpi.pluginId)}
                       onToggleCollapse={toggleWidgetCollapse}
                       hiddenDimensions={hiddenDimensions}
                       onRestoreAll={restoreDimensions}
@@ -1022,7 +1015,7 @@ export function KpiDashboard() {
                     <SlaStatusWidget
                       key={`sla-status-${kpi.pluginId}-${kpiIdx}`}
                       kpi={kpi}
-                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.includes(kpi.pluginId)}
                       onToggleCollapse={toggleWidgetCollapse}
                       hiddenDimensions={hiddenDimensions}
                       onRestoreAll={restoreDimensions}
@@ -1038,7 +1031,7 @@ export function KpiDashboard() {
                       key={`assignee-${kpi.pluginId}-${kpiIdx}`}
                       kpi={kpi}
                       title={getPluginName(kpi.pluginId)}
-                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.includes(kpi.pluginId)}
                       onToggleCollapse={toggleWidgetCollapse}
                       hiddenDimensions={hiddenDimensions}
                       onRestoreAll={restoreDimensions}
@@ -1054,7 +1047,7 @@ export function KpiDashboard() {
                       key={`kanban-${kpi.pluginId}-${kpiIdx}`}
                       kpi={kpi}
                       title={getPluginName(kpi.pluginId)}
-                      isExpanded={!collapsedWidgets.has(kpi.pluginId)}
+                      isExpanded={!collapsedWidgets.includes(kpi.pluginId)}
                       onToggleCollapse={toggleWidgetCollapse}
                       onDrillDown={handleDrillDown}
                     />
@@ -1080,7 +1073,7 @@ export function KpiDashboard() {
 
                 case 'ticket-list': {
                     const tlPluginId = widget.kpis[0]?.pluginId;
-                    const tlCollapsed = collapsedWidgets.has(tlPluginId);
+                    const tlCollapsed = collapsedWidgets.includes(tlPluginId);
                     const tlConn = connections.find((c) => c.id === activeConnectionId);
                     const tlJiraBase = tlConn ? (tlConn.baseUrl?.startsWith('http') ? tlConn.baseUrl : `https://${tlConn.baseUrl}`) : '';
                     return widget.kpis.length > 0 ? (

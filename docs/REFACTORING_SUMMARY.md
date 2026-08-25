@@ -385,15 +385,57 @@ tests; full suite 1,248 passing; lint 785 (ratchet held).
 
 ---
 
+## Phase 9 — final cleanup
+
+Branch `refactor/phase9-final-cleanup` (based on `7cf3f8c`), three parallel
+workstreams with disjoint file ownership:
+
+- **9A — zustand Set/Map → arrays/records**: all five store slices
+  (`hiddenDimensions`, `collapsedWidgets`, `calculatingWidgets`,
+  `customWidgetResults`, `jqlResultCache`) converted; ~20 consumer files
+  updated; clone boilerplate and `instanceof Map` branches removed;
+  persistence stays byte-compatible with existing saved views; 18 new TDD
+  store tests.
+- **9B — KPI dashboard E2E coverage**: new `e2e/kpi-dashboard.spec.ts`
+  (empty-state shell, console-error tripwires for the two hotfix regression
+  classes, plugins sub-tab navigation, add/remove visualization with canned
+  API intercepts, seeded-results console guard); helpers hardened
+  (`seedConnection` JSON-encoding fix, hydration-gated tab clicks). Suite
+  22 → **27/27**.
+- **9C — stale `find-team-field.js` advice**: now points to
+  `field-config.ts` + `JIRA_ISSUE_OWNER_TEAM_FIELD` env var; doc references
+  corrected.
+
+**The new E2E coverage immediately surfaced two latent defects, both fixed
+TDD-style:**
+
+1. **`cfg_active_plugins` self-poisoning** — mounting the dashboard before
+   the first calculation persisted an EMPTY plugin selection, after which
+   every result was filtered out permanently. `usePersistedList` now persists
+   only after a user-initiated mutation, never on mount. 9 new tests; one
+   outdated test updated deliberately.
+2. **"Updated Invalid Date" in DashboardHeader** — the badge omits the
+   timestamp when `lastUpdated` is missing/unparseable. 3 new tests.
+
+**Gates:** type-check 0 errors; **1,278 tests passing**; E2E **27/27**;
+lint **785 → 780** (ratchet tightened to 780); coverage floors raised to
+**75/73/66/61** (actuals 75.1/73.3/66.3/61.5).
+
+| Workstream | Commit |
+|---|---|
+| Phase 9 (all three streams + defect fixes) | `9eca55d` |
+
+---
+
 ## Remaining debt (tracked in `docs/DEBT_CLEANUP.md`)
 
-The structural cleanup is essentially complete. What remains:
-1. Replace `Set`/`Map` values in zustand with plain arrays/records (removes
-   clone boilerplate and `instanceof Map` test-compat branches).
-2. Product decision: the five latent client-side JQL filter bugs pinned by
+The structural cleanup is complete. Everything left is either a product
+decision or a small follow-up:
+1. Product decision: the five latent client-side JQL filter quirks pinned by
    the phase-8C tests (fixing them changes matching behavior users may rely
    on).
-3. Product decision: UTC-ISO-week (trends) vs local-Monday-week (card
+2. Product decision: UTC-ISO-week (trends) vs local-Monday-week (card
    buckets) divergence — documented with `@MX:WARN`.
-4. Minor: `find-team-field.js` console advice is stale (field IDs are now
-   centralized in `field-config.ts`).
+3. Minor: `find-team-field.js` bootstraps from `data/jira-extract-*.json`
+   files nothing writes anymore — rewire it to accept connection params or
+   retire it with its docs (its stale advice was fixed in phase 9C).

@@ -66,7 +66,7 @@ function MultiSeriesBarChart({
             name={result.name}
             fill={getUniqueColor(idx)}
             radius={[4, 4, 0, 0]}
-            hide={hiddenDimensions.has(`${kpiId}|${result.name}`)}
+            hide={hiddenDimensions.includes(`${kpiId}|${result.name}`)}
             cursor="pointer"
             onClick={(barData: ChartDatum) => {
               const keys = (barData[`ticketKeys${idx}`] as string[] | undefined) || barData.ticketKeys;
@@ -102,7 +102,7 @@ function SingleSeriesBarChart({
   const tooltipStyle = getTooltipStyle(theme);
   const renderLegend = renderLegendItem(hiddenDimensions, kpiId);
 
-  const visibleBarData = data.filter(d => !hiddenDimensions.has(`${kpiId}|${d.name}`));
+  const visibleBarData = data.filter(d => !hiddenDimensions.includes(`${kpiId}|${d.name}`));
 
   // @MX:NOTE: Determine stacked age-breakdown rendering based solely on transformed chart data
   // @MX:REASON: Checking kpi.results.details was too broad — it matched any KPI that reports age
@@ -178,7 +178,7 @@ function SingleSeriesBarChart({
             dataKey="value"
             name="Total"
             fill="#3b82f6"
-            hide={hiddenDimensions.has(`${kpiId}|Total`)}
+            hide={hiddenDimensions.includes(`${kpiId}|Total`)}
             cursor="pointer"
             onClick={(barData: ChartDatum) => {
               if (barData && barData.ticketKeys) {

@@ -214,9 +214,10 @@ async function main() {
     const best = results[0];
     if (best && best.score >= 3) {
       console.log(`\n✅ RECOMMENDED FIELD: ${best.fieldId} (${best.fieldName})`);
-      console.log(`\nTo use this field, update the following files:`);
-      console.log(`  1. src/lib/jira/client.ts - Replace customfield_10100 with ${best.fieldId}`);
-      console.log(`  2. src/components/dashboard/KpiDashboard.tsx - Replace customfield_10100 with ${best.fieldId}`);
+      console.log(`\nTo use this field, set the JIRA_ISSUE_OWNER_TEAM_FIELD env var in .env:`);
+      console.log(`  JIRA_ISSUE_OWNER_TEAM_FIELD=${best.fieldId}`);
+      console.log(`\nSee .env.example and docs/JIRA_FIELD_CONFIGURATION.md for details.`);
+      console.log(`(Alternatively, update the default in src/lib/jira/field-config.ts.)`);
     } else if (best) {
       console.log(`\n⚠️  No clear match found. Best candidate: ${best.fieldId} (${best.fieldName})`);
       console.log(`   Score: ${best.score} - might not be the correct field`);

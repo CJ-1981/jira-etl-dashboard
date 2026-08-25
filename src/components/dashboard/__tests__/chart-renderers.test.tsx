@@ -229,7 +229,7 @@ const baseProps: Omit<ChartRendererBaseProps, 'data' | 'seriesResults'> = {
   unit: 'count',
   chartHeight: 300,
   theme: 'light',
-  hiddenDimensions: new Set<string>(),
+  hiddenDimensions: [],
   onLegendClick: vi.fn(),
   onDrillDown: vi.fn(),
   slaTarget: null,
@@ -305,7 +305,7 @@ describe('PieChartRenderer', () => {
           { name: 'B', value: 3 },
         ]}
         seriesResults={[]}
-        hiddenDimensions={new Set(['throughput_trend|B'])}
+        hiddenDimensions={['throughput_trend|B']}
       />,
     );
     expect(container.querySelectorAll('.recharts-legend-item').length).toBe(1);

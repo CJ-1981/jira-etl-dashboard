@@ -33,7 +33,7 @@ export function PieChartRenderer({
   const tooltipStyle = getTooltipStyle(theme);
   const renderLegend = renderLegendItem(hiddenDimensions, kpiId);
 
-  const visiblePieData = data.filter(d => !hiddenDimensions.has(`${kpiId}|${d.name}`));
+  const visiblePieData = data.filter(d => !hiddenDimensions.includes(`${kpiId}|${d.name}`));
 
   return (
     <ResponsiveContainer width="100%" height={chartHeight}>

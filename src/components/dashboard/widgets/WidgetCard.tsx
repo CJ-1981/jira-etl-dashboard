@@ -26,7 +26,7 @@ export interface WidgetCardProps {
   /** Collapse toggle handler (owned by KpiDashboard). */
   onToggleCollapse: (pluginId: string) => void;
   /** Current hidden-dimension keys. */
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   /** Prefix used to detect / restore hidden dimensions for this widget. */
   hiddenPrefix: string;
   /** Restore-all handler; removes every hidden key starting with the prefix. */
@@ -49,7 +49,7 @@ export function WidgetCard({
   restoreAllClassName,
   children,
 }: WidgetCardProps) {
-  const hasHidden = Array.from(hiddenDimensions).some(k => k.startsWith(hiddenPrefix));
+  const hasHidden = hiddenDimensions.some(k => k.startsWith(hiddenPrefix));
 
   return (
     <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">

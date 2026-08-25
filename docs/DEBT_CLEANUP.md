@@ -662,14 +662,99 @@ only via persisted data.
 
 ---
 
+## Phase 9 — Final cleanup (branch `refactor/phase9-final-cleanup`)
+
+Three parallel workstreams with disjoint file ownership.
+
+### 9A. Zustand Set/Map slices → arrays/records
+**Why:** five store slices used `Set`/`Map`, forcing manual clone
+boilerplate ("must create a new Set instance"), `instanceof Map`
+test-compat branches in `useKpiCalculations`, and Set/Map props threaded
+through ~20 components — while persistence already uses plain arrays.
+
+**Changes:**
+- All five slices converted: `hiddenDimensions`, `collapsedWidgets`,
+  `calculatingWidgets` → `string[]`; `customWidgetResults`, `jqlResultCache`
+  → `Record<...>`; setters accept the new shape or a functional updater; the
+  clone boilerplate is gone.
+- Consumers updated across page.tsx (restore/save), ViewManager (view state
+  save/restore with defensive `Array.isArray` guards), useKpiCalculations
+  (both `instanceof Map` branches removed; functional record updates
+  replaced a `getState()` stale-closure workaround in
+  `calculateWidgetJql`), KpiDashboard, KpiCard, the chart renderers +
+  chart-shared, and all widgets.
+- Persistence compatibility: saved payloads were already arrays
+  (`Array.from` at serialization time), so existing saved views and
+  localStorage state remain byte-compatible; restore paths tolerate
+  malformed payloads defensively.
+- 18 new store tests (TDD): plain-data defaults, functional-updater
+  semantics, insertion order, new-reference-per-update immutability.
+- Gates: type-check clean; 1,266 tests passing; lint 785 → **782** (the
+  removed `instanceof Map` branches carried `any` casts).
+
+### 9B. KPI dashboard E2E coverage
+**Why:** the two phase-8 hotfixes were page-load-level regressions only E2E
+can catch, and the KPI Analytics tab had no e2e coverage.
+
+**Changes:**
+- New `e2e/kpi-dashboard.spec.ts` (5 tests): empty-state shell, console-error
+  guard (hard-asserts zero pageerrors and no `same key` / `No QueryClient
+  set` / React-error-boundary messages across load + tab switches), plugins
+  sub-tab navigation, add/remove visualization flow with canned API
+  intercepts (no real Jira/DB), and a seeded-results console guard driving an
+  add/remove cycle where duplicate-key regressions surface.
+- `e2e/helpers.ts` hardened: fixed `seedConnection` (the active-connection id
+  was written as a raw string but read with `JSON.parse`, so it never took
+  effect); `gotoHome`/`clickTab` now gate on React hydration before clicking
+  Radix tab triggers (root cause of recurring flakes), with reload fallback.
+- Suite now 27/27, verified across repeated back-to-back runs.
+
+**The new coverage immediately surfaced two latent defects, both fixed TDD-style:**
+
+1. **`cfg_active_plugins` self-poisoning** — mounting the dashboard before
+   the first calculation persisted `cfg_active_plugins = []` (the empty
+   plugin-id fallback); from then on the dashboard treated the user as having
+   configured an EMPTY selection and filtered out every result permanently.
+   Fix: `usePersistedList` no longer persists on mount — the fallback is
+   written only after a user-initiated mutation (`toggle`/`reorder`/`setList`);
+   syncs from storage use the raw setter and never mark a mutation. Existing
+   tests pinning the old mount-persist behavior were updated deliberately.
+   8 new hook tests + 1 scenario test pin the contract.
+2. **"Updated Invalid Date" in DashboardHeader** — empty master-dataset
+   responses omit `lastUpdated`; the badge now omits the timestamp when it is
+   missing/unparseable. 3 new render tests.
+
+### 9C. Stale find-team-field advice
+**Why:** the kept `scripts/find-team-field.js` advised editing files that no
+longer hold field IDs (centralized in `field-config.ts` + env override since
+phase 7).
+
+**Changes:**
+- Script console advice now points to `JIRA_ISSUE_OWNER_TEAM_FIELD` in `.env`
+  (with `.env.example` + `docs/JIRA_FIELD_CONFIGURATION.md` references);
+  discovery logic untouched.
+- `docs/JIRA_FIELD_CONFIGURATION.md`: `customfield_10100` references
+  corrected to the real default `customfield_10132`.
+- `docs/ISSUE_OWNER_TEAM_FIX_SUMMARY.md`: active advice fixed
+  (`REACT_APP_…` in `.env.local` → `JIRA_ISSUE_OWNER_TEAM_FIELD` in `.env`);
+  past-tense history left intact.
+- Verified: `node --check` passes; zero `customfield_10100` references left
+  in scripts/ and docs/.
+- Caveat noted (backlog): the script bootstraps from
+  `data/jira-extract-*.json` files that nothing in the current codebase
+  writes anymore — it needs rewiring or retiring.
+
+---
+
 ## Final results
 
-| Metric | v0.9.0 baseline | After phases 1–8 | Delta |
+| Metric | v0.9.0 baseline | After phases 1–9 | Delta |
 |---|---|---|---|
-| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **785** (threshold tightened to 785) | −302 warnings, threshold −1,215 |
+| Lint warnings (ratchet) | 1,087 (threshold 2,000) | **780** (threshold tightened to 780) | −307 warnings, threshold −1,220 |
 | Type errors | 0 | 0 | — |
-| Tests | 918 | **1,238** | +320 net |
-| Coverage (lines) | 70.98% | **75.3%** (floor 70%) | improved despite large deletions |
+| Tests | 918 | **1,278** | +360 net |
+| Coverage floors (ratchet) | 70/68/60/53 | **75/73/66/61** (actuals 75.1/73.3/66.3/61.5) | floors raised ~5 points |
+| E2E tests | 22 (local only) | **27, in CI** | KPI dashboard tab covered |
 | npm dependencies | 89 | 58 | −31 packages |
 | shadcn components | 48 | 21 | −27 files (−7,100 lines) |
 | Mutating API routes with loopback guard | 4 of ~15 | **all** | security gap closed |
@@ -687,6 +772,7 @@ only via persisted data.
 | KpiCard.tsx / ChartCard size | 1,735 / ~1,365 lines | **803 / ~467** | chart renderers extracted |
 | Panels on React Query | 0 | **all incl. shared pollers** | caching + dedup + invalidation |
 | Duplicate 5s pollers | 3 (2 same endpoint) | **0** (shared query sources) | one fetch per interval |
+| zustand Set/Map slices | 5 | **0** (arrays/records) | clone boilerplate removed |
 | Storage-key literals outside `KEYS` | ~13 | **0** | test mocks fixed to allow it |
 | Quote-aware splitter copies | 3 | **1** (zero-drift verified) | 48 helper tests |
 | Client JQL engine | untested, inline | **tested lib module (56 tests)** | 5 latent bugs pinned |
@@ -694,8 +780,8 @@ only via persisted data.
 
 Commits: phases 1–3 on `refactor/debt-cleanup` (merged to main at `bf1d343`,
 released as v0.10.0 including phase 4), phase 5 merged at `c54a3de`, phase 6
-merged at `bab3508`, phase 7 merged at `0b91155`, phase 8 on
-`refactor/phase8-final-pass`.
+merged at `bab3508`, phase 7 merged at `0b91155`, phase 8 merged at
+`7cf3f8c`, phase 9 on `refactor/phase9-final-cleanup`.
 
 ---
 
@@ -713,8 +799,10 @@ Items still open after phase 8:
 - UTC-ISO-week vs local-Monday-week divergence (documented with `@MX:WARN`
   in `time-series-utils.ts` / `week-boundaries.ts`) — needs a product
   decision before unifying.
-- `find-team-field.js` console advice cites field IDs now centralized in
-  `field-config.ts` — refresh or retire the script with its docs.
+- `find-team-field.js` bootstraps from `data/jira-extract-*.json` files that
+  nothing in the current codebase writes anymore (credentials live in
+  browser localStorage now) — rewire it to accept connection params or
+  retire it with its docs (phase 9C fixed its stale advice only).
 
 Done in phase 8 (previously listed here): ChartCard decomposition
 (1,735→803, renderers + tested mergeTimeSeries helper), poller dedup +

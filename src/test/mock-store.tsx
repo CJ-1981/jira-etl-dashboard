@@ -56,7 +56,7 @@ export function createMockStore(overrides: Record<string, unknown> = {}) {
     region: 'national',
     selectedPeriodPreset: undefined,
     globalFilters: {},
-    hiddenDimensions: new Set<string>(),
+    hiddenDimensions: [],
     dashboardCharts: [
       { id: 'chart-1', kpiId: '', type: 'bar', width: 'full', height: 'md', jqlFilter: { enabled: false, query: '', mode: 'override' }, expanded: true },
     ],
@@ -65,15 +65,15 @@ export function createMockStore(overrides: Record<string, unknown> = {}) {
     showFloatingBar: false,
     kpiResults: [],
     kpiSubTab: 'dashboard',
-    customWidgetResults: new Map(),
-    calculatingWidgets: new Set(),
+    customWidgetResults: {},
+    calculatingWidgets: [],
     kpiCardConfigs: [],
-    jqlResultCache: new Map(),
+    jqlResultCache: {},
     savedViews: [],
     activeView: null,
     isViewModified: false,
     widgetTitles: {},
-    collapsedWidgets: new Set(),
+    collapsedWidgets: [],
     widgetHeights: {},
     widgetDisplayOrder: [],
     ...overrides,
@@ -98,10 +98,8 @@ export function createMockStore(overrides: Record<string, unknown> = {}) {
     setSelectedPeriodPreset: (v) => { state.selectedPeriodPreset = v as string | undefined; },
     setGlobalFilters: (v) => { state.globalFilters = v as Record<string, string[]>; },
     setHiddenDimensions: (v) => {
-      const prev = state.hiddenDimensions as Set<string>;
-      state.hiddenDimensions = new Set(
-        typeof v === 'function' ? (v as (p: Set<string>) => Set<string> | Iterable<string>)(new Set(prev)) : v as Iterable<string>,
-      );
+      const prev = state.hiddenDimensions as string[];
+      state.hiddenDimensions = typeof v === 'function' ? (v as (p: string[]) => string[])(prev) : v as string[];
     },
     setDashboardCharts: (v) => { state.dashboardCharts = v; },
     toggleWidgetExpanded: (widgetId) => {
@@ -114,13 +112,19 @@ export function createMockStore(overrides: Record<string, unknown> = {}) {
     setShowFloatingBar: (v) => { state.showFloatingBar = v as boolean; },
     setKpiResults: (v) => { state.kpiResults = v; },
     setKpiSubTab: (v) => { state.kpiSubTab = v as string; },
-    setCustomWidgetResults: (v) => { state.customWidgetResults = v as Map<string, unknown>; },
+    setCustomWidgetResults: (v) => {
+      const prev = state.customWidgetResults as Record<string, unknown>;
+      state.customWidgetResults = typeof v === 'function' ? (v as (p: Record<string, unknown>) => Record<string, unknown>)(prev) : v as Record<string, unknown>;
+    },
     setCalculatingWidgets: (v) => {
-      const prev = state.calculatingWidgets as Set<string>;
-      state.calculatingWidgets = typeof v === 'function' ? (v as (p: Set<string>) => Set<string>)(prev) : v as Set<string>;
+      const prev = state.calculatingWidgets as string[];
+      state.calculatingWidgets = typeof v === 'function' ? (v as (p: string[]) => string[])(prev) : v as string[];
     },
     setKpiCardConfigs: (v) => { state.kpiCardConfigs = v; },
-    setJqlResultCache: (v) => { state.jqlResultCache = v as Map<string, unknown>; },
+    setJqlResultCache: (v) => {
+      const prev = state.jqlResultCache as Record<string, unknown>;
+      state.jqlResultCache = typeof v === 'function' ? (v as (p: Record<string, unknown>) => Record<string, unknown>)(prev) : v as Record<string, unknown>;
+    },
     setSavedViews: (v) => { state.savedViews = v; },
     setActiveView: (v) => { state.activeView = v; },
     setIsViewModified: (v) => { state.isViewModified = v as boolean; },
@@ -129,10 +133,8 @@ export function createMockStore(overrides: Record<string, unknown> = {}) {
       state.widgetTitles = typeof v === 'function' ? (v as (p: Record<string, string>) => Record<string, string>)(prev) : v as Record<string, string>;
     },
     setCollapsedWidgets: (v) => {
-      const prev = state.collapsedWidgets as Set<string>;
-      state.collapsedWidgets = new Set(
-        typeof v === 'function' ? (v as (p: Set<string>) => Set<string> | Iterable<string>)(new Set(prev)) : v as Iterable<string>,
-      );
+      const prev = state.collapsedWidgets as string[];
+      state.collapsedWidgets = typeof v === 'function' ? (v as (p: string[]) => string[])(prev) : v as string[];
     },
     setWidgetHeights: (v) => {
       const prev = state.widgetHeights as Record<string, number>;

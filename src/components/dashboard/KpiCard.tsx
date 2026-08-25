@@ -314,7 +314,7 @@ export const KpiCard = React.memo(function KpiCard({ result, pluginId, onHide, o
 interface ChartCardProps {
   config: ChartConfig;
   kpiResults: KpiCalcResult[];
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   toggleDimension: (pluginId: string, value: string) => void;
   onRemove: (id: string) => void;
   onChange: (id: string, newConfig: ChartConfig) => void;
@@ -412,8 +412,8 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
 
   // Determine which results to use (custom or global)
   const effectiveResults = useMemo<KpiCalcResult[]>(() => {
-    if (config.jqlFilter?.enabled && customWidgetResults.has(config.id)) {
-      const entry = customWidgetResults.get(config.id);
+    if (config.jqlFilter?.enabled && customWidgetResults[config.id]) {
+      const entry = customWidgetResults[config.id];
       if (entry && entry.context) {
         const ctx = entry.context;
         // Verify calculation context matches exactly
@@ -441,7 +441,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     config.jqlFilter?.enabled,
     config.jqlFilter?.mode,
     config.jqlFilter?.query,
-    customWidgetResults, // full Map reference — re-runs when a new Map is set in the store
+    customWidgetResults, // full record reference — re-runs when a new record is set in the store
     config.id,
     kpiResults,
     dateFrom,
@@ -504,7 +504,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
     setJqlSettingsOpen(false);
   };
 
-  const isCalculating = calculatingWidgets.has(config.id);
+  const isCalculating = calculatingWidgets.includes(config.id);
   const hasCustomFilter = config.jqlFilter?.enabled;
 
   const handleExportChart = useCallback(async () => {

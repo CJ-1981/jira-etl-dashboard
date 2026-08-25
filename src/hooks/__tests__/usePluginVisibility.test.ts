@@ -51,6 +51,28 @@ describe('usePluginVisibility', () => {
 
       expect(result.current.filteredPlugins).toEqual(allPlugins);
     });
+
+    it('does not self-poison storage before the user configures anything', () => {
+      // Regression: mounting with an empty plugin list (before the first
+      // calculation) persisted [] under the key, after which the dashboard
+      // treated the user as having configured an EMPTY selection and hid all
+      // results forever.
+      const { result, rerender } = renderHook(
+        ({ plugins }: { plugins: string[] }) => usePluginVisibility(plugins, mockStorageKey),
+        { initialProps: { plugins: [] as string[] } }
+      );
+      expect(localStorage.getItem(mockStorageKey)).toBeNull();
+
+      // Plugins arrive after the first calculation — still no persistence.
+      rerender({ plugins: ['plugin-1', 'plugin-2'] });
+      expect(localStorage.getItem(mockStorageKey)).toBeNull();
+
+      // Only an explicit user action persists. (plugin-1 is active via the
+      // fallback, so toggling it removes it from the list.)
+      act(() => result.current.togglePluginVisibility('plugin-1'));
+      const raw = localStorage.getItem(mockStorageKey);
+      expect(raw === null ? null : JSON.parse(raw)).toEqual(['plugin-2']);
+    });
   });
 
   describe('reorderPlugins', () => {
@@ -203,13 +225,22 @@ describe('usePluginVisibility', () => {
   });
 
   describe('localStorage persistence', () => {
-    it('should save initial state to localStorage on mount', () => {
-      renderHook(() =>
+    it('should NOT save the initial fallback to localStorage on mount (persist on first user change)', () => {
+      // Changed contract (self-poisoning fix): persisting the fallback on
+      // mount wrote [] when the plugin list was still empty, after which the
+      // dashboard treated the user as having configured an empty selection.
+      // Storage is now written only after an explicit user change.
+      const { result } = renderHook(() =>
         usePluginVisibility(allPlugins, mockStorageKey)
       );
 
+      expect(localStorage.getItem(mockStorageKey)).toBeNull();
+
+      act(() => {
+        result.current.togglePluginVisibility(allPlugins[0]);
+      });
       const saved = localStorage.getItem(mockStorageKey);
-      expect(saved).toBe(JSON.stringify(allPlugins));
+      expect(saved).toBe(JSON.stringify(allPlugins.slice(1)));
     });
 
     it('should update localStorage when active plugins change', () => {

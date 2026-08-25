@@ -15,7 +15,7 @@ export interface StatusOpenWidgetProps {
   kpi: KpiCalcResult;
   isExpanded: boolean;
   onToggleCollapse: (pluginId: string) => void;
-  hiddenDimensions: Set<string>;
+  hiddenDimensions: string[];
   onRestoreAll: (prefix: string) => void;
   onHideDimensions: (keys: string[]) => void;
   onDrillDown: DrillDownHandler;
@@ -92,7 +92,7 @@ export function StatusOpenWidget({
           };
 
           return Object.entries(statusGroups).map(([status, results]) => {
-            const visibleResults = results.filter((r) => !hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
+            const visibleResults = results.filter((r) => !hiddenDimensions.includes(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${status}-${r.dimensions.ageCategory}` : status}`));
             if (visibleResults.length === 0) return null;
 
             const totalValue = visibleResults.reduce((sum, r) => sum + r.value, 0);
@@ -188,9 +188,9 @@ export function StatusOpenWidget({
           });
         })()}
       </div>
-      {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.has(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${r.dimensions?.status}-${r.dimensions.ageCategory}` : r.dimensions?.status || r.name}`)) && (
-        <div className="text-xs text-slate-400 italic mt-2">
-          {Array.from(hiddenDimensions).filter(k => k.startsWith('open_tickets_by_status|')).length} age category(es) hidden
+      {kpi.results.some((r: KpiCalcResult['results'][0]) => hiddenDimensions.includes(`open_tickets_by_status|${r.dimensions?.ageCategory ? `${r.dimensions?.status}-${r.dimensions.ageCategory}` : r.dimensions?.status || r.name}`)) && (
+        <div className="text-xs text-slate-400 italic">
+          {hiddenDimensions.filter(k => k.startsWith('open_tickets_by_status|')).length} age category(es) hidden
         </div>
       )}
     </WidgetCard>
