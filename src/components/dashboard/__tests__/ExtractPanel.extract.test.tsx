@@ -301,8 +301,13 @@ describe('usePolling', () => {
       jsonResponse({ success: true, polling: { enabled: true, intervalMinutes: 30 } })
     );
     const { result } = renderPolling();
-    await waitFor(() => expect(result.current.pollEnabled).toBe(true));
-    expect(result.current.pollInterval).toBe('30');
+    // Wait for BOTH values in one waitFor: pollEnabled can flip true (store
+    // sync) before the fetched intervalMinutes lands, so asserting them in
+    // separate steps races the second update (flaky '15' vs '30').
+    await waitFor(() => {
+      expect(result.current.pollEnabled).toBe(true);
+      expect(result.current.pollInterval).toBe('30');
+    });
   });
 
   it('handleTogglePolling posts the new state and updates pollEnabled', async () => {
