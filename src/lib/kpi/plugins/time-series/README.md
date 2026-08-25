@@ -35,7 +35,7 @@ Time-series plugins return KpiResult[] where each result has:
 ## Common Patterns
 
 1. **Daily aggregation** - One data point per day
-2. **Weekly aggregation** - One data point per week (ISO week)
+2. **Weekly aggregation** - One data point per local Monday-based week (keyed by the week's Monday date, matching the dashboard cards)
 3. **Monthly aggregation** - One data point per month
 4. **Rolling averages** - Moving window calculations
 5. **Period comparison** - Current vs previous period

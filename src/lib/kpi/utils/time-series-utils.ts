@@ -1,91 +1,86 @@
 /**
  * Time-Series utility functions for KPI plugins
  * @MX:ANCHOR: Shared time-series logic
- * @MX:REASON: Centralizes complex ISO week and period calculations to prevent duplication and bugs
+ * @MX:REASON: Centralizes period key/end/enumeration calculations to prevent
+ * duplication and bugs.
  *
- * @MX:WARN: TWO WEEK DEFINITIONS COEXIST IN THIS CODEBASE — DO NOT "UNIFY"
- * THEM WITHOUT A PRODUCT DECISION:
- * - The time-series trend plugins (this module) bucket periods using
- *   UTC ISO-8601 weeks (getWeekNumber / getISOWeekYear / getPeriodKey).
- * - The engine's weekly card buckets and weekly plugins (KpiEngine,
- *   weekly_ticket_list, age-category breakdowns) use LOCAL-time Monday-based
- *   weeks via getLocalMondayWeekBounds (src/lib/utils/week-boundaries.ts).
- * Values near week edges (and around DST transitions) can therefore differ
- * between a trend chart bucket and a weekly card bucket for the same instant.
- * @MX:REASON: Unifying would silently change reported KPI numbers; the split
- * is documented here instead of fixed so the divergence is a conscious choice.
+ * @MX:WARN: ALL period bucketing uses the LOCAL calendar. Weekly periods are
+ * local-time Monday-based weeks, keyed by the week's local Monday date
+ * (YYYY-MM-DD) — the SAME convention as the dashboard cards
+ * (getLocalMondayWeekBounds, src/lib/utils/week-boundaries.ts). This was a
+ * 2026-08 product decision: "weeks start on Monday and the dashboard follows
+ * the same". Before that, weekly buckets used UTC ISO-8601 week numbers and
+ * diverged from the cards near week edges. Daily/monthly keys likewise use
+ * local date components. Stored time-series created before the change carry
+ * old-format keys; they are replaced on recalculation.
  */
 
 import { type TransformedIssue } from '../types';
 import { type TimeInterval } from '../types-time-series';
+import { getLocalMondayWeekBounds } from '@/lib/utils/week-boundaries';
 
-/**
- * Get ISO week number using UTC
- */
-export function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+const pad2 = (n: number): string => n.toString().padStart(2, '0');
+
+/** Local-calendar date key (YYYY-MM-DD) for a Date. */
+export function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/** Monday (local midnight) of the local week containing `date`. */
+export function getLocalMondayOf(date: Date): Date {
+  return getLocalMondayWeekBounds(date).thisWeekStart;
 }
 
 /**
- * Get ISO week-numbering year
- */
-export function getISOWeekYear(date: Date): number {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  return d.getUTCFullYear();
-}
-
-/**
- * Get period key for a date based on interval
+ * Get period key for a date based on interval (local calendar components).
  */
 export function getPeriodKey(date: Date, interval: TimeInterval): string {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth() + 1;
-  const day = date.getUTCDate();
-
   switch (interval) {
     case 'daily':
-      return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-    case 'weekly': {
-      const isoYear = getISOWeekYear(date);
-      const week = getWeekNumber(date);
-      return `${isoYear}-W${week.toString().padStart(2, '0')}`;
-    }
+      return localDateKey(date);
+    case 'weekly':
+      // Week identified by its local Monday date — matches the dashboard
+      // cards' Monday-week convention and sorts lexicographically.
+      return localDateKey(getLocalMondayOf(date));
     case 'monthly':
-      return `${year}-${month.toString().padStart(2, '0')}`;
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
     default:
       // @MX:WARN: Pad like the monthly case — unpadded months would break
       // lexicographic sorting of period keys (e.g. '2026-9' > '2026-10').
-      return `${year}-${month.toString().padStart(2, '0')}`;
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
   }
 }
 
 /**
- * Get the end date of a time period in UTC
+ * Parse a YYYY-MM-DD key into a local-midnight Date.
+ */
+function parseLocalDateKey(periodKey: string): Date {
+  const [y, m, d] = periodKey.split('-').map((part) => parseInt(part, 10));
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Get the end date of a time period in local time.
  */
 export function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
-  const parts = periodKey.split('-');
-  const year = parseInt(parts[0], 10);
-
   switch (interval) {
     case 'daily': {
-      const d = new Date(Date.UTC(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
-      d.setUTCHours(23, 59, 59, 999);
+      const d = parseLocalDateKey(periodKey);
+      d.setHours(23, 59, 59, 999);
       return d;
     }
     case 'weekly': {
-      const week = parseInt(parts[1].replace('W', ''), 10);
-      return getWeekEndDate(year, week);
+      // Key is the week's local Monday; the period ends on the local Sunday.
+      const monday = parseLocalDateKey(periodKey);
+      const sunday = new Date(monday);
+      sunday.setDate(sunday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+      return sunday;
     }
     case 'monthly': {
-      const month = parseInt(parts[1], 10);
-      const d = new Date(Date.UTC(year, month, 0)); // Last day of month
-      d.setUTCHours(23, 59, 59, 999);
+      const [y, m] = periodKey.split('-').map((part) => parseInt(part, 10));
+      const d = new Date(y, m, 0); // Day 0 of the next month = last day of month m
+      d.setHours(23, 59, 59, 999);
       return d;
     }
     default: {
@@ -95,27 +90,11 @@ export function getPeriodEnd(periodKey: string, interval: TimeInterval): Date {
 }
 
 /**
- * Get the end date of an ISO week in UTC
- */
-export function getWeekEndDate(year: number, week: number): Date {
-  const jan1 = new Date(Date.UTC(year, 0, 1));
-  const days = (week - 1) * 7 + 4 - (jan1.getUTCDay() || 7);
-  const endDate = new Date(Date.UTC(year, 0, 1 + days));
-  // Set to Sunday (end of ISO week)
-  endDate.setUTCDate(endDate.getUTCDate() + (7 - (endDate.getUTCDay() || 7)) % 7);
-  endDate.setUTCHours(23, 59, 59, 999);
-  return endDate;
-}
-
-/**
  * Check if a period is complete (not the current partial period)
  */
 export function isPeriodComplete(periodEnd: Date, currentDate: Date = new Date()): boolean {
   // Add 1 day buffer to ensure period is fully complete
-  const bufferDays = 1;
-  const completeThreshold = new Date(periodEnd.getTime());
-  completeThreshold.setUTCDate(completeThreshold.getUTCDate() + bufferDays);
-
+  const completeThreshold = new Date(periodEnd.getTime() + 24 * 60 * 60 * 1000);
   return currentDate > completeThreshold;
 }
 
@@ -144,7 +123,7 @@ export function groupByTimeInterval(
 }
 
 /**
- * Enumerate all period keys between two dates
+ * Enumerate all period keys between two dates (local calendar stepping).
  */
 export function enumeratePeriodKeys(
   start: Date,
@@ -153,12 +132,12 @@ export function enumeratePeriodKeys(
 ): string[] {
   const keys: string[] = [];
   const keySet = new Set<string>();
-  const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
-  current.setUTCHours(0, 0, 0, 0);
-  
+  // Local midnight of the start's local date.
+  const current = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+
   const endKey = getPeriodKey(end, interval);
   let currentKey = '';
-  
+
   // Limit iterations to prevent infinite loops (max 10 years of daily data)
   let iterations = 0;
   const maxIterations = 365 * 10;
@@ -170,18 +149,18 @@ export function enumeratePeriodKeys(
       keys.push(currentKey);
       keySet.add(currentKey);
     }
-    
-    // Advance current date
+
+    // Advance current date in local time
     if (interval === 'daily') {
-      current.setUTCDate(current.getUTCDate() + 1);
+      current.setDate(current.getDate() + 1);
     } else if (interval === 'weekly') {
-      current.setUTCDate(current.getUTCDate() + 7);
+      current.setDate(current.getDate() + 7);
     } else if (interval === 'monthly') {
-      current.setUTCMonth(current.getUTCMonth() + 1);
-      current.setUTCDate(1);
+      current.setMonth(current.getMonth() + 1);
+      current.setDate(1);
     }
   }
-  
+
   // Ensure the end key is included
   const finalEndKey = getPeriodKey(end, interval);
   if (!keySet.has(finalEndKey)) {

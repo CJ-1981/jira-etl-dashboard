@@ -8,10 +8,12 @@
  * everywhere and gives the behavior a single tested home.
  *
  * @MX:WARN: These helpers use LOCAL time and Monday-first weeks (getDay() with
- * a `day === 0 ? -6 : 1` adjustment). This is intentionally different from the
- * UTC ISO-8601 week math in src/lib/kpi/utils/time-series-utils.ts used by the
- * time-series trend plugins — see the note at the top of that file. Do not
- * "unify" them without a product decision.
+ * a `day === 0 ? -6 : 1` adjustment). The time-series trend plugins
+ * (src/lib/kpi/utils/time-series-utils.ts) use the SAME convention since the
+ * 2026-08 product decision ("weeks start on Monday and the dashboard follows
+ * the same") — weekly trend buckets are keyed by the local Monday date, so
+ * trend buckets and card buckets agree for every instant. Do not reintroduce
+ * UTC/ISO week math without a product decision.
  */
 
 /**
