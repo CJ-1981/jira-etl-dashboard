@@ -50,8 +50,8 @@ const nested = (fields: Record<string, unknown>, overrides: Partial<WidgetEvalIs
 describe('JQL_PATTERNS', () => {
   const ops = () => JQL_PATTERNS.map(p => p.op);
 
-  it('exposes the six supported operators in precedence order', () => {
-    expect(ops()).toEqual(['=', '!=', 'NOT CONTAINS', 'CONTAINS', 'NOT IN', 'IN']);
+  it('exposes the supported operators in precedence order', () => {
+    expect(ops()).toEqual(['=', '!=', '~', 'NOT CONTAINS', 'CONTAINS', 'NOT IN', 'IN']);
   });
 
   it('matches = and != with quoted values', () => {
@@ -64,8 +64,8 @@ describe('JQL_PATTERNS', () => {
   });
 
   it('is case-insensitive for keyword operators', () => {
-    expect('summary contains "x"'.match(JQL_PATTERNS[3].regex)).not.toBeNull();
-    expect('status in (a,b)'.match(JQL_PATTERNS[5].regex)).not.toBeNull();
+    expect('summary contains "x"'.match(JQL_PATTERNS[4].regex)).not.toBeNull();
+    expect('status in (a,b)'.match(JQL_PATTERNS[6].regex)).not.toBeNull();
   });
 
   it('does not match unquoted values or empty quoted values', () => {
@@ -74,10 +74,12 @@ describe('JQL_PATTERNS', () => {
     expect(JQL_PATTERNS.some(p => 'status IN ()'.match(p.regex))).toBe(false);
   });
 
-  // LATENT BUG: `~` (JQL CONTAINS shorthand) has no pattern, so such queries
-  // silently degrade to full-text search instead of field matching.
-  it('has no pattern for the ~ operator', () => {
-    expect(JQL_PATTERNS.some(p => 'summary ~ "login"'.match(p.regex))).toBe(false);
+  it('has a pattern for the ~ operator (JQL CONTAINS shorthand)', () => {
+    const tilde = JQL_PATTERNS.find(p => p.op === '~');
+    expect(tilde?.regex).toBeDefined();
+    if (tilde) {
+      expect('summary ~ "login"'.match(tilde.regex)).not.toBeNull();
+    }
   });
 });
 
@@ -95,10 +97,12 @@ describe('normalizeIssueFieldValue', () => {
     expect(normalizeIssueFieldValue(true)).toBe(true);
   });
 
-  it('joins arrays using displayName | name | value | String fallback', () => {
+  it('joins arrays using displayName | name | value | JSON fallback', () => {
     expect(
       normalizeIssueFieldValue([{ displayName: 'A' }, { name: 'B' }, { value: 'C' }, 'D'])
     ).toBe('A,B,C,D');
+    // Unknown-shaped items serialize to JSON instead of '[object Object]'.
+    expect(normalizeIssueFieldValue([{ custom: 1 }, 'D'])).toBe('{"custom":1},D');
   });
 
   it('extracts displayName | name | value | key from objects', () => {
@@ -108,12 +112,11 @@ describe('normalizeIssueFieldValue', () => {
     expect(normalizeIssueFieldValue({ key: 'K' })).toBe('K');
   });
 
-  // LATENT BUG: `{}` and objects without any known key fall through to
-  // String(rawValue) which yields '[object Object]'; comparisons then match
-  // against that literal string.
-  it('falls back to String(rawValue) for objects without known keys', () => {
-    expect(normalizeIssueFieldValue({})).toBe('[object Object]');
-    expect(normalizeIssueFieldValue({ custom: 1 })).toBe('[object Object]');
+  // FIXED (was '[object Object]'): objects without any known key serialize to
+  // JSON so comparisons can match on content instead of a useless literal.
+  it('falls back to JSON serialization for objects without known keys', () => {
+    expect(normalizeIssueFieldValue({})).toBe('{}');
+    expect(normalizeIssueFieldValue({ custom: 1 })).toBe('{"custom":1}');
   });
 
   // The extraction chain uses `||`, so falsy candidates ('', null, undefined)
@@ -143,11 +146,11 @@ describe('applyGlobalFilters', () => {
     expect(applyGlobalFilters(issues, { status: [] })).toHaveLength(3);
   });
 
-  it('matches flat string fields case-insensitively but WITHOUT trimming filter values', () => {
+  it('matches flat string fields case-insensitively and trims filter values', () => {
     expect(applyGlobalFilters(issues, { status: ['open'] }).map(i => i.key)).toEqual(['A-1']);
-    // LATENT BUG: filter values are lowercased but not trimmed, so padded
-    // values never match a trimmed issue value.
-    expect(applyGlobalFilters(issues, { status: ['  done '] })).toHaveLength(0);
+    // FIXED: filter values are trimmed before comparison, so padded values
+    // from persisted/edited filter state match as users expect.
+    expect(applyGlobalFilters(issues, { status: ['  done '] }).map(i => i.key)).toEqual(['A-2']);
     expect(applyGlobalFilters(issues, { status: ['done'] }).map(i => i.key)).toEqual(['A-2']);
   });
 
@@ -213,11 +216,11 @@ describe('applyWidgetJqlQuery — field matchers', () => {
       expect(applyWidgetJqlQuery(issues, 'status = "in progress"').map(i => i.key)).toEqual(['T-3']);
     });
 
-    // LATENT BUG: field names are looked up case-sensitively against issue
-    // properties, so `STATUS = "Open"` parses fine but never resolves a value
-    // and silently yields an empty result instead of an error.
-    it('looks field names up case-sensitively on the issue', () => {
-      expect(applyWidgetJqlQuery(issues, 'STATUS = "Open"')).toHaveLength(0);
+    // FIXED: field names resolve case-insensitively against issue properties,
+    // so `STATUS = "Open"` behaves like `status = "Open"`.
+    it('resolves field names case-insensitively on the issue', () => {
+      expect(applyWidgetJqlQuery(issues, 'STATUS = "Open"').map(i => i.key)).toEqual(['T-1']);
+      expect(applyWidgetJqlQuery(issues, 'Priority = "low"').map(i => i.key)).toEqual(['T-2', 'T-3']);
       expect(applyWidgetJqlQuery(issues, 'status = "open"').map(i => i.key)).toEqual(['T-1']);
     });
   });
@@ -259,6 +262,15 @@ describe('applyWidgetJqlQuery — field matchers', () => {
       expect(applyWidgetJqlQuery(issues, "status IN ('Open')").map(i => i.key)).toEqual(['T-1']);
     });
 
+    it('IN respects quoted values containing commas', () => {
+      const commaIssues = [
+        flat({ key: 'C-1', labels: ['a,b'] }),
+        flat({ key: 'C-2', labels: ['x'] }),
+      ];
+      expect(applyWidgetJqlQuery(commaIssues, 'labels IN ("a,b")').map(i => i.key)).toEqual(['C-1']);
+      expect(applyWidgetJqlQuery(commaIssues, 'labels IN (x)').map(i => i.key)).toEqual(['C-2']);
+    });
+
     it('NOT IN is the complement', () => {
       expect(applyWidgetJqlQuery(issues, 'status NOT IN (open, done)').map(i => i.key)).toEqual(['T-3']);
     });
@@ -289,27 +301,46 @@ describe('applyWidgetJqlQuery — field matchers', () => {
       // \s+ is required between field and keyword, so 'knotfound CONTAINS'
       // parses as CONTAINS on field 'knotfound', not NOT CONTAINS on 'k'.
       const q = 'knotfound CONTAINS "x"';
-      expect(q.match(JQL_PATTERNS[2].regex)).toBeNull(); // NOT CONTAINS
-      const containsMatch = q.match(JQL_PATTERNS[3].regex);
+      expect(q.match(JQL_PATTERNS[3].regex)).toBeNull(); // NOT CONTAINS
+      const containsMatch = q.match(JQL_PATTERNS[4].regex);
       expect(containsMatch?.[1]).toBe('knotfound');
     });
 
     it('parses the NOT-variant when the field word is literally separate', () => {
       const q = 'x NOT CONTAINS "y"';
-      const match = q.match(JQL_PATTERNS[2].regex);
+      const match = q.match(JQL_PATTERNS[3].regex);
       expect(match?.[1]).toBe('x');
       expect(match?.[2]).toBe('y');
       // And NOT IN wins over IN thanks to ordering.
-      const notIn = 'a NOT IN (x)'.match(JQL_PATTERNS[4].regex);
+      const notIn = 'a NOT IN (x)'.match(JQL_PATTERNS[5].regex);
       expect(notIn?.[1]).toBe('a');
     });
 
-    // Only the FIRST matching pattern is used; later clauses are ignored.
-    it('only evaluates the first matching pattern (compound queries unsupported)', () => {
-      const q = 'status = "Open" AND priority = "High"';
-      const result = applyWidgetJqlQuery(issues, q);
-      // Matches `status = "Open"` only; the AND clause is silently dropped.
-      expect(result.map(i => i.key)).toEqual(['T-1']);
+    // FIXED: compound AND queries evaluate every clause; an issue must match
+    // all of them.
+    it('evaluates compound AND queries (all clauses must match)', () => {
+      expect(applyWidgetJqlQuery(issues, 'status = "Open" AND priority = "High"').map(i => i.key)).toEqual(['T-1']);
+      expect(applyWidgetJqlQuery(issues, 'status = "Open" AND priority = "Low"')).toHaveLength(0);
+    });
+
+    it('evaluates compound OR queries (any clause may match)', () => {
+      expect(applyWidgetJqlQuery(issues, 'status = "done" OR priority = "high"').map(i => i.key)).toEqual(['T-1', 'T-2']);
+    });
+
+    it('AND binds tighter than OR (OR of AND groups)', () => {
+      const q = 'status = "open" AND priority = "high" OR status = "in progress"';
+      expect(applyWidgetJqlQuery(issues, q).map(i => i.key)).toEqual(['T-1', 'T-3']);
+    });
+
+    it('keeps quoted values containing spaces intact in compound queries', () => {
+      const q = 'status = "In Progress" AND summary CONTAINS "nested"';
+      expect(applyWidgetJqlQuery(issues, q).map(i => i.key)).toEqual(['T-3']);
+    });
+
+    it('treats an unparseable clause in a compound query as a full-text predicate', () => {
+      // 'login broken' is not a field clause, so it behaves like full-text.
+      const q = 'status = "Open" AND login broken';
+      expect(applyWidgetJqlQuery(issues, q).map(i => i.key)).toEqual(['T-1']);
     });
   });
 });
@@ -337,14 +368,12 @@ describe('applyWidgetJqlQuery — full-text fallback', () => {
     expect(applyWidgetJqlQuery(issues, 'Open')).toHaveLength(0); // status value, not in searched text
   });
 
-  // LATENT BUG: ~ queries degrade to full-text search with the WHOLE query
-  // string (operators, quotes and all) as the needle, which almost never
-  // matches anything.
-  it('~ queries fall back to text search using the raw query as needle', () => {
-    expect(applyWidgetJqlQuery(issues, 'summary ~ "login"')).toHaveLength(0);
-    // The raw string only matches if that exact text appears verbatim.
-    const withLiteral = flat({ key: 'FT-4', summary: 'weird summary ~ "login" text' });
-    expect(applyWidgetJqlQuery([withLiteral], 'summary ~ "login"').map(i => i.key)).toEqual(['FT-4']);
+  // FIXED: ~ is the JQL CONTAINS shorthand and performs a case-insensitive
+  // field substring match instead of degrading to full-text search.
+  it('~ performs field CONTAINS matching', () => {
+    expect(applyWidgetJqlQuery(issues, 'summary ~ "login"').map(i => i.key)).toEqual(['FT-1']);
+    expect(applyWidgetJqlQuery(issues, 'summary ~ "LOGIN"').map(i => i.key)).toEqual(['FT-1']);
+    expect(applyWidgetJqlQuery(issues, 'summary ~ "zebra"')).toHaveLength(0);
   });
 
   it('falls back for unquoted field queries', () => {

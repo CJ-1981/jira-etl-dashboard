@@ -740,9 +740,10 @@ phase 7).
   past-tense history left intact.
 - Verified: `node --check` passes; zero `customfield_10100` references left
   in scripts/ and docs/.
-- Caveat noted (backlog): the script bootstraps from
-  `data/jira-extract-*.json` files that nothing in the current codebase
-  writes anymore — it needs rewiring or retiring.
+- Caveat noted (resolved in the jql-filter-fixes follow-up): the script
+  bootstrapped from `data/jira-extract-*.json` files nothing writes anymore
+  — it now reads `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` (and
+  optional `JIRA_PROJECT_KEYS`) from the environment.
 
 ---
 
@@ -773,6 +774,36 @@ buckets could disagree near week edges. Trends now follow the dashboard.
 edges shift into the Monday-based week the cards use; trend period labels
 change from `YYYY-Www` to the Monday date. Stored time-series generated
 before the change carry old-format keys and are replaced on recalculation.
+
+---
+
+## Client-side JQL filter fixes (branch `refactor/jql-filter-fixes`)
+
+**Decision (2026-08):** the five quirks pinned by the phase-8C
+characterization tests may be fixed — the widget JQL filter is not heavily
+used yet, so matching behavior can change without a migration concern.
+
+**Changes (TDD; the six bug-pinning tests rewritten, six new tests added):**
+- **Global filter values are trimmed** before comparison (padded values from
+  persisted/edited filter state now match).
+- **`~` operator supported** — the JQL CONTAINS shorthand performs a
+  case-insensitive field substring match instead of degrading to full-text
+  search with the raw query as the needle.
+- **Field names resolve case-insensitively** (`STATUS = "Open"` now behaves
+  like `status = "Open"`); explicit-null fall-through to `fields.*` kept.
+- **Compound `AND`/`OR` queries parsed** — quote-aware splitting via the
+  phase-7D `splitTopLevel` helper; AND binds tighter than OR; each clause is
+  a field clause when it parses, otherwise a full-text predicate. Previously
+  only the first matching pattern was evaluated and the rest dropped.
+- **Object normalization falls back to JSON** instead of the literal
+  `'[object Object]'` (arrays: unknown-shaped items serialize to JSON too).
+- **IN-list values split quote-aware**, so quoted values containing commas
+  survive.
+- **`find-team-field.js` rewired**: connection now comes from
+  `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` (+ optional
+  `JIRA_PROJECT_KEYS`) instead of the dead extraction-file bootstrap.
+
+Gates: type-check clean; full suite green; lint held.
 
 ---
 
@@ -817,17 +848,17 @@ merged at `bab3508`, phase 7 merged at `0b91155`, phase 8 merged at
 
 ## Deferred backlog (remaining work)
 
-Items still open after phase 9:
+Items still open after the JQL filter fixes:
 
-- Client-side widget JQL filter semantics — five latent bugs pinned by the
-  phase-8C tests (untrimmed global filter values, unsupported `~` operator,
-  case-sensitive field names, unparsed unquoted/compound `AND`/`OR` queries,
-  `[object Object]` normalization fallback). Fixing them changes matching
-  behavior users may rely on — needs a product decision + migration note.
-- `find-team-field.js` bootstraps from `data/jira-extract-*.json` files that
-  nothing in the current codebase writes anymore (credentials live in
-  browser localStorage now) — rewire it to accept connection params or
-  retire it with its docs (phase 9C fixed its stale advice only).
+- Client-side widget JQL filter semantics — RESOLVED (see the
+  `jql-filter-fixes` section below): all five pinned quirks fixed with the
+  product decision that the feature is not heavily used yet.
+
+Done in the jql-filter-fixes follow-up (previously listed here): the five
+client-side JQL filter quirks (trimmed global filter values, `~` operator
+support, case-insensitive field names, compound AND/OR parsing, JSON object
+normalization) and the `find-team-field.js` rewiring (env-var connection
+params instead of the dead extraction-file bootstrap).
 
 Done in the local-week-bucketing follow-up (product decision 2026-08): the
 UTC-ISO-week vs local-Monday-week divergence — trend bucketing now uses the

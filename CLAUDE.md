@@ -90,6 +90,12 @@ requires BOTH headers to be loopback and http(s) only.
 - `transformIssueForKpi` preserves the raw Jira `changelog` on transformed issues because
   `reassignment_count` needs assignee-change history that status-only `transitions` cannot
   represent — don't strip it.
+- **Client-side widget JQL filter** (`src/lib/jql-widget-eval.ts`, used by KpiDashboard's
+  per-widget JQL): supports `=`, `!=`, `~` (CONTAINS shorthand), `CONTAINS`, `NOT CONTAINS`,
+  `IN`, `NOT IN` with quoted values, combined via `AND` (binds tighter) / `OR`, with
+  case-insensitive field names and values; unparseable clauses act as full-text predicates
+  (whole-query fallback when nothing parses). Semantics were intentionally fixed in the
+  2026-08 `jql-filter-fixes` branch (behavior change approved — see docs/DEBT_CLEANUP.md).
 - All time-based KPIs use business-hour math from `src/lib/holidays/german-holidays.ts`
   (all 16 German states; configured per connection in `data/settings.json` defaults).
 

@@ -429,13 +429,12 @@ lint **785 → 780** (ratchet tightened to 780); coverage floors raised to
 
 ## Remaining debt (tracked in `docs/DEBT_CLEANUP.md`)
 
-The structural cleanup is complete. Everything left is either a product
-decision or a small follow-up:
-1. Product decision: the five latent client-side JQL filter quirks pinned by
-   the phase-8C tests (fixing them changes matching behavior users may rely
-   on).
-2. Product decision: UTC-ISO-week (trends) vs local-Monday-week (card
-   buckets) divergence — documented with `@MX:WARN`.
-3. Minor: `find-team-field.js` bootstraps from `data/jira-extract-*.json`
-   files nothing writes anymore — rewire it to accept connection params or
-   retire it with its docs (its stale advice was fixed in phase 9C).
+The recorded backlog is empty — every item from the original debt review is
+resolved across phases 1–9 and the three follow-up branches
+(local-week-bucketing, jql-filter-fixes, this branch's script rewiring).
+
+Notes for the future:
+- Lint ratchet (781 at this commit) and coverage floors (75/73/66/61) guard
+  against regression; tighten them as further cleanup lands.
+- Product note: weekly trend labels show Monday dates (previously
+  `YYYY-Www`) — intentional per the 2026-08 week-bucketing decision.
