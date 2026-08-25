@@ -746,6 +746,36 @@ phase 7).
 
 ---
 
+## Week-bucketing unification — product decision implemented (branch `refactor/local-week-bucketing`)
+
+**Decision (2026-08):** "weeks start on Monday and the dashboard follows the
+same." The dashboard cards already used local-time Monday weeks; the
+time-series trend plugins used UTC ISO-8601 weeks, so trend buckets and card
+buckets could disagree near week edges. Trends now follow the dashboard.
+
+**Changes (TDD, 16 new tests, RED-confirmed first):**
+- `getPeriodKey` / `getPeriodEnd` / `enumeratePeriodKeys` in
+  `time-series-utils.ts` now use the LOCAL calendar. Weekly periods are keyed
+  by the week's **local Monday date** (`YYYY-MM-DD`, lexicographically
+  sortable) and end on the local Sunday 23:59:59.999; daily/monthly keys use
+  local date components; enumeration steps in local time.
+- The oracle in the tests is `getLocalMondayWeekBounds` itself, so the suite
+  directly expresses "trend bucket == card bucket" for any instant and any
+  runner timezone.
+- Removed the now-dead UTC ISO helpers (`getWeekNumber`, `getISOWeekYear`,
+  `getWeekEndDate`); the `@MX:WARN` divergence notes in
+  `time-series-utils.ts` / `week-boundaries.ts` replaced with the unified
+  convention.
+- Affected plugin tests updated to the new key format only (period counts,
+  values, and completeness assertions were already convention-independent).
+
+**Expected visible effect (intentional):** weekly trend points near week
+edges shift into the Monday-based week the cards use; trend period labels
+change from `YYYY-Www` to the Monday date. Stored time-series generated
+before the change carry old-format keys and are replaced on recalculation.
+
+---
+
 ## Final results
 
 | Metric | v0.9.0 baseline | After phases 1–9 | Delta |
@@ -787,22 +817,27 @@ merged at `bab3508`, phase 7 merged at `0b91155`, phase 8 merged at
 
 ## Deferred backlog (remaining work)
 
-Items still open after phase 8:
+Items still open after phase 9:
 
-- Replace the `Set`/`Map` values in zustand with plain arrays/records to
-  remove clone boilerplate and `instanceof Map` test-compat branches.
 - Client-side widget JQL filter semantics — five latent bugs pinned by the
   phase-8C tests (untrimmed global filter values, unsupported `~` operator,
   case-sensitive field names, unparsed unquoted/compound `AND`/`OR` queries,
   `[object Object]` normalization fallback). Fixing them changes matching
   behavior users may rely on — needs a product decision + migration note.
-- UTC-ISO-week vs local-Monday-week divergence (documented with `@MX:WARN`
-  in `time-series-utils.ts` / `week-boundaries.ts`) — needs a product
-  decision before unifying.
 - `find-team-field.js` bootstraps from `data/jira-extract-*.json` files that
   nothing in the current codebase writes anymore (credentials live in
   browser localStorage now) — rewire it to accept connection params or
   retire it with its docs (phase 9C fixed its stale advice only).
+
+Done in the local-week-bucketing follow-up (product decision 2026-08): the
+UTC-ISO-week vs local-Monday-week divergence — trend bucketing now uses the
+dashboard's local Monday weeks (see the dedicated section below).
+
+Done in phase 9 (previously listed here): zustand Set/Map → arrays/records
+(all five slices), KPI dashboard E2E coverage (22→27 specs incl.
+console-error tripwires), two surfaced defects fixed (cfg_active_plugins
+self-poisoning, "Updated Invalid Date"), find-team-field advice corrected,
+ratchets tightened (lint 785→780; coverage floors raised to 75/73/66/61).
 
 Done in phase 8 (previously listed here): ChartCard decomposition
 (1,735→803, renderers + tested mergeTimeSeries helper), poller dedup +

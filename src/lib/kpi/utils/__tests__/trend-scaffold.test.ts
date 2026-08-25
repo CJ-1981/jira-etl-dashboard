@@ -62,19 +62,19 @@ describe('trend-scaffold', () => {
   describe('preparePeriods (group + zero-fill)', () => {
     it('groups issues by period and zero-fills gaps', () => {
       const issues = [
-        makeIssue({ key: 'A', resolved: D(2024, 0, 10, 12) }), // ISO W02
-        makeIssue({ key: 'B', resolved: D(2024, 0, 24, 12) }), // ISO W04
+        makeIssue({ key: 'A', resolved: D(2024, 0, 10, 12) }), // week of Mon 2024-01-08
+        makeIssue({ key: 'B', resolved: D(2024, 0, 24, 12) }), // week of Mon 2024-01-22
       ];
       const min = D(2024, 0, 10);
       const max = D(2024, 0, 24);
       const grouped = preparePeriods(issues, 'weekly', (i) => i.resolved, min, max);
 
       const keys = Object.keys(grouped).sort();
-      // W02, W03 (zero-filled), W04
-      expect(keys).toEqual(['2024-W02', '2024-W03', '2024-W04']);
-      expect(grouped['2024-W02']).toHaveLength(1);
-      expect(grouped['2024-W03']).toHaveLength(0); // zero-filled
-      expect(grouped['2024-W04']).toHaveLength(1);
+      // Weekly keys are the local Monday dates: Jan 8, Jan 15 (zero-filled), Jan 22
+      expect(keys).toEqual(['2024-01-08', '2024-01-15', '2024-01-22']);
+      expect(grouped['2024-01-08']).toHaveLength(1);
+      expect(grouped['2024-01-15']).toHaveLength(0); // zero-filled
+      expect(grouped['2024-01-22']).toHaveLength(1);
     });
   });
 
@@ -92,7 +92,7 @@ describe('trend-scaffold', () => {
       }));
 
       expect(hasIncompletePeriod).toBe(false);
-      expect(points.map((p) => p.period)).toEqual(['2024-W02', '2024-W03', '2024-W04']);
+      expect(points.map((p) => p.period)).toEqual(['2024-01-08', '2024-01-15', '2024-01-22']);
       expect(points.map((p) => p.value)).toEqual([1, 0, 1]);
       expect(points.every((p) => p.isComplete === true)).toBe(true);
     });

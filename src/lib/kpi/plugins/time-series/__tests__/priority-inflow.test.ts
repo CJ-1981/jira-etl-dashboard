@@ -51,7 +51,8 @@ function makeRawIssue(opts: { key: string; created: string; priority?: string })
 }
 
 describe('priority_inflow_trend — weekly grouping', () => {
-  // ISO weeks: 2026-08-10 is Monday of week 33, 2026-08-17 Monday of week 34.
+  // Local Monday weeks: 2026-08-10 is the Monday of the week containing Aug 11-12,
+  // 2026-08-17 the Monday of the week containing Aug 19.
   const start = new Date('2026-08-03T00:00:00');
   const end = new Date('2026-08-23T23:59:59');
 
@@ -69,12 +70,12 @@ describe('priority_inflow_trend — weekly grouping', () => {
     expect(p0).toBeDefined();
     expect(p2).toBeDefined();
 
-    const week33 = (p0!.timeSeries ?? []).find((p) => p.period === '2026-W33');
-    const week34 = (p0!.timeSeries ?? []).find((p) => p.period === '2026-W34');
-    expect(week33?.value).toBe(2);
-    expect(week34?.value).toBe(1);
-    expect((p2!.timeSeries ?? []).find((p) => p.period === '2026-W33')?.value).toBe(1);
-    expect((p2!.timeSeries ?? []).find((p) => p.period === '2026-W34')?.value).toBe(0);
+    const weekOfAug10 = (p0!.timeSeries ?? []).find((p) => p.period === '2026-08-10');
+    const weekOfAug17 = (p0!.timeSeries ?? []).find((p) => p.period === '2026-08-17');
+    expect(weekOfAug10?.value).toBe(2);
+    expect(weekOfAug17?.value).toBe(1);
+    expect((p2!.timeSeries ?? []).find((p) => p.period === '2026-08-10')?.value).toBe(1);
+    expect((p2!.timeSeries ?? []).find((p) => p.period === '2026-08-17')?.value).toBe(0);
   });
 
   it('orders series P0 → P3', () => {
