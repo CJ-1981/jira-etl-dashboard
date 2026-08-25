@@ -166,7 +166,7 @@ Two layers:
 
 - **Unit/integration (Vitest)** — tests live in `__tests__/` dirs next to code. Shared mocks:
   `src/test/mock-db.ts` (smart-default Prisma proxy) and `src/test/mock-store.tsx` (zustand +
-  localConfig). Coverage is ratcheted in `vitest.config.ts` (`thresholds`: 75% lines /
+  localConfig). Coverage is ratcheted in `vitest.config.ts` (`thresholds`: 74% lines /
   68% statements / 60% functions / 53% branches) — `npm run test:coverage` fails below them.
   Do not commit test files without real assertions.
 - **E2E (Playwright)** — specs in `e2e/` (`npm run e2e`), driven against the dev server
