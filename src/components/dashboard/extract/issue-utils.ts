@@ -20,6 +20,12 @@ export function getAssignee(issue: PreviewIssue): string {
   return issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned';
 }
 
+/** Resolve the project prefix of an issue key ("GE-483" → "GE"); "" if none. */
+export function getProject(issue: PreviewIssue): string {
+  const dash = (issue.key || '').indexOf('-');
+  return dash > 0 ? issue.key.slice(0, dash) : '';
+}
+
 /** Resolve the created timestamp string, if present. */
 export function getCreated(issue: PreviewIssue): string | undefined {
   return issue.fields?.created || issue.created;

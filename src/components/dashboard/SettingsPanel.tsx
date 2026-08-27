@@ -161,10 +161,10 @@ export function SettingsPanel() {
           </div>
           <div className="flex gap-3">
             <Button onClick={handleExport} disabled={configExporting} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-              {configExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Export
+              {configExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}Export
             </Button>
             <Button variant="outline" disabled={configImporting} className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700" onClick={() => fileInputRef.current?.click()}>
-              {configImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}Import
+              {configImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Import
             </Button>
             <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
           </div>

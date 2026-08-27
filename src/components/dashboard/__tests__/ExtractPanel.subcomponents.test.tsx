@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { getStatus, getSummary, getAssignee, getCreated, getUpdated, isResolved, toEpoch } from '../extract/issue-utils';
+import { getStatus, getSummary, getAssignee, getCreated, getUpdated, getProject, isResolved, toEpoch } from '../extract/issue-utils';
 import { ExtractionPreviewTable, ExtractionResult } from '../extract/ExtractionPreviewTable';
 import { QuickDateSelector } from '../extract/QuickDateSelector';
 import { PollingSettings } from '../extract/PollingSettings';
@@ -45,6 +45,13 @@ describe('extract/issue-utils', () => {
     expect(getAssignee(raw)).toBe('Alice');
     expect(getAssignee(flat)).toBe('Bob');
     expect(getAssignee({ key: 'X' })).toBe('Unassigned');
+  });
+
+  it('getProject extracts the key prefix before the dash', () => {
+    expect(getProject({ key: 'GE-483' })).toBe('GE');
+    expect(getProject({ key: 'LONGPROJECTKEY-42' })).toBe('LONGPROJECTKEY');
+    expect(getProject({ key: 'NODASH' })).toBe('');
+    expect(getProject({ key: '' })).toBe('');
   });
 
   it('getCreated / getUpdated prefer fields then flat', () => {
@@ -109,16 +116,30 @@ describe('ExtractionPreviewTable', () => {
 
   it('filters rows by search query', () => {
     render(<ExtractionPreviewTable result={makeResult(issues)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
-    const search = screen.getByPlaceholderText(/search by key or summary/i);
+    const search = screen.getByPlaceholderText(/search by key/i);
     fireEvent.change(search, { target: { value: 'Feature' } });
     expect(screen.getByText('PROJ-3')).toBeInTheDocument();
     expect(screen.queryByText('PROJ-2')).not.toBeInTheDocument();
+  });
+
+  it('search also matches the assignee name', () => {
+    render(<ExtractionPreviewTable result={makeResult(issues)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
+    const search = screen.getByPlaceholderText(/search by key/i);
+    fireEvent.change(search, { target: { value: 'Carol' } });
+    expect(screen.getByText('PROJ-3')).toBeInTheDocument();
+    expect(screen.queryByText('PROJ-1')).not.toBeInTheDocument();
   });
 
   it('builds a Jira browse link from the active connection base url', () => {
     render(<ExtractionPreviewTable result={makeResult(issues)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
     const link = screen.getByText('PROJ-1').closest('a');
     expect(link).toHaveAttribute('href', 'https://test.example/browse/PROJ-1');
+  });
+
+  it('renders project and status multi-select filters above the list', () => {
+    render(<ExtractionPreviewTable result={makeResult(issues)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
+    expect(screen.getByRole('button', { name: 'All Projects' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All Statuses' })).toBeInTheDocument();
   });
 });
 
