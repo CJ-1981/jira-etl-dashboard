@@ -231,15 +231,16 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
               const statusName = getStatus(issue);
 
               return (
-                <div key={issue.key} className="flex items-center gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
+                <div key={issue.key} className="flex items-baseline gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
                   <a
                     href={jiraUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 flex items-center gap-1 transition-colors"
+                    title={issue.key}
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 w-28 sm:w-32 truncate transition-colors"
                   >
                     {issue.key}
-                    <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ExternalLink className="ml-1 inline-block h-3 w-3 align-text-bottom opacity-0 group-hover:opacity-100 transition-opacity" />
                   </a>
                   <span className="truncate text-slate-700 dark:text-slate-300 flex-1">{getSummary(issue)}</span>
                   <span className="truncate text-slate-500 dark:text-slate-400 text-xs w-28 sm:w-36 shrink-0">{getAssignee(issue)}</span>
