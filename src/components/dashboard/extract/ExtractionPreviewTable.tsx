@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Search, X, HardDrive, ExternalLink, CheckCircle2, ChevronDown } from 'lucide-react';
 import { JiraConnection } from '@/lib/config/local-store';
 import { PreviewIssue } from './types';
-import { getStatus, getSummary, getAssignee, getCreated, getUpdated, isResolved, toEpoch } from './issue-utils';
+import { getStatus, getSummary, getAssignee, getCreated, getUpdated, getProject, isResolved, toEpoch } from './issue-utils';
 
 export interface ExtractionResult {
   total: number;
@@ -56,6 +56,66 @@ function compareIssues(a: PreviewIssue, b: PreviewIssue, sortOption: SortOption)
 }
 
 /**
+ * Multi-select dropdown filter (checkbox popover), shared by the Projects and
+ * Statuses filters above the ticket list.
+ */
+function FilterMultiSelect({ placeholder, options, selected, onChange }: {
+  placeholder: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0 justify-between font-normal"
+        >
+          <span className="truncate">
+            {selected.length ? `${selected.length} selected` : placeholder}
+          </span>
+          <ChevronDown className="h-3 w-3 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-0" align="end">
+        <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full h-7 text-[10px] justify-start px-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+            onClick={() => onChange([])}
+          >
+            Clear Selection
+          </Button>
+        </div>
+        <div className="max-h-[250px] overflow-y-auto p-1 custom-scrollbar">
+          {options.map((option) => (
+            <div
+              key={option}
+              className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
+              onClick={() =>
+                onChange(
+                  selected.includes(option)
+                    ? selected.filter(s => s !== option)
+                    : [...selected, option]
+                )
+              }
+            >
+              <Checkbox
+                checked={selected.includes(option)}
+                className="pointer-events-none"
+              />
+              <span className="text-xs truncate">{option}</span>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
  * The post-extraction preview card: summary stats, search/status-filter/sort
  * controls, and the scrollable ticket list.
  */
@@ -68,6 +128,7 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
 }: ExtractionPreviewTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [sortOption, setSortOption] = useState<SortOption>('created-desc');
 
   // Memoized so downstream memos keyed on it don't invalidate every render.
@@ -88,19 +149,27 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
     [issues]
   );
 
+  const availableProjects = useMemo(
+    () => Array.from(new Set<string>(issues.map(i => getProject(i)).filter(Boolean))).sort(),
+    [issues]
+  );
+
   const visibleIssues = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return issues
       .filter(issue => {
         const key = (issue.key || '').toLowerCase();
         const summary = getSummary(issue).toLowerCase();
+        const assignee = getAssignee(issue).toLowerCase();
         const status = getStatus(issue);
-        const matchesSearch = key.includes(q) || summary.includes(q);
+        const matchesSearch = key.includes(q) || summary.includes(q) || assignee.includes(q);
         const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(status);
-        return matchesSearch && matchesStatus;
+        const project = getProject(issue);
+        const matchesProject = selectedProjects.length === 0 || selectedProjects.includes(project);
+        return matchesSearch && matchesStatus && matchesProject;
       })
       .sort((a, b) => compareIssues(a, b, sortOption));
-  }, [issues, searchQuery, selectedStatuses, sortOption]);
+  }, [issues, searchQuery, selectedStatuses, selectedProjects, sortOption]);
 
   const activeConnection = connections.find(c => c.id === activeConnectionId);
   const baseUrl = activeConnection?.baseUrl || '';
@@ -146,7 +215,7 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Search by key or summary..."
+                placeholder="Search by key, summary, or assignee..."
                 className="pl-9 pr-8 bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -161,6 +230,12 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
                 </button>
               )}
             </div>
+            <FilterMultiSelect
+              placeholder="All Projects"
+              options={availableProjects}
+              selected={selectedProjects}
+              onChange={setSelectedProjects}
+            />
             <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
               <SelectTrigger className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0">
                 <SelectValue placeholder="Sort by..." />
@@ -175,50 +250,12 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
                 <SelectItem value="updated-asc">Oldest Update</SelectItem>
               </SelectContent>
             </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0 justify-between font-normal"
-                >
-                  <span className="truncate">
-                    {selectedStatuses.length ? `${selectedStatuses.length} selected` : 'All Statuses'}
-                  </span>
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[200px] p-0" align="end">
-                <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full h-7 text-[10px] justify-start px-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    onClick={() => setSelectedStatuses([])}
-                  >
-                    Clear Selection
-                  </Button>
-                </div>
-                <div className="max-h-[250px] overflow-y-auto p-1 custom-scrollbar">
-                  {availableStatuses.map((status) => (
-                    <div
-                      key={status}
-                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer rounded-sm"
-                      onClick={() =>
-                        setSelectedStatuses(prev =>
-                          prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
-                        )
-                      }
-                    >
-                      <Checkbox
-                        checked={selectedStatuses.includes(status)}
-                        className="pointer-events-none"
-                      />
-                      <span className="text-xs truncate">{status}</span>
-                    </div>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+            <FilterMultiSelect
+              placeholder="All Statuses"
+              options={availableStatuses}
+              selected={selectedStatuses}
+              onChange={setSelectedStatuses}
+            />
           </div>
 
           <div
@@ -244,7 +281,11 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
                   </a>
                   <span className="truncate text-slate-700 dark:text-slate-300 flex-1">{getSummary(issue)}</span>
                   <span className="truncate text-slate-500 dark:text-slate-400 text-xs w-28 sm:w-36 shrink-0">{getAssignee(issue)}</span>
-                  <Badge variant={resolved ? 'default' : 'secondary'} className={`text-xs shrink-0 ${resolved ? 'bg-blue-600' : ''}`}>{statusName}</Badge>
+                  {/* Fixed-width badge column: keeps the assignee column at a
+                      stable x regardless of each status's text length. */}
+                  <span className="w-40 sm:w-44 shrink-0 flex justify-end">
+                    <Badge variant={resolved ? 'default' : 'secondary'} className={`text-xs max-w-full shrink-0 ${resolved ? 'bg-blue-600' : ''}`}>{statusName}</Badge>
+                  </span>
                 </div>
               );
             })}

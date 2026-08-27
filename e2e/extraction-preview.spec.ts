@@ -12,9 +12,10 @@ import { gotoHome, seedConnection } from './helpers';
 //    `items-center`, which centers line boxes; the mono key font splits its
 //    ascent/descent differently from the UI sans, so the key visually floated
 //    ~1px above the neighbouring text. The row now uses `items-baseline`.
-// 2. The summary column starts at the same x in every row. The key column has
-//    a fixed width (w-28 sm:w-32) with truncation, so rows with different key
-//    lengths no longer shift the summary/assignee/badge columns sideways.
+// 2. The summary and assignee columns start at the same x in every row. The
+//    key column has a fixed width (w-28 sm:w-32) with truncation, and the
+//    status badge sits in a fixed-width (w-40 sm:w-44) right-aligned column,
+//    so varying key/status lengths no longer shift the text columns sideways.
 //
 // Baselines are measured as (text run top + canvas fontBoundingBoxAscent) —
 // comparing run boxes directly cannot see the defect, because co-centered
@@ -30,6 +31,16 @@ const ISSUES = [
       created: '2026-01-05T10:00:00Z',
       updated: '2026-02-01T10:00:00Z',
       resolutiondate: '2026-02-01T10:00:00Z',
+    },
+  },
+  {
+    key: 'AB-2',
+    fields: {
+      summary: 'Second ticket of the same project for filter tests',
+      status: { name: 'Open' },
+      assignee: null,
+      created: '2026-01-04T10:00:00Z',
+      updated: '2026-02-06T10:00:00Z',
     },
   },
   {
@@ -164,7 +175,7 @@ test.describe('Extraction preview list — text column alignment', () => {
     }
   });
 
-  test('summary column starts at the same x in every row', async ({ page }) => {
+  test('summary and assignee columns start at the same x in every row', async ({ page }) => {
     await openExtractionPreview(page);
     const rows = await measureRows(page);
     expect(rows).toHaveLength(ISSUES.length);
@@ -174,9 +185,48 @@ test.describe('Extraction preview list — text column alignment', () => {
     const lefts = rows.map((r) => r.summary.left);
     expect(Math.max(...lefts) - Math.min(...lefts)).toBeLessThanOrEqual(0.5);
 
+    // The badge column has a fixed width too, so the assignee column sits at
+    // a stable x even though status pill widths vary (Done vs In Progress...).
+    const assigneeLefts = rows.map((r) => r.assignee.left);
+    expect(Math.max(...assigneeLefts) - Math.min(...assigneeLefts)).toBeLessThanOrEqual(0.5);
+
     // The overlong key is truncated (not wrapped) inside its fixed column and
     // keeps the full key available as the link tooltip.
     const longKeyLink = page.locator('a[href*="/browse/LONGPROJECTKEY-42"]');
     await expect(longKeyLink).toHaveAttribute('title', 'LONGPROJECTKEY-42');
+  });
+
+  test('project multi-select filters the ticket list', async ({ page }) => {
+    await openExtractionPreview(page);
+
+    // Open the Projects dropdown (same checkbox-popover pattern as Statuses)
+    // and keep only the AB project.
+    await page.getByRole('button', { name: 'All Projects' }).click();
+    await page.getByText('AB', { exact: true }).click();
+    await expect(page.getByRole('button', { name: '1 selected' })).toBeVisible();
+
+    // Only AB-* tickets remain; the other projects are filtered out.
+    const visibleKeys = page.locator('a[href*="/browse/"]');
+    await expect(visibleKeys).toHaveCount(2);
+    await expect(page.locator('a[href*="/browse/AB-1"]')).toBeVisible();
+    await expect(page.locator('a[href*="/browse/AB-2"]')).toBeVisible();
+
+    // Clearing the selection restores the full list.
+    await page.getByText('Clear Selection').click();
+    await expect(visibleKeys).toHaveCount(ISSUES.length);
+  });
+
+  test('search box matches the assignee name', async ({ page }) => {
+    await openExtractionPreview(page);
+
+    await page.getByPlaceholder('Search by key, summary, or assignee...').fill('Alice');
+    const visibleKeys = page.locator('a[href*="/browse/"]');
+    await expect(visibleKeys).toHaveCount(1);
+    await expect(page.locator('a[href*="/browse/AB-1"]')).toBeVisible();
+
+    // Case-insensitive partial match on any row's assignee.
+    await page.getByPlaceholder('Search by key, summary, or assignee...').fill('robertson');
+    await expect(page.locator('a[href*="/browse/ABCDE-12345"]')).toBeVisible();
+    await expect(visibleKeys).toHaveCount(1);
   });
 });
