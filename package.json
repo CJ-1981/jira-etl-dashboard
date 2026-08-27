@@ -1,6 +1,6 @@
 {
   "name": "jira-etl-dashboard",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "JIRA ETL Dashboard with Analytics and KPI Tracking",
   "author": "CJ-1981",
   "private": true,
