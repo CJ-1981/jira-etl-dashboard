@@ -13,6 +13,8 @@
     "prebuild": "node scripts/prisma-setup.mjs",
     "build": "next build && npm run copy:files",
     "build:analyze": "cross-env ANALYZE=true next build",
+    "build:static": "node scripts/build-static.mjs",
+    "relay": "python scripts/jira_relay.py",
     "copy:files": "shx cp -r .next/static .next/standalone/.next/ && shx cp -r public .next/standalone/",
     "start": "cross-env NODE_ENV=production node .next/standalone/server.js",
     "start:log": "cross-env NODE_ENV=production node .next/standalone/server.js > server.log 2>&1",

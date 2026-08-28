@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Download, RefreshCw, Server, Loader2 } from 'lucide-react';
 import { localConfig, CustomExtractField, AppSettings } from '@/lib/config/local-store';
+import { runtimeFeatures } from '@/lib/runtime/mode';
 import { useAppStore } from '@/store/app-store';
 import { JqlEditor } from './extract/JqlEditor';
 import { CustomFieldDiscovery } from './extract/CustomFieldDiscovery';
@@ -219,7 +220,9 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
             />
           </div>
 
-          <CustomFieldDiscovery customFields={customFields} onFieldsChange={setCustomFields} jql={jql} />
+          {runtimeFeatures.hasFieldDiscovery && (
+            <CustomFieldDiscovery customFields={customFields} onFieldsChange={setCustomFields} jql={jql} />
+          )}
 
           <Separator className="bg-slate-200 dark:bg-slate-800" />
 
@@ -231,17 +234,21 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
             onQuickUpdate={(days) => handleExtract(days)}
           />
 
-          <Separator className="bg-slate-200 dark:bg-slate-800" />
+          {runtimeFeatures.hasPolling && (
+            <>
+              <Separator className="bg-slate-200 dark:bg-slate-800" />
 
-          <PollingSettings
-            polling={polling}
-            pollEnabled={pollEnabled}
-            pollInterval={pollInterval}
-            pollSaving={pollSaving}
-            toggleDisabled={!activeConnectionId}
-            onToggle={(checked) => handleTogglePolling(checked)}
-            onIntervalChange={(v) => { setPollInterval(v); if (pollEnabled) handleTogglePolling(true, v); }}
-          />
+              <PollingSettings
+                polling={polling}
+                pollEnabled={pollEnabled}
+                pollInterval={pollInterval}
+                pollSaving={pollSaving}
+                toggleDisabled={!activeConnectionId}
+                onToggle={(checked) => handleTogglePolling(checked)}
+                onIntervalChange={(v) => { setPollInterval(v); if (pollEnabled) handleTogglePolling(true, v); }}
+              />
+            </>
+          )}
 
           <Button onClick={() => handleExtract()} disabled={extracting || !activeConnectionId || !dateFrom || !dateTo} className="w-full bg-emerald-600 hover:bg-emerald-700 mt-2">
             {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting Issues...</> : <><RefreshCw className="mr-2 h-4 w-4" />Run Jira Extraction</>}

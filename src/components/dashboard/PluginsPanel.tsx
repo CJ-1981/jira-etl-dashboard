@@ -45,6 +45,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
+import { getDataSource } from '@/lib/datasource';
+import { runtimeFeatures } from '@/lib/runtime/mode';
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
@@ -175,13 +177,9 @@ export function PluginsPanel() {
       const customPlugins = localConfig.getKpiPlugins();
       let allPlugins = [...customPlugins];
       try {
-        const res = await fetch('/api/kpi/plugins');
-        const data = await res.json();
-        if (data.success && data.plugins) {
-          const customIds = new Set(customPlugins.map(p => p.id));
-          const builtins = data.plugins.filter((p: any) => !customIds.has(p.id));
-          allPlugins = [...allPlugins, ...builtins];
-        }
+        const builtins = await getDataSource().listPlugins();
+        const customIds = new Set(customPlugins.map(p => p.id));
+        allPlugins = [...allPlugins, ...builtins.filter((p: any) => !customIds.has(p.id))] as KpiPlugin[];
       } catch (err) {
         console.error('Failed to fetch built-in plugins:', err);
       }
@@ -364,6 +362,8 @@ export function PluginsPanel() {
   };
 
   const handleDeleteCustomPlugin = async (pluginId: string) => {
+    // File-based custom plugins only exist on the server build.
+    if (!runtimeFeatures.hasFilePlugins) return;
     try {
       const response = await fetch(`/api/kpi/plugins/custom?pluginId=${pluginId}`, {
         method: 'DELETE',

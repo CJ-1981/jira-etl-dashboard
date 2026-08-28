@@ -20,6 +20,8 @@ vi.mock('@/lib/config/local-store', () => ({
   localConfig: {
     getJiraConnections: vi.fn(() => []),
     saveJiraConnections: vi.fn(),
+    getRelayUrl: vi.fn(() => 'http://localhost:8765'),
+    saveRelayUrl: vi.fn(),
   },
   JiraConnection: {},
 }));

@@ -10,6 +10,14 @@ node_modules/
 out/
 next-env.d.ts
 *.tsbuildinfo
+# Static build API relocation stash
+.api-stash/
+
+# Python relay
+scripts/__pycache__/
+.venv-relay/
+# Local relay config (contains the Jira API token) — template stays tracked
+relay.env
 
 # Build output & release artifacts
 build/

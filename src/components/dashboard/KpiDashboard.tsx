@@ -39,6 +39,7 @@ import {
 } from './widgets';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 import { filterIssuesForWidget } from '@/lib/jql-widget-eval';
+import { getDataSource } from '@/lib/datasource';
 
 // @MX:NOTE: Normalizes data for saved view change detection
 // @MX:REASON - Normalize data before comparison to prevent false positives from Set/Array ordering
@@ -155,14 +156,11 @@ export function KpiDashboard() {
         const customPlugins = localConfig.getKpiPlugins();
         let allPlugins = [...customPlugins];
         try {
-          const res = await fetch('/api/kpi/plugins');
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
-          if (data.success && data.plugins) {
-            const customIds = new Set(customPlugins.map(p => p.id));
-            const builtins = data.plugins.filter((p: KpiPlugin) => !customIds.has(p.id));
-            allPlugins = [...allPlugins, ...builtins];
-          }
+          const builtins = await getDataSource().listPlugins();
+          const customIds = new Set(customPlugins.map(p => p.id));
+          // The API shape (no formula field) merges into the registry as-is;
+          // the cast keeps the historical KpiPlugin registry typing.
+          allPlugins = [...allPlugins, ...builtins.filter(p => !customIds.has(p.id))] as KpiPlugin[];
         } catch (err) {
           console.error('Failed to fetch built-in plugins:', err);
         }
@@ -501,26 +499,19 @@ export function KpiDashboard() {
         globalFilters
       );
 
-      const res = await fetch('/api/kpi/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connectionId: activeConnectionId,
-          issues: filteredIssues,
-          dateFrom,
-          dateTo,
-          region,
-          // Only pass globalFilters if NOT using custom JQL override
-          globalFilters: (jqlFilter.enabled && jqlFilter.mode === 'override') ? undefined : globalFilters,
-          settings,
-          storageConfig
-        })
+      const { results: rawResults } = await getDataSource().calculateKpis({
+        connectionId: activeConnectionId,
+        issues: filteredIssues,
+        dateFrom,
+        dateTo,
+        region,
+        // Only pass globalFilters if NOT using custom JQL override
+        globalFilters: (jqlFilter.enabled && jqlFilter.mode === 'override') ? undefined : globalFilters,
+        settings,
+        storageConfig
       });
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Widget calculation failed');
-
-      const results = data.results.map((r: KpiCalcResult) => ({
+      const results = rawResults.map((r: KpiCalcResult) => ({
         ...r,
         results: r.results.map((res: any) => ({
           ...res,

@@ -1,16 +1,33 @@
 import type { NextConfig } from "next";
 import pkg from './package.json';
 
+// Set by scripts/build-static.mjs — selects the static export configuration
+// (GitHub Pages relay-mode bundle). Unset for the regular server/exe build.
+const isStaticExport = process.env.NEXT_STATIC_EXPORT === '1';
+// GitHub Pages project sites serve under /<repo>/ — overridable for user sites
+// (user.github.io root) or custom domains via NEXT_PUBLIC_BASE_PATH=''.
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '/jira-etl-dashboard';
+
 const nextConfig: NextConfig = {
-  // Expose the app version and build date to the client bundle
+  // Expose the app version and build date to the client bundle. The build mode
+  // flag selects relay mode in the client (see lib/runtime/mode.ts).
   env: {
     NEXT_PUBLIC_APP_VERSION: pkg.version,
     NEXT_PUBLIC_BUILD_DATE: new Date().toISOString().slice(0, 10),
+    ...(isStaticExport ? { NEXT_PUBLIC_BUILD_MODE: 'static' } : {}),
   },
-  // Use standalone output for production
-  ...(process.env.NODE_ENV === 'production'
-    ? { output: 'standalone' }
-    : {}),
+  // Static export for GitHub Pages; standalone server otherwise.
+  ...(isStaticExport
+    ? {
+        output: 'export' as const,
+        trailingSlash: true,
+        basePath,
+        assetPrefix: basePath,
+        images: { unoptimized: true },
+      }
+    : process.env.NODE_ENV === 'production'
+      ? { output: 'standalone' as const }
+      : {}),
 
   // Enable typed routes for better TypeScript support
   typedRoutes: true,
@@ -91,44 +108,47 @@ const nextConfig: NextConfig = {
   transpilePackages: [],
 
 
-  // Headers for security and performance
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'X-DNS-Prefetch-Control',
-            value: 'on'
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN'
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff'
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin'
-          },
-          {
-            key: 'Strict-Transport-Security',
-            value: 'max-age=63072000; includeSubDomains; preload'
-          },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), payment=()'
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.jira.com https://*.atlassian.net"
-          }
-        ]
-      }
-    ];
-  },
+  // Headers for security and performance (ignored by `output: 'export'` — the
+  // static build ships a CSP meta tag in layout.tsx instead)
+  ...(isStaticExport ? {} : {
+    async headers() {
+      return [
+        {
+          source: '/:path*',
+          headers: [
+            {
+              key: 'X-DNS-Prefetch-Control',
+              value: 'on'
+            },
+            {
+              key: 'X-Frame-Options',
+              value: 'SAMEORIGIN'
+            },
+            {
+              key: 'X-Content-Type-Options',
+              value: 'nosniff'
+            },
+            {
+              key: 'Referrer-Policy',
+              value: 'origin-when-cross-origin'
+            },
+            {
+              key: 'Strict-Transport-Security',
+              value: 'max-age=63072000; includeSubDomains; preload'
+            },
+            {
+              key: 'Permissions-Policy',
+              value: 'camera=(), microphone=(), geolocation=(), payment=()'
+            },
+            {
+              key: 'Content-Security-Policy',
+              value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.jira.com https://*.atlassian.net"
+            }
+          ]
+        }
+      ]
+    },
+  }),
 };
 
 export default nextConfig;

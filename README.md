@@ -53,14 +53,15 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
   - `Cmd/Ctrl + P` — Export to Print/PDF
 
 ### ⚡ Architecture & Data Confidence
-- **Hybrid Storage Architecture** — Dynamically switches between local SQLite and remote PostgreSQL (Supabase) at runtime based on frontend storage configuration.
+- **Dual Build Modes** — One codebase ships as the server product (`npm run build` → caxa exe) **and** as a static GitHub Pages app backed by a local Python relay (`npm run build:static`); a build-time mode flag plus the `DataSource` seam (`src/lib/datasource/`) selects the backend, so server-mode behavior is unchanged.
+- **Hybrid Storage Architecture** — Dynamically switches between local SQLite and remote PostgreSQL (Supabase) at runtime based on frontend storage configuration (server mode).
 - **Dual Prisma Clients** — Utilizes a specialized multi-client wrapper to support cross-engine compatibility without re-generating schemas or restarting the server.
 - **TanStack React Query** — Advanced state management for automated background data synchronization, intelligent caching, and consistent loading states.
-- **Scheduled Polling Resilience** — Server-side background sync persists storage configurations across sessions, ensuring data lands in the correct engine automatically.
+- **Scheduled Polling Resilience** — Server-side background sync persists storage configurations across sessions, ensuring data lands in the correct engine automatically (server mode).
 - **Resilient Error Boundaries** — Individual widget isolation ensures that a single metric failure or calculation error never crashes the entire dashboard.
 - **Hardened Local API Surface** — Unauthenticated endpoints accept loopback-origin requests only (CSRF protection), Jira issue keys are validated before use, and ETL runs are marked complete only after a fully successful load.
-- **Security Headers** — HSTS, Content-Security-Policy, Permissions-Policy, X-Frame-Options, X-Content-Type-Options, and Referrer-Policy are set on all responses.
-- **Server-Side Calculation with Smart Caching** — KPI computation runs on the server via the calculation API, with TanStack Query handling caching, background refetching, and consistent loading states to keep the UI responsive even with tens of thousands of tickets.
+- **Security Headers** — HSTS, Content-Security-Policy, Permissions-Policy, X-Frame-Options, X-Content-Type-Options, and Referrer-Policy are set on all responses; the static build ships a relay-scoped CSP meta tag.
+- **Smart Calculation Placement** — KPI computation runs on the server via the calculation API in server mode, and in the browser over the relay dataset in static mode — the same 40-plugin engine either way, with TanStack Query handling caching, background refetching, and consistent loading states to keep the UI responsive even with tens of thousands of tickets.
 
 ---
 
@@ -225,39 +226,64 @@ Configure this in **KPI Analytics** → **Plugins Configuration** → **SLA Targ
 
 ### System Architecture
 
+One React SPA, two build-time backends — the `DataSource` seam picks the implementation:
+
 ```mermaid
 graph TB
-    subgraph Browser["Browser (React SPA)"]
-        UI[Dashboard UI<br/>shadcn/ui + Tailwind]
-        Store[Zustand Store]
-        RQ[TanStack React Query]
+    subgraph Browser["Browser (React SPA — one codebase, two build modes)"]
+        UI["Dashboard UI<br/>shadcn/ui + Tailwind"]
+        Store["Zustand Store"]
+        RQ["TanStack React Query"]
+        DS["DataSource seam<br/>src/lib/datasource"]
+        CEng["KPI Engine — client-side calc<br/>(relay mode only)"]
     end
 
-    subgraph NextJS["Next.js Server"]
-        API[API Routes<br/>/api/*]
-        Engine[KPI Engine<br/>40 plugins]
-        Sandbox[Sandboxed Formula<br/>Interpreter]
+    subgraph ServerMode["Server mode — npm run build / caxa exe"]
+        API["Next.js API Routes<br/>/api/*"]
+        SEng["KPI Engine<br/>40 plugins"]
+        Sandbox["Sandboxed Formula<br/>Interpreter"]
+        SQLite[("SQLite<br/>local")]
+        PG[("PostgreSQL<br/>Supabase")]
     end
 
-    subgraph Storage["Dual Prisma Storage"]
-        SQLite[(SQLite<br/>local)]
-        PG[(PostgreSQL<br/>Supabase)]
+    subgraph RelayMode["Relay mode — npm run build:static / GitHub Pages"]
+        Relay["Local Python relay<br/>jira_relay.py / jira-relay.exe<br/>+ relay.env"]
+        RDB[("SQLite<br/>MasterTicket store")]
     end
 
-    Jira[Jira Cloud/Server]
+    Jira["Jira Cloud"]
 
     UI --> Store
     UI --> RQ
-    RQ -->|fetch| API
-    API --> Engine
-    Engine --> Sandbox
-    API -->|getDb| SQLite
-    API -->|getDb| PG
-    Jira -->|REST API| API
-    API -->|webhooks| Jira
+    RQ --> DS
+    DS -- "ServerDataSource" --> API
+    DS -- "RelayDataSource<br/>(gzip + CORS)" --> Relay
+    DS -- "client-side calculate" --> CEng
+    API --> SEng
+    SEng --> Sandbox
+    API -- "getDb" --> SQLite
+    API -- "getDb" --> PG
+    Relay -- "upsert / sync" --> RDB
+    Relay -- "Basic auth<br/>(env only, never browser)" --> Jira
+    Jira -- "REST API" --> API
+    API -- "webhooks" --> Jira
 ```
 
-### ETL Data Flow
+Static (relay) mode in detail:
+
+```mermaid
+flowchart LR
+    A["Jira API"] -- "JQL + changelog" --> R["POST /sync<br/>upsert · dedupe · incremental ·<br/>deletion detection"]
+    R --> DB[("SQLite<br/>MasterTicket")]
+    DB -- "GET /dataset (gzip)" --> P["Static SPA<br/>GitHub Pages"]
+    P --> C["Client-side KPI Engine<br/>40 plugins + formula plugins"]
+    C --> W["Dashboard widgets"]
+
+    style A fill:#e1f5fe
+    style W fill:#e8f5e9
+```
+
+### ETL Data Flow (server mode)
 
 ```mermaid
 flowchart LR
@@ -357,6 +383,30 @@ If you are using an external PostgreSQL database (like Supabase), initialize the
 # Create a portable Windows release folder with database bundled
 build-exe.bat
 ```
+
+### Static GitHub Pages Build (relay mode)
+
+The app ships in two build modes from one codebase:
+
+| | Server mode (`npm run build` / exe) | Static mode (`npm run build:static` → GitHub Pages) |
+|---|---|---|
+| Backend | Next.js API routes + Prisma (SQLite/PostgreSQL) | Local Python relay (`scripts/jira_relay.py`) + SQLite |
+| KPI calculation | Server-side engine | **Client-side** in the browser |
+| Credentials | Browser localStorage → API routes | **Only in the relay's environment** — never in the browser |
+| File-based custom plugins, polling scheduler, webhook, PG export | ✅ | Hidden (feature-flagged) |
+| Formula plugins (Plugin Studio), dashboard views, CSV/JSON export | ✅ | ✅ (localStorage / client-side) |
+
+```bash
+npm run build:static   # → ./out  (deploy to GitHub Pages)
+python scripts/jira_relay.py   # the local data relay (stdlib only, no pip deps)
+```
+
+For users **without Python**, `build-relay-exe.bat` (Windows) /
+`build-relay-exe.sh` (macOS/Linux) packages the relay into a standalone
+`dist/jira-relay` executable via PyInstaller — ship it next to a `relay.env`
+config file (template: `scripts/relay.env.example`) and it runs anywhere.
+
+See **[docs/STATIC_RELAY_MODE.md](docs/STATIC_RELAY_MODE.md)** for relay setup, environment variables, the standalone exe, migrating an existing `custom.db`, and the GitHub Pages workflow.
 
 ---
 
