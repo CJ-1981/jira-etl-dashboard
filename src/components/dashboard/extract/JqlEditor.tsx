@@ -60,12 +60,12 @@ export const JqlEditor = React.memo(function JqlEditor({ jql, onJqlChange }: Jql
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-y-2">
         <Label className="text-slate-700 dark:text-slate-300">Custom JQL Query <span className="text-slate-400 dark:text-slate-500 text-xs ml-2">(optional)</span></Label>
-        <div className="flex gap-2">
+        <div className="flex gap-2 ml-auto">
           {savedJqls.length > 0 && (
             <Select onValueChange={(val) => onJqlChange(savedJqls.find(j => j.id === val)?.query || '')}>
-              <SelectTrigger className="h-7 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-[150px]">
+              <SelectTrigger className="h-7 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-[140px] sm:w-[150px]">
                 <SelectValue placeholder="Load saved..." />
               </SelectTrigger>
               <SelectContent>

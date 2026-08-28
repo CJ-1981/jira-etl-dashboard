@@ -55,7 +55,7 @@ export function StatusOpenWidget({
       restoreAllClassName="text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10"
     >
       {/* Age Legend */}
-      <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
         <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Age Groups:</span>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-slate-500" />
@@ -106,7 +106,7 @@ export function StatusOpenWidget({
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span
-                      className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline"
+                      className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-500 hover:underline min-w-0 max-w-full break-all"
                       onClick={() => {
                         // Gather all ticket keys for this status across all age categories
                         const allTicketKeys = visibleResults.flatMap(r => r.ticketKeys || []);

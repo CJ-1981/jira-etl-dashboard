@@ -376,7 +376,7 @@ export function ViewManager() {
   };
 
   return (
-    <div className="flex items-center gap-2 no-print">
+    <div className="flex flex-wrap items-center gap-1.5 no-print">
       {/* Back to Default button - shown when a saved view is active */}
       {activeView && (
         <Button
@@ -402,9 +402,9 @@ export function ViewManager() {
                 : 'text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
             }`}
           >
-            <Zap className={`h-3 w-3 ${activeView ? 'fill-emerald-500' : ''}`} />
-            {activeView ? activeView.name : 'Saved Views'}
-            <ChevronDown className="h-3 w-3 opacity-50" />
+            <Zap className={`h-3 w-3 shrink-0 ${activeView ? 'fill-emerald-500' : ''}`} />
+            <span className="max-w-[120px] truncate">{activeView ? activeView.name : 'Saved Views'}</span>
+            <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
             {savedViews.length > 0 && !activeView && (
               <Badge className="ml-1 bg-emerald-500 hover:bg-emerald-600 border-none h-3 min-w-[12px] flex items-center justify-center p-0 text-[8px]">
                 {savedViews.length}

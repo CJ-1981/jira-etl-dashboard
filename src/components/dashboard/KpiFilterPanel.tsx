@@ -130,13 +130,13 @@ export function KpiFilterPanel({
               </Badge>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <JqlAutocomplete
               ref={jqlInputRef}
               value={jqlQuery}
               onChange={setJqlQuery}
               filterOptions={filterOptions}
-              className="flex-1"
+              className="flex-1 min-w-[180px]"
             />
             <Button
               size="sm"
@@ -349,10 +349,11 @@ export function KpiFilterPanel({
             const displayKey = getDisplayKey(key);
 
             return values.map(val => (
-              <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200">
-                <span className="text-slate-400">{displayKey}:</span> {val}
+              <Badge key={`${key}-${val}`} variant="outline" className="gap-1 px-1.5 py-0 h-5 text-[10px] bg-slate-50 dark:bg-slate-800/50 text-slate-600 border-slate-200 max-w-full min-w-0">
+                <span className="text-slate-400 shrink-0">{displayKey}:</span>
+                <span className="truncate min-w-0">{val}</span>
                 <span
-                  className="flex items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
+                  className="flex shrink-0 items-center justify-center pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
                   onClick={(e) => { e.stopPropagation(); handleToggleFilter(key, val); }}
                 >
                   <X className="h-2.5 w-2.5" />

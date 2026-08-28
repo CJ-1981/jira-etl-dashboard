@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ export interface DashboardHeaderProps {
   globalFilters: Record<string, string[]>;
   filterPanelOpen: boolean;
   onToggleFilterPanel: () => void;
-  // ── KpiFilterPanel pass-through props (rendered when the panel is open) ──
+  // â”€â”€ KpiFilterPanel pass-through props (rendered when the panel is open) â”€â”€
   filterPanel: React.ComponentProps<typeof KpiFilterPanel>;
 }
 
@@ -63,7 +63,7 @@ const PRESETS = [
 /**
  * Dashboard header card: KPI Analytics title, dataset inventory badge,
  * Filters/Print controls, the analysis-period inputs with quick presets and
- * the collapsible KpiFilterPanel. Pure presentational — all state changes go
+ * the collapsible KpiFilterPanel. Pure presentational â€” all state changes go
  * through callbacks owned by KpiDashboard.
  */
 export function DashboardHeader({
@@ -87,11 +87,11 @@ export function DashboardHeader({
       <CardHeader className="pb-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-blue-600 dark:from-emerald-400 dark:to-blue-400">
                 KPI Analytics
               </CardTitle>
-              <div className="flex items-center gap-1 no-print">
+              <div className="flex min-w-0 items-center gap-1 no-print">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -109,21 +109,21 @@ export function DashboardHeader({
               Detailed performance metrics based on the master dataset
             </CardDescription>
             {masterDatasetInfo && (
-              <div className="mt-3 flex w-fit items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-full">
+              <div className="mt-3 flex w-fit max-w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-full">
                 <Database className="h-3 w-3 text-blue-500" />
                 <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tight">
                   {masterDatasetInfo.dateRange?.from ? (
-                    <>Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} — {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}</>
+                    <>Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} â€” {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}</>
                   ) : (
                     <>Data Inventory: Range Unspecified</>
                   )}
                 </span>
                 <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400/80 border-l border-blue-200 dark:border-blue-500/30 pl-2 ml-1">
                   {/* @MX:NOTE: lastUpdated can be absent/invalid (empty master
-                      dataset responses omit it) — guard before formatting. */}
+                      dataset responses omit it) â€” guard before formatting. */}
                   {masterDatasetInfo.totalExtracted.toLocaleString()} tickets
                   {masterDatasetInfo.lastUpdated && !isNaN(new Date(masterDatasetInfo.lastUpdated).getTime()) && (
-                    <> • Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
+                    <> â€¢ Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
                       year: 'numeric', month: 'short', day: 'numeric',
                       hour: '2-digit', minute: '2-digit'
                     })}</>
@@ -184,8 +184,11 @@ export function DashboardHeader({
 
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3 no-print">
-                <div className="flex items-center gap-2">
-                  <div className="relative group">
+                {/* minmax(0,1fr) tracks: date inputs have ~155px intrinsic
+                    max-content, which overflows the card as a plain flex row
+                    on small screens; the grid forces equal distribution. */}
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:max-w-[320px]">
+                  <div className="relative group min-w-0">
                     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
                       <Calendar className="h-3.5 w-3.5" />
                     </div>
@@ -193,11 +196,11 @@ export function DashboardHeader({
                       type="date"
                       value={dateFrom || ''}
                       onChange={(e) => onDateFromChange(e.target.value)}
-                      className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
+                      className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-full min-w-0 focus:ring-emerald-500/20"
                     />
                   </div>
                   <span className="text-slate-300 dark:text-slate-700">to</span>
-                  <div className="relative group">
+                  <div className="relative group min-w-0">
                     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
                       <Calendar className="h-3.5 w-3.5" />
                     </div>
@@ -205,7 +208,7 @@ export function DashboardHeader({
                       type="date"
                       value={dateTo || ''}
                       onChange={(e) => onDateToChange(e.target.value)}
-                      className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-[140px] focus:ring-emerald-500/20"
+                      className="h-9 pl-9 bg-gray-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs w-full min-w-0 focus:ring-emerald-500/20"
                     />
                   </div>
                 </div>
@@ -213,7 +216,7 @@ export function DashboardHeader({
             </div>
           </div>
 
-          <div className="flex-1 min-w-[300px]">
+          <div className="flex-1 min-w-[220px] sm:min-w-[300px]">
             <Label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2 block">Quick Presets</Label>
             <div className="flex flex-wrap gap-1.5">
               {PRESETS.map((p) => {

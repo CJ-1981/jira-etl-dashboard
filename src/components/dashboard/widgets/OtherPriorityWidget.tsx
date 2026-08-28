@@ -54,7 +54,7 @@ export function OtherPriorityWidget({
       restoreAllClassName="text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10"
     >
       {/* Age Legend */}
-      <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 pb-3 border-b border-slate-200 dark:border-slate-700">
         <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
           {kpi.pluginId.includes('closed') ? 'Closed Timeframe:' : 'Age Groups:'}
         </span>

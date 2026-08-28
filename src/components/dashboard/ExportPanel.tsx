@@ -245,17 +245,17 @@ export function ExportPanel() {
               </div>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <div className="flex items-center justify-between h-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 h-auto min-h-6">
                 <Label>Period</Label>
-                <div className="flex gap-1 no-print">
+                <div className="flex flex-wrap gap-1 no-print">
                   {[7, 14, 30, 60, 90, 180, 365].map((days) => (
                     <Button key={days} variant="ghost" size="sm" onClick={() => handleQuickPull(days)} className="h-6 px-2 text-[10px] text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10">{days}D</Button>
                   ))}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Input type="date" value={dateFrom || ''} onChange={(e) => setDateFrom(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-10 w-full" />
-                <Input type="date" value={dateTo || ''} onChange={(e) => setDateTo(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-10 w-full" />
+              <div className="grid grid-cols-2 gap-2">
+                <Input type="date" value={dateFrom || ''} onChange={(e) => setDateFrom(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-10 w-full min-w-0" />
+                <Input type="date" value={dateTo || ''} onChange={(e) => setDateTo(e.target.value)} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-10 w-full min-w-0" />
               </div>
             </div>
             <div className="space-y-2">

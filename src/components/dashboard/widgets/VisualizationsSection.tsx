@@ -52,10 +52,12 @@ export function VisualizationsSection({
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {charts.map((chartConfig) => {
           const widthClass = {
-            sm: 'col-span-1',      // 25% width
-            md: 'col-span-2',       // 50% width
-            lg: 'col-span-3',       // 75% width
-            full: 'col-span-4',     // 100% width
+            // lg: prefix keeps charts full-width in the mobile single-column grid;
+            // bare col-span-N would force implicit columns and overflow the viewport.
+            sm: 'lg:col-span-1',      // 25% width
+            md: 'lg:col-span-2',       // 50% width
+            lg: 'lg:col-span-3',       // 75% width
+            full: 'lg:col-span-4',     // 100% width
           }[chartConfig.width];
 
           return (

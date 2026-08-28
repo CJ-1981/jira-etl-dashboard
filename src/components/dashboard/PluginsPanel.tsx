@@ -519,9 +519,9 @@ export function PluginsPanel() {
               <Button variant="outline" size="sm" className="border-slate-200 dark:border-slate-700" onClick={() => setBuilderOpen(false)}>Cancel</Button>
             </div>
             <CardDescription className="text-slate-600 dark:text-slate-400">Build a custom KPI plugin using the visual builder or raw JavaScript code</CardDescription>
-            <div className="flex items-center gap-2 mt-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-md w-max">
-              <button onClick={() => setBuilderLanguage('dsl')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${builderLanguage === 'dsl' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Visual Builder (DSL)</button>
-              <button onClick={() => setBuilderLanguage('javascript')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${builderLanguage === 'javascript' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Code (JavaScript)</button>
+            <div className="flex flex-wrap items-center gap-2 mt-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-md w-fit max-w-full">
+              <button onClick={() => setBuilderLanguage('dsl')} className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors ${builderLanguage === 'dsl' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Visual Builder (DSL)</button>
+              <button onClick={() => setBuilderLanguage('javascript')} className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors ${builderLanguage === 'javascript' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Code (JavaScript)</button>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -620,7 +620,7 @@ export function PluginsPanel() {
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant={favoriteFilter === 'all' && activeFilter === 'all' ? 'default' : 'outline'}
                     size="sm"
@@ -650,7 +650,7 @@ export function PluginsPanel() {
                     <Star className={`h-3 w-3 ${favoriteFilter === 'favorites' ? 'fill-white' : ''}`} />
                     Favorites
                   </Button>
-                  <span className="text-xs text-slate-400 ml-auto">
+                  <span className="text-xs text-slate-400 ml-auto basis-full text-right sm:basis-auto">
                     {activePlugins.length} active · {favoritePlugins.size} favorites
                   </span>
                 </div>
@@ -686,7 +686,7 @@ export function PluginsPanel() {
                             <Checkbox id={`plugin-${plugin.id}`} checked={activePlugins.includes(plugin.id)} onCheckedChange={() => togglePlugin(plugin.id)} className="flex-shrink-0" />
                             <div onClick={() => togglePlugin(plugin.id)} className="flex-1 cursor-pointer">
                               <div className="flex items-center gap-2">
-                                <h4 className="font-semibold text-sm">{plugin.name}</h4>
+                                <h4 className="font-semibold text-sm truncate min-w-0">{plugin.name}</h4>
                                 <Badge variant="secondary" className="text-[10px] py-0 h-4 px-1.5 opacity-70">{plugin.pluginType === 'builtin' ? 'Built-in' : 'Custom'}</Badge>
                                 {plugin.language === 'javascript' && <Badge variant="outline" className="text-[10px] text-yellow-500 border-yellow-500/30 py-0 h-4 px-1.5">JS</Badge>}
                               </div>
@@ -906,7 +906,7 @@ export function PluginsPanel() {
                     });
                   }}
                 >
-                  <div className="flex items-center space-x-4">
+                  <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-4 sm:space-y-0">
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="assignee" id="sla-assignee">
                         <div className="flex items-center space-x-2">
@@ -933,7 +933,7 @@ export function PluginsPanel() {
                 </RadioGroup>
               </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-3">
               <Button variant="outline" size="sm" onClick={async () => {
                 try {
                   const activeConn = localConfig.getActiveConnectionId();
@@ -963,21 +963,23 @@ export function PluginsPanel() {
             {Object.keys(settings.sla?.statusTargets || {}).length > 0 && (
               <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
                 {Object.entries(settings.sla?.statusTargets || {}).sort(([a], [b]) => a.localeCompare(b)).map(([status, hours]) => (
-                  <div key={status} className="flex items-center gap-3">
-                    <Badge variant="outline" className="w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
-                    <Input type="number" min="0" value={(hours as number) ?? ''} onChange={(e) => {
-                      const val = e.target.value ? parseFloat(e.target.value) : 0;
-                      const sla = settings.sla ?? {};
-                      const statusTargets = sla.statusTargets ?? {};
-                      setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
-                  }} className="w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-                  <span className="text-xs text-slate-400">hours</span>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
-                    const sla = settings.sla ?? {};
-                    const updated = { ...(sla.statusTargets || {}) }; 
-                    delete updated[status];
-                    setSettings({ ...settings, sla: { ...sla, statusTargets: updated } });
-                    }}><Trash2 className="h-3 w-3" /></Button>
+                  <div key={status} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Badge variant="outline" className="w-full sm:w-48 shrink-0 justify-start text-xs truncate">{status}</Badge>
+                    <div className="flex items-center gap-2 ml-auto sm:ml-0">
+                      <Input type="number" min="0" value={(hours as number) ?? ''} onChange={(e) => {
+                        const val = e.target.value ? parseFloat(e.target.value) : 0;
+                        const sla = settings.sla ?? {};
+                        const statusTargets = sla.statusTargets ?? {};
+                        setSettings({ ...settings, sla: { ...sla, statusTargets: { ...statusTargets, [status]: val } } });
+                      }} className="w-20 sm:w-28 h-8 text-xs bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                      <span className="text-xs text-slate-400">hours</span>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-red-500" onClick={() => {
+                        const sla = settings.sla ?? {};
+                        const updated = { ...(sla.statusTargets || {}) };
+                        delete updated[status];
+                        setSettings({ ...settings, sla: { ...sla, statusTargets: updated } });
+                      }}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
                   </div>
                 ))}
               </div>

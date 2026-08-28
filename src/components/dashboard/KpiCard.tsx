@@ -608,12 +608,12 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
       className={`${hasCustomFilter ? 'border-blue-400 dark:border-blue-500 ring-2 ring-blue-100 dark:ring-blue-500/20' : 'border-slate-200 dark:border-slate-800'} bg-white dark:bg-slate-900/50`}
     >
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 items-center gap-3">
             <div className={`rounded-lg p-2 ${isTimeSeries ? 'bg-blue-100 dark:bg-blue-500/10' : 'bg-emerald-100 dark:bg-emerald-500/10'}`}>
               <BarChart3 className={`h-5 w-5 ${isTimeSeries ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               {editingTitle ? (
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                   <input
@@ -709,7 +709,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </Button>
             )}
-            <div className="flex items-center border-l border-slate-100 dark:border-slate-800 ml-1 pl-1">
+            <div className="hidden items-center border-l border-slate-100 dark:border-slate-800 ml-1 pl-1 sm:flex">
               {onMoveUp && (
                 <Button
                   variant="ghost"
@@ -750,7 +750,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   {isCalculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-[400px] p-0 z-[100]" onPointerDownOutside={(e) => {
+              <PopoverContent align="end" className="w-[min(400px,calc(100vw-2rem))] p-0 z-[100]" onPointerDownOutside={(e) => {
                 // @MX:NOTE: Outside-click closing stays blocked to prevent accidental loss of
                 // unsaved filter edits; the popover provides a visible Cancel button instead.
                 console.log('[ChartCard] Popover onPointerDownOutside - preventing default');

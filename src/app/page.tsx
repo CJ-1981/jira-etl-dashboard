@@ -417,7 +417,7 @@ export default function Home() {
             <Tabs defaultValue="jira-etl" className="space-y-6">
               {showDataCenterSubmenu && (
                 <div className="flex justify-center no-print sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 max-w-full overflow-x-auto custom-scrollbar">
                     <TabsTrigger value="jira-etl" className="gap-2 px-6">
                       <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
                       Jira Extraction
@@ -449,16 +449,16 @@ export default function Home() {
             }} className="space-y-6">
               {showKpiAnalyticsSubmenu && (
                 <div className="flex justify-center no-print sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1">
-                    <TabsTrigger value="dashboard" className="gap-2 w-48 text-xs">
+                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 h-10 p-1 max-w-full overflow-x-auto custom-scrollbar">
+                    <TabsTrigger value="dashboard" className="gap-2 w-40 sm:w-48 text-xs">
                       <BarChart3 className="h-4 w-4" />
                       Dashboard
                     </TabsTrigger>
-                    <TabsTrigger value="plugins" className="gap-2 w-48 text-xs">
+                    <TabsTrigger value="plugins" className="gap-2 w-40 sm:w-48 text-xs">
                       <Plug className="h-4 w-4" />
                       Plugins Configuration
                     </TabsTrigger>
-                    <TabsTrigger value="holidays" className="gap-2 w-48 text-xs">
+                    <TabsTrigger value="holidays" className="gap-2 w-40 sm:w-48 text-xs">
                       <Calendar className="h-4 w-4" />
                       Holidays Calendar
                     </TabsTrigger>
@@ -486,7 +486,7 @@ export default function Home() {
             <Tabs defaultValue="connections" className="space-y-6">
               {showSettingsSubmenu && (
                 <div className="flex justify-center sticky top-[4.5rem] z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <TabsList className="bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 max-w-full overflow-x-auto custom-scrollbar">
                     <TabsTrigger value="connections" className="gap-2 px-6">
                       <Server className="h-4 w-4" />
                       Connections

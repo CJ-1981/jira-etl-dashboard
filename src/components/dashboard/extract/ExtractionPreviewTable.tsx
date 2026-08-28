@@ -268,23 +268,26 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
               const statusName = getStatus(issue);
 
               return (
-                <div key={issue.key} className="flex items-baseline gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
+                <div key={issue.key} className="flex items-baseline gap-2 sm:gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
                   <a
                     href={jiraUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     title={issue.key}
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 w-28 sm:w-32 truncate transition-colors"
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 w-20 sm:w-32 truncate transition-colors"
                   >
                     {issue.key}
                     <ExternalLink className="ml-1 inline-block h-3 w-3 align-text-bottom opacity-0 group-hover:opacity-100 transition-opacity" />
                   </a>
-                  <span className="truncate text-slate-700 dark:text-slate-300 flex-1">{getSummary(issue)}</span>
-                  <span className="truncate text-slate-500 dark:text-slate-400 text-xs w-28 sm:w-36 shrink-0">{getAssignee(issue)}</span>
+                  <span className="truncate text-slate-700 dark:text-slate-300 flex-1 min-w-0">{getSummary(issue)}</span>
+                  {/* Assignee is dropped below sm — the 375px card interior cannot
+                      fit four fixed columns alongside the summary. */}
+                  <span className="hidden truncate text-slate-500 dark:text-slate-400 text-xs w-36 shrink-0 sm:inline">{getAssignee(issue)}</span>
                   {/* Fixed-width badge column: keeps the assignee column at a
-                      stable x regardless of each status's text length. */}
-                  <span className="w-40 sm:w-44 shrink-0 flex justify-end">
-                    <Badge variant={resolved ? 'default' : 'secondary'} className={`text-xs max-w-full shrink-0 ${resolved ? 'bg-blue-600' : ''}`}>{statusName}</Badge>
+                      stable x regardless of each status's text length (sm+ only;
+                      on mobile the badge truncates to its share of the row). */}
+                  <span className="max-w-[110px] shrink-0 flex justify-end sm:w-40 md:w-44 sm:max-w-none">
+                    <Badge variant={resolved ? 'default' : 'secondary'} className={`text-xs max-w-full shrink-0 truncate ${resolved ? 'bg-blue-600' : ''}`}>{statusName}</Badge>
                   </span>
                 </div>
               );
