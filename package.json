@@ -38,6 +38,9 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "e2e": "playwright test",
+    "pree2e:static": "npm run build:static",
+    "e2e:static": "playwright test --config=playwright.static.config.ts",
+    "e2e:static:headed": "playwright test --config=playwright.static.config.ts --headed",
     "e2e:headed": "playwright test --headed",
     "e2e:ui": "playwright test --ui",
     "e2e:install": "playwright install chromium"

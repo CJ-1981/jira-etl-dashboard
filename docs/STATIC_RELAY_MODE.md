@@ -197,6 +197,16 @@ tables are ignored (KPIs are computed in the browser on demand).
 3. Custom domain or user site (`<user>.github.io` root)? Set
    `NEXT_PUBLIC_BASE_PATH` to `''` in the workflow.
 
+## E2E tests for the static build
+
+`npm run e2e:static` runs the relay-mode Playwright suite
+(`playwright.static.config.ts` + `e2e/static-relay.spec.ts`): it builds the
+static bundle, serves it under the base path (`scripts/serve-static.mjs`),
+boots the real relay against a throwaway SQLite store, and drives the full
+flow — credential-free connection form → seeded dataset over CORS →
+client-side KPI calculation. CI runs it in the `e2e-static` job (the Python
+relay needs Python on the runner; `actions/setup-python` provides it).
+
 ## Using the static build
 
 1. Start the relay (see above).

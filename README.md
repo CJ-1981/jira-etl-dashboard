@@ -415,7 +415,8 @@ See **[docs/STATIC_RELAY_MODE.md](docs/STATIC_RELAY_MODE.md)** for relay setup, 
 ```bash
 npm test               # Vitest unit/integration suite
 npm run test:coverage  # Coverage with enforced minimum thresholds (ratchet)
-npm run e2e            # Playwright end-to-end suite (reuses a running dev server)
+npm run e2e            # Playwright end-to-end suite (server mode, reuses a running dev server)
+npm run e2e:static     # Playwright suite for the static/relay build (builds bundle + boots the Python relay)
 npm run lint           # ESLint (critical rules enabled; ratchet threshold 780)
 npm run type-check     # TypeScript strict check
 ```

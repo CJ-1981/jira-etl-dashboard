@@ -133,3 +133,47 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Static relay-mode e2e: the GitHub Pages bundle (out/) served under its base
+  # path, driven against the real Python relay + SQLite. Covers the second
+  # distribution path end to end (CORS, client-side KPI calculation).
+  e2e-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Build static bundle
+        run: npm run build:static
+
+      # Boots scripts/serve-static.mjs + scripts/jira_relay.py itself
+      # (webServer array in playwright.static.config.ts).
+      - name: Run static relay-mode E2E tests
+        run: npx playwright test --config=playwright.static.config.ts
+
+      - name: Upload static Playwright report
+        uses: actions/upload-artifact@v5
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-static
+          path: playwright-report/
+          retention-days: 7
