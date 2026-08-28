@@ -67,6 +67,11 @@ Environment variables:
 | `JIRA_RELAY_DB` | SQLite file for the master dataset | `<repo>/data/relay.db` |
 | `JIRA_RELAY_PORT` | Listen port | `8765` |
 | `ALLOWED_ORIGIN` | Browser origin allowed via CORS — **required for the dashboard to load data**; unset = browser access blocked | — (deny by default) |
+| `DASHBOARD_URL` | URL opened in the browser on startup | `ALLOWED_ORIGIN` (+ dashboard path), else the default Pages URL |
+
+On startup (server mode only — `--sync` never opens a browser) the relay opens
+the dashboard automatically; use `--no-open` to suppress, or `DASHBOARD_URL` to
+point somewhere else.
 
 Instead of environment variables, configuration can live in a **`relay.env`**
 file (KEY=VALUE, template: `scripts/relay.env.example`) next to the relay

@@ -68,6 +68,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import webbrowser
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -122,6 +123,12 @@ PORT = int(os.environ.get("JIRA_RELAY_PORT") or os.environ.get("PORT") or "8765"
 # other origins cannot read relay responses. Set to your GitHub Pages URL;
 # an explicit "*" allows any page to read the dataset (not recommended).
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN") or ""
+
+# Dashboard URL opened in the browser on startup. Resolution order:
+# DASHBOARD_URL env > ALLOWED_ORIGIN (with the dashboard path appended unless
+# already present) > the default GitHub Pages deployment below.
+DEFAULT_DASHBOARD_URL = "https://cj-1981.github.io/jira-etl-dashboard/"
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL") or ""
 
 DEFAULT_DB_ENV = os.environ.get("JIRA_RELAY_DB")
 if DEFAULT_DB_ENV:
@@ -190,6 +197,18 @@ def connect(db_path: str) -> sqlite3.Connection:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def resolve_dashboard_url() -> str:
+    """Dashboard URL to open on startup (see DASHBOARD_URL config above)."""
+    if DASHBOARD_URL:
+        return DASHBOARD_URL
+    if ALLOWED_ORIGIN and ALLOWED_ORIGIN != "*":
+        if "jira-etl-dashboard" in ALLOWED_ORIGIN:
+            return ALLOWED_ORIGIN  # already a dashboard URL — use as-is
+        # Bare origin (e.g. https://user.github.io) gets the project path.
+        return ALLOWED_ORIGIN.rstrip("/") + "/jira-etl-dashboard/"
+    return DEFAULT_DASHBOARD_URL
 
 
 # ── Jira client ──────────────────────────────────────────────────────────────
@@ -665,6 +684,7 @@ def main():
     parser = argparse.ArgumentParser(description="Jira ETL relay for the static dashboard build")
     parser.add_argument("--db", default=DEFAULT_DB_PATH, help=f"SQLite DB path (default {DEFAULT_DB_PATH})")
     parser.add_argument("--port", type=int, default=PORT, help=f"listen port (default {PORT})")
+    parser.add_argument("--no-open", action="store_true", help="do not open the dashboard in a browser on startup")
     parser.add_argument("--sync", action="store_true", help="run one headless sync instead of serving")
     parser.add_argument("--connection", default="default", help="connectionRef for --sync")
     parser.add_argument("--projects", default="", help="comma-separated project keys for --sync")
@@ -712,6 +732,17 @@ def main():
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), RelayHandler)
     server.db_path = args.db  # type: ignore[attr-defined]
+
+    # The socket is already listening once the server object exists, so it is
+    # safe to open the dashboard now, just before the serve loop blocks.
+    if not args.no_open:
+        url = resolve_dashboard_url()
+        print(f"[relay] Opening dashboard: {url}")
+        try:
+            webbrowser.open(url)
+        except Exception as e:  # pragma: no cover — headless machines etc.
+            print(f"[relay] Could not open a browser ({e}) — open {url} manually.", file=sys.stderr)
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
