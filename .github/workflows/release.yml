@@ -101,9 +101,34 @@ jobs:
           path: dist/JIRA ETL Dashboard.exe
           retention-days: 1
 
+  build-relay-exe:
+    name: Build Windows Relay Executable
+    needs: [ci-gate]
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build Relay Executable
+        shell: cmd
+        run: call build-relay-exe.bat
+
+      - name: Upload Relay Artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: relay-executable
+          path: dist/jira-relay.exe
+          retention-days: 1
+
   publish-release:
     name: Publish GitHub Release
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-relay-exe]
     runs-on: ubuntu-latest
 
     steps:
@@ -124,3 +149,4 @@ jobs:
           files: |
             release-assets/JIRA-ETL-Dashboard-macOS.zip
             release-assets/JIRA ETL Dashboard.exe
+            release-assets/jira-relay.exe
