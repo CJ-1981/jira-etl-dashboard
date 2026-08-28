@@ -28,7 +28,8 @@ const storeRef = vi.hoisted(() => ({ current: undefined as any }));
 vi.mock('@/store/app-store', () => {
   // Real zustand exposes getState() on the hook itself — mirror that here so
   // hooks reading `useAppStore.getState()` see the mock state too.
-  const useAppStore: any = (sel: any) => (typeof sel === 'function' ? sel(storeRef.current) : storeRef.current);
+  const useAppStore = (sel?: unknown) =>
+    typeof sel === 'function' ? (sel as (s: unknown) => unknown)(storeRef.current) : storeRef.current;
   useAppStore.getState = () => storeRef.current;
   return { useAppStore, getState: () => storeRef.current };
 });
@@ -299,7 +300,7 @@ describe('useExtraction', () => {
     // Master already holds 42 tickets; the run re-fetched 2 of them with
     // nothing added — the preview must not shrink to the run subset.
     setupStore({ masterDatasetInfo: { totalExtracted: 42, lastUpdated: '2026-01-31T00:00:00Z' } });
-    mockFetch.mockImplementation((url: any) => {
+    mockFetch.mockImplementation((url: unknown) => {
       const u = String(url);
       if (u.includes('/api/jira/extract')) {
         return jsonResponse({
@@ -329,7 +330,7 @@ describe('useExtraction', () => {
 
   it('zero-match saved run keeps the master list instead of the empty state', async () => {
     setupStore({ masterDatasetInfo: { totalExtracted: 42, lastUpdated: '2026-01-31T00:00:00Z' } });
-    mockFetch.mockImplementation((url: any) => {
+    mockFetch.mockImplementation((url: unknown) => {
       const u = String(url);
       if (u.includes('/api/jira/extract')) {
         return jsonResponse({ success: true, summary: { totalExtracted: 0, added: 0, updated: 0, unchanged: 0, deleted: 0 }, issues: [] });
@@ -356,7 +357,7 @@ describe('useExtraction', () => {
 
   it('unsaved runs keep the per-run preview (no master swap)', async () => {
     setupStore({ masterDatasetInfo: { totalExtracted: 42, lastUpdated: '2026-01-31T00:00:00Z' } });
-    mockFetch.mockImplementation((url: any) => {
+    mockFetch.mockImplementation((url: unknown) => {
       const u = String(url);
       if (u.includes('/api/jira/extract')) {
         return jsonResponse({

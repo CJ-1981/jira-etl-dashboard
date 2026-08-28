@@ -10,7 +10,8 @@ const storeRef = vi.hoisted(() => ({ current: undefined as any }));
 vi.mock('@/store/app-store', () => {
   // Real zustand exposes getState() on the hook itself — mirror that here so
   // hooks reading `useAppStore.getState()` see the mock state too.
-  const useAppStore: any = (sel: any) => (typeof sel === 'function' ? sel(storeRef.current) : storeRef.current);
+  const useAppStore = (sel?: unknown) =>
+    typeof sel === 'function' ? (sel as (s: unknown) => unknown)(storeRef.current) : storeRef.current;
   useAppStore.getState = () => storeRef.current;
   return { useAppStore, getState: () => storeRef.current };
 });
