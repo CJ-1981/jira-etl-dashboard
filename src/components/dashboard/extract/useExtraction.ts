@@ -1,43 +1,11 @@
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { localConfig, CustomExtractField } from '@/lib/config/local-store';
+import { CustomExtractField } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 import { masterDatasetQueryKey, type MasterDatasetData } from '@/hooks/useMasterDatasetQuery';
-
-// Parses a response body as JSON, tolerating the HTML error page Next.js serves
-// for API routes while webpack is (re)compiling. That transient state is treated
-// as "server busy" rather than a real error so callers can retry.
-export async function safeJson(res: Response) {
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    const contentType = res.headers.get('content-type') || '';
-    const trimmed = text.trimStart();
-    const isHtml = contentType.includes('text/html') || trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html');
-    if (isHtml) {
-      console.warn(`[ExtractPanel] Server returned HTML instead of JSON (status ${res.status}) — likely compiling or restarting. Retry shortly.`);
-      return { success: false, serverBusy: true, error: 'Server is busy compiling. Please try again in a moment.' };
-    }
-    console.error('Failed to parse JSON:', text.substring(0, 500));
-    return { success: false, error: `Server error (${res.status})` };
-  }
-}
-
-// @MX:NOTE: Retries only when the dev server returns HTML instead of JSON (webpack recompiling).
-// @MX:REASON: During development, Next.js serves an HTML error page while recompiling after file
-// changes. This is a transient state, not a real error, so we retry a few times with a delay.
-export async function fetchWithDevServerRetry(url: string, init: RequestInit, attempts = 3, delayMs = 1500) {
-  let res = await fetch(url, init);
-  let data = await safeJson(res);
-  for (let i = 1; i < attempts && data.serverBusy; i++) {
-    await new Promise(r => setTimeout(r, delayMs));
-    res = await fetch(url, init);
-    data = await safeJson(res);
-  }
-  return { res, data };
-}
+import { getDataSource } from '@/lib/datasource';
+import { isRelayMode } from '@/lib/runtime/mode';
 
 export interface UseExtractionOptions {
   jql: string;
@@ -85,17 +53,17 @@ export function useExtraction(options: UseExtractionOptions) {
       // shown in the inputs. Manual "Quick Update" passes its own daysBack.
       const effectiveDaysBack = daysBack || (quickPullDays ?? undefined);
 
-      const body: Record<string, unknown> = {
+      const res = await getDataSource().extract({
         connectionRef: activeConnectionId,
-        jiraCredentials: {
+        connection: {
           baseUrl: activeConn.baseUrl,
           email: activeConn.email,
           apiToken: activeConn.apiToken,
-          projectKeys: activeConn.projectKeys
+          projectKeys: activeConn.projectKeys,
         },
         rateLimit: settings?.rateLimit,
         generalSettings: settings?.general,
-        customPlugins: localConfig.getKpiPlugins(),
+        customPlugins: [],
         jql: jql || undefined,
         // Omit absolute dates when using a rolling window so the extract route
         // derives them from "now".
@@ -104,110 +72,100 @@ export function useExtraction(options: UseExtractionOptions) {
           : { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
         saveExtraction: saveThisExtraction,
         updateOnly,
-        customFieldIds: customFields.map(f => f.fieldId),
-        storyPointsFieldId: customFields.find(f => f.role === 'storyPoints')?.fieldId,
-        issueOwnerTeamFieldId: customFields.find(f => f.role === 'issueOwnerTeam')?.fieldId,
+        customFields,
         storageConfig
-      };
-
-      const res = await fetch('/api/jira/extract', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
       });
 
       toast.dismiss(loadingToast);
 
-      const data = await safeJson(res);
+      const extractedCount = res.summary.totalExtracted;
 
-      if (res.ok && data.success) {
-        const extractedCount = data.summary.totalExtracted;
-        // Pre-run accumulated total, used to keep the messaging honest when a
-        // re-extraction matches nothing new.
-        const masterTotal = useAppStore.getState().masterDatasetInfo?.totalExtracted ?? 0;
+      // Pre-run accumulated total, used to keep the messaging honest when a
+      // re-extraction matches nothing new.
+      const masterTotal = useAppStore.getState().masterDatasetInfo?.totalExtracted ?? 0;
 
-        if (extractedCount === 0) {
-          if (saveThisExtraction && masterTotal > 0) {
-            toast(`No issues matched this extraction window. Your master dataset keeps its ${masterTotal} tickets.`, { duration: 5000 });
-          } else {
-            toast('No issues found matching your criteria. Try adjusting your JQL query, date range, or project key.', { duration: 5000 });
-            setLastExtractionEmpty(true);
-          }
+      if (extractedCount === 0) {
+        if (saveThisExtraction && masterTotal > 0) {
+          toast(`No issues matched this extraction window. Your master dataset keeps its ${masterTotal} tickets.`, { duration: 5000 });
         } else {
-          setLastExtractionEmpty(false);
-          const { added, updated, unchanged, deleted } = data.summary;
-          const stats = [
-            added > 0 ? `${added} added` : null,
-            updated > 0 ? `${updated} updated` : null,
-            unchanged > 0 ? `${unchanged} unchanged` : null,
-            deleted > 0 ? `${deleted} deleted` : null
-          ].filter(Boolean).join(', ');
-
-          const saveMsg = saveThisExtraction ? ' and synced to master dataset' : '';
-          toast.success(`Extracted ${extractedCount} issues${saveMsg}${stats ? ` (${stats})` : ''}`);
-        }
-
-        if (extractedCount === 0) {
-          // When the saved run matched nothing but tickets are already
-          // accumulated, keep the current list — collapsing it to the empty
-          // state reads as "my tickets are gone".
-          if (!(saveThisExtraction && masterTotal > 0)) setExtractionResult(null);
-        } else {
-          setExtractionResult({ total: extractedCount, etlRunId: data.etlRunId, issues: data.issues });
-        }
-
-        try {
-          // Refresh the shared master-dataset query; page.tsx syncs the fresh
-          // payload into the store from one place. Invalidating (instead of a
-          // side fetch) keeps this hook and the page on the same cache entry.
-          const masterKey = masterDatasetQueryKey(activeConnectionId, storageConfig);
-          await queryClient.invalidateQueries({
-            queryKey: masterKey,
-            refetchType: 'active',
-          });
-
-          // After a saved run, show the accumulated master dataset in the
-          // ticket list rather than just this run's window: the list totals
-          // are what users read as "my ticket count", so a re-extraction that
-          // adds nothing new must not shrink the list to the run subset (or
-          // to zero). The run's own delta stays in the toast above.
-          const freshMaster = queryClient.getQueryData(masterKey) as MasterDatasetData | undefined;
-          if (saveThisExtraction && freshMaster && (freshMaster.totalExtracted > 0 || (freshMaster.issues?.length ?? 0) > 0)) {
-            setExtractionResult({
-              total: freshMaster.totalExtracted,
-              issues: freshMaster.issues ?? [],
-              isAllTickets: true,
-              etlRunId: 'master',
-            });
-            setLastExtractionEmpty(false);
-          }
-
-          // Ping only when the refresh actually produced data (same condition
-          // as the previous inline fetch path).
-          if (queryClient.getQueryData(masterKey) != null && getPollEnabled()) {
-            await fetch('/api/jira/poll', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'ping' })
-            }).catch(e => console.warn('Failed to ping polling system:', e));
-          }
-        } catch (error) {
-          console.log('Failed to reload master dataset info:', error);
+          toast('No issues found matching your criteria. Try adjusting your JQL query, date range, or project key.', { duration: 5000 });
+          setLastExtractionEmpty(true);
         }
       } else {
-        if (res.status === 401) {
-          toast.error('Authentication failed. Please check your Jira credentials.', { description: data.error, duration: 5000 });
-        } else if (res.status === 429) {
-          toast.error('Rate limit exceeded. Increase delay in settings and try again.', { description: data.error, duration: 5000 });
-        } else if (res.status === 503 || res.status === 504) {
-          toast.error('Jira server unavailable or timeout. Try reducing the date range or batch size.', { description: data.error, duration: 5000 });
-        } else {
-          toast.error(data.error || `Extraction failed (${res.status})`, { duration: 5000 });
-        }
+        setLastExtractionEmpty(false);
+        const { added, updated, unchanged, deleted } = res.summary;
+        const stats = [
+          added > 0 ? `${added} added` : null,
+          updated > 0 ? `${updated} updated` : null,
+          unchanged > 0 ? `${unchanged} unchanged` : null,
+          deleted > 0 ? `${deleted} deleted` : null
+        ].filter(Boolean).join(', ');
+
+        const saveMsg = saveThisExtraction ? ' and synced to master dataset' : '';
+        toast.success(`Extracted ${extractedCount} issues${saveMsg}${stats ? ` (${stats})` : ''}`);
       }
-    } catch (networkError) {
+
+      if (extractedCount === 0) {
+        // When the saved run matched nothing but tickets are already
+        // accumulated, keep the current list — collapsing it to the empty
+        // state reads as "my tickets are gone".
+        if (!(saveThisExtraction && masterTotal > 0)) setExtractionResult(null);
+      } else {
+        setExtractionResult({ total: extractedCount, etlRunId: res.etlRunId, issues: res.issues });
+      }
+
+      try {
+        // Refresh the shared master-dataset query; page.tsx syncs the fresh
+        // payload into the store from one place. Invalidating (instead of a
+        // side fetch) keeps this hook and the page on the same cache entry.
+        const masterKey = masterDatasetQueryKey(activeConnectionId, storageConfig);
+        await queryClient.invalidateQueries({
+          queryKey: masterKey,
+          refetchType: 'active',
+        });
+
+        // After a saved run, show the accumulated master dataset in the
+        // ticket list rather than just this run's window: the list totals
+        // are what users read as "my ticket count", so a re-extraction that
+        // adds nothing new must not shrink the list to the run subset (or
+        // to zero). The run's own delta stays in the toast above.
+        const freshMaster = queryClient.getQueryData(masterKey) as MasterDatasetData | undefined;
+        if (saveThisExtraction && freshMaster && (freshMaster.totalExtracted > 0 || (freshMaster.issues?.length ?? 0) > 0)) {
+          setExtractionResult({
+            total: freshMaster.totalExtracted,
+            issues: freshMaster.issues ?? [],
+            isAllTickets: true,
+            etlRunId: 'master',
+          });
+          setLastExtractionEmpty(false);
+        }
+
+        // Ping only when the refresh actually produced data (same condition
+        // as the previous inline fetch path) — server mode only (the relay
+        // has no polling system).
+        if (!isRelayMode() && queryClient.getQueryData(masterKey) != null && getPollEnabled()) {
+          await fetch('/api/jira/poll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'ping' })
+          }).catch(e => console.warn('Failed to ping polling system:', e));
+        }
+      } catch (error) {
+        console.log('Failed to reload master dataset info:', error);
+      }
+    } catch (extractError: unknown) {
       toast.dismiss(loadingToast);
-      console.error('Network error:', networkError);
-      toast.error('Network error: Unable to reach the server. Check your connection.', { duration: 5000 });
+      const err = extractError as Error & { status?: number };
+      const status = err?.status;
+      if (status === 401) {
+        toast.error('Authentication failed. Please check your Jira credentials.', { description: err.message, duration: 5000 });
+      } else if (status === 429) {
+        toast.error('Rate limit exceeded. Increase delay in settings and try again.', { description: err.message, duration: 5000 });
+      } else if (status === 503 || status === 504) {
+        toast.error('Jira server unavailable or timeout. Try reducing the date range or batch size.', { description: err.message, duration: 5000 });
+      } else {
+        toast.error(err?.message || 'Extraction failed', { duration: 5000 });
+      }
     } finally {
       setExtracting(false);
     }
@@ -224,18 +182,13 @@ export function useExtraction(options: UseExtractionOptions) {
       const data = await queryClient.fetchQuery({
         queryKey: masterDatasetQueryKey(activeConnectionId, storageConfig),
         queryFn: async () => {
-          const { res, data: body } = await fetchWithDevServerRetry(
-            `/api/jira/master/${activeConnectionId}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'get', storageConfig })
-            }
-          );
-          if (res.ok && body.success && body.data) return body.data;
-          const err = new Error(body.error || 'Failed to fetch tickets') as Error & { serverError?: boolean };
-          err.serverError = true;
-          throw err;
+          const loaded = await getDataSource().loadMasterDataset(activeConnectionId, { storageConfig });
+          if (!loaded) {
+            const err = new Error('Failed to fetch tickets') as Error & { serverError?: boolean };
+            err.serverError = true;
+            throw err;
+          }
+          return loaded;
         },
         // The user explicitly asked for fresh data — bypass any cached copy.
         staleTime: 0,
@@ -247,7 +200,7 @@ export function useExtraction(options: UseExtractionOptions) {
       if (data) {
         setExtractionResult({
           total: data.totalExtracted,
-          issues: data.issues,
+          issues: data.issues ?? [],
           isAllTickets: true
         });
         toast.success(`Loaded all ${data.totalExtracted} tickets from database`);
@@ -275,14 +228,11 @@ export function useExtraction(options: UseExtractionOptions) {
       const data = await queryClient.fetchQuery({
         queryKey: masterDatasetQueryKey(activeConnectionId, storageConfig),
         queryFn: async () => {
-          const res = await fetch(`/api/jira/master/${activeConnectionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'get', storageConfig })
-          });
-          const body = await safeJson(res);
-          if (res.ok && body.success && body.data) return body.data;
-          return null;
+          try {
+            return await getDataSource().loadMasterDataset(activeConnectionId, { storageConfig });
+          } catch {
+            return null;
+          }
         },
         staleTime: 0,
         retry: 0,
@@ -290,7 +240,7 @@ export function useExtraction(options: UseExtractionOptions) {
       if (data) {
         setExtractionResult({
           total: data.totalExtracted,
-          issues: data.issues,
+          issues: data.issues ?? [],
           isAllTickets: true
         });
       }

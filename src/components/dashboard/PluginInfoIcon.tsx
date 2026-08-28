@@ -13,16 +13,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { localConfig } from '@/lib/config/local-store';
+import { getDataSource } from '@/lib/datasource';
 
 async function fetchBuiltinDescriptions(): Promise<Record<string, string>> {
-  const res = await fetch('/api/kpi/plugins');
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
+  const plugins = await getDataSource().listPlugins();
   const map: Record<string, string> = {};
-  if (data?.success && Array.isArray(data.plugins)) {
-    for (const p of data.plugins) {
-      if (p?.id && p.description) map[p.id] = p.description;
-    }
+  for (const p of plugins) {
+    if (p?.id && p.description) map[p.id] = p.description;
   }
   return map;
 }

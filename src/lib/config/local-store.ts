@@ -125,6 +125,11 @@ export const KEYS = {
   settings: 'cfg_app_settings',
   activeConnection: 'cfg_active_connection_id',
   storage: 'cfg_storage_config',
+  // Relay mode (static build): base URL of the local Python relay (jira_relay.py)
+  relayUrl: 'cfg_relay_url',
+  // Relay mode: dashboard views persisted in localStorage (server mode keeps
+  // them in the database via /api/dashboard/views)
+  dashboardViews: 'cfg_dashboard_views',
   jql: 'cfg_saved_jqls',
   dashboardJql: 'cfg_dashboard_jqls',
   etlUpdateOnly: 'cfg_etl_update_only',
@@ -245,6 +250,12 @@ export const localConfig = {
   getStorageConfig: () => get<StorageConfig>(KEYS.storage, { provider: 'sqlite', url: '', isCustom: false }),
   saveStorageConfig: (c: StorageConfig) => set(KEYS.storage, c),
 
+  getRelayUrl: () => get<string>(KEYS.relayUrl, 'http://localhost:8765'),
+  saveRelayUrl: (url: string) => set(KEYS.relayUrl, url),
+
+  getDashboardViews: () => get<unknown[]>(KEYS.dashboardViews, []),
+  saveDashboardViews: (views: unknown[]) => set(KEYS.dashboardViews, views),
+
   getSavedJqls: () => get<SavedJql[]>(KEYS.jql, []),
   saveJqls: (jqls: SavedJql[]) => set(KEYS.jql, jqls),
 
@@ -340,6 +351,7 @@ export const localConfig = {
       customPlugins: localConfig.getKpiPlugins(),
       settings: localConfig.getSettings(),
       storage: localConfig.getStorageConfig(),
+      relayUrl: localConfig.getRelayUrl(),
       savedJqls: localConfig.getSavedJqls(),
       dashboardJqls: localConfig.getDashboardJqls(),
       etlUpdateOnly: localConfig.getEtlUpdateOnly(),
@@ -370,6 +382,7 @@ export const localConfig = {
       if (data.customPlugins) localConfig.saveKpiPlugins(data.customPlugins);
       if (data.settings) localConfig.saveSettings(data.settings);
       if (data.storage) localConfig.saveStorageConfig(data.storage);
+      if (data.relayUrl) localConfig.saveRelayUrl(data.relayUrl);
       if (data.savedJqls) localConfig.saveJqls(data.savedJqls);
       if (data.dashboardJqls) localConfig.saveDashboardJqls(data.dashboardJqls);
       if (data.etlUpdateOnly !== undefined) localConfig.saveEtlUpdateOnly(data.etlUpdateOnly);

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { localConfig, type PgConnection } from '@/lib/config/local-store';
 import { GERMAN_STATES } from '@/lib/config/constants';
+import { getDataSource } from '@/lib/datasource';
+import { runtimeFeatures } from '@/lib/runtime/mode';
 import { useAppStore } from '@/store/app-store';
 
 export function ExportPanel() {
@@ -44,23 +46,19 @@ export function ExportPanel() {
     rowCount: number; success: boolean; error?: string;
   } | null>(null);
 
-  // KPI file export mutation — POST /api/export/file, returns the raw blob.
-  // Driven via mutateAsync from exportData so the file/both orchestration and
-  // the `exporting` spinner semantics stay identical.
+  // KPI file export mutation — DataSource-backed (server route / client-side
+  // CSV assembly in relay mode), returns the raw blob. Driven via mutateAsync
+  // from exportData so the file/both orchestration and the `exporting`
+  // spinner semantics stay identical.
   const kpiFileExportMutation = useMutation({
     mutationFn: async (format: string) => {
-      const exportRes = await fetch('/api/export/file', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          issues: extractionResult?.issues || [],
-          holidays: { regions: region === 'all' ? [] : [region] },
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          format
-        }),
+      return getDataSource().exportKpiFile({
+        issues: extractionResult?.issues || [],
+        regions: region === 'all' ? [] : [region],
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        format,
       });
-      if (!exportRes.ok) throw new Error('KPI export failed');
-      return exportRes.blob();
     },
   });
 
@@ -189,7 +187,7 @@ export function ExportPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${runtimeFeatures.hasPgExport ? 'md:grid-cols-2' : ''} gap-6`}>
         <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'file' ? 'border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('file')}>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
@@ -199,21 +197,23 @@ export function ExportPanel() {
             </div>
           </CardHeader>
         </Card>
-        <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'database' ? 'border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('database')}>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-3">
-              <div className={`rounded-lg p-2.5 ${exportMode === 'database' ? 'bg-indigo-600' : 'bg-gray-100 dark:bg-slate-800'}`}><Database className={`h-5 w-5 ${exportMode === 'database' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} /></div>
-              <div className="flex-1"><CardTitle className="text-base">Database Sync</CardTitle><CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">Manual push of results to external PostgreSQL / Supabase.</CardDescription></div>
-              {exportMode === 'database' && <CheckCircle2 className="h-5 w-5 text-indigo-400" />}
-            </div>
-          </CardHeader>
-        </Card>
+        {runtimeFeatures.hasPgExport && (
+          <Card className={`border-2 transition-colors cursor-pointer ${exportMode === 'database' ? 'border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-slate-200 dark:border-slate-700'}`} onClick={() => setExportMode('database')}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className={`rounded-lg p-2.5 ${exportMode === 'database' ? 'bg-indigo-600' : 'bg-gray-100 dark:bg-slate-800'}`}><Database className={`h-5 w-5 ${exportMode === 'database' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} /></div>
+                <div className="flex-1"><CardTitle className="text-base">Database Sync</CardTitle><CardDescription className="text-xs mt-0.5 text-slate-600 dark:text-slate-400">Manual push of results to external PostgreSQL / Supabase.</CardDescription></div>
+                {exportMode === 'database' && <CheckCircle2 className="h-5 w-5 text-indigo-400" />}
+              </div>
+            </CardHeader>
+          </Card>
+        )}
       </div>
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3"><Info className="h-4 w-4 text-slate-500 dark:text-slate-400" /><span className="text-sm font-medium text-slate-700 dark:text-slate-300">When to use which?</span></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 ${runtimeFeatures.hasPgExport ? 'md:grid-cols-2' : ''} gap-4`}>
             <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-500/20 p-3 space-y-2">
               <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">CSV / JSON Export</p>
               <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
@@ -221,13 +221,15 @@ export function ExportPanel() {
                 <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 shrink-0" /><span>One-time Metabase imports</span></li>
               </ul>
             </div>
-            <div className="rounded-lg bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-500/20 p-3 space-y-2">
-              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Database Sync (Manual)</p>
-              <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-indigo-400 mt-0.5 shrink-0" /><span>Manual DB-to-DB bridge</span></li>
-                <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-indigo-400 mt-0.5 shrink-0" /><span>Perfect for Metabase usage</span></li>
-              </ul>
-            </div>
+            {runtimeFeatures.hasPgExport && (
+              <div className="rounded-lg bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-500/20 p-3 space-y-2">
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Database Sync (Manual)</p>
+                <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                  <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-indigo-400 mt-0.5 shrink-0" /><span>Manual DB-to-DB bridge</span></li>
+                  <li className="flex items-start gap-1.5"><CheckCircle2 className="h-3 w-3 text-indigo-400 mt-0.5 shrink-0" /><span>Perfect for Metabase usage</span></li>
+                </ul>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

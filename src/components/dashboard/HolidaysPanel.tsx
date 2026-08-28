@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Calendar, RefreshCw } from 'lucide-react';
 import { GERMAN_STATES } from '@/lib/config/constants';
 import { useAppStore } from '@/store/app-store';
+import { getDataSource } from '@/lib/datasource';
 
 // @MX:ANCHOR: Year bounds for the holiday calendar. The underlying holiday tables
 // only define entries for modern years; values outside this range are rejected.
@@ -64,22 +65,13 @@ export function HolidaysPanel() {
   } = useQuery({
     queryKey: ['holidays', year, region],
     queryFn: async (): Promise<Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>> => {
-      let res: Response;
       try {
-        res = await fetch(`/api/holidays?year=${year}&region=${region}`);
+        const data = await getDataSource().getHolidays(year as number, region);
+        return (data.holidays || []) as Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>;
       } catch (e) {
         console.error('[Holidays] Fetch error:', e);
         throw new Error('Failed to load holidays');
       }
-      if (!res.ok) {
-        throw new Error('Failed to load holidays');
-      }
-      const data = await res.json();
-      if (data.success) {
-        return (data.holidays || []) as Array<{ date: string; name: string; nameLocal: string; isNational: boolean; regions: string[] }>;
-      }
-      console.error('[Holidays] API returned unsuccessful payload:', data);
-      throw new Error(data.error || 'Failed to load holidays');
     },
     enabled: yearValid,
     retry: false,

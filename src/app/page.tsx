@@ -20,6 +20,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
 import { JiraConnection } from '@/lib/config/local-store';
+import { runtimeFeatures } from '@/lib/runtime/mode';
 import { useAppStore } from '@/store/app-store';
 import { usePollingNotifications } from '@/hooks/usePollingNotifications';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
@@ -490,10 +491,12 @@ export default function Home() {
                       <Server className="h-4 w-4" />
                       Connections
                     </TabsTrigger>
-                    <TabsTrigger value="storage" className="gap-2 px-6">
-                      <HardDrive className="h-4 w-4" />
-                      Storage
-                    </TabsTrigger>
+                    {runtimeFeatures.hasStoragePanel && (
+                      <TabsTrigger value="storage" className="gap-2 px-6">
+                        <HardDrive className="h-4 w-4" />
+                        Storage
+                      </TabsTrigger>
+                    )}
                     <TabsTrigger value="config" className="gap-2 px-6">
                       <Settings className="h-4 w-4" />
                       Configuration
@@ -506,9 +509,11 @@ export default function Home() {
                 <ConnectionsPanel />
               </TabsContent>
 
-              <TabsContent value="storage" className="mt-0">
-                <StoragePanel />
-              </TabsContent>
+              {runtimeFeatures.hasStoragePanel && (
+                <TabsContent value="storage" className="mt-0">
+                  <StoragePanel />
+                </TabsContent>
+              )}
 
               <TabsContent value="config" className="mt-0">
                 <SettingsPanel />

@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { DashboardView, DashboardViewState } from '@/types/dashboard';
 import { activeViewKey } from '@/lib/config/local-store';
 import { dedupeChartsById } from '@/lib/chart-data-utils';
+import { getDataSource } from '@/lib/datasource';
 
 export function ViewManager() {
   const {
@@ -169,14 +170,7 @@ export function ViewManager() {
   const viewsQuery = useQuery({
     queryKey: viewsQueryKey,
     queryFn: async () => {
-      const params = new URLSearchParams({
-        connectionRef: activeConnectionRef,
-        storageConfig: JSON.stringify(storageConfig)
-      });
-      const res = await fetch(`/api/dashboard/views?${params}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Failed to fetch views');
-      return data.views as DashboardView[];
+      return getDataSource().listViews(activeConnectionRef, storageConfig);
     },
     enabled: !!activeConnectionRef,
     retry: false,
@@ -232,38 +226,24 @@ export function ViewManager() {
     }
   }, [activeView, activeConnectionRef]);
 
-  // Create view mutation — POST /api/dashboard/views. On success the views
-  // query cache is updated with the new view and invalidated for consistency.
+  // Create view mutation. On success the views query cache is updated with
+  // the new view and invalidated for consistency.
   const createViewMutation = useMutation({
     mutationFn: async (name: string) => {
       const viewState = getCurrentViewState();
-      const res = await fetch('/api/dashboard/views', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connectionRef: activeConnectionRef,
-          name,
-          data: JSON.stringify(viewState),
-          storageConfig
-        })
-      });
-      return res.json();
+      return getDataSource().createView(activeConnectionRef, { name, data: JSON.stringify(viewState) }, storageConfig);
     },
-    onSuccess: (data, name) => {
-      if (data.success) {
-        setSavedViews([data.view, ...savedViews]);
-        setActiveView(data.view);
-        setIsViewModified(false);
-        setNewViewName('');
-        setPopoverOpen(false);
-        toast.success(`View "${name}" created`);
-        queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
-      } else {
-        toast.error(data.error || 'Failed to create view');
-      }
+    onSuccess: (view, name) => {
+      setSavedViews([view, ...savedViews]);
+      setActiveView(view);
+      setIsViewModified(false);
+      setNewViewName('');
+      setPopoverOpen(false);
+      toast.success(`View "${name}" created`);
+      queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
     },
-    onError: () => {
-      toast.error('Network error');
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to create view');
     },
   });
 
@@ -272,28 +252,18 @@ export function ViewManager() {
     createViewMutation.mutate(newViewName);
   };
 
-  // Save current view mutation — PATCH /api/dashboard/views/:id.
+  // Save current view mutation.
   const saveViewMutation = useMutation({
     mutationFn: async (view: DashboardView) => {
       const viewState = getCurrentViewState();
-      const res = await fetch(`/api/dashboard/views/${view.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          data: JSON.stringify(viewState),
-          storageConfig
-        })
-      });
-      return res.json();
+      return getDataSource().updateView(view.id, { data: JSON.stringify(viewState) }, storageConfig);
     },
-    onSuccess: (data, view) => {
-      if (data.success) {
-        setSavedViews(savedViews.map(v => v.id === view.id ? data.view : v));
-        setActiveView(data.view);
-        setIsViewModified(false);
-        toast.success(`View "${view.name}" saved`);
-        queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
-      }
+    onSuccess: (updatedView, view) => {
+      setSavedViews(savedViews.map(v => v.id === view.id ? updatedView : v));
+      setActiveView(updatedView);
+      setIsViewModified(false);
+      toast.success(`View "${view.name}" saved`);
+      queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
     },
     onError: () => {
       toast.error('Failed to save view');
@@ -305,19 +275,10 @@ export function ViewManager() {
     saveViewMutation.mutate(activeView);
   };
 
-  // Delete view mutation — DELETE /api/dashboard/views/:id.
+  // Delete view mutation.
   const deleteViewMutation = useMutation({
     mutationFn: async (id: string) => {
-      // @MX:WARN - Sensitive Data: DB credentials in storageConfig
-      // @MX:REASON - storageConfig contains database URLs which may include credentials.
-      // We send it in the request body to avoid exposure in server logs.
-      const res = await fetch(`/api/dashboard/views/${id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storageConfig })
-      });
-      if (!res.ok) throw new Error('Delete failed');
-      return res;
+      await getDataSource().deleteView(id, storageConfig);
     },
     onSuccess: (_res, id) => {
       setSavedViews(savedViews.filter(v => v.id !== id));
@@ -338,28 +299,18 @@ export function ViewManager() {
     deleteViewMutation.mutate(id);
   };
 
-  // Toggle auto-save mutation — PATCH /api/dashboard/views/:id.
+  // Toggle auto-save mutation.
   const toggleAutoSaveMutation = useMutation({
     mutationFn: async (view: DashboardView) => {
-      const res = await fetch(`/api/dashboard/views/${view.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          autoSaveEnabled: !view.autoSaveEnabled,
-          storageConfig
-        })
-      });
-      return res.json();
+      return getDataSource().updateView(view.id, { autoSaveEnabled: !view.autoSaveEnabled }, storageConfig);
     },
-    onSuccess: (data, view) => {
-      if (data.success) {
-        setSavedViews(savedViews.map(v => v.id === view.id ? data.view : v));
-        if (activeView?.id === view.id) {
-          setActiveView(data.view);
-        }
-        toast.success(`Auto-save ${data.view.autoSaveEnabled ? 'enabled' : 'disabled'}`);
-        queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
+    onSuccess: (updatedView, view) => {
+      setSavedViews(savedViews.map(v => v.id === view.id ? updatedView : v));
+      if (activeView?.id === view.id) {
+        setActiveView(updatedView);
       }
+      toast.success(`Auto-save ${updatedView.autoSaveEnabled ? 'enabled' : 'disabled'}`);
+      queryClient.invalidateQueries({ queryKey: ['dashboard-views'] });
     },
     onError: () => {
       toast.error('Failed to update auto-save');
@@ -371,20 +322,15 @@ export function ViewManager() {
     toggleAutoSaveMutation.mutate(view);
   };
 
-  // Set/unset default view mutation — POST/DELETE /api/dashboard/views/:id/default.
+  // Set/unset default view mutation.
   const setDefaultViewMutation = useMutation({
     mutationFn: async (view: DashboardView) => {
-      const method = view.isDefault ? 'DELETE' : 'POST';
-      const res = await fetch(`/api/dashboard/views/${view.id}/default`, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storageConfig })
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || (view.isDefault ? 'Failed to clear default view' : 'Failed to set default view'));
+      const making = !view.isDefault;
+      try {
+        await getDataSource().setDefaultView(view.id, making, storageConfig);
+      } catch (err) {
+        throw new Error((err as Error).message || (making ? 'Failed to clear default view' : 'Failed to set default view'));
       }
-      return res;
     },
     onSuccess: (_res, view) => {
       if (view.isDefault) {

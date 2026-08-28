@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { runtimeFeatures } from '@/lib/runtime/mode';
 import type { PollingStatus } from '@/types/dashboard';
 
 export interface JiraPollResponse {
@@ -50,8 +51,9 @@ export function useJiraPollQuery(options: UseJiraPollQueryOptions = {}) {
       }
     },
     // Client-only endpoint: `window` is undefined during SSR, so the query is
-    // disabled on the server and only polls after hydration.
-    enabled: typeof window !== 'undefined' && enabled,
+    // disabled on the server and only polls after hydration. The scheduler is
+    // server-only — no polling stream in relay mode.
+    enabled: typeof window !== 'undefined' && enabled && runtimeFeatures.hasPolling,
     refetchInterval: intervalMs,
     refetchOnWindowFocus: false,
     // Failures are transient and self-heal on the next tick; retrying would

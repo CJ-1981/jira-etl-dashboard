@@ -2,16 +2,9 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { StorageConfig } from '@/lib/config/local-store';
+import { getDataSource, type MasterDatasetData } from '@/lib/datasource';
 
-/** The master-dataset payload returned by POST /api/jira/master/:id (action:get). */
-export interface MasterDatasetData {
-  totalExtracted: number;
-  dateRange?: { from: string; to: string };
-  lastUpdated: string;
-  // Matches the app store's masterDatasetInfo.issues typing.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  issues?: any[];
-}
+export type { MasterDatasetData };
 
 /**
  * Prefix shared by every master-dataset cache entry. Invalidate with
@@ -30,10 +23,13 @@ export interface UseMasterDatasetQueryOptions {
 }
 
 /**
- * Shared React Query source for the persisted master dataset
- * (POST /api/jira/master/:connectionId, action:'get'). page.tsx mounts it to
+ * Shared React Query source for the persisted master dataset. page.tsx mounts it to
  * load/restore the dataset and syncs the result into the app store; other
  * hooks trigger silent refreshes via `invalidateQueries` on the shared key.
+ *
+ * @MX:NOTE: Goes through the DataSource seam — server mode POSTs
+ * /api/jira/master/:connectionId, relay mode GETs the relay /dataset
+ * (full rawData incl. changelog, gzipped).
  */
 export function useMasterDatasetQuery(
   connectionId: string,
@@ -45,23 +41,21 @@ export function useMasterDatasetQuery(
   return useQuery<MasterDatasetData | null>({
     queryKey: masterDatasetQueryKey(connectionId, storageConfig),
     queryFn: async () => {
-      const res = await fetch(`/api/jira/master/${connectionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', storageConfig }),
-      });
-      const data = await res.json();
-      if (res.ok && data?.success && data.data) return data.data as MasterDatasetData;
-      // Treat "no data yet" / transient errors as an empty result rather than
-      // a query failure — the old loader logged and moved on silently too.
-      return null;
+      try {
+        return await getDataSource().loadMasterDataset(connectionId, { storageConfig });
+      } catch (e) {
+        // Relay mode surfaces network errors when the relay is not running —
+        // treat like the server path treats transient errors: empty result.
+        console.warn('[useMasterDatasetQuery] load failed:', e);
+        return null;
+      }
     },
-    // Client-only endpoint: `window` is undefined during SSR, so the query is
+    // Client-only data source: `window` is undefined during SSR, so the query is
     // disabled on the server and only loads after hydration.
     enabled: typeof window !== 'undefined' && (enabled ?? !!connectionId),
     refetchOnWindowFocus: false,
     retry: false,
-    // Every explicit load/invalidate should hit the server; there is no
+    // Every explicit load/invalidate should hit the data source; there is no
     // interval-based polling on this query.
     staleTime: 0,
   });

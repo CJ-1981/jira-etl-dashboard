@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { localConfig, type AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
+import { getDataSource } from '@/lib/datasource';
+import { runtimeFeatures } from '@/lib/runtime/mode';
 import { useAppStore } from '@/store/app-store';
 
 export function SettingsPanel() {
@@ -53,16 +55,12 @@ export function SettingsPanel() {
     mutationFn: async () => {
       const localData = localConfig.exportConfig();
 
-      // Fetch database views
-      const params = new URLSearchParams({
-        storageConfig: JSON.stringify(storageConfig)
-      });
-      const res = await fetch(`/api/dashboard/views/bulk?${params}`);
-      const dbData = await res.json();
+      // Fetch persisted views (database in server mode, localStorage in relay mode)
+      const views = await getDataSource().listAllViews(storageConfig);
 
       return {
         ...localData,
-        databaseViews: dbData.success ? dbData.views : []
+        databaseViews: views
       };
     },
     onSuccess: (finalData) => {
@@ -84,19 +82,16 @@ export function SettingsPanel() {
   const handleExport = () => exportConfigMutation.mutate();
   const configExporting = exportConfigMutation.isPending;
 
-  // Imports database views as part of a config import. Driven via mutateAsync
+  // Imports persisted views as part of a config import. Driven via mutateAsync
   // from the FileReader flow so the surrounding import logic stays imperative.
   const importViewsMutation = useMutation({
-    mutationFn: async (views: unknown[]) => {
-      const res = await fetch('/api/dashboard/views/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          views,
-          storageConfig
-        })
-      });
-      return res.json();
+    mutationFn: async (views: unknown[]): Promise<{ success: boolean; error?: string }> => {
+      try {
+        await getDataSource().replaceViews(views as import('@/types/dashboard').DashboardView[], storageConfig);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: (err as Error).message };
+      }
     },
   });
 
@@ -171,6 +166,7 @@ export function SettingsPanel() {
         </CardContent>
       </Card>
 
+      {runtimeFeatures.hasPolling && (
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -257,6 +253,7 @@ export function SettingsPanel() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>

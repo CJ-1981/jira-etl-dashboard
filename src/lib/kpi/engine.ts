@@ -228,9 +228,13 @@ export class KpiEngine {
   }
 
   private async initCustomPlugins() {
+    // Filesystem plugins exist only on the server — static/relay builds run
+    // the engine in the browser, where the disk-backed loader is unavailable
+    // (and formula plugins arrive via registerCustomPlugin instead).
+    if (typeof window !== 'undefined') return;
     try {
-      const loader = new PluginLoader();
-      const customPlugins = await loader.loadCustomPlugins();
+      const { loadCustomPluginsFromDisk } = await import('./plugin-loader.node');
+      const customPlugins = await loadCustomPluginsFromDisk();
       customPlugins.forEach((plugin) => this.register(plugin));
       console.log(`[KPI Engine] Loaded ${customPlugins.length} custom plugins`);
     } catch (error) {

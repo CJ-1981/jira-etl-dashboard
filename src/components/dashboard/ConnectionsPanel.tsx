@@ -29,6 +29,9 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { localConfig, JiraConnection } from '@/lib/config/local-store';
+import { generateId } from '@/lib/id';
+import { getDataSource } from '@/lib/datasource';
+import { isRelayMode } from '@/lib/runtime/mode';
 import { useAppStore } from '@/store/app-store';
 
 // Helper component
@@ -107,6 +110,7 @@ function SortableConnectionItem({
 }
 
 export function ConnectionsPanel() {
+  const relay = isRelayMode();
   const {
     connections,
     setConnections,
@@ -115,6 +119,9 @@ export function ConnectionsPanel() {
   } = useAppStore();
   const [loading] = useState(false);
   const [testStatus, setTestStatus] = useState<Record<string, 'success' | 'error' | null>>({});
+  // Relay mode: the local Python relay's base URL (credentials live in the
+  // relay's environment, never in the browser).
+  const [relayUrl, setRelayUrl] = useState(() => (typeof window !== 'undefined' ? localConfig.getRelayUrl() : 'http://localhost:8765'));
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -135,17 +142,23 @@ export function ConnectionsPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const handleSaveJira = () => {
-    if (!form.name || !form.baseUrl || !form.apiToken || !form.email) {
+    if (relay) {
+      if (!form.name || !form.projectKeys) {
+        toast.error('Connection name and project keys are required'); return;
+      }
+    } else if (!form.name || !form.baseUrl || !form.apiToken || !form.email) {
       toast.error('All fields except Project Keys are required'); return;
     }
 
     const allConns = localConfig.getJiraConnections();
     const newConn: JiraConnection = {
-      id: editingId || crypto.randomUUID(),
+      id: editingId || generateId(),
       name: form.name,
-      baseUrl: form.baseUrl,
-      apiToken: form.apiToken,
-      email: form.email,
+      // Relay mode stores the relay URL as the display base URL — credentials
+      // stay in the relay's environment.
+      baseUrl: relay ? relayUrl : form.baseUrl,
+      apiToken: relay ? '' : form.apiToken,
+      email: relay ? '' : form.email,
       projectKeys: form.projectKeys,
       isActive: true,
     };
@@ -172,15 +185,12 @@ export function ConnectionsPanel() {
     setEditingId(conn.id);
   };
 
-  // Connection test mutation — POST /api/jira/test. Toast + status-icon state
-  // are handled in onSettled so success and network failure both settle them.
+  // Connection test mutation — DataSource-backed (server: /api/jira/test;
+  // relay: /health probe). Toast + status-icon state are handled in onSettled
+  // so success and network failure both settle them.
   const testMutation = useMutation({
     mutationFn: async (conn: JiraConnection) => {
-      const res = await fetch('/api/jira/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl: conn.baseUrl, apiToken: conn.apiToken, email: conn.email }),
-      });
-      return res.json();
+      return getDataSource().testConnection(conn);
     },
     onMutate: (conn) => {
       setTestStatus(prev => ({ ...prev, [conn.id]: null }));
@@ -188,6 +198,14 @@ export function ConnectionsPanel() {
     onSuccess: (data, conn) => {
       if (data.success) {
         setTestStatus(prev => ({ ...prev, [conn.id]: 'success' }));
+        if (relay) {
+          toast.success(`Relay reachable`, {
+            description: `Jira upstream: ${data.baseUrl || 'configured in relay env'}`,
+            duration: 5000,
+            position: 'top-right'
+          });
+          return;
+        }
         const serverInfo = data.serverInfo as Record<string, unknown>;
         const serverTitle = (serverInfo?.serverTitle as string) || conn.baseUrl;
         const deploymentType = (serverInfo?.deploymentType as string) || 'Unknown';
@@ -211,7 +229,7 @@ export function ConnectionsPanel() {
     onError: (_error, conn) => {
       setTestStatus(prev => ({ ...prev, [conn.id]: 'error' }));
       toast.error('Network Error', {
-        description: 'Could not reach the test server',
+        description: relay ? 'Could not reach the relay — is jira_relay.py running?' : 'Could not reach the test server',
         duration: 5000,
         position: 'top-right'
       });
@@ -226,15 +244,13 @@ export function ConnectionsPanel() {
     ? testMutation.variables.id
     : null;
 
-  // Delete mutation — DELETE /api/jira/connections/:id. On success the local
-  // list (localStorage + store) is pruned; there is no React Query cache for
-  // connections, so no query invalidation is needed.
+  // Delete mutation — DataSource-backed (server: DELETE /api/jira/connections/:id
+  // cascades the DB; relay: DELETE /dataset wipes the relay's SQLite rows).
+  // On success the local list (localStorage + store) is pruned; there is no
+  // React Query cache for connections, so no query invalidation is needed.
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/jira/connections/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Delete failed');
-      return data;
+      await getDataSource().deleteConnectionData(id);
     },
     onSuccess: (_data, id) => {
       const updatedConns = connections.filter(c => c.id !== id);
@@ -280,6 +296,35 @@ export function ConnectionsPanel() {
 
   return (
     <div className="space-y-6">
+      {relay && (
+        <Card className="border-amber-500/20 bg-amber-50 dark:bg-amber-500/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="h-5 w-5 text-amber-500" />
+              Relay Connection
+            </CardTitle>
+            <CardDescription className="text-slate-600 dark:text-slate-400">
+              Static build — data comes from your local Python relay (jira_relay.py). Jira credentials live in the relay&apos;s environment only.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-slate-700 dark:text-slate-300">Relay URL</Label>
+              <Input
+                placeholder="http://localhost:8765"
+                value={relayUrl}
+                onChange={(e) => setRelayUrl(e.target.value)}
+                onBlur={() => localConfig.saveRelayUrl(relayUrl)}
+                className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Start the relay with <code className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800">python scripts/jira_relay.py</code> — it syncs Jira into its local SQLite store and serves the dataset to this page.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -287,7 +332,9 @@ export function ConnectionsPanel() {
             Active Connection
           </CardTitle>
           <CardDescription className="text-slate-600 dark:text-slate-400">
-            Select the Jira connection to use for extraction and polling
+            {relay
+              ? 'Select the dataset connection to use for syncing and the dashboard'
+              : 'Select the Jira connection to use for extraction and polling'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -325,20 +372,24 @@ export function ConnectionsPanel() {
               <Label className="text-slate-700 dark:text-slate-300">Connection Name</Label>
               <Input placeholder="e.g. Company Jira Cloud" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
             </div>
-            <div className="space-y-2">
-              <Label className="text-slate-700 dark:text-slate-300">Jira Base URL</Label>
-              <Input placeholder="https://your-domain.atlassian.net" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">Email</Label>
-                <Input placeholder="user@company.com" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 dark:text-slate-300">API Token</Label>
-                <Input placeholder="Your Jira API token" type="password" value={form.apiToken} onChange={(e) => setForm({ ...form, apiToken: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
-              </div>
-            </div>
+            {!relay && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-slate-700 dark:text-slate-300">Jira Base URL</Label>
+                  <Input placeholder="https://your-domain.atlassian.net" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-slate-700 dark:text-slate-300">Email</Label>
+                    <Input placeholder="user@company.com" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-slate-700 dark:text-slate-300">API Token</Label>
+                    <Input placeholder="Your Jira API token" type="password" value={form.apiToken} onChange={(e) => setForm({ ...form, apiToken: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />
+                  </div>
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label className="text-slate-700 dark:text-slate-300">Project Keys (comma-separated)</Label>
               <Input placeholder="e.g. PROJ, DEV, OPS" value={form.projectKeys} onChange={(e) => setForm({ ...form, projectKeys: e.target.value })} className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" />

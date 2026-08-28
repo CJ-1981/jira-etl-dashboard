@@ -21,6 +21,7 @@ import {
   Database, HardDrive, Shield, Server, RefreshCw, Edit2, Trash2, Plus, Loader2
 } from 'lucide-react';
 import { localConfig, PgConnection, buildPgConnectionUrl, isSupabaseUrl, AppSettings } from '@/lib/config/local-store';
+import { generateId } from '@/lib/id';
 import { useAppStore } from '@/store/app-store';
 
 // Shape returned by /api/jira/extract/storage.
@@ -196,7 +197,7 @@ export function StoragePanel() {
     }
     const allConns = localConfig.getPgConnections();
     const pgConnection: PgConnection = {
-      id: editingPgId || crypto.randomUUID(),
+      id: editingPgId || generateId(),
       name: pgForm.name,
       host: pgForm.host,
       port: parseInt(pgForm.port) || 5432,

@@ -13,6 +13,9 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 // on :3000 is reused so iteration stays fast.
 export default defineConfig({
   testDir: './e2e',
+  // Relay-mode specs need the static bundle + Python relay
+  // (playwright.static.config.ts) — never the dev server.
+  testIgnore: 'static-relay.spec.ts',
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,

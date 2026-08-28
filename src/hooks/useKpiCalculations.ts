@@ -22,6 +22,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '@/store/app-store';
+import { getDataSource } from '@/lib/datasource';
+import { isRelayMode } from '@/lib/runtime/mode';
 import type { KpiCalcResult } from '@/types/dashboard';
 
 export interface UseKpiCalculationsResult {
@@ -34,12 +36,6 @@ export interface UseKpiCalculationsResult {
   triggerCalculation: (widgetId?: string) => Promise<void>;
   setPollingEnabled: (enabled: boolean) => void;
   refetch: () => void;
-}
-
-interface KpiCalculateResponse {
-  success: boolean;
-  results?: KpiCalcResult[];
-  error?: string;
 }
 
 /**
@@ -68,6 +64,8 @@ export function useKpiCalculations(
   const settings = useAppStore((state) => state.settings);
   const region = useAppStore((state) => state.region);
   const storageConfig = useAppStore((state) => state.storageConfig);
+  // Relay mode calculates client-side over the in-memory dataset.
+  const masterDatasetInfo = useAppStore((state) => state.masterDatasetInfo);
 
   // Local state
   const [pollingEnabled, setPollingEnabledState] = useState(true);
@@ -89,6 +87,8 @@ export function useKpiCalculations(
     globalFilters,
     storageConfig,
     customWidgets,
+    relayIssues: isRelayMode() ? masterDatasetInfo?.issues : undefined,
+    settings,
   });
   useEffect(() => {
     paramsRef.current = {
@@ -99,62 +99,31 @@ export function useKpiCalculations(
       globalFilters,
       storageConfig,
       customWidgets,
+      relayIssues: isRelayMode() ? masterDatasetInfo?.issues : undefined,
+      settings,
     };
   });
 
   /**
-   * Fetch KPI calculations from the API
+   * Run KPI calculations via the DataSource seam
    */
   const fetchKpiCalculations = useCallback(async (): Promise<KpiCalcResult[]> => {
     // Read latest params from ref to avoid stale closure
     const params = paramsRef.current;
 
-    // AbortController for timeout (120s — server-side calculation may be heavy)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
-
-    // Only network-level failures (including abort/timeout) are caught here so
-    // that intentional errors thrown below are not misreported as network errors.
-    let response: Response;
     try {
-      response = await fetch('/api/kpi/calculate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          activeConnectionId: params.activeConnectionId,
-          connectionId: params.activeConnectionId,
-          storageConfig: params.storageConfig,
-          dateFrom: params.dateFrom.toISOString(),
-          dateTo: params.dateTo.toISOString(),
-          region: params.region,
-          globalFilters: params.globalFilters,
-          customWidgets: params.customWidgets || []
-        }),
-        signal: controller.signal,
+      const { results } = await getDataSource().calculateKpis({
+        connectionId: params.activeConnectionId,
+        storageConfig: params.storageConfig,
+        dateFrom: params.dateFrom.toISOString(),
+        dateTo: params.dateTo.toISOString(),
+        region: params.region,
+        globalFilters: params.globalFilters,
+        settings: params.settings,
+        // Relay mode computes client-side over the dataset already in memory.
+        issues: params.relayIssues,
       });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.error('[useKpiCalculations] Request timeout after 120 seconds');
-        throw new Error('KPI calculation request timed out after 120 seconds');
-      }
-      console.error('[useKpiCalculations] Network error:', error);
-      throw error;
-    }
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.error('[useKpiCalculations] API error:', response.status, response.statusText);
-      throw new Error(`KPI calculation failed with HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const data = await response.json() as KpiCalculateResponse;
-
-    // Update params ref only after successful response
-    if (data.success && data.results) {
       lastCalculationParamsRef.current = JSON.stringify({
         dateFrom: params.dateFrom.toISOString(),
         dateTo: params.dateTo.toISOString(),
@@ -164,15 +133,22 @@ export function useKpiCalculations(
         storageConfig: params.storageConfig,
         customWidgets: params.customWidgets || []
       });
-      return data.results;
+      return results;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('[useKpiCalculations] Request timeout after 120 seconds');
+        throw new Error('KPI calculation request timed out after 120 seconds');
+      }
+      console.error('[useKpiCalculations] Calculation failed:', error);
+      throw error instanceof Error ? error : new Error('KPI calculation failed');
     }
-
-    console.error('[useKpiCalculations] Calculation failed:', data.error);
-    throw new Error(`KPI calculation failed: ${data.error || 'unknown error'}`);
   }, []);
 
   // @MX:NOTE: Stable cache key serialization to prevent unnecessary re-fetches
-  // Date objects and filter objects are serialized to strings for stable comparison
+  // Date objects and filter objects are serialized to strings for stable comparison.
+  // The trailing element is the relay-mode dataset stamp (lastUpdated) so a
+  // dataset refresh recalculates; it is undefined in server mode, whose key
+  // prefix is therefore unchanged from the pre-seam shape.
   const stableQueryKey = useMemo(() => {
     const filtersKey = globalFilters ? JSON.stringify(globalFilters) : 'empty';
     const customWidgetsKey = customWidgets ? JSON.stringify([...customWidgets].sort()) : 'empty';
@@ -184,9 +160,10 @@ export function useKpiCalculations(
       dateFrom.toISOString(),
       dateTo.toISOString(),
       filtersKey,
-      customWidgetsKey
+      customWidgetsKey,
+      isRelayMode() ? masterDatasetInfo?.lastUpdated : undefined,
     ];
-  }, [activeConnectionId, region, storageConfig, dateFrom, dateTo, globalFilters, customWidgets]);
+  }, [activeConnectionId, region, storageConfig, masterDatasetInfo?.lastUpdated, dateFrom, dateTo, globalFilters, customWidgets]);
 
   /**
    * React Query for KPI data with caching
@@ -204,10 +181,12 @@ export function useKpiCalculations(
     gcTime: Infinity,
     refetchOnWindowFocus: false,
     retry: false,
-    // Don't fire a calculation without a data source — the route requires a
-    // connectionId (or inline issues), so an empty connectionId only ever
-    // produces a 400 and a spurious error banner on a freshly-opened KPI tab.
-    enabled: pollingEnabled && !!activeConnectionId,
+    // Don't fire a calculation without a data source — server mode requires a
+    // connectionId (or inline issues), and relay mode additionally needs the
+    // dataset loaded in memory. Without either, the query would only produce
+    // a 400/error banner on a freshly-opened KPI tab.
+    enabled: pollingEnabled && !!activeConnectionId
+      && (!isRelayMode() || (masterDatasetInfo?.issues?.length ?? 0) > 0),
   });
 
   /**

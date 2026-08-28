@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "sonner";
 import Script from "next/script";
 import { Providers } from "./providers";
+import { isRelayMode } from "@/lib/runtime/mode";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,6 +45,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className="min-h-screen bg-gray-50 dark:bg-slate-950 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 bg-fixed" style={{ scrollbarGutter: 'stable' }}>
+      {/* @MX:NOTE: Static (relay) builds ship a CSP meta tag because response
+          headers from next.config are ignored by `output: 'export'`. It allows
+          the local Python relay on loopback; server builds keep the stricter
+          header-based CSP configured in next.config.ts. */}
+      {isRelayMode() && (
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' http://localhost:* http://127.0.0.1:*"
+        />
+      )}
       {/* @MX:NOTE: Global layout structure with responsive header and font variables */}
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-900 dark:text-slate-100 min-h-screen`}

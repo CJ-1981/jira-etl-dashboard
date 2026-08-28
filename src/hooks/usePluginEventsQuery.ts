@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { runtimeFeatures } from '@/lib/runtime/mode';
 
 export interface PluginEventsResponse {
   success: boolean;
@@ -44,8 +45,9 @@ export function usePluginEventsQuery(options: UsePluginEventsQueryOptions = {}) 
       }
     },
     // Client-only endpoint: `window` is undefined during SSR, so the query is
-    // disabled on the server and only polls after hydration.
-    enabled: typeof window !== 'undefined' && enabled,
+    // disabled on the server and only polls after hydration. File-watcher
+    // events are a server-only feature — no polling in relay mode.
+    enabled: typeof window !== 'undefined' && enabled && runtimeFeatures.hasFilePlugins,
     refetchInterval: intervalMs,
     refetchOnWindowFocus: false,
     retry: false,

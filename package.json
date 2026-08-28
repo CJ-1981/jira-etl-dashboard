@@ -1,6 +1,6 @@
 {
   "name": "jira-etl-dashboard",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "JIRA ETL Dashboard with Analytics and KPI Tracking",
   "author": "CJ-1981",
   "private": true,
@@ -13,6 +13,8 @@
     "prebuild": "node scripts/prisma-setup.mjs",
     "build": "next build && npm run copy:files",
     "build:analyze": "cross-env ANALYZE=true next build",
+    "build:static": "node scripts/build-static.mjs",
+    "relay": "python scripts/jira_relay.py",
     "copy:files": "shx cp -r .next/static .next/standalone/.next/ && shx cp -r public .next/standalone/",
     "start": "cross-env NODE_ENV=production node .next/standalone/server.js",
     "start:log": "cross-env NODE_ENV=production node .next/standalone/server.js > server.log 2>&1",
@@ -36,6 +38,9 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "e2e": "playwright test",
+    "pree2e:static": "npm run build:static",
+    "e2e:static": "playwright test --config=playwright.static.config.ts",
+    "e2e:static:headed": "playwright test --config=playwright.static.config.ts --headed",
     "e2e:headed": "playwright test --headed",
     "e2e:ui": "playwright test --ui",
     "e2e:install": "playwright install chromium"

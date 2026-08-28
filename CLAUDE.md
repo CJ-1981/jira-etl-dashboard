@@ -102,7 +102,9 @@ requires BOTH headers to be loopback and http(s) only.
 ### Where configuration lives
 - **Jira connections, Postgres connections, app settings, dashboard state: browser
   `localStorage`** via `src/lib/config/local-store.ts` — there is no `JiraConnection` table
-  in the current schema (older code/comments may suggest otherwise).
+  in the current schema (older code/comments may suggest otherwise). In relay mode the
+  relay URL (`cfg_relay_url`) and dashboard views (`cfg_dashboard_views`) join the same
+  store (server mode persists views in the `DashboardView` table via the API).
 - Runtime defaults: `data/settings.json` (tracked in git — work hours, SLA targets, retention).
 - Server env: `.env` (`DATABASE_URL`, `JIRA_WEBHOOK_SECRET`, …) — untracked, never commit it.
   `.env.example` documents every supported variable (legacy `NEXTAUTH_*`/`ADMIN_*` vars are
@@ -129,16 +131,25 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
    `JIRA_ISSUE_OWNER_TEAM_FIELD` / `JIRA_STORY_POINTS_FIELD`, read from
    `.env` at request time (documented in `.env.example`). Note these apply
    server-side only; client components fall back to the defaults.
-3. **All KPI math runs server-side** via `/api/kpi/calculate` — there is no Web Worker
-   (a former `kpi-worker.ts` was dead code and has been deleted). Don't build features
-   assuming client-side calculation exists.
+3. **KPI math runs server-side in server mode, client-side in relay mode** —
+   server builds calculate via `/api/kpi/calculate`; the static build
+   (`NEXT_PUBLIC_BUILD_MODE=static`) computes in the browser through
+   `src/lib/kpi/client-calculator.ts` over the relay dataset. All client data
+   access goes through the `DataSource` seam (`src/lib/datasource/`) — new
+   features must work through that seam or carry a `runtimeFeatures` flag
+   (see `src/lib/runtime/mode.ts`). Don't build features assuming only one
+   mode exists.
 4. **Custom plugin upload = server-side file write** into the custom-plugin directory
    (`data/custom-plugins/`) with the plugin's `calculate` body interpolated, activated at
    restart. Formula execution itself is sandboxed (see KPI engine section), but the file-write
-   surface remains — never expose this app untrusted on a network.
-5. **Electron path was removed** — the abandoned Electron distribution path
-   (`electron/`, electron-builder config and docs) was deleted on this branch.
-   The caxa pipeline (`build-exe.*` + `launcher.cjs`) is the only distribution path.
+   surface remains — never expose this app untrusted on a network. File-based plugins are
+   server-mode only (hidden via feature flags in the static build).
+5. **Dual distribution paths** — the caxa pipeline (`build-exe.*` + `launcher.cjs`) builds the
+   server product; `npm run build:static` (+ `scripts/jira_relay.py`, deployed by
+   `.github/workflows/deploy-pages.yml`) is the static GitHub Pages path. The static build
+   temporarily relocates `src/app/api` (`scripts/build-static.mjs`) because
+   `output: 'export'` rejects route handlers — always run it via the script, never a bare
+   `NEXT_STATIC_EXPORT=1 next build`. See `docs/STATIC_RELAY_MODE.md`.
 6. **Jira custom field IDs** — `transformIssueForKpi` in `src/lib/kpi/engine-utils.ts`
    accepts an optional `fieldMapping` parameter and uses `JIRA_FIELD_MAP` defaults
    (the legacy `transformIssue` in `jira/client.ts` was deleted as dead code). However,
