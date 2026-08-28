@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
 import { ExtractPanel } from '../ExtractPanel';
 import { createMockStore, createMockLocalConfig, renderWithProviders } from '@/test/mock-store';
+import { masterDatasetQueryKey } from '@/hooks/useMasterDatasetQuery';
 
 // ── Store ref (vi.hoisted ref avoids the vitest-4 import-TDZ issue) ──────────
 const storeRef = vi.hoisted(() => ({ current: undefined as any }));
-vi.mock('@/store/app-store', () => ({
-  useAppStore: (sel: any) => (typeof sel === 'function' ? sel(storeRef.current) : storeRef.current),
-  getState: () => storeRef.current,
-}));
+vi.mock('@/store/app-store', () => {
+  // Real zustand exposes getState() on the hook itself — mirror that here so
+  // hooks reading `useAppStore.getState()` see the mock state too.
+  const useAppStore: any = (sel: any) => (typeof sel === 'function' ? sel(storeRef.current) : storeRef.current);
+  useAppStore.getState = () => storeRef.current;
+  return { useAppStore, getState: () => storeRef.current };
+});
 
 // localConfig is read lazily (getter) so createMockLocalConfig() can run after imports init.
 let localConfigMock: any;
@@ -154,6 +159,17 @@ describe('ExtractPanel', () => {
       dateFrom: '2026-01-01',
       dateTo: '2026-01-31',
     });
+    const masterAfterRun = {
+      totalExtracted: 2,
+      dateRange: { from: '2026-01-01', to: '2026-01-31' },
+      lastUpdated: '2026-01-31T12:00:00Z',
+      // After a saved run the preview loads the accumulated dataset,
+      // so the master payload carries the stored tickets.
+      issues: [
+        { key: 'PROJ-1', fields: { summary: 'Bug one', status: { name: 'Done' }, assignee: { displayName: 'Alice' }, created: '2026-01-01' } },
+        { key: 'PROJ-2', fields: { summary: 'Task two', status: { name: 'Open' }, created: '2026-01-02' } },
+      ],
+    };
     mockFetch.mockImplementation((url: any) => {
       const u = String(url);
       if (u.includes('/api/jira/poll')) {
@@ -171,19 +187,25 @@ describe('ExtractPanel', () => {
         });
       }
       if (u.includes('/api/jira/master/')) {
-        return jsonResponse({
-          success: true,
-          data: { totalExtracted: 2, dateRange: { from: '2026-01-01', to: '2026-01-31' }, lastUpdated: '2026-01-31T12:00:00Z', issues: [] },
-        });
+        return jsonResponse({ success: true, data: masterAfterRun });
       }
       return jsonResponse({ success: true });
     });
 
-    renderWithProviders(<ExtractPanel />);
+    // Seed the master-dataset cache the way the app's page-level query would
+    // have left it before the run.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    queryClient.setQueryData(
+      masterDatasetQueryKey('conn-1', storeRef.current.storageConfig),
+      masterAfterRun
+    );
+    renderWithProviders(<ExtractPanel />, queryClient);
     const runBtn = screen.getByRole('button', { name: /run jira extraction/i });
     fireEvent.click(runBtn);
 
-    expect(await screen.findByText(/Extraction Complete/i)).toBeInTheDocument();
+    // The saved run swaps the preview to the full master dataset, so the
+    // card shows the accumulated totals rather than this run's subset.
+    expect(await screen.findByText(/Master Dataset/i)).toBeInTheDocument();
     expect(screen.getByText('PROJ-1')).toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledWith('/api/jira/extract', expect.objectContaining({ method: 'POST' }));
   });

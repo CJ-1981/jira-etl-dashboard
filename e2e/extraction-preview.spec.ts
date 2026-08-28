@@ -229,4 +229,60 @@ test.describe('Extraction preview list — text column alignment', () => {
     await expect(page.locator('a[href*="/browse/ABCDE-12345"]')).toBeVisible();
     await expect(visibleKeys).toHaveCount(1);
   });
+
+  test('re-extraction that adds no new tickets keeps the full ticket list', async ({ page }) => {
+    seedConnection(page, {
+      name: 'E2E Alignment Seed',
+      baseUrl: 'https://e2e.invalid',
+      email: 'e2e@example.com',
+      apiToken: 'e2e-token',
+    });
+
+    // Master dataset: 4 accumulated tickets.
+    await page.route('**/api/jira/master/**', (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            totalExtracted: ISSUES.length,
+            issues: ISSUES,
+            dateRange: { from: '2026-01-04T10:00:00.000Z', to: '2026-02-05T10:00:00.000Z' },
+            lastUpdated: '2026-02-05T10:00:00.000Z',
+          },
+        }),
+      })
+    );
+
+    // The run re-fetches only 2 tickets from Jira, both already stored —
+    // nothing new. Before the fix the preview shrank to these 2 rows.
+    await page.route('**/api/jira/extract', (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          etlRunId: 'e2e-run-1',
+          summary: { totalExtracted: 2, added: 0, updated: 0, unchanged: 2, deleted: 0 },
+          issues: [ISSUES[0], ISSUES[1]],
+        }),
+      })
+    );
+
+    await gotoHome(page);
+    await expect(page.locator('a[href*="/browse/"]')).toHaveCount(ISSUES.length);
+
+    // Run an extraction: fill the date window so the run button enables.
+    const dateInputs = page.locator('input[type="date"]');
+    await dateInputs.first().fill('2026-01-01');
+    await dateInputs.nth(1).fill('2026-01-31');
+    await page.getByRole('button', { name: 'Run Jira Extraction' }).click();
+
+    // The run completed (success toast) and the ticket list still shows the
+    // FULL accumulated dataset — 4 tickets with matching totals — rather
+    // than collapsing to the 2 tickets this window happened to re-fetch.
+    await expect(page.getByText(/Extracted 2 issues/)).toBeVisible();
+    const visibleKeys = page.locator('a[href*="/browse/"]');
+    await expect(visibleKeys).toHaveCount(ISSUES.length);
+    await expect(page.locator('.text-2xl').first()).toHaveText(String(ISSUES.length));
+  });
 });

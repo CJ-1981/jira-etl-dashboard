@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { localConfig, CustomExtractField } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
-import { masterDatasetQueryKey } from '@/hooks/useMasterDatasetQuery';
+import { masterDatasetQueryKey, type MasterDatasetData } from '@/hooks/useMasterDatasetQuery';
 
 // Parses a response body as JSON, tolerating the HTML error page Next.js serves
 // for API routes while webpack is (re)compiling. That transient state is treated
@@ -121,10 +121,17 @@ export function useExtraction(options: UseExtractionOptions) {
 
       if (res.ok && data.success) {
         const extractedCount = data.summary.totalExtracted;
+        // Pre-run accumulated total, used to keep the messaging honest when a
+        // re-extraction matches nothing new.
+        const masterTotal = useAppStore.getState().masterDatasetInfo?.totalExtracted ?? 0;
 
         if (extractedCount === 0) {
-          toast('No issues found matching your criteria. Try adjusting your JQL query, date range, or project key.', { duration: 5000 });
-          setLastExtractionEmpty(true);
+          if (saveThisExtraction && masterTotal > 0) {
+            toast(`No issues matched this extraction window. Your master dataset keeps its ${masterTotal} tickets.`, { duration: 5000 });
+          } else {
+            toast('No issues found matching your criteria. Try adjusting your JQL query, date range, or project key.', { duration: 5000 });
+            setLastExtractionEmpty(true);
+          }
         } else {
           setLastExtractionEmpty(false);
           const { added, updated, unchanged, deleted } = data.summary;
@@ -140,7 +147,10 @@ export function useExtraction(options: UseExtractionOptions) {
         }
 
         if (extractedCount === 0) {
-          setExtractionResult(null);
+          // When the saved run matched nothing but tickets are already
+          // accumulated, keep the current list — collapsing it to the empty
+          // state reads as "my tickets are gone".
+          if (!(saveThisExtraction && masterTotal > 0)) setExtractionResult(null);
         } else {
           setExtractionResult({ total: extractedCount, etlRunId: data.etlRunId, issues: data.issues });
         }
@@ -154,6 +164,22 @@ export function useExtraction(options: UseExtractionOptions) {
             queryKey: masterKey,
             refetchType: 'active',
           });
+
+          // After a saved run, show the accumulated master dataset in the
+          // ticket list rather than just this run's window: the list totals
+          // are what users read as "my ticket count", so a re-extraction that
+          // adds nothing new must not shrink the list to the run subset (or
+          // to zero). The run's own delta stays in the toast above.
+          const freshMaster = queryClient.getQueryData(masterKey) as MasterDatasetData | undefined;
+          if (saveThisExtraction && freshMaster && (freshMaster.totalExtracted > 0 || (freshMaster.issues?.length ?? 0) > 0)) {
+            setExtractionResult({
+              total: freshMaster.totalExtracted,
+              issues: freshMaster.issues ?? [],
+              isAllTickets: true,
+              etlRunId: 'master',
+            });
+            setLastExtractionEmpty(false);
+          }
 
           // Ping only when the refresh actually produced data (same condition
           // as the previous inline fetch path).
