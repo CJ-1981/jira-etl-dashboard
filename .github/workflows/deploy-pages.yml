@@ -42,6 +42,10 @@ jobs:
           NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
 
       - uses: actions/configure-pages@v5
+        with:
+          # One-time setup happens here: creates the Pages site with
+          # "build using GitHub Actions" when it does not exist yet.
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
