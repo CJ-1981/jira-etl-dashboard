@@ -177,3 +177,32 @@ jobs:
           name: playwright-report-static
           path: playwright-report/
           retention-days: 7
+
+  # Standalone Windows relay exe (PyInstaller) — attached to every CI run so a
+  # ready-to-ship jira-relay.exe is always available without a local Python.
+  relay-exe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # setup-python puts 3.11 first on PATH; the build script creates and
+      # caches nothing itself, so each run compiles a fresh .venv-relay.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build relay exe (dist\jira-relay.exe)
+        shell: cmd
+        run: call build-relay-exe.bat
+
+      - name: Upload relay exe artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: jira-relay-exe-windows
+          path: dist/jira-relay.exe
+          if-no-files-found: error
+          retention-days: 14
