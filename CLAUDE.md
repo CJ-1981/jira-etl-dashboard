@@ -160,6 +160,11 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
    for a free port (`launcher.cjs` for the caxa exe, generated launchers for the portable
    folder builds); set `PORT` to force a specific port. `launcher.cjs` binds 127.0.0.1
    unless `HOSTNAME` is set explicitly (the app has no auth — keep it loopback-only).
+   Internal-network hosting of the server product is **not supported as-is**: the
+   loopback-origin guard (`src/lib/security.ts`) 401s every mutating route from a
+   non-localhost Origin. The planned adaptation (origin allowlist + binding + firewall
+   scoping) is recorded in `docs/INTERNAL_HOSTING.md` — do not weaken the guard without
+   reading it.
 8. **Existing dev DB has an orphaned migration record** (`20260528000000_add_ticket_snapshot_rawdata_owner_team`,
    applied but its file is not in the repo). `prisma migrate deploy` therefore fails on the
    dev DB — that's expected; the dev DB is managed via `db push`. Fresh databases migrate cleanly.
