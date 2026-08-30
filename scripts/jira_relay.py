@@ -29,9 +29,10 @@ Endpoints:
   GET    /dataset?connection=REF          — master dataset (gzip when accepted)
   DELETE /dataset?connection=REF          — delete a connection's dataset
 
-Configuration (environment variables, or a relay.env KEY=VALUE file next to
-the executable/repo root — see scripts/relay.env.example; real environment
-variables take precedence over the file):
+Configuration (environment variables, or a relay.env KEY=VALUE file searched
+next to the script/executable and at the repo root — see
+scripts/relay.env.example; real environment variables take precedence over
+the file):
   JIRA_BASE_URL    e.g. https://your-domain.atlassian.net   (required for sync)
   JIRA_EMAIL       account email for Basic auth             (required for sync)
   JIRA_API_TOKEN   Jira API token                           (required for sync)
@@ -86,31 +87,42 @@ def app_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def relay_env_candidates():
+    """Directories searched for relay.env, in priority order."""
+    if getattr(sys, "frozen", False):
+        here = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        here = os.path.dirname(os.path.abspath(__file__))
+    return [here, app_root()]
+
+
 def load_env_file():
     """
-    Optional KEY=VALUE config file (relay.env) next to the executable/repo
-    root — the configuration surface for the standalone exe, where setting
-    environment variables per launch is impractical. Real environment
-    variables always win. Returns the loaded path, or None.
+    Optional KEY=VALUE config file (relay.env), searched next to the script
+    (or the standalone exe) first, then at the app root — covers both the
+    repo layout (<repo>/scripts/jira_relay.py + <repo>/relay.env) and a
+    script copied anywhere on its own. Real environment variables always
+    win. Returns the loaded path, or None.
     """
-    path = os.path.join(app_root(), "relay.env")
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, "r", encoding="utf-8-sig") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip().strip('"').strip("'")
-                if key and key not in os.environ:
-                    os.environ[key] = value
-    except OSError as e:
-        print(f"[relay] WARNING: failed reading {path}: {e}", file=sys.stderr)
-        return None
-    return path
+    for path in dict.fromkeys(os.path.join(d, "relay.env") for d in relay_env_candidates()):
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8-sig") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, _, value = line.partition("=")
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+        except OSError as e:
+            print(f"[relay] WARNING: failed reading {path}: {e}", file=sys.stderr)
+            return None
+        return path
+    return None
 
 
 ENV_FILE = load_env_file()
@@ -722,6 +734,16 @@ def main():
         print(f"[relay] Standalone exe — data and relay.env live next to: {app_root()}")
     if ENV_FILE:
         print(f"[relay] Config loaded from: {ENV_FILE}")
+    elif JIRA_BASE_URL and JIRA_EMAIL and JIRA_API_TOKEN:
+        # Running purely on process env vars (CI, exported shell variables).
+        print("[relay] NOTE: no relay.env found — using process environment only.")
+    else:
+        searched = ", ".join(dict.fromkeys(relay_env_candidates()))
+        print(f"[relay] ERROR: no relay.env found (searched: {searched}) and Jira credentials", file=sys.stderr)
+        print("[relay]        are unset — /sync will fail and, without ALLOWED_ORIGIN, browser", file=sys.stderr)
+        print("[relay]        pages cannot read relay responses at all.", file=sys.stderr)
+        print("[relay]        Copy scripts/relay.env.example to relay.env next to the script", file=sys.stderr)
+        print("[relay]        (or at the search paths above) and fill it in.", file=sys.stderr)
     print(f"[relay] SQLite store: {args.db}")
     print(f"[relay] Jira: {JIRA_BASE_URL or '(not configured — /sync will fail)'}")
     print(f"[relay] Allowed origin: {ALLOWED_ORIGIN or '(none — browser pages cannot read relay responses)'}")
