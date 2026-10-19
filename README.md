@@ -7,7 +7,7 @@ Built with **Next.js 16**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Ta
 ## 📸 Screenshots
 
 ### Data Center
-Extract ticket data from Jira with JQL queries, date range selection, scheduled polling, and export to CSV/JSON/PostgreSQL. The extraction list previews results with key, summary, assignee, and status columns — filter by multiple statuses at once, search, and sort (newest created by default).
+Extract ticket data from Jira with JQL queries, date range selection, scheduled polling, and export to CSV/JSON/PostgreSQL. The extraction list previews results with key, summary, assignee, **participants**, and status columns — multi-select filters for project, assignee, participants, and status, free-text search across all of them, and sort (newest created by default).
 
 <p align="center">
   <img src="docs/screenshots/data-center.png" alt="Data Center - Jira Extraction Panel" width="800" />
@@ -54,6 +54,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 
 ### ⚡ Architecture & Data Confidence
 - **Dual Build Modes** — One codebase ships as the server product (`npm run build` → caxa exe) **and** as a static GitHub Pages app backed by a local Python relay (`npm run build:static`); a build-time mode flag plus the `DataSource` seam (`src/lib/datasource/`) selects the backend, so server-mode behavior is unchanged.
+- **Demo Mode** — A **Try Demo Mode** toggle in the Data Center serves ~120 artificial tickets (full status changelogs, participants, story points) through the same `DataSource` seam — every view, filter, and KPI works without Jira credentials, and nothing is written to the database.
 - **Hybrid Storage Architecture** — Dynamically switches between local SQLite and remote PostgreSQL (Supabase) at runtime based on frontend storage configuration (server mode).
 - **Dual Prisma Clients** — Utilizes a specialized multi-client wrapper to support cross-engine compatibility without re-generating schemas or restarting the server.
 - **TanStack React Query** — Advanced state management for automated background data synchronization, intelligent caching, and consistent loading states.
@@ -72,7 +73,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Master Dataset Management** — Automatically tracks additions, updates, and deletions to maintain a faithful local mirror of Jira data.
 - **Scheduled Polling** — Robust server-side background sync (1min–4hr intervals) that survives restarts and hot-reloads; the extraction list silently refreshes when a scheduled run completes.
 - **Extraction Logic** — Smart `update-only` mode that fetches only modified tickets since the last sync to minimize API load.
-- **Live Extraction List** — Preview extracted issues with key, summary, assignee, and status columns; combine free-text search with multi-select status filtering and sort by key or created/updated date (newest created by default).
+- **Live Extraction List** — Preview extracted issues with key, summary, assignee, participants, and status columns; combine free-text search with multi-select filters (project, assignee, participants, status) and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
 **40 built-in plugins** (27 core + 13 time-series) organized by business domain. Every time-based KPI **excludes weekends and German holidays** (all 16 states supported), with configurable work hours.
@@ -353,6 +354,11 @@ npm run dev
 > `npm install`, `npm run dev`, and `npm run build` automatically run the Prisma setup
 > hook (`scripts/prisma-setup.mjs`), which generates the SQLite/PostgreSQL clients and
 > pushes the schema to the local SQLite database.
+
+> **No Jira account yet?** Click **Try Demo Mode** in the Data Center tab — it loads an
+> artificial 90-day dataset through the regular pipeline so you can explore the extraction
+> preview, filters, and the full KPI dashboard without any credentials. Exit any time; the
+> demo data is never persisted.
 
 ### Environment variables
 Copy `.env.example` to `.env` and adjust the values as needed:

@@ -36,7 +36,7 @@ the dev server via the Playwright config, and uploads the HTML report as an arti
 ### Single page + API routes
 The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dashboard/`). All data flows through ~20 API routes under `src/app/api/`:
 
-- `jira/extract` — core ETL: JQL pull → `EtlRun` + `TicketSnapshot`/`TicketTransition` + `MasterTicket` upserts → KPI calculation → `KpiResult` storage. The run row starts as `extracting` and is promoted to `completed` only after the load succeeds (`failed` + errorLog on crash); old-run pruning happens after success. Deletion detection is conservative: it only runs for the app-generated broad-sync JQL, never for user-provided custom JQL.
+- `jira/extract` — core ETL: JQL pull → `EtlRun` + `TicketSnapshot`/`TicketTransition` + `MasterTicket` upserts → KPI calculation → `KpiResult` storage. The run row starts as `extracting` and is promoted to `completed` only after the load succeeds (`failed` + errorLog on crash); old-run pruning happens after success. Deletion detection is conservative: it only runs for the app-generated broad-sync JQL, never for user-provided custom JQL. The Participants field (`JIRA_PARTICIPANTS_FIELD`, default `customfield_10032`) is always added to the requested field list so the extract preview can show participant names.
 - `jira/poll` — server-side background polling scheduler (keeps credentials in `globalThis` state)
 - `jira/connections/[connectionId]` — DELETE: cascades all of a connection's data (KPI results, dashboard views, transitions, snapshots, runs, master tickets) in one transaction
 - `kpi/calculate` — KPI engine entry point; the UI calls this, there is no client-side calculation
@@ -139,6 +139,15 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
    features must work through that seam or carry a `runtimeFeatures` flag
    (see `src/lib/runtime/mode.ts`). Don't build features assuming only one
    mode exists.
+   **Demo mode** rides the same seam: a localStorage toggle (`cfg_demo_mode`,
+   Try/Exit buttons in the extract panel) makes `getDataSource()` return a
+   `DemoDataSource` (`src/lib/datasource/demo.ts`) that wraps the active
+   backend and serves the deterministic artificial dataset from
+   `demo-data.ts` (extract + master dataset + client-side KPI calc; views,
+   plugins, holidays, exports delegate to the real backend). No DB writes —
+   exiting demo just drops the in-memory data. The synthetic connection id is
+   `'demo'` (`DEMO_CONNECTION_ID`); `useExtraction` skips its connection
+   lookup while the flag is on.
 4. **Custom plugin upload = server-side file write** into the custom-plugin directory
    (`data/custom-plugins/`) with the plugin's `calculate` body interpolated, activated at
    restart. Formula execution itself is sandboxed (see KPI engine section), but the file-write
