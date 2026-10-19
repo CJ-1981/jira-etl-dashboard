@@ -127,6 +127,9 @@ export const KEYS = {
   storage: 'cfg_storage_config',
   // Relay mode (static build): base URL of the local Python relay (jira_relay.py)
   relayUrl: 'cfg_relay_url',
+  // Demo mode: serve artificial data through the DataSource seam without any
+  // Jira credentials (see lib/datasource/demo.ts)
+  demoMode: 'cfg_demo_mode',
   // Relay mode: dashboard views persisted in localStorage (server mode keeps
   // them in the database via /api/dashboard/views)
   dashboardViews: 'cfg_dashboard_views',
@@ -252,6 +255,9 @@ export const localConfig = {
 
   getRelayUrl: () => get<string>(KEYS.relayUrl, 'http://localhost:8765'),
   saveRelayUrl: (url: string) => set(KEYS.relayUrl, url),
+
+  getDemoMode: () => get<boolean>(KEYS.demoMode, false),
+  saveDemoMode: (val: boolean) => set(KEYS.demoMode, val),
 
   getDashboardViews: () => get<unknown[]>(KEYS.dashboardViews, []),
   saveDashboardViews: (views: unknown[]) => set(KEYS.dashboardViews, views),

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { CustomExtractField } from '@/lib/config/local-store';
+import { CustomExtractField, localConfig } from '@/lib/config/local-store';
 import { useAppStore } from '@/store/app-store';
 import { masterDatasetQueryKey, type MasterDatasetData } from '@/hooks/useMasterDatasetQuery';
 import { getDataSource } from '@/lib/datasource';
@@ -45,8 +45,15 @@ export function useExtraction(options: UseExtractionOptions) {
     const loadingToast = toast.loading('Extracting issues from Jira...', { duration: 0 });
 
     try {
+      // Demo mode serves artificial data through the DataSource seam — no
+      // saved connection (and therefore no credentials) is needed.
+      const isDemo = localConfig.getDemoMode();
       const activeConn = connections.find(c => c.id === activeConnectionId);
-      if (!activeConn) throw new Error('Selected connection not found');
+      if (!activeConn && !isDemo) throw new Error('Selected connection not found');
+
+      const effectiveConn = activeConn ?? {
+        baseUrl: '', email: '', apiToken: '', projectKeys: '',
+      };
 
       // When a quick-pull preset is active, extract with a rolling window that is
       // recomputed against the real current date, instead of the frozen dates
@@ -56,10 +63,10 @@ export function useExtraction(options: UseExtractionOptions) {
       const res = await getDataSource().extract({
         connectionRef: activeConnectionId,
         connection: {
-          baseUrl: activeConn.baseUrl,
-          email: activeConn.email,
-          apiToken: activeConn.apiToken,
-          projectKeys: activeConn.projectKeys,
+          baseUrl: effectiveConn.baseUrl,
+          email: effectiveConn.email,
+          apiToken: effectiveConn.apiToken,
+          projectKeys: effectiveConn.projectKeys,
         },
         rateLimit: settings?.rateLimit,
         generalSettings: settings?.general,

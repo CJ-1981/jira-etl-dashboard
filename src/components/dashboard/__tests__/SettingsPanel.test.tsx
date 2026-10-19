@@ -17,6 +17,8 @@ vi.mock('@/store/app-store', () => ({
 // SettingsPanel imports localConfig + type AppSettings + DEFAULT_SETTINGS.
 vi.mock('@/lib/config/local-store', () => ({
   localConfig: {
+    getDemoMode: vi.fn(() => false),
+    saveDemoMode: vi.fn(),
     exportConfig: vi.fn(() => ({ exportedAt: '2026-01-01' })),
     importConfig: vi.fn(() => ({ success: true })),
     saveSettings: vi.fn(),

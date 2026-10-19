@@ -229,4 +229,66 @@ describe('ExtractPanel', () => {
       )
     );
   });
+
+  // ── Demo mode ────────────────────────────────────────────────────────────
+
+  it('offers Try Demo Mode when no connection is selected', async () => {
+    storeRef.current = createMockStore({ activeConnectionId: '', connections: [] });
+    renderWithProviders(<ExtractPanel />);
+
+    expect(await screen.findByText(/No connection selected/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try demo mode/i })).toBeInTheDocument();
+  });
+
+  it('entering demo mode flips the flag, selects the demo connection, and opens the date window', async () => {
+    storeRef.current = createMockStore({ activeConnectionId: '', connections: [] });
+    renderWithProviders(<ExtractPanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: /try demo mode/i }));
+
+    expect(localConfigMock.saveDemoMode).toHaveBeenCalledWith(true);
+    // The banner swaps to the demo state and the synthetic connection is active.
+    expect(await screen.findByText('Demo Mode')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /exit demo mode/i })).toBeInTheDocument();
+    // A date window covering the demo data is set — the run button enables.
+    const runBtn = screen.getByRole('button', { name: /run jira extraction/i });
+    expect(runBtn).toBeEnabled();
+  });
+
+  it('exiting demo mode restores a real connection and clears the demo payload', async () => {
+    localConfigMock = createMockLocalConfig({
+      getSavedJqls: vi.fn(() => []),
+      saveJqls: vi.fn(),
+      getCustomExtractFields: vi.fn(() => []),
+      saveCustomExtractFields: vi.fn(),
+      getSettings: vi.fn(() => JSON.parse(JSON.stringify(DEFAULT_SETTINGS))),
+      getKpiPlugins: vi.fn(() => []),
+      getEtlUpdateOnly: vi.fn(() => false),
+      getExtractJql: vi.fn(() => ''),
+      getExtractDates: vi.fn(() => ({ dateFrom: '', dateTo: '' })),
+      getQuickPullDays: vi.fn(() => null),
+      saveExtractDates: vi.fn(),
+      saveExtractJql: vi.fn(),
+      saveEtlUpdateOnly: vi.fn(),
+      saveQuickPullDays: vi.fn(),
+      getDemoMode: vi.fn(() => true),
+      saveDemoMode: vi.fn(),
+    });
+    storeRef.current = createMockStore({
+      activeConnectionId: 'demo',
+      connections: CONNECTIONS,
+      dateFrom: '2026-08-01',
+      dateTo: '2026-10-19',
+    });
+    renderWithProviders(<ExtractPanel />);
+
+    expect(await screen.findByText('Demo Mode')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /exit demo mode/i }));
+
+    expect(localConfigMock.saveDemoMode).toHaveBeenCalledWith(false);
+    // The active connection falls back to the saved real connection.
+    expect(storeRef.current.activeConnectionId).toBe('conn-1');
+    expect(storeRef.current.extractionResult).toBeNull();
+    expect(await screen.findByText('Test Connection')).toBeInTheDocument();
+  });
 });

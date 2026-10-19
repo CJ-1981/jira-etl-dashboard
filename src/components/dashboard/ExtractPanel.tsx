@@ -8,9 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { Download, RefreshCw, Server, Loader2 } from 'lucide-react';
+import { Download, RefreshCw, Server, Loader2, FlaskConical } from 'lucide-react';
+import { toast } from 'sonner';
 import { localConfig, CustomExtractField, AppSettings } from '@/lib/config/local-store';
 import { runtimeFeatures } from '@/lib/runtime/mode';
+import { DEMO_CONNECTION_ID } from '@/lib/datasource/demo-data';
 import { useAppStore } from '@/store/app-store';
 import { JqlEditor } from './extract/JqlEditor';
 import { CustomFieldDiscovery } from './extract/CustomFieldDiscovery';
@@ -32,10 +34,17 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
     dateTo,
     setDateTo,
     activeConnectionId,
+    setActiveConnectionId,
+    setExtractionResult,
+    setMasterDatasetInfo,
+    setKpiResults,
     settings,
   } = useAppStore();
 
   const [jql, setJql] = useState('');
+  // Demo mode serves artificial data through the DataSource seam without any
+  // Jira credentials. Persisted (cfg_demo_mode) so a reload keeps the session.
+  const [isDemo, setIsDemo] = useState(false);
   // Active quick-pull preset (days back, e.g. 1 for "Since yesterday").
   // While set, scheduled pulls recompute the window against the real current
   // date instead of reusing frozen dates; null means manual date selection.
@@ -50,7 +59,44 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
 
   useEffect(() => {
     setCustomFields(localConfig.getCustomExtractFields() as CustomExtractField[]);
+    setIsDemo(localConfig.getDemoMode());
   }, []);
+
+  // Entering demo mode: flip the persisted flag, point the app at the synthetic
+  // 'demo' connection, and open a 90-day window covering the generated data.
+  // The master-dataset query then reruns for the new connection id and the
+  // page's auto-populate flow fills the ticket list and dashboard.
+  const handleEnterDemo = useCallback(() => {
+    localConfig.saveDemoMode(true);
+    setIsDemo(true);
+    setQuickPullDays(null);
+    localConfig.saveQuickPullDays(null);
+    setActiveConnectionId(DEMO_CONNECTION_ID);
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - 89);
+    setDateFrom(from.toISOString().split('T')[0]);
+    setDateTo(now.toISOString().split('T')[0]);
+    toast.success('Demo mode enabled', {
+      description: 'Browsing artificial demo data — no Jira credentials used.',
+      duration: 5000,
+    });
+  }, [setActiveConnectionId, setDateFrom, setDateTo]);
+
+  // Leaving demo mode: restore the most plausible real connection and clear
+  // the in-memory demo payload. If a real connection exists its master-dataset
+  // query refetches for the restored id and repopulates everything; without
+  // one, the demo data is simply dropped.
+  const handleExitDemo = useCallback(() => {
+    localConfig.saveDemoMode(false);
+    setIsDemo(false);
+    setExtractionResult(null);
+    setKpiResults([]);
+    const next = connections.find(c => c.isActive)?.id || connections[0]?.id || '';
+    if (!next) setMasterDatasetInfo(null);
+    setActiveConnectionId(next);
+    toast('Demo mode off', { duration: 3000 });
+  }, [connections, setActiveConnectionId, setExtractionResult, setKpiResults, setMasterDatasetInfo]);
 
   // Ref-backed getter breaks the circular dependency between the extraction
   // hook (pings polling after a successful run) and the polling hook (pauses
@@ -144,27 +190,62 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
           <CardDescription className="text-slate-600 dark:text-slate-400">Extract issues from Jira with full changelog for KPI analysis</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/20 p-3">
-            <div className="flex items-center gap-2">
-              <Server className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              <div className="flex-1">
-                {activeConnectionId ? (
-                  <div>
-                    <p className="text-sm font-medium text-emerald-900 dark:text-emerald-400">
-                      {connections.find(c => c.id === activeConnectionId)?.name}
-                    </p>
-                    <p className="text-xs text-emerald-700 dark:text-emerald-500">
-                      {connections.find(c => c.id === activeConnectionId)?.projectKeys}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-emerald-700 dark:text-emerald-500">
-                    No connection selected. Go to <span className="font-semibold">Connections tab</span> to select one.
+          {isDemo ? (
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-300 dark:border-amber-500/30 p-3">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-amber-900 dark:text-amber-400">
+                    Demo Mode
                   </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-500">
+                    Browsing artificial demo data — no Jira connection or credentials used.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleExitDemo}
+                  className="h-8 shrink-0 text-xs border-amber-400/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/10"
+                >
+                  Exit Demo Mode
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/20 p-3">
+              <div className="flex items-center gap-2">
+                <Server className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <div className="flex-1">
+                  {activeConnectionId ? (
+                    <div>
+                      <p className="text-sm font-medium text-emerald-900 dark:text-emerald-400">
+                        {connections.find(c => c.id === activeConnectionId)?.name}
+                      </p>
+                      <p className="text-xs text-emerald-700 dark:text-emerald-500">
+                        {connections.find(c => c.id === activeConnectionId)?.projectKeys}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-emerald-700 dark:text-emerald-500">
+                      No connection selected. Go to <span className="font-semibold">Connections tab</span> to select one.
+                    </p>
+                  )}
+                </div>
+                {!activeConnectionId && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleEnterDemo}
+                    className="h-8 shrink-0 text-xs border-amber-400/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/10"
+                  >
+                    <FlaskConical className="h-3.5 w-3.5 mr-1.5" />
+                    Try Demo Mode
+                  </Button>
                 )}
               </div>
             </div>
-          </div>
+          )}
 
           <JqlEditor jql={jql} onJqlChange={setJql} />
 
@@ -243,7 +324,8 @@ export const ExtractPanel = React.memo(function ExtractPanel() {
                 pollEnabled={pollEnabled}
                 pollInterval={pollInterval}
                 pollSaving={pollSaving}
-                toggleDisabled={!activeConnectionId}
+                // Background polling pulls from real Jira — meaningless in demo.
+                toggleDisabled={!activeConnectionId || isDemo}
                 onToggle={(checked) => handleTogglePolling(checked)}
                 onIntervalChange={(v) => { setPollInterval(v); if (pollEnabled) handleTogglePolling(true, v); }}
               />

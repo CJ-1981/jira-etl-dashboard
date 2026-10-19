@@ -181,6 +181,8 @@ export function createMockLocalConfig(overrides: Record<string, unknown> = {}) {
     setShowKpiAnalyticsSubmenu: vi.fn(),
     setShowSettingsSubmenu: vi.fn(),
     getCustomExtractFields: vi.fn(() => []),
+    getDemoMode: vi.fn(() => false),
+    saveDemoMode: vi.fn(),
     getActivePlugins: vi.fn(() => null),
     saveActivePlugins: vi.fn(),
     getFavoritePlugins: vi.fn(() => []),

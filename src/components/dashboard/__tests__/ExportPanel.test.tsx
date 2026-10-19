@@ -16,7 +16,7 @@ vi.mock('@/store/app-store', () => ({
 
 // ExportPanel imports localConfig + type PgConnection. Build inline.
 vi.mock('@/lib/config/local-store', () => ({
-  localConfig: { getPgConnections: vi.fn(() => []) },
+  localConfig: { getPgConnections: vi.fn(() => []), getDemoMode: vi.fn(() => false), saveDemoMode: vi.fn() },
   PgConnection: {},
 }));
 

@@ -18,6 +18,8 @@ vi.mock('@/store/app-store', () => ({
 // The factory cannot reference top-level vars, so DEFAULT_SETTINGS is inlined here.
 vi.mock('@/lib/config/local-store', () => ({
   localConfig: {
+    getDemoMode: vi.fn(() => false),
+    saveDemoMode: vi.fn(),
     getKpiPlugins: vi.fn(() => []),
     saveKpiPlugins: vi.fn(),
     saveActivePlugins: vi.fn(),

@@ -18,6 +18,8 @@ vi.mock('@/store/app-store', () => ({
 // factory cannot reference imports.
 vi.mock('@/lib/config/local-store', () => ({
   localConfig: {
+    getDemoMode: vi.fn(() => false),
+    saveDemoMode: vi.fn(),
     getJiraConnections: vi.fn(() => []),
     saveJiraConnections: vi.fn(),
     getRelayUrl: vi.fn(() => 'http://localhost:8765'),
