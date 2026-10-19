@@ -164,7 +164,15 @@ describe('period completeness (unchanged semantics, local ends)', () => {
     const lastMonday = new Date(thisMonday);
     lastMonday.setDate(lastMonday.getDate() - 7);
 
-    expect(isPeriodComplete(getPeriodEnd(localDateKey(lastMonday), 'weekly'))).toBe(true);
-    expect(isPeriodComplete(getPeriodEnd(localDateKey(thisMonday), 'weekly'))).toBe(false);
+    // Evaluate from mid-week: isPeriodComplete adds a 24h buffer, so "last
+    // week" only counts as complete after Monday 23:59:59 of the following
+    // week. Passing an explicit currentDate keeps the assertion independent
+    // of which weekday the suite runs on (a bare new Date() fails on Mondays).
+    const wednesday = new Date(thisMonday);
+    wednesday.setDate(wednesday.getDate() + 2);
+    wednesday.setHours(12, 0, 0, 0);
+
+    expect(isPeriodComplete(getPeriodEnd(localDateKey(lastMonday), 'weekly'), wednesday)).toBe(true);
+    expect(isPeriodComplete(getPeriodEnd(localDateKey(thisMonday), 'weekly'), wednesday)).toBe(false);
   });
 });

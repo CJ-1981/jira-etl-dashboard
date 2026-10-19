@@ -62,9 +62,15 @@ describe('calculateKpisClient', () => {
     vi.restoreAllMocks();
   });
 
+  // Relative to "now" so the fixtures always fall inside the calculator's
+  // default rolling 90-day window regardless of when the suite runs (the
+  // original hardcoded June/July 2026 dates slid out of the window and the
+  // DSL COUNT / Open Tickets assertions silently started failing in autumn).
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const isoDaysAgo = (days: number) => new Date(Date.now() - days * DAY_MS).toISOString();
   const issues = [
-    fixtureIssue('T-1', 'Done', '2026-06-01T09:00:00.000Z', '2026-06-05T10:00:00.000Z', '2026-06-05T10:00:00.000Z'),
-    fixtureIssue('T-2', 'In Progress', '2026-07-01T09:00:00.000Z', '2026-07-15T10:00:00.000Z'),
+    fixtureIssue('T-1', 'Done', isoDaysAgo(40), isoDaysAgo(35), isoDaysAgo(35)),
+    fixtureIssue('T-2', 'In Progress', isoDaysAgo(10), isoDaysAgo(1)),
   ];
 
   it('computes all plugins client-side and returns the flat KpiCalcResult shape', () => {
