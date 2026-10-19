@@ -219,13 +219,13 @@ test.describe('Extraction preview list — text column alignment', () => {
   test('search box matches the assignee name', async ({ page }) => {
     await openExtractionPreview(page);
 
-    await page.getByPlaceholder('Search by key, summary, or assignee...').fill('Alice');
+    await page.getByPlaceholder('Search by key, summary, assignee, or participant...').fill('Alice');
     const visibleKeys = page.locator('a[href*="/browse/"]');
     await expect(visibleKeys).toHaveCount(1);
     await expect(page.locator('a[href*="/browse/AB-1"]')).toBeVisible();
 
     // Case-insensitive partial match on any row's assignee.
-    await page.getByPlaceholder('Search by key, summary, or assignee...').fill('robertson');
+    await page.getByPlaceholder('Search by key, summary, assignee, or participant...').fill('robertson');
     await expect(page.locator('a[href*="/browse/ABCDE-12345"]')).toBeVisible();
     await expect(visibleKeys).toHaveCount(1);
   });

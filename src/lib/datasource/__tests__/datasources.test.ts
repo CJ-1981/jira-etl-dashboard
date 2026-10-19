@@ -109,7 +109,7 @@ describe('RelayDataSource', () => {
     expect(body.connectionRef).toBe('c1');
     expect(body.projectKeys).toBe('PROJ');
     expect(body.jql).toBe('project = "PROJ"');
-    expect(body.customFieldIds).toEqual(['customfield_10002']);
+    expect(body.customFieldIds).toEqual(['customfield_10002', 'customfield_10032']);
     expect(body.storyPointsFieldId).toBe('customfield_10002');
   });
 

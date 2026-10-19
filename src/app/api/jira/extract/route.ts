@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { extractSelectFieldValue } from '@/lib/jira/client';
 import { JiraClient } from '@/lib/jira/client';
-import { getIssueOwnerTeamField, getStoryPointsField } from '@/lib/jira/field-config';
+import { getIssueOwnerTeamField, getStoryPointsField, getParticipantsField } from '@/lib/jira/field-config';
 import { getDb, type DbClient } from '@/lib/db';
 import { getKpiEngine } from '@/lib/kpi/engine';
 import { isLoopbackOriginRequest } from '@/lib/security';
@@ -140,11 +140,13 @@ export async function POST(request: Request) {
 
     console.log(`[Extract API] Starting extraction for ${connectionRef} (JQL: ${finalJql.substring(0, 100)}...)${updateOnly ? ' [UPDATE ONLY MODE]' : ''}`);
 
-    // Extract issues
+    // Extract issues. The participants field is always requested (deduped) so
+    // the extract preview can show participant names even when the user has not
+    // configured it as a custom extract field.
     const issues = await client.extractIssues(finalJql, {
       maxResults: rateLimit?.batchSize || 50,
       expand: ['changelog'],
-      customFieldIds: customFieldIds || [],
+      customFieldIds: [...new Set([...(customFieldIds || []), getParticipantsField()])],
       delayMs: rateLimit?.delayMs || 0,
       backoffStrategy: rateLimit?.backoffStrategy || 'none',
       onProgress: (progress, total) => {

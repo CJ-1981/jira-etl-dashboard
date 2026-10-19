@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { getStatus, getSummary, getAssignee, getCreated, getUpdated, getProject, isResolved, toEpoch } from '../extract/issue-utils';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import { getStatus, getSummary, getAssignee, getParticipants, getParticipantNames, getCreated, getUpdated, getProject, isResolved, toEpoch } from '../extract/issue-utils';
 import { ExtractionPreviewTable, ExtractionResult } from '../extract/ExtractionPreviewTable';
 import { QuickDateSelector } from '../extract/QuickDateSelector';
 import { PollingSettings } from '../extract/PollingSettings';
@@ -45,6 +45,36 @@ describe('extract/issue-utils', () => {
     expect(getAssignee(raw)).toBe('Alice');
     expect(getAssignee(flat)).toBe('Bob');
     expect(getAssignee({ key: 'X' })).toBe('Unassigned');
+  });
+
+  it('getParticipants joins the multi-user field display names and tolerates shapes', () => {
+    const participantsField = 'customfield_10032';
+    // Jira Cloud: array of user objects
+    expect(getParticipants({
+      key: 'X',
+      fields: { [participantsField]: [{ displayName: 'zhenfeng.liu' }, { displayName: 'Alice' }] },
+    })).toBe('zhenfeng.liu, Alice');
+    // Jira Server: user objects keyed by `name`
+    expect(getParticipants({
+      key: 'X',
+      fields: { [participantsField]: [{ name: 'jsmith' }] },
+    })).toBe('jsmith');
+    // Plain string array and a single object value
+    expect(getParticipants({ key: 'X', fields: { [participantsField]: ['Alice'] } })).toBe('Alice');
+    expect(getParticipants({ key: 'X', fields: { [participantsField]: { displayName: 'Alice' } } })).toBe('Alice');
+    // Null / missing field entries resolve to ""
+    expect(getParticipants({ key: 'X', fields: { [participantsField]: null } })).toBe('');
+    expect(getParticipants({ key: 'X' })).toBe('');
+  });
+
+  it('getParticipantNames returns the individual names behind the joined string', () => {
+    const participantsField = 'customfield_10032';
+    expect(getParticipantNames({
+      key: 'X',
+      fields: { [participantsField]: [{ displayName: 'Alice' }, { name: 'jsmith' }] },
+    })).toEqual(['Alice', 'jsmith']);
+    expect(getParticipantNames({ key: 'X', fields: { [participantsField]: null } })).toEqual([]);
+    expect(getParticipantNames({ key: 'X' })).toEqual([]);
   });
 
   it('getProject extracts the key prefix before the dash', () => {
@@ -136,10 +166,67 @@ describe('ExtractionPreviewTable', () => {
     expect(link).toHaveAttribute('href', 'https://test.example/browse/PROJ-1');
   });
 
-  it('renders project and status multi-select filters above the list', () => {
+  it('renders project, assignee, participant, and status multi-select filters above the list', () => {
     render(<ExtractionPreviewTable result={makeResult(issues)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
     expect(screen.getByRole('button', { name: 'All Projects' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All Assignees' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All Participants' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'All Statuses' })).toBeInTheDocument();
+  });
+
+  it('assignee multi-select keeps only tickets of the selected assignee', () => {
+    render(<ExtractionPreviewTable result={makeResult(issues)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
+
+    const trigger = screen.getByRole('button', { name: 'All Assignees' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('Alice'));
+
+    expect(screen.getByText('PROJ-1')).toBeInTheDocument();
+    expect(screen.queryByText('PROJ-2')).not.toBeInTheDocument();
+    expect(screen.queryByText('PROJ-3')).not.toBeInTheDocument();
+  });
+
+  it('assignee multi-select offers "Unassigned" and filters to it', () => {
+    const withUnassigned: PreviewIssue[] = [
+      ...issues,
+      { key: 'PROJ-9', status: 'Open', summary: 'Nobody home', assignee: undefined, created: '2026-01-04' },
+    ];
+    render(<ExtractionPreviewTable result={makeResult(withUnassigned)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
+
+    const trigger = screen.getByRole('button', { name: 'All Assignees' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('Unassigned'));
+
+    expect(screen.getByText('PROJ-9')).toBeInTheDocument();
+    expect(screen.queryByText('PROJ-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('PROJ-2')).not.toBeInTheDocument();
+    expect(screen.queryByText('PROJ-3')).not.toBeInTheDocument();
+  });
+
+  it('participants multi-select keeps only tickets carrying the selected participant', () => {
+    const pf = 'customfield_10032';
+    const withParticipants: PreviewIssue[] = [
+      { key: 'P-1', fields: { summary: 'one', status: { name: 'Open' }, created: '2026-01-01', [pf]: [{ displayName: 'Alice' }] } },
+      { key: 'P-2', fields: { summary: 'two', status: { name: 'Open' }, created: '2026-01-02', [pf]: [{ displayName: 'Bob' }] } },
+      { key: 'P-3', fields: { summary: 'three', status: { name: 'Open' }, created: '2026-01-03' } },
+    ];
+    render(<ExtractionPreviewTable result={makeResult(withParticipants)} connections={connections} activeConnectionId="conn-1" extracting={false} />);
+
+    const trigger = screen.getByRole('button', { name: 'All Participants' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+
+    // 'Alice' also appears in P-1's row cell — pick the popover option.
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('Alice'));
+
+    expect(screen.getByText('P-1')).toBeInTheDocument();
+    expect(screen.queryByText('P-2')).not.toBeInTheDocument();
+    // Tickets without any participants drop out while a filter is active.
+    expect(screen.queryByText('P-3')).not.toBeInTheDocument();
   });
 });
 

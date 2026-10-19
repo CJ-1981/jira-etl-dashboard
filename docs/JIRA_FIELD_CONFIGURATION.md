@@ -1,5 +1,18 @@
 # JIRA Field Configuration Guide
 
+## Participants column (extract preview)
+
+The extract preview table shows a **Participants** column fed by the multi-user
+"Participants" field (default `customfield_10032`). If your instance stores
+participants under a different field id, override it in `.env`:
+
+```bash
+JIRA_PARTICIPANTS_FIELD=customfield_XXXXX
+```
+
+The field is always requested during extraction (alongside your Custom Extract
+Fields), and the master dataset restores it from the stored raw ticket data.
+
 ## Problem
 
 You're seeing unexpected values in the "Issue Owner Team" filter (like "360 view", "Cameras", "Pedal", etc.) because the configured custom field ID (default `customfield_10132`, set in `src/lib/jira/field-config.ts`) may not be the correct field in your JIRA instance.

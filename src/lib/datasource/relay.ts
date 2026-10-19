@@ -25,6 +25,7 @@ import type {
 import { calculateKpisClient } from '@/lib/kpi/client-calculator';
 import { KpiEngine } from '@/lib/kpi/engine';
 import { localConfig, type JiraConnection, type StorageConfig } from '@/lib/config/local-store';
+import { getParticipantsField } from '@/lib/jira/field-config';
 import type { DashboardView } from '@/types/dashboard';
 import {
   GERMAN_STATES,
@@ -78,7 +79,9 @@ export class RelayDataSource implements DataSource {
       body: JSON.stringify({
         ...rest,
         projectKeys: connection.projectKeys,
-        customFieldIds: customFields.map(f => f.fieldId),
+        // The participants field rides along with the user's custom fields so
+        // the extract preview can show participant names in relay mode too.
+        customFieldIds: [...new Set([...customFields.map(f => f.fieldId), getParticipantsField()])],
         storyPointsFieldId: customFields.find(f => f.role === 'storyPoints')?.fieldId,
         issueOwnerTeamFieldId: customFields.find(f => f.role === 'issueOwnerTeam')?.fieldId,
         batchSize: rateLimit?.batchSize,

@@ -1,4 +1,5 @@
 import { PreviewIssue } from './types';
+import { DEFAULT_FIELD_CONFIG } from '@/lib/jira/field-config';
 
 // Statuses treated as "resolved" when the issue has no explicit statusCategory.
 const RESOLVED_STATUSES = [
@@ -18,6 +19,25 @@ export function getSummary(issue: PreviewIssue): string {
 /** Resolve the assignee display name, falling back to "Unassigned". */
 export function getAssignee(issue: PreviewIssue): string {
   return issue.fields?.assignee?.displayName || issue.assignee || 'Unassigned';
+}
+
+/** Individual participant names from the multi-user field; [] if none. */
+export function getParticipantNames(issue: PreviewIssue): string[] {
+  const raw = issue.fields?.[DEFAULT_FIELD_CONFIG.participantsField];
+  if (raw == null) return [];
+  return (Array.isArray(raw) ? raw : [raw]).map((entry) => {
+    if (typeof entry === 'string') return entry;
+    if (entry && typeof entry === 'object') {
+      const user = entry as { displayName?: string; name?: string };
+      return user.displayName || user.name || '';
+    }
+    return '';
+  }).filter(Boolean);
+}
+
+/** Comma-joined display names of the participants multi-user field; "" if none. */
+export function getParticipants(issue: PreviewIssue): string {
+  return getParticipantNames(issue).join(', ');
 }
 
 /** Resolve the project prefix of an issue key ("GE-483" → "GE"); "" if none. */

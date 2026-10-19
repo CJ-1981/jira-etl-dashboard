@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Search, X, HardDrive, ExternalLink, CheckCircle2, ChevronDown } from 'lucide-react';
 import { JiraConnection } from '@/lib/config/local-store';
 import { PreviewIssue } from './types';
-import { getStatus, getSummary, getAssignee, getCreated, getUpdated, getProject, isResolved, toEpoch } from './issue-utils';
+import { getStatus, getSummary, getAssignee, getParticipants, getParticipantNames, getCreated, getUpdated, getProject, isResolved, toEpoch } from './issue-utils';
 
 export interface ExtractionResult {
   total: number;
@@ -129,6 +129,8 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [sortOption, setSortOption] = useState<SortOption>('created-desc');
 
   // Memoized so downstream memos keyed on it don't invalidate every render.
@@ -154,6 +156,18 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
     [issues]
   );
 
+  // Uses the display value ("Unassigned" included) so the options match what
+  // the assignee column renders.
+  const availableAssignees = useMemo(
+    () => Array.from(new Set<string>(issues.map(i => getAssignee(i)))).sort(),
+    [issues]
+  );
+
+  const availableParticipants = useMemo(
+    () => Array.from(new Set<string>(issues.flatMap(i => getParticipantNames(i)))).sort(),
+    [issues]
+  );
+
   const visibleIssues = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return issues
@@ -161,15 +175,23 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
         const key = (issue.key || '').toLowerCase();
         const summary = getSummary(issue).toLowerCase();
         const assignee = getAssignee(issue).toLowerCase();
+        const participants = getParticipants(issue).toLowerCase();
         const status = getStatus(issue);
-        const matchesSearch = key.includes(q) || summary.includes(q) || assignee.includes(q);
+        const matchesSearch = key.includes(q) || summary.includes(q) || assignee.includes(q) || participants.includes(q);
         const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(status);
         const project = getProject(issue);
         const matchesProject = selectedProjects.length === 0 || selectedProjects.includes(project);
-        return matchesSearch && matchesStatus && matchesProject;
+        const assigneeName = getAssignee(issue);
+        const matchesAssignee =
+          selectedAssignees.length === 0 || selectedAssignees.includes(assigneeName);
+        // Multi-valued: a ticket matches when ANY of its participants is selected.
+        const names = getParticipantNames(issue);
+        const matchesParticipants =
+          selectedParticipants.length === 0 || names.some(n => selectedParticipants.includes(n));
+        return matchesSearch && matchesStatus && matchesProject && matchesAssignee && matchesParticipants;
       })
       .sort((a, b) => compareIssues(a, b, sortOption));
-  }, [issues, searchQuery, selectedStatuses, selectedProjects, sortOption]);
+  }, [issues, searchQuery, selectedStatuses, selectedProjects, selectedAssignees, selectedParticipants, sortOption]);
 
   const activeConnection = connections.find(c => c.id === activeConnectionId);
   const baseUrl = activeConnection?.baseUrl || '';
@@ -211,11 +233,11 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
         </div>
 
         <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+            <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Search by key, summary, or assignee..."
+                placeholder="Search by key, summary, assignee, or participant..."
                 className="pl-9 pr-8 bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -236,6 +258,22 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
               selected={selectedProjects}
               onChange={setSelectedProjects}
             />
+            <FilterMultiSelect
+              placeholder="All Assignees"
+              options={availableAssignees}
+              selected={selectedAssignees}
+              onChange={setSelectedAssignees}
+            />
+            {/* Participants filter only where the column itself is visible
+                (lg+) — below that the controls row has no width to spare. */}
+            <div className="hidden lg:block lg:w-[160px] shrink-0">
+              <FilterMultiSelect
+                placeholder="All Participants"
+                options={availableParticipants}
+                selected={selectedParticipants}
+                onChange={setSelectedParticipants}
+              />
+            </div>
             <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
               <SelectTrigger className="w-full sm:w-[160px] bg-gray-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 shrink-0">
                 <SelectValue placeholder="Sort by..." />
@@ -266,6 +304,7 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
               const jiraUrl = activeConnection ? `${formattedBaseUrl}/browse/${issue.key}` : '#';
               const resolved = isResolved(issue);
               const statusName = getStatus(issue);
+              const participants = getParticipants(issue);
 
               return (
                 <div key={issue.key} className="flex items-baseline gap-2 sm:gap-3 py-2 px-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-slate-700/40 dark:bg-slate-800/20 text-sm group">
@@ -283,6 +322,14 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
                   {/* Assignee is dropped below sm — the 375px card interior cannot
                       fit four fixed columns alongside the summary. */}
                   <span className="hidden truncate text-slate-500 dark:text-slate-400 text-xs w-36 shrink-0 sm:inline">{getAssignee(issue)}</span>
+                  {/* Participants (names from the multi-user field, lg+ only —
+                      the row already runs out of width between sm and lg). */}
+                  <span
+                    className="hidden truncate text-slate-500 dark:text-slate-400 text-xs w-36 shrink-0 lg:inline"
+                    title={participants || undefined}
+                  >
+                    {participants}
+                  </span>
                   {/* Fixed-width badge column: keeps the assignee column at a
                       stable x regardless of each status's text length (sm+ only;
                       on mobile the badge truncates to its share of the row). */}

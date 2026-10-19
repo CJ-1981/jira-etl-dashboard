@@ -11,6 +11,8 @@ export interface PreviewIssueFields {
   updated?: string;
   status?: { name?: string; statusCategory?: { name?: string } };
   assignee?: { displayName?: string };
+  /** Dynamic Jira fields (e.g. the participants customfield) addressed by ID. */
+  [fieldId: string]: unknown;
 }
 
 /**
