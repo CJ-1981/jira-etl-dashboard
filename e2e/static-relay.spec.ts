@@ -14,6 +14,14 @@ const repoRoot = process.cwd();
 const relayDbPath = path.join(repoRoot, 'data', 'relay-e2e.db');
 
 test.describe('static relay mode', () => {
+  // These specs assert the classic multi-tab shell — opt out of the
+  // (default) simple mode, whose wizard dialog would block the clicks.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('cfg_ui_mode', JSON.stringify('expert'));
+    });
+  });
+
   test('relay-mode UI: server-only features hidden, client features work', async ({ page }) => {
     await page.goto('/jira-etl-dashboard/');
     await expect(page.getByRole('heading', { name: 'Jira ETL Dashboard' })).toBeVisible();
