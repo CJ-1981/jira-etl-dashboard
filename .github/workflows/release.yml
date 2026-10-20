@@ -126,9 +126,38 @@ jobs:
           path: dist/jira-relay.exe
           retention-days: 1
 
+  build-relay-macos:
+    name: Build macOS Relay Executable
+    needs: [ci-gate]
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build macOS Relay Executable
+        run: bash build-relay-exe.sh
+
+      - name: Package macOS Relay into Zip
+        run: |
+          cd dist
+          zip -r jira-relay-macos.zip jira-relay
+
+      - name: Upload macOS Relay Artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: relay-executable-macos
+          path: dist/jira-relay-macos.zip
+          retention-days: 1
+
   publish-release:
     name: Publish GitHub Release
-    needs: [build-macos, build-windows, build-relay-exe]
+    needs: [build-macos, build-windows, build-relay-exe, build-relay-macos]
     runs-on: ubuntu-latest
 
     steps:
@@ -150,3 +179,4 @@ jobs:
             release-assets/JIRA-ETL-Dashboard-macOS.zip
             release-assets/JIRA ETL Dashboard.exe
             release-assets/jira-relay.exe
+            release-assets/jira-relay-macos.zip

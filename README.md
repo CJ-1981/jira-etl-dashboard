@@ -6,14 +6,21 @@ Built with **Next.js 16**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Ta
 
 ## 📸 Screenshots
 
-### Data Center
+### Simple Mode (default)
+One combined view for everyday use: quick extraction at the top (demo data shown), the analysis period automatically tracking every pulled ticket, and a minimal set of essential KPIs. A first-run wizard offers Jira setup or one-click demo data when nothing is configured yet.
+
+<p align="center">
+  <img src="docs/screenshots/simple-mode.png" alt="Simple Mode - Combined View" width="800" />
+</p>
+
+### Data Center (Expert)
 Extract ticket data from Jira with JQL queries, date range selection, scheduled polling, and export to CSV/JSON/PostgreSQL. The extraction list previews results with key, summary, assignee, **participants**, and status columns — multi-select filters for project, assignee, participants, and status, free-text search across all of them, and sort (newest created by default).
 
 <p align="center">
   <img src="docs/screenshots/data-center.png" alt="Data Center - Jira Extraction Panel" width="800" />
 </p>
 
-### KPI Analytics
+### KPI Analytics (Expert)
 Interactive dashboard with 41 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
