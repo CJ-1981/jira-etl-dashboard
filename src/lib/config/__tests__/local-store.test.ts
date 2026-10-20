@@ -321,6 +321,20 @@ describe('Submenu visibility', () => {
   });
 });
 
+describe('UI mode', () => {
+  it('defaults to simple mode when nothing is persisted', () => {
+    expect(localConfig.getUiMode()).toBe('simple');
+  });
+
+  it('round-trips expert and simple', () => {
+    localConfig.saveUiMode('expert');
+    expect(localConfig.getUiMode()).toBe('expert');
+    expect(JSON.parse(localStorage.getItem(KEYS.uiMode) ?? '""')).toBe('expert');
+    localConfig.saveUiMode('simple');
+    expect(localConfig.getUiMode()).toBe('simple');
+  });
+});
+
 describe('exportConfig / importConfig', () => {
   it('exports a versioned snapshot of the current (empty) state', () => {
     const data = localConfig.exportConfig();

@@ -18,17 +18,19 @@ import type { Page } from '@playwright/test';
 // triggers are client-rendered, so one carrying React props (__reactProps$
 // keys exist only on hydrated DOM nodes) proves handlers are attached.
 async function waitForHydration(page: Page) {
+  // Simple mode renders no [role="tab"] at all (single combined view), so the
+  // marker accepts the header too — present and hydrated in every mode.
   await page.waitForFunction(() => {
-    const tab = document.querySelector('[role="tab"]');
-    return !!tab && Object.keys(tab).some((key) => key.startsWith('__reactProps$'));
+    const el = document.querySelector('[role="tab"], header');
+    return !!el && Object.keys(el).some((key) => key.startsWith('__reactProps$'));
   }, undefined, { timeout: 15_000 }).catch(async (err) => {
     // A stalled dev server (mid-recompile) can delay the client bundle; fall
     // back to a full reload, which re-requests the chunks and almost always
     // lands on a warm build. Surface the original error if that still fails.
     await page.reload();
     await page.waitForFunction(() => {
-      const tab = document.querySelector('[role="tab"]');
-      return !!tab && Object.keys(tab).some((key) => key.startsWith('__reactProps$'));
+      const el = document.querySelector('[role="tab"], header');
+      return !!el && Object.keys(el).some((key) => key.startsWith('__reactProps$'));
     }, undefined, { timeout: 15_000 }).catch(() => {
       throw err;
     });
@@ -36,7 +38,16 @@ async function waitForHydration(page: Page) {
 }
 
 // Navigate to the dashboard root and wait for the app shell to hydrate.
-export async function gotoHome(page: Page) {
+export async function gotoHome(
+  page: Page,
+  opts: { mode?: 'simple' | 'expert' } = {},
+) {
+  // Default to expert so the long-standing tab-based specs keep exercising the
+  // full shell; simple-mode specs opt in explicitly via { mode: 'simple' }.
+  const mode = opts.mode ?? 'expert';
+  await page.addInitScript((m) => {
+    localStorage.setItem('cfg_ui_mode', JSON.stringify(m));
+  }, mode);
   // `domcontentloaded` instead of the default `load`: on a busy `next dev`
   // server a queued chunk compilation can hold the window load event open for
   // tens of seconds. Interactivity is gated explicitly by waitForHydration

@@ -130,6 +130,8 @@ export const KEYS = {
   // Demo mode: serve artificial data through the DataSource seam without any
   // Jira credentials (see lib/datasource/demo.ts)
   demoMode: 'cfg_demo_mode',
+  // UI mode: 'simple' (single combined view) | 'expert' (all tabs); default simple
+  uiMode: 'cfg_ui_mode',
   // Relay mode: dashboard views persisted in localStorage (server mode keeps
   // them in the database via /api/dashboard/views)
   dashboardViews: 'cfg_dashboard_views',
@@ -258,6 +260,9 @@ export const localConfig = {
 
   getDemoMode: () => get<boolean>(KEYS.demoMode, false),
   saveDemoMode: (val: boolean) => set(KEYS.demoMode, val),
+
+  getUiMode: () => get<'simple' | 'expert'>(KEYS.uiMode, 'simple'),
+  saveUiMode: (mode: 'simple' | 'expert') => set(KEYS.uiMode, mode),
 
   getDashboardViews: () => get<unknown[]>(KEYS.dashboardViews, []),
   saveDashboardViews: (views: unknown[]) => set(KEYS.dashboardViews, views),

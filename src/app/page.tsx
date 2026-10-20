@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Database, Settings, BarChart3, Zap, Plug, Calendar, Server, HardDrive, Sun, Moon, Loader2, ChevronDown, ChevronRight
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { localConfig, KEYS, type AppSettings } from '@/lib/config/local-store';
+import { Switch } from '@/components/ui/switch';
 import { dedupeChartsById } from '@/lib/chart-data-utils';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
@@ -16,6 +17,8 @@ import { PluginsPanel } from '@/components/dashboard/PluginsPanel';
 import { HolidaysPanel } from '@/components/dashboard/HolidaysPanel';
 import { ExportPanel } from '@/components/dashboard/ExportPanel';
 import { SettingsPanel } from '@/components/dashboard/SettingsPanel';
+import { SimpleExtractionBar } from '@/components/dashboard/kpi/SimpleExtractionBar';
+import { SimpleModeWizard } from '@/components/dashboard/SimpleModeWizard';
 import { 
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
@@ -45,6 +48,7 @@ export default function Home() {
   const {
     theme, setTheme,
     activeTab, setActiveTab,
+    uiMode, setUiMode,
     connections, setConnections,
     extractionResult, setExtractionResult,
     masterDatasetInfo, setMasterDatasetInfo,
@@ -57,6 +61,7 @@ export default function Home() {
     storageConfig, setStorageConfig,
     globalFilters, setGlobalFilters,
     hiddenDimensions, setHiddenDimensions,
+    setCollapsedWidgets,
     dashboardCharts, setDashboardCharts,
     dashboardJqlQuery, setDashboardJqlQuery,
     filterPanelOpen, setFilterPanelOpen,
@@ -132,9 +137,35 @@ export default function Home() {
     const savedSettings = localConfig.getSettings();
     if (savedSettings) setSettings(savedSettings);
 
+    // UI mode (simple default) — persisted; restored before first render use.
+    const uiMode = localConfig.getUiMode();
+    setUiMode(uiMode);
+
     // Load submenu visibility states
     setShowDataCenterSubmenu(localConfig.getShowDataCenterSubmenu());
     setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
+
+    // Simple-mode defaults, applied on every entry into simple mode: KPI
+    // sub-menu collapsed, Metrics Overview collapsed, the combined view as the
+    // active tab, and — only when plugin visibility was never configured — the
+    // minimal plugin set. In-session user changes still win afterwards.
+    if (uiMode === 'simple') {
+      setShowKpiAnalyticsSubmenu(false);
+      if (useAppStore.getState().activeTab === 'extract') setActiveTab('kpi');
+      setCollapsedWidgets((prev) =>
+        prev.includes('metrics-overview') ? prev : [...prev, 'metrics-overview'],
+      );
+      if (localStorage.getItem(KEYS.activePlugins) === null) {
+        localConfig.saveActivePlugins([
+          'simple_ticket_list',
+          'weekly_ticket_list',
+          'open_tickets_kanban',
+          'open_tickets_by_assignee',
+          'open_tickets_by_priority',
+          'open_tickets_by_issue_owner_team',
+        ]);
+      }
+    }
 
     // Restore the dataset for the saved connection via the shared query —
     // setting the active id is enough to enable it, and the restored ticket
@@ -150,7 +181,7 @@ export default function Home() {
     }
 
     // Initially dates are empty strings from the store
-  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu]);
+  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setUiMode, setActiveTab, setCollapsedWidgets]);
 
   // Secondary effect: Handle connection changes after initial load
   // This only runs when user manually switches connections via UI
@@ -225,25 +256,33 @@ export default function Home() {
 
       if (isDev) console.log('[App] Master dataset date range available');
 
-      // Check if saved dates are different from MAX (user explicitly changed them)
-      const savedDatesDifferFromMax = savedState?.dateFrom && savedState?.dateTo &&
-        (savedState.dateFrom !== maxFromStr || savedState.dateTo !== maxToStr);
-
-      if (savedDatesDifferFromMax) {
-        if (isDev) console.log('[App] Using saved dates (user preference)');
-        setDateFrom(savedState.dateFrom!);
-        setDateTo(savedState.dateTo!);
-      } else {
-        if (isDev) console.log('[App] Defaulting to MAX range');
+      // Simple mode: the analysis period is always the entire period of pulled
+      // tickets (dynamic) — saved/user-picked windows never override it.
+      if (uiMode === 'simple') {
+        if (isDev) console.log('[App] Simple mode: dynamic MAX range');
         setDateFrom(maxFromStr);
         setDateTo(maxToStr);
+      } else {
+        // Check if saved dates are different from MAX (user explicitly changed them)
+        const savedDatesDifferFromMax = savedState?.dateFrom && savedState?.dateTo &&
+          (savedState.dateFrom !== maxFromStr || savedState.dateTo !== maxToStr);
+
+        if (savedDatesDifferFromMax) {
+          if (isDev) console.log('[App] Using saved dates (user preference)');
+          setDateFrom(savedState.dateFrom!);
+          setDateTo(savedState.dateTo!);
+        } else {
+          if (isDev) console.log('[App] Defaulting to MAX range');
+          setDateFrom(maxFromStr);
+          setDateTo(maxToStr);
+        }
       }
     } else {
       if (isDev) console.log('[App] Master dataset date range not available yet');
     }
-   
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConnectionId, mounted, masterDatasetInfo]);
+  }, [activeConnectionId, mounted, masterDatasetInfo, uiMode]);
 
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
@@ -270,6 +309,33 @@ export default function Home() {
     localConfig.setShowKpiAnalyticsSubmenu(showKpiAnalyticsSubmenu);
   }, [showKpiAnalyticsSubmenu, mounted]);
 
+  // Persist the UI mode.
+  useEffect(() => {
+    if (!mounted) return;
+    localConfig.saveUiMode(uiMode);
+  }, [uiMode, mounted]);
+
+  // Mid-session switch into simple mode: apply the same defaults as the mount
+  // path (mount handles load-time; this handles the header toggle).
+  const applySimpleModeDefaults = useCallback(() => {
+    setShowKpiAnalyticsSubmenu(false);
+    // Simple mode is a single combined view — the Data Center tab is hidden.
+    if (useAppStore.getState().activeTab === 'extract') setActiveTab('kpi');
+    setCollapsedWidgets((prev) =>
+      prev.includes('metrics-overview') ? prev : [...prev, 'metrics-overview'],
+    );
+    if (typeof window !== 'undefined' && localStorage.getItem(KEYS.activePlugins) === null) {
+      localConfig.saveActivePlugins([
+        'simple_ticket_list',
+        'weekly_ticket_list',
+        'open_tickets_kanban',
+        'open_tickets_by_assignee',
+        'open_tickets_by_priority',
+        'open_tickets_by_issue_owner_team',
+      ]);
+    }
+  }, [setActiveTab, setShowKpiAnalyticsSubmenu, setCollapsedWidgets]);
+
   const handlePrint = () => {
     window.print();
   };
@@ -280,7 +346,9 @@ export default function Home() {
       { key: 'p', modifierKeys: ['ctrl', 'meta'], onTrigger: () => handlePrint() },
     ],
     bareBindings: [
-      { key: '1', onTrigger: () => setActiveTab('extract') },
+      // Simple mode is a single combined view — the Data Center tab is hidden,
+      // so shortcut 1 intentionally does nothing there.
+      { key: '1', onTrigger: () => { if (uiMode === 'expert') setActiveTab('extract'); } },
       { key: '2', onTrigger: () => setActiveTab('kpi') },
       { key: '3', onTrigger: () => setActiveTab('settings') },
     ],
@@ -307,21 +375,23 @@ export default function Home() {
             </div>
           </div>
           
-          {/* Middle / Tabs */}
+          {/* Middle / Tabs — hidden entirely in simple mode (single view) */}
           <div className="flex justify-center items-center w-full col-span-2 lg:col-span-1 order-last lg:order-none no-print gap-2">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
-              <TabsList className="bg-transparent border-0 gap-1 h-9 w-full flex">
-                <TabsTrigger value="extract" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
-                  <Database className="h-3.5 w-3.5 shrink-0" />
-                  <span className="hidden sm:inline truncate">Data Center</span>
-                  <span className="sm:hidden truncate">Data</span>
-                </TabsTrigger>
-                <TabsTrigger value="kpi" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
-                  <BarChart3 className="h-3.5 w-3.5 shrink-0" />
-                  <span className="hidden sm:inline truncate">KPI Analytics</span>
-                  <span className="sm:hidden truncate">KPI</span>
-                </TabsTrigger>
-              </TabsList>
+              {uiMode === 'expert' && (
+                <TabsList className="bg-transparent border-0 gap-1 h-9 w-full flex">
+                  <TabsTrigger value="extract" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
+                    <Database className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden sm:inline truncate">Data Center</span>
+                    <span className="sm:hidden truncate">Data</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="kpi" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
+                    <BarChart3 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden sm:inline truncate">KPI Analytics</span>
+                    <span className="sm:hidden truncate">KPI</span>
+                  </TabsTrigger>
+                </TabsList>
+              )}
             </Tabs>
 
           {/* Submenu Toggle Button - Context-aware based on active tab.
@@ -373,6 +443,31 @@ export default function Home() {
                 </SelectContent>
               </Select>
             )}
+
+            {/* Simple / Expert mode toggle */}
+            <div
+              className="flex items-center gap-1 shrink-0"
+              title="Switch between simple (combined view) and expert (all tabs) mode"
+            >
+              <span
+                className={`text-[10px] font-semibold ${uiMode === 'simple' ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`}
+              >
+                Simple
+              </span>
+              <Switch
+                checked={uiMode === 'expert'}
+                onCheckedChange={(checked) => {
+                  setUiMode(checked ? 'expert' : 'simple');
+                  if (!checked) applySimpleModeDefaults();
+                }}
+                aria-label="Toggle expert mode"
+              />
+              <span
+                className={`text-[10px] font-semibold ${uiMode === 'expert' ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`}
+              >
+                Expert
+              </span>
+            </div>
 
             <button
               onClick={() => setActiveTab('settings')}
@@ -428,6 +523,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="kpi" className="space-y-6">
+            {uiMode === 'simple' && <SimpleExtractionBar />}
             {/* @MX:NOTE: Enable smooth scroll to top on sub-tab switch for better UX */}
             {/* @MX:REASON: Ensures users are returned to the top of the viewport when navigating between analytics views */}
             <Tabs value={kpiSubTab} onValueChange={(value) => {
@@ -532,6 +628,7 @@ export default function Home() {
       )}
 
       {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
+      {uiMode === 'simple' && <SimpleModeWizard />}
     </>
   );
 }

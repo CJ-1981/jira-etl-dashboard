@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import {
-  Zap, Edit2, Trash2, CheckCircle2, X, Search, ChevronDown, Sliders,
+  Zap, Edit2, Trash2, CheckCircle2, X, Search, ChevronDown, ChevronUp, Sliders,
 } from 'lucide-react';
 import { localConfig } from '@/lib/config/local-store';
 import { JqlAutocomplete } from './JqlAutocomplete';
@@ -62,6 +62,9 @@ export function KpiFilterPanel({
   handleApplyFilters,
 }: KpiFilterPanelProps) {
   const [filterSearchQuery, setFilterSearchQuery] = useState('');
+  // Collapse state for the filter body (JQL + facets + apply) — the header
+  // chevron toggles it; "Clear All Filters" stays visible while collapsed.
+  const [bodyOpen, setBodyOpen] = useState(true);
 
   const handleToggleFilter = (key: string, value: string) => {
     jqlFilters.toggleStagingFilter(key, value);
@@ -108,10 +111,20 @@ export function KpiFilterPanel({
   return (
     <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-in slide-in-from-top-4 duration-300" data-filter-section>
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-slate-300">
-          <Sliders className="h-4 w-4 text-emerald-500" />
-          Advanced Filtering
-        </h4>
+        {/* Title doubles as the collapse toggle (chevron next to the title). */}
+        <button
+          onClick={() => setBodyOpen(!bodyOpen)}
+          className="flex items-center gap-2 group text-left"
+          aria-expanded={bodyOpen}
+        >
+          <h4 className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-slate-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+            <Sliders className="h-4 w-4 text-emerald-500" />
+            Advanced Filtering
+          </h4>
+          {bodyOpen
+            ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+            : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+        </button>
         <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-400 hover:text-red-500" onClick={() => {
           jqlFilters.clearStagingFilters();
           setGlobalFilters({});
@@ -120,6 +133,7 @@ export function KpiFilterPanel({
         </Button>
       </div>
 
+      {bodyOpen && (<>
       <div className="grid grid-cols-1 gap-4 bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -363,6 +377,7 @@ export function KpiFilterPanel({
           })}
         </div>
       )}
+      </>)}
     </div>
   );
 }

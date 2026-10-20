@@ -36,6 +36,17 @@ the dev server via the Playwright config, and uploads the HTML report as an arti
 ### Single page + API routes
 The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dashboard/`). The header has two tabs (Data Center, KPI Analytics); **Settings opens via a gear icon** left of the dark/light toggle, and its Connections / Storage / Configuration sub-tabs are always visible (only Data Center and KPI Analytics have a Sub-Menu toggle). All data flows through ~20 API routes under `src/app/api/`:
 
+- **Simple/Expert UI mode** (`cfg_ui_mode` in localStorage, default `simple`; header switch
+  before the gear). Simple mode renders a single combined view: the top tabs and the
+  ExtractPanel are hidden, a `SimpleExtractionBar` (reusing `useExtraction` +
+  `QuickDateSelector`) sits above `KpiDashboard`, the analysis period is forced to the
+  master-dataset range on every refresh, the KPI sub-menu and Metrics Overview start
+  collapsed, and a minimal plugin set is seeded into `cfg_active_plugins` **only when that
+  key is absent** (user-configured visibility always wins). A first-run wizard
+  (`SimpleModeWizard`, simple mode + no connection + demo off, session-skippable) offers
+  Jira setup or demo data. `e2e/helpers.ts` seeds `expert` by default so legacy specs keep
+  testing the full shell — pass `{ mode: 'simple' }` for mode-specific specs.
+
 - `jira/extract` — core ETL: JQL pull → `EtlRun` + `TicketSnapshot`/`TicketTransition` + `MasterTicket` upserts → KPI calculation → `KpiResult` storage. The run row starts as `extracting` and is promoted to `completed` only after the load succeeds (`failed` + errorLog on crash); old-run pruning happens after success. Deletion detection is conservative: it only runs for the app-generated broad-sync JQL, never for user-provided custom JQL. The Participants field (`JIRA_PARTICIPANTS_FIELD`, default `customfield_10032`) is always added to the requested field list so the extract preview can show participant names.
 - `jira/poll` — server-side background polling scheduler (keeps credentials in `globalThis` state)
 - `jira/connections/[connectionId]` — DELETE: cascades all of a connection's data (KPI results, dashboard views, transitions, snapshots, runs, master tickets) in one transaction

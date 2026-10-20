@@ -41,6 +41,7 @@ const deepClone = <T,>(v: T): T =>
 export function createMockStore(overrides: Record<string, unknown> = {}) {
   const state: Record<string, unknown> = {
     activeTab: 'extract',
+    uiMode: 'simple',
     theme: 'dark',
     showDataCenterSubmenu: true,
     showKpiAnalyticsSubmenu: true,
@@ -81,6 +82,7 @@ export function createMockStore(overrides: Record<string, unknown> = {}) {
   // Mutating setters (also exposed as vi.fns for assertion).
   const setters: Record<string, (v: unknown) => void> = {
     setActiveTab: (v) => { state.activeTab = v as string; },
+    setUiMode: (v) => { state.uiMode = v as 'simple' | 'expert'; },
     setTheme: (v) => { state.theme = v as 'light' | 'dark'; },
     setShowDataCenterSubmenu: (v) => { state.showDataCenterSubmenu = v as boolean; },
     setShowKpiAnalyticsSubmenu: (v) => { state.showKpiAnalyticsSubmenu = v as boolean; },

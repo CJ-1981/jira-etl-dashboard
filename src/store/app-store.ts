@@ -9,6 +9,14 @@ interface AppState {
   // App
   activeTab: string;
   setActiveTab: (tab: string) => void;
+
+  /**
+   * UI complexity mode. 'simple' (default) is a single combined view with a
+   * minimal plugin set; 'expert' is the full multi-tab experience.
+   * Persisted via localConfig (cfg_ui_mode) — page.tsx loads/saves it.
+   */
+  uiMode: 'simple' | 'expert';
+  setUiMode: (mode: 'simple' | 'expert') => void;
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
 
@@ -124,6 +132,9 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   activeTab: 'extract',
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  uiMode: 'simple',
+  setUiMode: (mode) => set({ uiMode: mode }),
 
   theme: 'dark',
   setTheme: (theme) => set({ theme }),

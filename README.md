@@ -43,6 +43,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Modern Aesthetics** — Premium dark-mode interface with glassmorphism effects and smooth transitions.
 
 ### 🌓 Professional Dashboard UX
+- **Simple & Expert Mode** — Simple mode (default) is a single combined view: quick date selection and extraction at the top of the analytics dashboard, the analysis period automatically tracking every pulled ticket, a minimal essential plugin set, and a first-run wizard that offers Jira setup or one-click demo data when nothing is configured. Expert mode (header toggle) restores the full multi-tab experience.
 - **Saved Views / Presets** — Save named dashboard states (Dates, JQL, Filters, Layouts) to switch between different reporting contexts instantly.
 - **Interactive Metrics Table** — Toggle between a grid of cards and a high-density, sortable/filterable data table for rapid metric scanning.
 - **KPI Alert Thresholds** — Set custom Warning and Critical limits for any plugin; includes animated pulse alerts and hover tooltips.

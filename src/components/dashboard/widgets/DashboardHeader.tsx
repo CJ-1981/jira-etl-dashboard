@@ -63,7 +63,7 @@ const PRESETS = [
 /**
  * Dashboard header card: KPI Analytics title, dataset inventory badge,
  * Filters/Print controls, the analysis-period inputs with quick presets and
- * the collapsible KpiFilterPanel. Pure presentational â€” all state changes go
+ * the collapsible KpiFilterPanel. Pure presentational — all state changes go
  * through callbacks owned by KpiDashboard.
  */
 export function DashboardHeader({
@@ -113,17 +113,17 @@ export function DashboardHeader({
                 <Database className="h-3 w-3 text-blue-500" />
                 <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tight">
                   {masterDatasetInfo.dateRange?.from ? (
-                    <>Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} â€” {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}</>
+                    <>Data Inventory: {new Date(masterDatasetInfo.dateRange.from).toLocaleDateString()} — {new Date(masterDatasetInfo.dateRange.to || Date.now()).toLocaleDateString()}</>
                   ) : (
                     <>Data Inventory: Range Unspecified</>
                   )}
                 </span>
                 <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400/80 border-l border-blue-200 dark:border-blue-500/30 pl-2 ml-1">
                   {/* @MX:NOTE: lastUpdated can be absent/invalid (empty master
-                      dataset responses omit it) â€” guard before formatting. */}
+                      dataset responses omit it) — guard before formatting. */}
                   {masterDatasetInfo.totalExtracted.toLocaleString()} tickets
                   {masterDatasetInfo.lastUpdated && !isNaN(new Date(masterDatasetInfo.lastUpdated).getTime()) && (
-                    <> â€¢ Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
+                    <> • Updated {new Date(masterDatasetInfo.lastUpdated).toLocaleString(undefined, {
                       year: 'numeric', month: 'short', day: 'numeric',
                       hour: '2-digit', minute: '2-digit'
                     })}</>
