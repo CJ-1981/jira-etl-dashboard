@@ -323,6 +323,15 @@ interface ChartCardProps {
   onMoveUp?: (id: string) => void;
   onMoveDown?: (id: string) => void;
   calculateWidgetJql?: (widgetId: string, jqlFilter: JqlFilter) => void | Promise<void>;
+  /**
+   * Controlled collapse state for synthesized configs that are not store-backed
+   * (e.g. CycleTimeHistogramWidget's `cycle-time-histogram-<pluginId>` card is
+   * not an entry in `dashboardCharts`, so the store toggle would no-op).
+   * When `onToggleCollapse` is provided it takes precedence over
+   * `config.expanded` / `toggleWidgetExpanded`.
+   */
+  expanded?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 /** Pixel height per widget height setting. */
@@ -333,7 +342,7 @@ const CHART_HEIGHTS: Record<string, number> = {
   xtall: 1200, // 4x
 };
 
-export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme, onMoveUp, onMoveDown, calculateWidgetJql }: ChartCardProps) {
+export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme, onMoveUp, onMoveDown, calculateWidgetJql, expanded: expandedProp, onToggleCollapse }: ChartCardProps) {
   // The lib chart helpers are typed against the lib `KpiResult` shape; the
   // dashboard emits the structurally compatible `KpiCalcResult` shape (the
   // original code passed `any[]` here). Bridge once at the boundary.
@@ -343,9 +352,15 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
   const [exporting, setExporting] = useState(false);
   const [jqlSettingsOpen, setJqlSettingsOpen] = useState(false);
 
-  // @MX:NOTE: Expanded state from store (default to true if not set)
-  const expanded = config.expanded !== false;
+  // @MX:NOTE: Expanded state from store (default to true if not set).
+  // Externally controlled cards (onToggleCollapse provided) read their state
+  // from the prop instead — their synthesized ids are not in dashboardCharts.
+  const expanded = onToggleCollapse ? expandedProp !== false : config.expanded !== false;
   const { toggleWidgetExpanded } = useAppStore();
+  const handleToggleExpanded = () => {
+    if (onToggleCollapse) onToggleCollapse();
+    else toggleWidgetExpanded(config.id);
+  };
 
   // @MX:NOTE: Inline chart title editing state
   const [editingTitle, setEditingTitle] = useState(false);
@@ -639,7 +654,7 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 <div className="flex items-center gap-1.5 min-w-0 group/charttitle">
                   <CardTitle className="text-lg truncate">{displayTitle}</CardTitle>
                   <button
-                    onClick={(e) => { e.stopPropagation(); toggleWidgetExpanded(config.id); }}
+                    onClick={(e) => { e.stopPropagation(); handleToggleExpanded(); }}
                     className="text-slate-400 hover:text-slate-600 transition-colors p-0.5 shrink-0"
                     title={expanded ? "Collapse" : "Expand"}
                     aria-label={expanded ? "Collapse chart" : "Expand chart"}

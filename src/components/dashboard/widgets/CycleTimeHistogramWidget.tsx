@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { ChartConfig, KpiCalcResult } from '@/types/dashboard';
 import { ChartCard } from '../KpiCard';
 
@@ -17,6 +18,14 @@ export interface CycleTimeHistogramWidgetProps {
   onDrillDown: (keys: string[], title: string) => void;
   theme: string;
   calculateWidgetJql?: (widgetId: string, jqlFilter: any) => void;
+  /**
+   * Collapse state from the shared `collapsedWidgets` store (keyed by the
+   * widget's plugin id) and its toggle. The card's config id is synthesized
+   * here and has no `dashboardCharts` entry, so ChartCard's own store toggle
+   * would silently no-op — the state must be controlled from outside.
+   */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 /**
@@ -36,20 +45,26 @@ export function CycleTimeHistogramWidget({
   onDrillDown,
   theme,
   calculateWidgetJql,
+  collapsed = false,
+  onToggleCollapse,
 }: CycleTimeHistogramWidgetProps) {
   const pluginId = kpis[0].pluginId;
+
+  // The config is synthesized per render — memoize it so ChartCard's memo
+  // comparison doesn't see a fresh object identity on every parent render.
+  const config = useMemo<ChartConfig>(() => ({
+    id: `cycle-time-histogram-${pluginId}`,
+    type: 'bar',
+    kpiId: pluginId,
+    width: 'lg',
+    height: 'md',
+    jqlFilter: { enabled: false, query: '', mode: 'override' }
+  }), [pluginId]);
 
   return (
     <div className="col-span-1 md:col-span-2 lg:col-span-3">
       <ChartCard
-        config={{
-          id: `cycle-time-histogram-${pluginId}`,
-          type: 'bar',
-          kpiId: pluginId,
-          width: 'lg',
-          height: 'md',
-          jqlFilter: { enabled: false, query: '', mode: 'override' }
-        }}
+        config={config}
         kpiResults={kpiResults}
         hiddenDimensions={hiddenDimensions}
         toggleDimension={toggleDimension}
@@ -60,6 +75,8 @@ export function CycleTimeHistogramWidget({
         onClick={onDrillDown}
         theme={theme as any}
         calculateWidgetJql={calculateWidgetJql}
+        expanded={!collapsed}
+        onToggleCollapse={onToggleCollapse}
       />
     </div>
   );

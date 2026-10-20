@@ -1059,6 +1059,8 @@ export function KpiDashboard() {
                       onDrillDown={handleDrillDown}
                       theme={theme}
                       calculateWidgetJql={calculateWidgetJql}
+                      collapsed={collapsedWidgets.includes(widget.kpis[0].pluginId)}
+                      onToggleCollapse={() => toggleWidgetCollapse(widget.kpis[0].pluginId)}
                     />
                   ) : null;
 
