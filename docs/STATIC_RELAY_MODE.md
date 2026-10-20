@@ -74,10 +74,10 @@ the dashboard automatically; use `--no-open` to suppress, or `DASHBOARD_URL` to
 point somewhere else.
 
 Instead of environment variables, configuration can live in a **`relay.env`**
-file (KEY=VALUE, template: `scripts/relay.env.example`) — searched **next to
-the script/exe first, then at the repo root**. This is the primary
-configuration surface for the standalone exe. Real environment variables take
-precedence over the file. On startup the relay reports which file it loaded,
+or **`jira.env`** file (KEY=VALUE, template: `scripts/relay.env.example`) —
+searched **next to the script/exe first, then at the repo root**. This is the primary
+configuration surface for the standalone exe. Within a directory `relay.env`
+wins over `jira.env`; real environment variables take precedence over both. On startup the relay reports which file it loaded,
 notes when it runs on env vars alone, and prints a loud ERROR with the
 searched paths when no `relay.env` exists and Jira credentials are unset.
 

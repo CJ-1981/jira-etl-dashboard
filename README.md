@@ -419,7 +419,7 @@ python scripts/jira_relay.py   # the local data relay (stdlib only, no pip deps)
 For users **without Python**, `build-relay-exe.bat` (Windows) /
 `build-relay-exe.sh` (macOS/Linux) packages the relay into a standalone
 `dist/jira-relay` executable via PyInstaller — ship it next to a `relay.env`
-config file (template: `scripts/relay.env.example`) and it runs anywhere.
+or `jira.env` config file (template: `scripts/relay.env.example`) and it runs anywhere.
 
 See **[docs/STATIC_RELAY_MODE.md](docs/STATIC_RELAY_MODE.md)** for relay setup, environment variables, the standalone exe, migrating an existing `custom.db`, and the GitHub Pages workflow. To instead host the **npm server on an internal network** (team-shared), see **[docs/INTERNAL_HOSTING.md](docs/INTERNAL_HOSTING.md)** — not implemented yet; it records the required adaptation (origin allowlist, `HOSTNAME` binding, firewall scoping).
 

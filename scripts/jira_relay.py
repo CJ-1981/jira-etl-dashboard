@@ -87,8 +87,11 @@ def app_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+ENV_FILE_NAMES = ("relay.env", "jira.env")
+
+
 def relay_env_candidates():
-    """Directories searched for relay.env, in priority order."""
+    """Directories searched for the credentials file, in priority order."""
     if getattr(sys, "frozen", False):
         here = os.path.dirname(os.path.abspath(sys.executable))
     else:
@@ -96,15 +99,26 @@ def relay_env_candidates():
     return [here, app_root()]
 
 
+def env_file_candidates():
+    """Credential files searched, in priority order: per directory,
+    relay.env wins over jira.env (alias for Jira-flavored setups)."""
+    return list(dict.fromkeys(
+        os.path.join(d, name)
+        for d in relay_env_candidates()
+        for name in ENV_FILE_NAMES
+    ))
+
+
 def load_env_file():
     """
-    Optional KEY=VALUE config file (relay.env), searched next to the script
-    (or the standalone exe) first, then at the app root — covers both the
-    repo layout (<repo>/scripts/jira_relay.py + <repo>/relay.env) and a
-    script copied anywhere on its own. Real environment variables always
-    win. Returns the loaded path, or None.
+    Optional KEY=VALUE credentials file — **relay.env** or **jira.env** —
+    searched next to the script (or the standalone exe) first, then at the
+    app root. Covers both the repo layout (<repo>/scripts/jira_relay.py +
+    <repo>/relay.env) and a script copied anywhere on its own. Within a
+    directory relay.env wins over jira.env; real environment variables
+    always win over any file. Returns the loaded path, or None.
     """
-    for path in dict.fromkeys(os.path.join(d, "relay.env") for d in relay_env_candidates()):
+    for path in env_file_candidates():
         if not os.path.isfile(path):
             continue
         try:
@@ -788,11 +802,11 @@ def main():
         # Running purely on process env vars (CI, exported shell variables).
         print("[relay] NOTE: no relay.env found — using process environment only.")
     else:
-        searched = ", ".join(dict.fromkeys(relay_env_candidates()))
-        print(f"[relay] ERROR: no relay.env found (searched: {searched}) and Jira credentials", file=sys.stderr)
+        searched = ", ".join(env_file_candidates())
+        print(f"[relay] ERROR: no relay.env/jira.env found (searched: {searched}) and Jira credentials", file=sys.stderr)
         print("[relay]        are unset — /sync will fail and, without ALLOWED_ORIGIN, browser", file=sys.stderr)
         print("[relay]        pages cannot read relay responses at all.", file=sys.stderr)
-        print("[relay]        Copy scripts/relay.env.example to relay.env next to the script", file=sys.stderr)
+        print("[relay]        Copy scripts/relay.env.example to relay.env (or jira.env) next to the script", file=sys.stderr)
         print("[relay]        (or at the search paths above) and fill it in.", file=sys.stderr)
     print(f"[relay] SQLite store: {args.db}")
     print(f"[relay] Jira: {JIRA_BASE_URL or '(not configured — /sync will fail)'}")

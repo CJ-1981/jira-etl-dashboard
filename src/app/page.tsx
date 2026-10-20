@@ -570,9 +570,8 @@ export default function Home() {
                 </div>
               )}
 
-              {uiMode === 'simple' && <SimpleExtractionBar />}
-
               <TabsContent value="dashboard" className="mt-0">
+                {uiMode === 'simple' && <SimpleExtractionBar />}
                 <KpiDashboard />
               </TabsContent>
 
