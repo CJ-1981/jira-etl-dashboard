@@ -645,7 +645,9 @@ export function PluginsPanel() {
                     className={`text-[10px] h-7 px-2 gap-1 ${activeFilter === 'active' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
                     onClick={() => setActiveFilter(activeFilter === 'active' ? 'all' : 'active')}
                   >
-                    <CheckCircle2 className={`h-3 w-3 ${activeFilter === 'active' ? 'fill-white' : ''}`} />
+                    {/* @MX:NOTE: No fill on the active state — filling this icon white
+                        would erase the checkmark inside the circle (white on white). */}
+                    <CheckCircle2 className="h-3 w-3" />
                     Active
                   </Button>
                   <Button
