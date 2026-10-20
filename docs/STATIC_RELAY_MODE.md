@@ -100,6 +100,18 @@ needs Python 3.10+; the target machine does not). Deploying to users:
 `relay.env` holds the Jira API token, so it is gitignored — never commit a
 filled-in copy.
 
+### Auto-loaded KPI plugin configuration
+
+Drop a **`kpi-plugin-config.json`** (the export from Settings →
+Configuration Management) **next to the relay script/exe** — the same
+search path as `relay.env` — and the relay serves it via `GET /config`.
+The static dashboard loads it automatically (once per browser session)
+and seeds the formula plugins for visitors who have none, so workflow-specific
+KPIs work on every machine without a manual import. Locally configured
+plugins always win over the file; the relay logs the loaded file on
+startup. Unlike `relay.env`, this file holds no credentials — it is safe
+to share.
+
 ### Code signing the exe
 
 `build-relay-exe.bat` signs `dist\jira-relay.exe` automatically when a

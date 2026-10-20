@@ -53,11 +53,43 @@ function sanitizeCsvCell(value: unknown): string {
   return /^[=+\-@]/.test(str) ? `'${str}` : str;
 }
 
+// Once per session: the relay's kpi-plugin-config.json (served via GET
+// /config) is seeded into localStorage only while the user has no formula
+// plugins configured — an explicit import or local edits always win.
+const RELAY_CONFIG_SYNC_KEY = 'cfg_relay_config_synced';
+
+/**
+ * Seed formula plugins from the relay's kpi-plugin-config.json, mirroring how
+ * the relay auto-detects relay.env. Runs at most once per browser session
+ * (sessionStorage marker).
+ */
+export async function syncKpiConfigFromRelay(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (sessionStorage.getItem(RELAY_CONFIG_SYNC_KEY) === '1') return;
+  sessionStorage.setItem(RELAY_CONFIG_SYNC_KEY, '1');
+  try {
+    const res = await relayFetch('/config');
+    if (!res.ok) return;
+    const body = await res.json();
+    if (!body?.success || !body.config) return;
+    const plugins = (body.config.customPlugins ?? body.config.kpiPlugins) as
+      | Parameters<typeof localConfig.saveKpiPlugins>[0]
+      | undefined;
+    if (Array.isArray(plugins) && plugins.length > 0 && localConfig.getKpiPlugins().length === 0) {
+      localConfig.saveKpiPlugins(plugins);
+    }
+  } catch {
+    // No config file / relay briefly unavailable — formulas simply stay manual.
+  }
+}
+
 export class RelayDataSource implements DataSource {
   async loadMasterDataset(
     connectionId: string,
     _opts: { storageConfig?: StorageConfig | null }
   ): Promise<MasterDatasetData | null> {
+    // Seed formula plugins from the relay config before anything consumes them.
+    await syncKpiConfigFromRelay();
     const res = await relayFetch(`/dataset?connection=${encodeURIComponent(connectionId)}`);
     const data = await res.json();
     if (res.ok && data?.success && data.data) {
@@ -121,6 +153,7 @@ export class RelayDataSource implements DataSource {
   }
 
   async listPlugins(): Promise<PluginInfo[]> {
+    await syncKpiConfigFromRelay();
     const engine = new KpiEngine();
     return engine.getAllPlugins().map(p => ({
       id: p.id,

@@ -127,6 +127,45 @@ def load_env_file():
 
 ENV_FILE = load_env_file()
 
+CONFIG_FILE_NAME = "kpi-plugin-config.json"
+CONFIG_FILE = None
+
+
+def find_config_file():
+    """
+    Optional KPI plugin configuration (kpi-plugin-config.json), searched in the
+    same places as relay.env: next to the script/exe first, then the app root.
+    When present, GET /config serves it and the static dashboard auto-loads the
+    formula plugins from it (no manual import per browser needed). Returns the
+    loaded path, or None.
+    """
+    for path in dict.fromkeys(os.path.join(d, CONFIG_FILE_NAME) for d in relay_env_candidates()):
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def load_config_file(path: str | None):
+    """Parse the config file, returning (config dict, path) or (None, None)."""
+    if not path:
+        return None, None
+    try:
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            return data, path
+        print(f"[relay] WARNING: {path} is not a JSON object — ignoring", file=sys.stderr)
+        return None, None
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"[relay] WARNING: failed reading {path}: {e}", file=sys.stderr)
+        return None, None
+
+
+CONFIG_FILE = find_config_file()
+CONFIG_DATA, CONFIG_FILE = load_config_file(CONFIG_FILE)
+if CONFIG_FILE:
+    print(f"[relay] KPI plugin config: {CONFIG_FILE} ({len(CONFIG_DATA.get('customPlugins', []) or [])} plugins)")
+
 JIRA_BASE_URL = (os.environ.get("JIRA_BASE_URL") or "").rstrip("/")
 JIRA_EMAIL = os.environ.get("JIRA_EMAIL") or ""
 JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN") or ""
@@ -631,6 +670,17 @@ class RelayHandler(BaseHTTPRequestHandler):
                 },
                 "version": self.server_version,
             })
+            return
+
+        if path == "/config":
+            # Serve the KPI plugin configuration file, when present next to the
+            # relay (same search path as relay.env). The static dashboard loads
+            # this once per session so formula plugins work without a manual
+            # import in every browser.
+            if CONFIG_DATA is None:
+                self.send_json({"success": False, "error": "no kpi-plugin-config.json found next to the relay"}, 404)
+                return
+            self.send_json({"success": True, "config": CONFIG_DATA})
             return
 
         if path == "/dataset":

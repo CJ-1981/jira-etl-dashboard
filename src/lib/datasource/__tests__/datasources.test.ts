@@ -49,7 +49,16 @@ describe('RelayDataSource', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
     fetchMock = vi.spyOn(global, 'fetch');
+    // Default: the config probe (syncKpiConfigFromRelay) gets a fresh 404 per
+    // call — URL-routed so sequential mockResolvedValueOnce queues keep their
+    // order for the /sync and /dataset calls each test actually asserts on.
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/config')) return Promise.resolve(jsonResponse({ success: false }, 404));
+      return Promise.resolve(jsonResponse({ success: true }));
+    });
     relay = new RelayDataSource();
   });
 
@@ -59,7 +68,7 @@ describe('RelayDataSource', () => {
   });
 
   it('loadMasterDataset maps the relay /dataset payload', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({
+    fetchMock.mockImplementation(async () => jsonResponse({
       success: true,
       data: {
         totalExtracted: 2,
@@ -77,13 +86,51 @@ describe('RelayDataSource', () => {
       dateRange: { from: '2026-01-01', to: '2026-06-01' },
       lastUpdated: '2026-06-01T00:00:00Z',
     });
-    const url = (fetchMock.mock.calls[0] as unknown as [string])[0];
+    const datasetCall = fetchMock.mock.calls.find((c: unknown[]) => String(c[0]).includes('/dataset?connection=conn-1'));
+    expect(datasetCall).toBeTruthy();
+    const url = (datasetCall as unknown as [string])[0];
     expect(url).toContain('/dataset?connection=conn-1');
   });
 
   it('loadMasterDataset returns null on relay failure', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ success: false }, 500));
+    fetchMock.mockImplementation(async () => jsonResponse({ success: false }, 500));
     await expect(relay.loadMasterDataset('conn-1', {})).resolves.toBeNull();
+  });
+
+  it('seeds formula plugins from the relay /config when none are configured', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/config')) {
+        return jsonResponse({
+          success: true,
+          config: { customPlugins: [{ id: 'fx_formula', name: 'FX', formula: 'COUNT(true)', language: 'dsl', pluginType: 'custom', isActive: true }] },
+        });
+      }
+      if (url.includes('/dataset')) {
+        return jsonResponse({ success: true, data: { totalExtracted: 0, issues: [], lastUpdated: 'u' } });
+      }
+      return jsonResponse({ success: true });
+    });
+
+    await relay.loadMasterDataset('conn-1', {});
+
+    const stored = JSON.parse(localStorage.getItem('cfg_kpi_plugins') || '[]');
+    expect(stored.map((p: { id: string }) => p.id)).toEqual(['fx_formula']);
+  });
+
+  it('never overwrites plugins the user already has', async () => {
+    localStorage.setItem('cfg_kpi_plugins', JSON.stringify([{ id: 'mine' }]));
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/config')) {
+        return jsonResponse({ success: true, config: { customPlugins: [{ id: 'fx_formula' }] } });
+      }
+      return jsonResponse({ success: true });
+    });
+
+    await relay.loadMasterDataset('conn-1', {});
+
+    expect(JSON.parse(localStorage.getItem('cfg_kpi_plugins') ?? '[]')).toEqual([{ id: 'mine' }]);
   });
 
   it('extract syncs then reloads the dataset for the preview list', async () => {
@@ -92,6 +139,7 @@ describe('RelayDataSource', () => {
         success: true,
         summary: { totalExtracted: 3, added: 3, updated: 0, unchanged: 0, deleted: 0, jql: 'j', timestamp: 't' },
       }))
+      .mockResolvedValueOnce(jsonResponse({ success: false }, 404)) // GET /config probe
       .mockResolvedValueOnce(jsonResponse({
         success: true,
         data: { totalExtracted: 5, issues: [{ key: 'B-1' }], lastUpdated: 'u' },
@@ -114,7 +162,7 @@ describe('RelayDataSource', () => {
   });
 
   it('extract surfaces relay errors with the upstream status', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ success: false, error: 'no credentials' }, 400));
+    fetchMock.mockImplementation(async () => jsonResponse({ success: false, error: 'no credentials' }, 400));
     await expect(relay.extract(extractParams())).rejects.toMatchObject({ status: 400 });
   });
 
@@ -177,7 +225,7 @@ describe('RelayDataSource', () => {
   });
 
   it('deleteConnectionData issues a DELETE against the relay dataset', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ success: true, deleted: 3 }));
+    fetchMock.mockImplementation(async () => jsonResponse({ success: true, deleted: 3 }));
     await expect(relay.deleteConnectionData('conn-1')).resolves.toBeUndefined();
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain('/dataset?connection=conn-1');
