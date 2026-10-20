@@ -10,9 +10,10 @@ test.describe('Simple mode', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Jira ETL Dashboard' }).waitFor({ state: 'visible' });
 
-    // No Data Center / KPI Analytics tabs — single combined view.
+    // No Data Center tab — the KPI Analytics tab remains as the minimum view
+    // (it is the way back when the settings gear is used).
     await expect(page.getByRole('tab', { name: 'Data Center' })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'KPI Analytics' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'KPI Analytics' })).toBeVisible();
 
     // First-run wizard: no connection configured yet.
     await expect(page.getByText('Welcome to Jira ETL Dashboard')).toBeVisible();
@@ -28,6 +29,8 @@ test.describe('Simple mode', () => {
     await expect(page.getByText('Welcome to Jira ETL Dashboard')).not.toBeVisible();
     // Settings area opens on the always-visible Connections sub-tab.
     await expect(page.getByRole('tab', { name: 'Connections' })).toBeVisible();
+    // The KPI Analytics tab remains visible as the way back to the dashboard.
+    await expect(page.getByRole('tab', { name: 'KPI Analytics' })).toBeVisible();
   });
 
   test('wizard: Try demo data loads the demo dataset into the dashboard', async ({ page }) => {
@@ -89,9 +92,10 @@ test.describe('Simple mode', () => {
     await expect(page.getByRole('tab', { name: 'Data Center' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'KPI Analytics' })).toBeVisible();
 
-    // And back to simple.
+    // And back to simple — the Data Center tab disappears, KPI Analytics stays.
     await page.getByRole('switch', { name: 'Toggle expert mode' }).click();
     await expect(page.getByRole('tab', { name: 'Data Center' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'KPI Analytics' })).toBeVisible();
   });
 
   test('expert-seeded storage keeps the classic two-tab shell', async ({ page }) => {

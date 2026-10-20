@@ -398,20 +398,22 @@ export default function Home() {
           {/* Middle / Tabs — hidden entirely in simple mode (single view) */}
           <div className="flex justify-center items-center w-full col-span-2 lg:col-span-1 order-last lg:order-none no-print gap-2">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
-              {uiMode === 'expert' && (
-                <TabsList className="bg-transparent border-0 gap-1 h-9 w-full flex">
+              <TabsList className="bg-transparent border-0 gap-1 h-9 w-full flex">
+                {uiMode === 'expert' && (
                   <TabsTrigger value="extract" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
                     <Database className="h-3.5 w-3.5 shrink-0" />
                     <span className="hidden sm:inline truncate">Data Center</span>
                     <span className="sm:hidden truncate">Data</span>
                   </TabsTrigger>
-                  <TabsTrigger value="kpi" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
-                    <BarChart3 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden sm:inline truncate">KPI Analytics</span>
-                    <span className="sm:hidden truncate">KPI</span>
-                  </TabsTrigger>
-                </TabsList>
-              )}
+                )}
+                {/* Simple mode keeps the KPI Analytics tab as its minimum view —
+                    it is the way back when the settings gear is used. */}
+                <TabsTrigger value="kpi" className="gap-2 flex-1 sm:flex-none sm:w-32 xl:w-48 h-8 rounded-md data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-xs min-w-0">
+                  <BarChart3 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline truncate">KPI Analytics</span>
+                  <span className="sm:hidden truncate">KPI</span>
+                </TabsTrigger>
+              </TabsList>
             </Tabs>
 
           {/* Submenu Toggle Button - Context-aware based on active tab.
@@ -543,7 +545,6 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="kpi" className="space-y-6">
-            {uiMode === 'simple' && <SimpleExtractionBar />}
             {/* @MX:NOTE: Enable smooth scroll to top on sub-tab switch for better UX */}
             {/* @MX:REASON: Ensures users are returned to the top of the viewport when navigating between analytics views */}
             <Tabs value={kpiSubTab} onValueChange={(value) => {
@@ -568,6 +569,8 @@ export default function Home() {
                   </TabsList>
                 </div>
               )}
+
+              {uiMode === 'simple' && <SimpleExtractionBar />}
 
               <TabsContent value="dashboard" className="mt-0">
                 <KpiDashboard />
