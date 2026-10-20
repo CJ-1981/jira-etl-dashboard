@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { SimpleExtractionBar } from '../SimpleExtractionBar';
+import { QueryClient } from '@tanstack/react-query';
 import { createMockStore, renderWithProviders } from '@/test/mock-store';
 
 // ── fetch mock (extraction + master refresh + poll ping) ─────────────────────
@@ -57,6 +58,22 @@ describe('SimpleExtractionBar', () => {
       if (u.includes('/api/jira/poll')) return jsonResponse({ success: false });
       return jsonResponse({ success: true });
     });
+  });
+
+  it('invalidates the KPI results query after a pull so plugins recalculate', async () => {
+    const invalidate = vi.fn().mockResolvedValue(undefined);
+    const queryClient = new QueryClient();
+    queryClient.invalidateQueries = invalidate;
+    storeRef.current = createMockStore({
+      activeConnectionId: 'conn-1',
+      connections: CONNECTIONS,
+      dateFrom: '2026-07-23',
+      dateTo: '2026-10-20',
+    });
+    renderWithProviders(<SimpleExtractionBar />, queryClient);
+
+    fireEvent.click(screen.getByRole('button', { name: /run extraction/i }));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kpi-results'] }));
   });
 
   it('runs the extraction with the bar\u0027s own pull window, not the analysis period', async () => {

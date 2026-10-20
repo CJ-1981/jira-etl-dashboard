@@ -7,6 +7,7 @@ import { RefreshCw, Loader2, FlaskConical, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { QuickDateSelector } from '../extract/QuickDateSelector';
 import { useExtraction } from '../extract/useExtraction';
+import { useQueryClient } from '@tanstack/react-query';
 import { localConfig } from '@/lib/config/local-store';
 import { DEMO_CONNECTION_ID } from '@/lib/datasource/demo-data';
 import { useAppStore } from '@/store/app-store';
@@ -60,6 +61,8 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
 
   const customFields = useMemo(() => localConfig.getCustomExtractFields(), []);
 
+  const queryClient = useQueryClient();
+
   const {
     extracting,
     handleExtract,
@@ -73,6 +76,14 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
     getPollEnabled: () => false,
     getWindow,
   });
+
+  // A pull wipes the store's kpiResults; the KPI query only re-runs when its
+  // key changes, and re-pulling the same range changes nothing — so invalidate
+  // it explicitly to recalculate against the fresh dataset.
+  const runExtraction = useCallback(async () => {
+    await handleExtract();
+    await queryClient.invalidateQueries({ queryKey: ['kpi-results'] });
+  }, [handleExtract, queryClient]);
 
   const exitDemo = useCallback(() => {
     // Mirror ExtractPanel's exit: drop the demo flag + in-memory demo payload
@@ -122,12 +133,12 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
               dateTo={pullTo}
               updateOnly={false}
               onQuickPull={handleQuickPull}
-              onQuickUpdate={(days) => handleExtract(days)}
+              onQuickUpdate={() => runExtraction()}
             />
           </div>
 
           <Button
-            onClick={() => handleExtract()}
+            onClick={() => runExtraction()}
             disabled={extracting || !hasConnection || !pullFrom || !pullTo}
             className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
             title={hasConnection ? 'Pull tickets for the selected window' : 'Select a connection or start demo mode first'}
