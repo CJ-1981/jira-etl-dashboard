@@ -19,7 +19,7 @@ test.describe('static relay mode', () => {
     await expect(page.getByRole('heading', { name: 'Jira ETL Dashboard' })).toBeVisible();
 
     // Connections: relay card instead of credential fields.
-    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page.getByText('Relay Connection')).toBeVisible();
     await expect(page.getByText(/local Python relay/)).toBeVisible();
     await expect(page.getByText('python scripts/jira_relay.py')).toBeVisible();
@@ -45,7 +45,7 @@ test.describe('static relay mode', () => {
     await page.goto('/jira-etl-dashboard/');
 
     // 1. Create a connection through the credential-free relay form.
-    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
     await page.getByPlaceholder('e.g. Company Jira Cloud').fill('E2E Relay');
     await page.getByPlaceholder('e.g. PROJ, DEV, OPS').fill('E2E');
     await page.getByRole('button', { name: 'Save Jira Connection' }).click();

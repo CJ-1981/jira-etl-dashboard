@@ -52,8 +52,13 @@ export async function gotoHome(page: Page) {
 // display:none at the 1280px viewport, so the accessible name is the desktop
 // label. Waits for hydration first so the click lands on live handlers even
 // right after a hard navigation or page.reload().
+// "Settings" is not a tab anymore — it opens via the header gear icon.
 export async function clickTab(page: Page, label: string) {
   await waitForHydration(page);
+  if (label === 'Settings') {
+    await page.getByRole('button', { name: 'Settings' }).click();
+    return;
+  }
   await page.getByRole('tab', { name: label }).click();
 }
 

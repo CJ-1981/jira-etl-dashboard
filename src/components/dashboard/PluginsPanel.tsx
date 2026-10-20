@@ -169,7 +169,14 @@ export function PluginsPanel() {
   });
 
   const isMounted = useRef(true);
-  useEffect(() => { return () => { isMounted.current = false; }; }, []);
+  // @MX:NOTE: Re-arm on every effect run — React StrictMode (dev) runs
+  // mount → cleanup → mount, and without the reset `isMounted.current` stays
+  // false on the live instance, so loadPlugins() silently drops every state
+  // update and the registry renders its loading skeletons forever.
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   const loadPlugins = useCallback(async () => {
     setLoading(true);

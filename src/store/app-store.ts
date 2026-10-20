@@ -17,8 +17,6 @@ interface AppState {
   setShowDataCenterSubmenu: (show: boolean) => void;
   showKpiAnalyticsSubmenu: boolean;
   setShowKpiAnalyticsSubmenu: (show: boolean) => void;
-  showSettingsSubmenu: boolean;
-  setShowSettingsSubmenu: (show: boolean) => void;
 
   // Data & Connections
   connections: JiraConnection[];
@@ -135,8 +133,6 @@ export const useAppStore = create<AppState>((set) => ({
   setShowDataCenterSubmenu: (show) => set({ showDataCenterSubmenu: show }),
   showKpiAnalyticsSubmenu: true,
   setShowKpiAnalyticsSubmenu: (show) => set({ showKpiAnalyticsSubmenu: show }),
-  showSettingsSubmenu: true,
-  setShowSettingsSubmenu: (show) => set({ showSettingsSubmenu: show }),
 
   connections: [],
   setConnections: (connections) => set({ connections }),

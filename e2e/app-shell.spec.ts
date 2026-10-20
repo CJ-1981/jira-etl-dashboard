@@ -2,14 +2,15 @@ import { test, expect } from '@playwright/test';
 import { gotoHome, clickTab } from './helpers';
 
 test.describe('App shell — navigation, tabs, theme, keyboard', () => {
-  test('loads the dashboard shell with header and three tabs', async ({ page }) => {
+  test('loads the dashboard shell with header, two tabs, and the settings gear', async ({ page }) => {
     await gotoHome(page);
 
     await expect(page.getByRole('heading', { name: 'Jira ETL Dashboard' })).toBeVisible();
     // Desktop labels render at the 1280px viewport (mobile-only spans are hidden).
     await expect(page.getByRole('tab', { name: 'Data Center' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'KPI Analytics' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Settings' })).toBeVisible();
+    // Settings lives in a gear icon left of the dark/light toggle.
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
   });
 
   test('defaults to the Data Center tab', async ({ page }) => {
@@ -21,7 +22,7 @@ test.describe('App shell — navigation, tabs, theme, keyboard', () => {
     await expect(page.getByText(/no connection selected/i)).toBeVisible();
   });
 
-  test('switches top-level tabs via click', async ({ page }) => {
+  test('opens Settings via the gear icon with its sub-menu always visible', async ({ page }) => {
     await gotoHome(page);
 
     await clickTab(page, 'KPI Analytics');
@@ -31,7 +32,9 @@ test.describe('App shell — navigation, tabs, theme, keyboard', () => {
     await expect(page.getByRole('button', { name: 'Recalculate' })).toBeVisible();
 
     await clickTab(page, 'Settings');
-    await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute('data-state', 'active');
+    // The gear opens Settings; the Connections/Storage/Configuration sub-tabs
+    // are always visible (no sub-menu toggle for Settings).
+    await expect(page.getByRole('tab', { name: 'Connections' })).toBeVisible();
     // Settings → Connections panel empty state (no connections seeded).
     await expect(page.getByText('No Jira connections configured yet')).toBeVisible();
   });
@@ -46,7 +49,8 @@ test.describe('App shell — navigation, tabs, theme, keyboard', () => {
     await expect(page.getByRole('tab', { name: 'KPI Analytics' })).toHaveAttribute('data-state', 'active');
 
     await page.keyboard.press('3');
-    await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute('data-state', 'active');
+    // Shortcut 3 opens Settings via the gear — assert on its content.
+    await expect(page.getByRole('tab', { name: 'Connections' })).toBeVisible();
 
     await page.keyboard.press('1');
     await expect(page.getByRole('tab', { name: 'Data Center' })).toHaveAttribute('data-state', 'active');
