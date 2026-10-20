@@ -80,7 +80,9 @@ describe('generateDemoIssues', () => {
     const withParticipants = issues.filter(i => i.fields.customfield_10032.length > 0);
     const unassigned = issues.filter(i => i.fields.assignee === null);
     const withStoryPoints = issues.filter(i => typeof i.fields.customfield_10002 === 'number');
-    expect(withParticipants.length).toBeGreaterThan(issues.length * 0.3);
+    // Request participants are filled on nearly every ticket (the demo exists
+    // to showcase that column); a few stay empty for filter tests.
+    expect(withParticipants.length).toBeGreaterThan(issues.length * 0.8);
     expect(unassigned.length).toBeGreaterThan(0);
     expect(withStoryPoints.length).toBeGreaterThan(issues.length * 0.3);
   });

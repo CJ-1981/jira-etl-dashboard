@@ -85,8 +85,8 @@ function pick<T>(rng: () => number, arr: readonly T[]): T {
   return arr[Math.floor(rng() * arr.length)];
 }
 
-function pickSome<T>(rng: () => number, arr: readonly T[], max: number): T[] {
-  const count = Math.floor(rng() * (max + 1));
+function pickSome<T>(rng: () => number, arr: readonly T[], min: number, max: number): T[] {
+  const count = min + Math.floor(rng() * (max - min + 1));
   const out = new Set<T>();
   while (out.size < count) out.add(pick(rng, arr));
   return Array.from(out);
@@ -154,7 +154,10 @@ export function generateDemoIssues(now: Date = new Date()): JiraIssueLike[] {
 
     const updated = new Date(histories[histories.length - 1].created);
     const resolved = done ? updated : null;
-    const hasParticipants = rng() < 0.6;
+    // Request participants (customfield_10032) are populated on nearly every
+    // ticket — the demo exists to show this column; a few stay empty so the
+    // participants multi-select filter still has an "empty" case to exclude.
+    const hasParticipants = rng() < 0.95;
     const currentStatus = path[path.length - 1];
     const statusCategory = done ? 'Done' : currentStatus === 'To Do' ? 'To Do' : 'In Progress';
 
@@ -175,10 +178,10 @@ export function generateDemoIssues(now: Date = new Date()): JiraIssueLike[] {
         customfield_10002: rng() < 0.7 ? Math.floor(rng() * 13) + 1 : null,
         customfield_10132: { value: pick(rng, TEAMS) },
         customfield_10032: hasParticipants
-          ? pickSome(rng, ASSIGNEES, 3).map(demoUser)
+          ? pickSome(rng, ASSIGNEES, 1, 3).map(demoUser)
           : [],
-        labels: pickSome(rng, LABELS, 2),
-        components: pickSome(rng, COMPONENTS, 2).map(name => ({ name })),
+        labels: pickSome(rng, LABELS, 0, 2),
+        components: pickSome(rng, COMPONENTS, 0, 2).map(name => ({ name })),
         comment: {
           comments: rng() < 0.7 ? [{
             author: demoUser(pick(rng, ASSIGNEES)),
