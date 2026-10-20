@@ -23,7 +23,7 @@ const CONNECTIONS = [
 ];
 
 // ── Store ref (vi.hoisted avoids the vitest-4 import-TDZ issue) ──────────────
-const storeRef = vi.hoisted(() => ({ current: undefined as any }));
+const storeRef = vi.hoisted(() => ({ current: undefined as Record<string, unknown> | undefined }));
 vi.mock('@/store/app-store', () => {
   const useAppStore = (sel?: unknown) =>
     typeof sel === 'function' ? (sel as (s: unknown) => unknown)(storeRef.current) : storeRef.current;
@@ -31,7 +31,7 @@ vi.mock('@/store/app-store', () => {
   return { useAppStore, getState: () => storeRef.current };
 });
 
-let localConfigMock: any;
+let localConfigMock: Record<string, unknown>;
 vi.mock('@/lib/config/local-store', () => ({
   get localConfig() {
     return localConfigMock;
