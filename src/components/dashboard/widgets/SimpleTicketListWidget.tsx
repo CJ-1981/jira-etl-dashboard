@@ -341,7 +341,9 @@ function TicketRow({ issue, jiraBaseUrl }: { issue: JiraIssue; jiraBaseUrl: stri
 
   return (
     <div
-      className="grid grid-cols-[minmax(72px,auto)_minmax(56px,auto)_minmax(96px,auto)_minmax(96px,auto)_1fr_minmax(64px,auto)] items-center gap-x-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default"
+      // Fixed-width tracks (not content-sized `auto`) so every row's columns
+      // align regardless of name lengths; long values truncate with tooltips.
+      className="grid grid-cols-[88px_64px_110px_110px_minmax(0,1fr)_88px] items-center gap-x-2 px-3 py-1.5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors text-[11px] cursor-default"
       title={`${issue.key} — ${summary}`}
     >
       {jiraBaseUrl ? (
@@ -356,7 +358,7 @@ function TicketRow({ issue, jiraBaseUrl }: { issue: JiraIssue; jiraBaseUrl: stri
       ) : (
         <span className="font-mono font-bold text-slate-500 truncate">{issue.key}</span>
       )}
-      <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center">
+      <Badge variant="outline" className="text-[9px] h-4 py-0 justify-center max-w-full truncate">
         {(issue as never as { fields?: { priority?: { name?: string } } }).fields?.priority?.name || '—'}
       </Badge>
       <span className="text-slate-600 dark:text-slate-400 truncate" title={assignee}>
@@ -370,7 +372,7 @@ function TicketRow({ issue, jiraBaseUrl }: { issue: JiraIssue; jiraBaseUrl: stri
       </span>
       <Badge
         variant={resolved ? 'default' : 'outline'}
-        className={`text-[9px] h-4 py-0 justify-center ${resolved ? 'bg-blue-600' : ''}`}
+        className={`text-[9px] h-4 py-0 justify-center max-w-full truncate ${resolved ? 'bg-blue-600' : ''}`}
       >
         {status}
       </Badge>
