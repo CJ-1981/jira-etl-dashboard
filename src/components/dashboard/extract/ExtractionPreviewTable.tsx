@@ -264,9 +264,9 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
               selected={selectedAssignees}
               onChange={setSelectedAssignees}
             />
-            {/* Participants filter only where the column itself is visible
-                (lg+) — below that the controls row has no width to spare. */}
-            <div className="hidden lg:block lg:w-[160px] shrink-0">
+            {/* Participants filter follows the column's visibility (md+) —
+                below that the controls row has no width to spare. */}
+            <div className="hidden md:block md:w-[160px] shrink-0">
               <FilterMultiSelect
                 placeholder="All Participants"
                 options={availableParticipants}
@@ -313,7 +313,7 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
                     target="_blank"
                     rel="noopener noreferrer"
                     title={issue.key}
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 w-20 sm:w-32 truncate transition-colors"
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-xs font-mono shrink-0 w-20 md:w-28 lg:w-32 truncate transition-colors"
                   >
                     {issue.key}
                     <ExternalLink className="ml-1 inline-block h-3 w-3 align-text-bottom opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -321,11 +321,13 @@ export const ExtractionPreviewTable = React.memo(function ExtractionPreviewTable
                   <span className="truncate text-slate-700 dark:text-slate-300 flex-1 min-w-0">{getSummary(issue)}</span>
                   {/* Assignee is dropped below sm — the 375px card interior cannot
                       fit four fixed columns alongside the summary. */}
-                  <span className="hidden truncate text-slate-500 dark:text-slate-400 text-xs w-36 shrink-0 sm:inline">{getAssignee(issue)}</span>
-                  {/* Participants (names from the multi-user field, lg+ only —
-                      the row already runs out of width between sm and lg). */}
+                  <span className="hidden truncate text-slate-500 dark:text-slate-400 text-xs w-28 lg:w-36 shrink-0 sm:inline">{getAssignee(issue)}</span>
+                  {/* Participants (names from the multi-user field) sit right
+                      after the assignee. Narrower at md so five columns fit
+                      there; full width from lg. Still hidden below md — the
+                      640px row cannot fit five columns. */}
                   <span
-                    className="hidden truncate text-slate-500 dark:text-slate-400 text-xs w-36 shrink-0 lg:inline"
+                    className="hidden truncate text-slate-500 dark:text-slate-400 text-xs w-24 shrink-0 md:inline lg:w-36"
                     title={participants || undefined}
                   >
                     {participants}
