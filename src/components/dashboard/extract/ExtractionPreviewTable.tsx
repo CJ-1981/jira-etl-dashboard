@@ -57,9 +57,10 @@ function compareIssues(a: PreviewIssue, b: PreviewIssue, sortOption: SortOption)
 
 /**
  * Multi-select dropdown filter (checkbox popover), shared by the Projects and
- * Statuses filters above the ticket list.
+ * Statuses filters above the ticket list. Also reused by the KPI tab's
+ * SimpleTicketListWidget.
  */
-function FilterMultiSelect({ placeholder, options, selected, onChange }: {
+export function FilterMultiSelect({ placeholder, options, selected, onChange }: {
   placeholder: string;
   options: string[];
   selected: string[];

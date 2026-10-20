@@ -23,6 +23,7 @@ import { useKpiCalculations } from '@/hooks/useKpiCalculations';
 import { useWidgetOrder } from '@/hooks/useWidgetOrder';
 import { DrillDownSheet } from './DrillDownSheet';
 import { TicketListWidget } from './TicketListWidget';
+import { SimpleTicketListWidget } from './widgets/SimpleTicketListWidget';
 import {
   StatusTimeWidget,
   StatusOpenWidget,
@@ -740,6 +741,8 @@ export function KpiDashboard() {
         componentType = 'assignee'; // Team dimension uses same rendering as assignee
       } else if (dimension.bucket) {
         componentType = 'cycle-time-histogram'; // cycle_time_histogram and aging_wip both use ChartCard histogram renderer
+      } else if (dimension.scope === 'all') {
+        componentType = 'simple-ticket-list'; // simple_ticket_list plugin
       } else if (dimension.activity) {
         componentType = 'ticket-list'; // weekly_ticket_list plugin
       } else {
@@ -1063,6 +1066,25 @@ export function KpiDashboard() {
                       onToggleCollapse={() => toggleWidgetCollapse(widget.kpis[0].pluginId)}
                     />
                   ) : null;
+
+                case 'simple-ticket-list': {
+                  const stlPluginId = widget.kpis[0]?.pluginId;
+                  const stlCollapsed = collapsedWidgets.includes(stlPluginId);
+                  const stlConn = connections.find((c) => c.id === activeConnectionId);
+                  const stlJiraBase = stlConn ? (stlConn.baseUrl?.startsWith('http') ? stlConn.baseUrl : `https://${stlConn.baseUrl}`) : '';
+                  return widget.kpis.length > 0 ? (
+                    <div key={`simple-ticket-list-${stlPluginId}`} className="col-span-1 md:col-span-2 lg:col-span-3">
+                      <SimpleTicketListWidget
+                        pluginId={stlPluginId}
+                        isCollapsed={stlCollapsed}
+                        onToggleCollapse={toggleWidgetCollapse}
+                        kpis={widget.kpis}
+                        issueMap={issueMap}
+                        jiraBaseUrl={stlJiraBase}
+                      />
+                    </div>
+                  ) : null;
+                }
 
                 case 'ticket-list': {
                     const tlPluginId = widget.kpis[0]?.pluginId;

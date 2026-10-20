@@ -33,6 +33,7 @@ import closedTicketsByPriorityPlugin from './plugins/builtin/throughput/closed-t
 import openTicketsByStatusPlugin from './plugins/builtin/throughput/open-tickets-by-status';
 import openTicketsKanbanPlugin from './plugins/builtin/throughput/open-tickets-kanban';
 import weeklyTicketListPlugin from './plugins/builtin/throughput/weekly-ticket-list'
+import simpleTicketListPlugin from './plugins/builtin/throughput/simple-ticket-list';
 import backlogAgePercentilesPlugin from './plugins/builtin/throughput/backlog-age-percentiles';
 import resolutionRatePlugin from './plugins/builtin/quality/resolution-rate';
 import reassignmentPlugin from './plugins/builtin/quality/reassignment'
@@ -98,6 +99,7 @@ export class PluginLoader {
       openTicketsByStatusPlugin,
       openTicketsKanbanPlugin,
       weeklyTicketListPlugin,
+      simpleTicketListPlugin,
       backlogAgePercentilesPlugin,
 
       // Quality plugins

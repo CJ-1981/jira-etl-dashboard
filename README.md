@@ -14,7 +14,7 @@ Extract ticket data from Jira with JQL queries, date range selection, scheduled 
 </p>
 
 ### KPI Analytics
-Interactive dashboard with 40 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
+Interactive dashboard with 41 KPI plugins, drill-down capabilities, chart visualizations, saved views, and alert thresholds.
 
 <p align="center">
   <img src="docs/screenshots/kpi-analytics.png" alt="KPI Analytics Dashboard" width="800" />
@@ -62,7 +62,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Resilient Error Boundaries** — Individual widget isolation ensures that a single metric failure or calculation error never crashes the entire dashboard.
 - **Hardened Local API Surface** — Unauthenticated endpoints accept loopback-origin requests only (CSRF protection), Jira issue keys are validated before use, and ETL runs are marked complete only after a fully successful load.
 - **Security Headers** — HSTS, Content-Security-Policy, Permissions-Policy, X-Frame-Options, X-Content-Type-Options, and Referrer-Policy are set on all responses; the static build ships a relay-scoped CSP meta tag.
-- **Smart Calculation Placement** — KPI computation runs on the server via the calculation API in server mode, and in the browser over the relay dataset in static mode — the same 40-plugin engine either way, with TanStack Query handling caching, background refetching, and consistent loading states to keep the UI responsive even with tens of thousands of tickets.
+- **Smart Calculation Placement** — KPI computation runs on the server via the calculation API in server mode, and in the browser over the relay dataset in static mode — the same 41-plugin engine either way, with TanStack Query handling caching, background refetching, and consistent loading states to keep the UI responsive even with tens of thousands of tickets.
 
 ---
 
@@ -76,9 +76,9 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Live Extraction List** — Preview extracted issues with key, summary, assignee, participants, and status columns; combine free-text search with multi-select filters (project, assignee, participants, status) and sort by key or created/updated date (newest created by default).
 
 ### KPI Calculation Engine
-**40 built-in plugins** (27 core + 13 time-series) organized by business domain. Every time-based KPI **excludes weekends and German holidays** (all 16 states supported), with configurable work hours.
+**41 built-in plugins** (28 core + 13 time-series) organized by business domain. Every time-based KPI **excludes weekends and German holidays** (all 16 states supported), with configurable work hours.
 
-#### Core Plugins (27)
+#### Core Plugins (28)
 
 **Processing Time (7)**
 
@@ -109,7 +109,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 | **No Comment Follow-up** (`no_comment_followup`) | tickets | Open tickets with no new comment for > 3 / > 7 working days | Flags **5** tickets silent for over a week |
 | **No Activity Follow-up** (`no_activity_followup`) | tickets | Open tickets with no comment *and* no status change for > 3 / > 7 working days | Stricter variant — status changes also reset the clock |
 
-**Throughput (7)**
+**Throughput (8)**
 
 | Plugin | Unit | What it measures | Example |
 |--------|:----:|------------------|---------|
@@ -120,6 +120,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 | **Open Tickets in Kanban View** (`open_tickets_kanban`) | tickets | Open tickets organized by Assignee / Status / Age | Kanban-style board with drill-down |
 | **Weekly Ticket List** (`weekly_ticket_list`) | tickets | Opened and closed tickets, this week vs last week | This week opened **9** / closed **7** |
 | **Backlog Age Percentiles** (`backlog_age_percentiles`) | days | Open-ticket age as P50 / P90 / oldest calendar days | P50 **12d**, P90 **45d**, oldest **200d** |
+| **Ticket List** (`simple_ticket_list`) | tickets | Flat list of every in-scope ticket (key / summary / assignee / participants / status) with search, multi-select filters, sorting, and copy-as-TSV (press `T`) | Honors the dashboard's Advanced Filtering and analysis period |
 
 **Quality (4)**
 
@@ -166,11 +167,11 @@ All time-based KPIs **exclude weekends and German holidays** (all 16 states supp
 
 ```
 src/lib/kpi/plugins/
-├── builtin/              # Core plugins (27 plugins)
+├── builtin/              # Core plugins (28 plugins)
 │   ├── processing-time/  # 7 plugins
 │   ├── sla/              # 4 plugins
 │   ├── turnaround/       # 3 plugins
-│   ├── throughput/       # 7 plugins
+│   ├── throughput/       # 8 plugins
 │   ├── quality/          # 4 plugins
 │   └── assignee/         # 2 plugins
 ├── time-series/          # Trend analysis plugins (13 plugins)
@@ -241,7 +242,7 @@ graph TB
 
     subgraph ServerMode["Server mode — npm run build / caxa exe"]
         API["Next.js API Routes<br/>/api/*"]
-        SEng["KPI Engine<br/>40 plugins"]
+        SEng["KPI Engine<br/>41 plugins"]
         Sandbox["Sandboxed Formula<br/>Interpreter"]
         SQLite[("SQLite<br/>local")]
         PG[("PostgreSQL<br/>Supabase")]
@@ -277,7 +278,7 @@ flowchart LR
     A["Jira API"] -- "JQL + changelog" --> R["POST /sync<br/>upsert · dedupe · incremental ·<br/>deletion detection"]
     R --> DB[("SQLite<br/>MasterTicket")]
     DB -- "GET /dataset (gzip)" --> P["Static SPA<br/>GitHub Pages"]
-    P --> C["Client-side KPI Engine<br/>40 plugins + formula plugins"]
+    P --> C["Client-side KPI Engine<br/>41 plugins + formula plugins"]
     C --> W["Dashboard widgets"]
 
     style A fill:#e1f5fe
@@ -308,7 +309,7 @@ flowchart LR
 ```mermaid
 graph TB
     subgraph Plugins["Plugin Registry"]
-        B[Builtin Plugins<br/>27 core]
+        B[Builtin Plugins<br/>28 core]
         TS[Time-Series<br/>13 trend]
         C[Custom Plugins<br/>data/custom-plugins/]
     end

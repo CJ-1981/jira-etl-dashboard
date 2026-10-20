@@ -33,10 +33,10 @@ test.describe('KPI plugin registry API', () => {
     // Guard against accidental double registration.
     expect(new Set(ids).size).toBe(ids.length);
 
-    // 27 core + 13 time-series = 40 non-custom plugins (custom plugins load
+    // 28 core + 13 time-series = 41 non-custom plugins (custom plugins load
     // asynchronously, so count only built-in/time-series categories).
     const nonCustom = plugins.filter((p) => p.category !== 'custom');
-    expect(nonCustom.length).toBe(40);
+    expect(nonCustom.length).toBe(41);
   });
 
   test('every plugin exposes the fields the UI depends on', async ({ request }) => {
