@@ -21,7 +21,7 @@ Interactive dashboard with 41 KPI plugins, drill-down capabilities, chart visual
 </p>
 
 ### Settings
-Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and application settings.
+Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and application settings. Settings opens via the **gear icon** in the header (left of the dark/light toggle); its Connections / Storage / Configuration sub-tabs are always visible.
 
 <p align="center">
   <img src="docs/screenshots/settings.png" alt="Settings Panel" width="800" />

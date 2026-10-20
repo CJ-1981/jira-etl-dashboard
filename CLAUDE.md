@@ -34,7 +34,7 @@ the dev server via the Playwright config, and uploads the HTML report as an arti
 ## Architecture
 
 ### Single page + API routes
-The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dashboard/`). All data flows through ~20 API routes under `src/app/api/`:
+The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dashboard/`). The header has two tabs (Data Center, KPI Analytics); **Settings opens via a gear icon** left of the dark/light toggle, and its Connections / Storage / Configuration sub-tabs are always visible (only Data Center and KPI Analytics have a Sub-Menu toggle). All data flows through ~20 API routes under `src/app/api/`:
 
 - `jira/extract` — core ETL: JQL pull → `EtlRun` + `TicketSnapshot`/`TicketTransition` + `MasterTicket` upserts → KPI calculation → `KpiResult` storage. The run row starts as `extracting` and is promoted to `completed` only after the load succeeds (`failed` + errorLog on crash); old-run pruning happens after success. Deletion detection is conservative: it only runs for the app-generated broad-sync JQL, never for user-provided custom JQL. The Participants field (`JIRA_PARTICIPANTS_FIELD`, default `customfield_10032`) is always added to the requested field list so the extract preview can show participant names.
 - `jira/poll` — server-side background polling scheduler (keeps credentials in `globalThis` state)
@@ -98,6 +98,12 @@ requires BOTH headers to be loopback and http(s) only.
   2026-08 `jql-filter-fixes` branch (behavior change approved — see docs/DEBT_CLEANUP.md).
 - All time-based KPIs use business-hour math from `src/lib/holidays/german-holidays.ts`
   (all 16 German states; configured per connection in `data/settings.json` defaults).
+- **Plugin-derived chart cards are not store-backed.** `CycleTimeHistogramWidget`
+  (cycle_time_histogram, aging_wip) synthesizes ChartCard configs with composed ids that
+  have no `dashboardCharts` entry, so remove / rename / move / the inline config controls
+  (all of which mutate `dashboardCharts`) are hidden via `userManaged={false}` and collapse
+  is controlled through the shared `collapsedWidgets` store — don't re-add management
+  controls to these cards, and don't "fix" their delete button by adding store entries.
 
 ### Where configuration lives
 - **Jira connections, Postgres connections, app settings, dashboard state: browser
@@ -184,6 +190,14 @@ The codebase uses `@MX:` comment tags; follow the same style in significant chan
    "No QueryClient set" 500 on `GET /` after the phase-8 React Query migration. The shared
    query hooks (`useJiraPollQuery`, `usePluginEventsQuery`, `useMasterDatasetQuery`) are also
    SSR-guarded (`typeof window !== 'undefined'`) since they hit client-only endpoints.
+
+10. **StrictMode double-mount vs guarded state updates** — `next.config.ts` sets
+   `reactStrictMode: true`, so dev runs every effect mount → cleanup → mount. An
+   `isMounted`-style ref that its effect only sets to `false` in cleanup stays `false` on
+   the live instance, silently dropping every later guarded `setState` — that permanently
+   stuck the KPI Plugin Registry on its loading skeletons (see `PluginsPanel.loadPlugins`).
+   Re-arm such refs in the effect body (`isMounted.current = true`), or prefer
+   AbortController/flag-local-to-effect patterns.
 
 ## Testing
 
