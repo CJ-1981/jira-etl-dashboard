@@ -68,4 +68,18 @@ describe('CycleTimeHistogramWidget', () => {
     expect(screen.getByRole('button', { name: 'Collapse chart' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Expand chart' })).not.toBeInTheDocument();
   });
+
+  it('derived card hides the management controls that cannot persist', () => {
+    // The synthesized config id is not in dashboardCharts, so remove/rename/
+    // move and the inline config controls would be silent no-ops — they must
+    // not render. Collapse, JQL filter settings, and PNG export remain.
+    renderWithProviders(<CycleTimeHistogramWidget {...baseProps} />);
+
+    expect(screen.queryByRole('button', { name: 'Remove chart' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rename chart' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Move chart up' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Move chart down' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /JQL filter settings/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Collapse chart/i })).toBeInTheDocument();
+  });
 });

@@ -332,6 +332,13 @@ interface ChartCardProps {
    */
   expanded?: boolean;
   onToggleCollapse?: () => void;
+  /**
+   * False for plugin-derived cards whose synthesized ids have no entry in
+   * `dashboardCharts`: remove / rename / move / KPI-metric / chart-type
+   * controls all mutate `dashboardCharts` and would be silent no-ops, so they
+   * are hidden. Defaults to true (user charts from VisualizationsSection).
+   */
+  userManaged?: boolean;
 }
 
 /** Pixel height per widget height setting. */
@@ -342,7 +349,7 @@ const CHART_HEIGHTS: Record<string, number> = {
   xtall: 1200, // 4x
 };
 
-export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme, onMoveUp, onMoveDown, calculateWidgetJql, expanded: expandedProp, onToggleCollapse }: ChartCardProps) {
+export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimension, onRemove, onChange, onClick, theme, onMoveUp, onMoveDown, calculateWidgetJql, expanded: expandedProp, onToggleCollapse, userManaged = true }: ChartCardProps) {
   // The lib chart helpers are typed against the lib `KpiResult` shape; the
   // dashboard emits the structurally compatible `KpiCalcResult` shape (the
   // original code passed `any[]` here). Bridge once at the boundary.
@@ -662,15 +669,17 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                   >
                     {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </button>
-                  <button
-                    onClick={handleStartTitleEdit}
-                    className="opacity-0 group-hover/charttitle:opacity-100 text-slate-300 hover:text-blue-400 transition-opacity p-0.5"
-                    title="Rename chart"
-                    aria-label="Rename chart"
-                    data-export-ignore="true"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
+                  {userManaged && (
+                    <button
+                      onClick={handleStartTitleEdit}
+                      className="opacity-0 group-hover/charttitle:opacity-100 text-slate-300 hover:text-blue-400 transition-opacity p-0.5"
+                      title="Rename chart"
+                      aria-label="Rename chart"
+                      data-export-ignore="true"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )}
                   <PluginInfoIcon pluginId={config.kpiId} />
                 </div>
               )}
@@ -724,34 +733,36 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </Button>
             )}
-            <div className="hidden items-center border-l border-slate-100 dark:border-slate-800 ml-1 pl-1 sm:flex">
-              {onMoveUp && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onMoveUp(config.id)}
-                  data-export-ignore="true"
-                  className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
-                  aria-label="Move chart up"
-                  title="Move chart up"
-                >
-                  <ChevronUp className="h-4 w-4" />
-                </Button>
-              )}
-              {onMoveDown && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onMoveDown(config.id)}
-                  data-export-ignore="true"
-                  className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
-                  aria-label="Move chart down"
-                  title="Move chart down"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            {userManaged && (
+              <div className="hidden items-center border-l border-slate-100 dark:border-slate-800 ml-1 pl-1 sm:flex">
+                {onMoveUp && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onMoveUp(config.id)}
+                    data-export-ignore="true"
+                    className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
+                    aria-label="Move chart up"
+                    title="Move chart up"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                )}
+                {onMoveDown && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onMoveDown(config.id)}
+                    data-export-ignore="true"
+                    className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 h-8 w-8 p-0"
+                    aria-label="Move chart down"
+                    title="Move chart down"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
             <Popover open={jqlSettingsOpen} onOpenChange={setJqlSettingsOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -783,31 +794,36 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 />
               </PopoverContent>
             </Popover>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onRemove(config.id)}
-              data-export-ignore="true"
-              className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
-              aria-label="Remove chart"
-              title="Remove chart"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {userManaged && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onRemove(config.id)}
+                data-export-ignore="true"
+                className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+                aria-label="Remove chart"
+                title="Remove chart"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
       {expanded ? (
         <CardContent className="space-y-4">
-          {/* Inline Controls */}
-          <ChartConfigControls
-            config={config}
-            kpiOptions={kpiOptions}
-            effectiveChartType={effectiveChartType}
-            isTimeSeries={isTimeSeries}
-            onKpiChange={handleKpiChange}
-            onChange={onChange}
-          />
+          {/* Inline Controls — user charts only; derived cards cannot persist
+              config changes (their ids are not in dashboardCharts). */}
+          {userManaged && (
+            <ChartConfigControls
+              config={config}
+              kpiOptions={kpiOptions}
+              effectiveChartType={effectiveChartType}
+              isTimeSeries={isTimeSeries}
+              onKpiChange={handleKpiChange}
+              onChange={onChange}
+            />
+          )}
 
         {/* Chart Area */}
         <div className="mt-4">{renderChart()}</div>

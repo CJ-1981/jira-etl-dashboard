@@ -77,6 +77,10 @@ export function CycleTimeHistogramWidget({
         calculateWidgetJql={calculateWidgetJql}
         expanded={!collapsed}
         onToggleCollapse={onToggleCollapse}
+        // The synthesized config id has no dashboardCharts entry — the
+        // remove/rename/move/config controls would be silent no-ops, so the
+        // card renders as a derived plugin chart (collapse + JQL filter only).
+        userManaged={false}
       />
     </div>
   );
