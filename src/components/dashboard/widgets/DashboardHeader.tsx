@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ViewManager } from '../ViewManager';
 import { KpiFilterPanel } from '../KpiFilterPanel';
+import { localDateKey } from '@/lib/kpi/utils/time-series-utils';
 
 /** Master-dataset inventory info shown in the header badge. */
 export interface DashboardHeaderDatasetInfo {
@@ -248,12 +249,15 @@ export function DashboardHeader({
 
                 const isAvailable = p.label === 'MAX' ? !!masterStartNormalized : (!masterStartNormalized || targetStart >= masterStartNormalized);
 
-                const todayStr = today.toISOString().split('T')[0];
-                const startStr = targetStart.toISOString().split('T')[0];
-                const maxEndStr = masterEndNormalized ? masterEndNormalized.toISOString().split('T')[0] : todayStr;
+                // @MX:NOTE: localDateKey (local calendar), NOT the UTC ISO date — a
+                // ticket created late in the UTC day is already "tomorrow" locally,
+                // and a UTC-derived MAX period started a day before the data.
+                const todayStr = localDateKey(today);
+                const startStr = localDateKey(targetStart);
+                const maxEndStr = masterEndNormalized ? localDateKey(masterEndNormalized) : localDateKey(today);
 
                 // Check if MAX should be active (must match both start AND end dates)
-                const isMaxActive = masterStart && dateFrom === new Date(masterStart).toISOString().split('T')[0] && dateTo === maxEndStr;
+                const isMaxActive = masterStartNormalized && dateFrom === localDateKey(masterStartNormalized) && dateTo === maxEndStr;
 
                 const isActive = p.label === 'MAX'
                   ? isMaxActive
@@ -269,7 +273,7 @@ export function DashboardHeader({
                       if (isActive) return;
 
                       if (p.label === 'MAX' && masterDatasetInfo?.dateRange) {
-                        const fromStr = new Date(masterDatasetInfo.dateRange.from).toISOString().split('T')[0];
+                        const fromStr = localDateKey(new Date(masterDatasetInfo.dateRange.from));
                         onSelectPreset(p.label, fromStr, maxEndStr);
                       } else {
                         onSelectPreset(p.label, startStr, todayStr);

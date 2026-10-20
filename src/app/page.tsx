@@ -8,6 +8,7 @@ import {
 import dynamic from 'next/dynamic';
 import { localConfig, KEYS, type AppSettings } from '@/lib/config/local-store';
 import { Switch } from '@/components/ui/switch';
+import { localDateKey } from '@/lib/kpi/utils/time-series-utils';
 import { dedupeChartsById } from '@/lib/chart-data-utils';
 import { ConnectionsPanel } from '@/components/dashboard/ConnectionsPanel';
 import { StoragePanel } from '@/components/dashboard/StoragePanel';
@@ -251,8 +252,11 @@ export default function Home() {
     // This ensures MAX is always the default, regardless of saved state
     // Saved dates will only be preserved if explicitly different from MAX
     if (masterDatasetInfo?.dateRange?.from && masterDatasetInfo?.dateRange?.to) {
-      const maxFromStr = masterDatasetInfo.dateRange.from.split('T')[0];
-      const maxToStr = masterDatasetInfo.dateRange.to.split('T')[0];
+      // Local calendar date of the range bounds — the raw bounds are UTC
+      // instants, and a UTC-derived date can be a day before the locally
+      // visible data (which triggered the Data Truncated warning).
+      const maxFromStr = localDateKey(new Date(masterDatasetInfo.dateRange.from));
+      const maxToStr = localDateKey(new Date(masterDatasetInfo.dateRange.to));
 
       if (isDev) console.log('[App] Master dataset date range available');
 
@@ -283,6 +287,22 @@ export default function Home() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConnectionId, mounted, masterDatasetInfo, uiMode]);
+
+  // Simple mode pins the analysis period to the entire pulled range. The
+  // extraction bar's pull window is independent (it passes its own window via
+  // useExtraction's getWindow), so a window pick can never leak into the
+  // analysis period — and the "Data Truncated" mismatch cannot arise here.
+  useEffect(() => {
+    if (!mounted || uiMode !== 'simple') return;
+    const range = masterDatasetInfo?.dateRange;
+    if (!range?.from || !range?.to) return;
+    const fromStr = localDateKey(new Date(range.from));
+    const toStr = localDateKey(new Date(range.to));
+    if (dateFrom !== fromStr || dateTo !== toStr) {
+      setDateFrom(fromStr);
+      setDateTo(toStr);
+    }
+  }, [mounted, uiMode, dateFrom, dateTo, masterDatasetInfo, setDateFrom, setDateTo]);
 
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;

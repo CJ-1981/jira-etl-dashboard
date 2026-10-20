@@ -18,10 +18,17 @@ export interface UseExtractionOptions {
    * otherwise circular dependency between useExtraction and usePolling.
    */
   getPollEnabled: () => boolean;
+  /**
+   * Optional pull-window override. When provided, extractions use these dates
+   * instead of the shared store `dateFrom`/`dateTo` — used by simple mode,
+   * where the extraction bar's pull window is intentionally independent of
+   * the analysis period (which is pinned to the master-dataset range).
+   */
+  getWindow?: () => { dateFrom?: string; dateTo?: string };
 }
 
 export function useExtraction(options: UseExtractionOptions) {
-  const { jql, quickPullDays, saveThisExtraction, updateOnly, customFields, getPollEnabled } = options;
+  const { jql, quickPullDays, saveThisExtraction, updateOnly, customFields, getPollEnabled, getWindow } = options;
   const {
     connections,
     activeConnectionId,
@@ -73,10 +80,16 @@ export function useExtraction(options: UseExtractionOptions) {
         customPlugins: [],
         jql: jql || undefined,
         // Omit absolute dates when using a rolling window so the extract route
-        // derives them from "now".
-        ...(effectiveDaysBack
-          ? { daysBack: effectiveDaysBack }
-          : { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
+        // derives them from "now". A getWindow override (simple mode) wins over
+        // both the rolling window and the shared store dates.
+        ...(getWindow
+          ? {
+              dateFrom: getWindow().dateFrom || undefined,
+              dateTo: getWindow().dateTo || undefined,
+            }
+          : effectiveDaysBack
+            ? { daysBack: effectiveDaysBack }
+            : { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
         saveExtraction: saveThisExtraction,
         updateOnly,
         customFields,
@@ -176,7 +189,7 @@ export function useExtraction(options: UseExtractionOptions) {
     } finally {
       setExtracting(false);
     }
-  }, [activeConnectionId, connections, settings, storageConfig, dateFrom, dateTo, jql, quickPullDays, saveThisExtraction, updateOnly, customFields, getPollEnabled, setExtractionResult, setKpiResults, queryClient]);
+  }, [activeConnectionId, connections, settings, storageConfig, dateFrom, dateTo, jql, quickPullDays, saveThisExtraction, updateOnly, customFields, getPollEnabled, getWindow, setExtractionResult, setKpiResults, queryClient]);
 
   const handleShowAllTickets = useCallback(async () => {
     if (!activeConnectionId) { toast.error('Please select a connection first'); return; }

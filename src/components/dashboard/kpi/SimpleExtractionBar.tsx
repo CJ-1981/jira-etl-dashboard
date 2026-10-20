@@ -26,10 +26,6 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
     setExtractionResult,
     setKpiResults,
     setMasterDatasetInfo,
-    dateFrom,
-    setDateFrom,
-    dateTo,
-    setDateTo,
   } = useAppStore();
 
   // Demo state is inferred from the active connection id (demo always selects
@@ -37,6 +33,31 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
   const [quickPullDays, setQuickPullDays] = useState<number | null>(
     () => localConfig.getQuickPullDays(),
   );
+
+  // The pull window is LOCAL to the bar and independent of the analysis
+  // period: simple mode pins the analysis period to the entire pulled range
+  // (see page.tsx), so sharing the store dates would make every window pick
+  // snap back before the run.
+  const dayIso = (daysBack: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysBack);
+    return d.toISOString().split('T')[0];
+  };
+  const defaultDays = localConfig.getQuickPullDays() ?? 1;
+  const [pullFrom, setPullFrom] = useState(() => dayIso(defaultDays));
+  const [pullTo, setPullTo] = useState(() => dayIso(0));
+  const getWindow = useCallback(
+    () => ({ dateFrom: pullFrom, dateTo: pullTo }),
+    [pullFrom, pullTo],
+  );
+
+  const handleQuickPull = useCallback((days: number) => {
+    setPullFrom(dayIso(days));
+    setPullTo(dayIso(0));
+    setQuickPullDays(days);
+    localConfig.saveQuickPullDays(days);
+  }, [setPullFrom, setPullTo]);
+
   const customFields = useMemo(() => localConfig.getCustomExtractFields(), []);
 
   const {
@@ -50,17 +71,8 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
     customFields,
     // Simple mode has no polling UI — never ping the scheduler from the bar.
     getPollEnabled: () => false,
+    getWindow,
   });
-
-  const handleQuickPull = useCallback((days: number) => {
-    const now = new Date();
-    const from = new Date(now);
-    from.setDate(from.getDate() - days);
-    setDateFrom(from.toISOString().split('T')[0]);
-    setDateTo(now.toISOString().split('T')[0]);
-    setQuickPullDays(days);
-    localConfig.saveQuickPullDays(days);
-  }, [setDateFrom, setDateTo]);
 
   const exitDemo = useCallback(() => {
     // Mirror ExtractPanel's exit: drop the demo flag + in-memory demo payload
@@ -106,8 +118,8 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
 
           <div className="flex-1 min-w-0">
             <QuickDateSelector
-              dateFrom={dateFrom}
-              dateTo={dateTo}
+              dateFrom={pullFrom}
+              dateTo={pullTo}
               updateOnly={false}
               onQuickPull={handleQuickPull}
               onQuickUpdate={(days) => handleExtract(days)}
@@ -116,7 +128,7 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
 
           <Button
             onClick={() => handleExtract()}
-            disabled={extracting || !hasConnection || !dateFrom || !dateTo}
+            disabled={extracting || !hasConnection || !pullFrom || !pullTo}
             className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
             title={hasConnection ? 'Pull tickets for the selected window' : 'Select a connection or start demo mode first'}
           >

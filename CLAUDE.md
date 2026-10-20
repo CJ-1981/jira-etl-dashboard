@@ -40,7 +40,8 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
   before the gear). Simple mode renders a single combined view: the top tabs and the
   ExtractPanel are hidden, a `SimpleExtractionBar` (reusing `useExtraction` +
   `QuickDateSelector`) sits above `KpiDashboard`, the analysis period is forced to the
-  master-dataset range on every refresh, the KPI sub-menu and Metrics Overview start
+  master-dataset range on every refresh (the bar's pull window is independent — passed
+  via useExtraction's getWindow override — so window picks never leak into it), the KPI sub-menu and Metrics Overview start
   collapsed, and a minimal plugin set is seeded into `cfg_active_plugins` **only when that
   key is absent** (user-configured visibility always wins). A first-run wizard
   (`SimpleModeWizard`, simple mode + no connection + demo off, session-skippable) offers
