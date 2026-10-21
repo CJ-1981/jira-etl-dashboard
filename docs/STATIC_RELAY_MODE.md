@@ -128,6 +128,26 @@ when `JIRA_RELAY_SIGN_IDENTITY` is set (`"Developer ID Application: NAME
 (TEAMID)"`); notarize with `xcrun notarytool` afterwards for distribution
 outside your team.
 
+### macOS Gatekeeper: allowing jira-relay on first launch
+
+An unsigned (or un-notarized) `jira-relay` binary is blocked by macOS
+Gatekeeper on first launch — either with a "'jira-relay' can't be opened"
+alert, or silently. To allow it:
+
+1. Try launching once (`./jira-relay`) — macOS registers the blocked app.
+2. Open **System Settings → Privacy & Security** and scroll to the
+   **Security** section.
+3. Find *"jira-relay" was blocked to protect your Mac* and click
+   **Open Anyway**, then authenticate with your password / Touch ID.
+4. In the follow-up dialog choose **Open** — the relay starts normally and
+   won't be blocked again (until the binary changes, e.g. after an update).
+
+![macOS Gatekeeper blocking jira-relay, with the Open Anyway button in Privacy & Security](screenshots/macos-relay-gatekeeper.png)
+
+The permanent fix is signing with a **Developer ID Application** identity
+(`JIRA_RELAY_SIGN_IDENTITY`) and notarizing — then Gatekeeper doesn't
+prompt at all.
+
 **Which certificate?** Depends who runs the exe:
 
 | Audience | Route | Cost | Effect |

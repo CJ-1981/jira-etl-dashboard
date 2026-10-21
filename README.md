@@ -421,6 +421,13 @@ For users **without Python**, `build-relay-exe.bat` (Windows) /
 `dist/jira-relay` executable via PyInstaller — ship it next to a `relay.env`
 or `jira.env` config file (template: `scripts/relay.env.example`) and it runs anywhere.
 
+On macOS, Gatekeeper blocks the unsigned relay on first launch — allow it via
+**System Settings → Privacy & Security → Open Anyway**:
+
+<p align="center">
+  <img src="docs/screenshots/macos-relay-gatekeeper.png" alt="macOS Gatekeeper — Open Anyway for jira-relay" width="800" />
+</p>
+
 See **[docs/STATIC_RELAY_MODE.md](docs/STATIC_RELAY_MODE.md)** for relay setup, environment variables, the standalone exe, migrating an existing `custom.db`, and the GitHub Pages workflow. To instead host the **npm server on an internal network** (team-shared), see **[docs/INTERNAL_HOSTING.md](docs/INTERNAL_HOSTING.md)** — not implemented yet; it records the required adaptation (origin allowlist, `HOSTNAME` binding, firewall scoping).
 
 ---
