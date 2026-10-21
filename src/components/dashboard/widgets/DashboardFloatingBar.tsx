@@ -52,16 +52,17 @@ export function DashboardFloatingBar({
           initial={{ y: 100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
-          className="fixed bottom-0 left-1/2 -translate-x-1/2 z-[60] w-full max-w-xl px-4 pb-4"
+          className="fixed bottom-0 left-1/2 -translate-x-1/2 z-[60] w-full max-w-3xl px-4 pb-4"
         >
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-full shadow-2xl p-1.5 flex items-center justify-between gap-2 sm:gap-4">
             <div className="flex min-w-0 items-center gap-2 px-2 sm:gap-3 sm:px-3">
               <div
-                className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors whitespace-nowrap"
+                className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
                 onClick={onScrollToPeriod}
+                title={dateFrom && dateTo ? `${new Date(dateFrom).toLocaleDateString()} - ${new Date(dateTo).toLocaleDateString()}` : undefined}
               >
                 <Calendar className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                <span>
+                <span className="truncate sm:whitespace-nowrap">
                   {dateFrom && dateTo ? `${new Date(dateFrom).toLocaleDateString()} - ${new Date(dateTo).toLocaleDateString()}` : 'No Period'}
                 </span>
               </div>
