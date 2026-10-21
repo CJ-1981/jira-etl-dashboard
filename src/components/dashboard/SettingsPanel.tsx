@@ -15,9 +15,14 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
-  SaveAll, Download, Upload, Loader2, Info, Settings, Sliders, Save, Link2, Copy, ShieldCheck, Zap, ChevronUp, ChevronDown
+  SaveAll, Download, Upload, Loader2, Info, Settings, Sliders, Save, Link2, Copy, ShieldCheck, Zap, Trash2, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { localConfig, type AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { getDataSource } from '@/lib/datasource';
 import { runtimeFeatures } from '@/lib/runtime/mode';
@@ -41,6 +46,25 @@ export function SettingsPanel({ simpleMode = false }: { simpleMode?: boolean } =
       setIsInitialized(true);
     }
   }, [settings, isInitialized]);
+
+  // Danger zone: wipes every connection's data (DB/relay cascade), then all
+  // local configuration — the app returns to its first-run state on reload.
+  const resetAllData = useMutation({
+    mutationFn: async () => {
+      const ids = new Set<string>([
+        ...localConfig.getJiraConnections().map((c) => c.id),
+        'demo',
+      ]);
+      for (const id of ids) {
+        // Best-effort: a dead backend must not block the local reset.
+        try {
+          await getDataSource().deleteConnectionData(id);
+        } catch (err) {
+          console.warn(`[SettingsPanel] could not clear data for "${id}":`, err);
+        }
+      }
+    },
+  });
 
   const hasUnsavedChanges = initialSettings ? JSON.stringify(settings) !== JSON.stringify(initialSettings) : false;
 
@@ -165,6 +189,57 @@ export function SettingsPanel({ simpleMode = false }: { simpleMode?: boolean } =
               {configImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Import
             </Button>
             <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+          </div>
+
+          {/* Danger zone — factory reset */}
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-widest text-red-500">Danger zone</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Deletes every connection and all extraction data, then clears local settings — a full fresh start.
+              </p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={resetAllData.isPending}
+                  className="h-8 shrink-0 text-[10px] uppercase tracking-wider font-bold border-red-500/30 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+                >
+                  {resetAllData.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                  Clear All Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear all data and start fresh?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This deletes every connection and all extraction data stored on this
+                    machine (database or relay), then clears all local settings, filters,
+                    and saved views. The dashboard returns to its first-run state. This
+                    cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 text-white hover:bg-red-700"
+                    onClick={() => {
+                      resetAllData.mutate(undefined, {
+                        onSuccess: () => {
+                          localStorage.clear();
+                          sessionStorage.clear();
+                          window.location.reload();
+                        },
+                      });
+                    }}
+                  >
+                    Yes, clear everything
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </CardContent>
       </Card>

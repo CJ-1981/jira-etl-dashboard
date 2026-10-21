@@ -19,6 +19,7 @@ vi.mock('@/lib/config/local-store', () => ({
   localConfig: {
     getDemoMode: vi.fn(() => false),
     saveDemoMode: vi.fn(),
+    getJiraConnections: vi.fn(() => [{ id: 'c1' }, { id: 'c2' }]),
     exportConfig: vi.fn(() => ({ exportedAt: '2026-01-01' })),
     importConfig: vi.fn(() => ({ success: true })),
     saveSettings: vi.fn(),
@@ -145,5 +146,23 @@ describe('SettingsPanel', () => {
     renderWithProviders(<SettingsPanel />);
     fireEvent.click(screen.getByRole('button', { name: /Save Settings/i }));
     expect(localConfig.saveSettings).toHaveBeenCalled();
+  });
+
+  it('danger zone: Clear All Data deletes every connection and wipes local config', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    localStorage.setItem('cfg_sentinel', 'keep-me');
+
+    renderWithProviders(<SettingsPanel />);
+    fireEvent.click(screen.getByRole('button', { name: /clear all data/i }));
+    // Confirm inside the AlertDialog
+    fireEvent.click(screen.getByText('Yes, clear everything'));
+
+    await waitFor(() => {
+      const deletes = fetchMock.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/api/jira/connections/'));
+      expect(deletes.length).toBe(3); // c1, c2, demo
+    });
+    expect(localConfig.getDemoMode).toBeTruthy();
+    // localStorage.clear() ran — the sentinel is gone.
+    expect(localStorage.getItem('cfg_sentinel')).toBeNull();
   });
 });

@@ -263,7 +263,13 @@ export function ConnectionsPanel() {
       }
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Failed to delete connection');
+      // Browsers phrase a dead-backend rejection differently ("Failed to
+      // fetch" in Chromium, "Load failed" in WebKit) — surface an actionable
+      // message instead of the raw network error.
+      const msg = /failed to fetch|load failed|networkerror/i.test(err.message)
+        ? 'Could not reach the dashboard server — make sure it is running, then try again.'
+        : (err.message || 'Failed to delete connection');
+      toast.error(msg);
     },
   });
 
