@@ -46,7 +46,10 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
   collapsed, and a minimal plugin set is seeded into `cfg_active_plugins` **only when that
   key is absent** (user-configured visibility always wins). A first-run wizard
   (`SimpleModeWizard`, simple mode + no connection + demo off, session-skippable) offers
-  Jira setup or demo data. `e2e/helpers.ts` seeds `expert` by default so legacy specs keep
+  Jira setup or demo data. Settings in simple mode renders the
+  Configuration panel only (General/Rate Limiting + Webhooks collapsed by default);
+  Connections/Storage are expert-only and the wizard's setup action auto-switches to
+  Expert since it needs the hidden Connections tab. `e2e/helpers.ts` seeds `expert` by default so legacy specs keep
   testing the full shell — pass `{ mode: 'simple' }` for mode-specific specs.
 
 - `jira/extract` — core ETL: JQL pull → `EtlRun` + `TicketSnapshot`/`TicketTransition` + `MasterTicket` upserts → KPI calculation → `KpiResult` storage. The run row starts as `extracting` and is promoted to `completed` only after the load succeeds (`failed` + errorLog on crash); old-run pruning happens after success. Deletion detection is conservative: it only runs for the app-generated broad-sync JQL, never for user-provided custom JQL. The Participants field (`JIRA_PARTICIPANTS_FIELD`, default `customfield_10032`) is always added to the requested field list so the extract preview can show participant names.
