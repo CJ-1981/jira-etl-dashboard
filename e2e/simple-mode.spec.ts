@@ -62,15 +62,13 @@ test.describe('Simple mode', () => {
     await expect(page.getByText('Demo data', { exact: true })).toBeVisible();
   });
 
-  test('sub-menu and Metrics Overview start collapsed in simple mode', async ({ page }) => {
+  test('KPI sub-menu strip always visible; Metrics Overview starts collapsed', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Jira ETL Dashboard' }).waitFor({ state: 'visible' });
     await page.getByText('Try demo data').first().click();
 
-    // Sub-menu collapsed: the nested sub-tabs are not rendered...
-    await expect(page.getByRole('tab', { name: 'Plugins Configuration' })).toHaveCount(0);
-    // ...and the Sub-Menu toggle can expand them.
-    await page.getByRole('button', { name: 'Sub-Menu' }).click();
+    // No Sub-Menu toggle in simple mode — the strip is simply always there.
+    await expect(page.getByRole('button', { name: 'Sub-Menu' })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Plugins Configuration' })).toBeVisible();
 
     // Metrics Overview collapsed: the table body is hidden, only the header +

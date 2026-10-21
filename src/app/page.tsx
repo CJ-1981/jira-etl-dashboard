@@ -146,12 +146,13 @@ export default function Home() {
     setShowDataCenterSubmenu(localConfig.getShowDataCenterSubmenu());
     setShowKpiAnalyticsSubmenu(localConfig.getShowKpiAnalyticsSubmenu());
 
-    // Simple-mode defaults, applied on every entry into simple mode: KPI
-    // sub-menu collapsed, Metrics Overview collapsed, the combined view as the
-    // active tab, and — only when plugin visibility was never configured — the
-    // minimal plugin set. In-session user changes still win afterwards.
+    // Simple-mode defaults, applied on every entry into simple mode: the KPI
+    // sub-menu strip always visible, Metrics Overview collapsed, the combined
+    // view as the active tab, and — only when plugin visibility was never
+    // configured — the minimal plugin set. In-session user changes still win.
     if (uiMode === 'simple') {
-      setShowKpiAnalyticsSubmenu(false);
+      setShowKpiAnalyticsSubmenu(true);
+      setKpiSubTab('dashboard');
       if (useAppStore.getState().activeTab === 'extract') setActiveTab('kpi');
       setCollapsedWidgets((prev) =>
         prev.includes('metrics-overview') ? prev : [...prev, 'metrics-overview'],
@@ -182,7 +183,7 @@ export default function Home() {
     }
 
     // Initially dates are empty strings from the store
-  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setUiMode, setActiveTab, setCollapsedWidgets]);
+  }, [mounted, setSettings, setConnections, setStorageConfig, setActiveConnectionId, setShowDataCenterSubmenu, setShowKpiAnalyticsSubmenu, setUiMode, setActiveTab, setCollapsedWidgets, setKpiSubTab]);
 
   // Secondary effect: Handle connection changes after initial load
   // This only runs when user manually switches connections via UI
@@ -337,7 +338,8 @@ export default function Home() {
   // Mid-session switch into simple mode: apply the same defaults as the mount
   // path (mount handles load-time; this handles the header toggle).
   const applySimpleModeDefaults = useCallback(() => {
-    setShowKpiAnalyticsSubmenu(false);
+    setShowKpiAnalyticsSubmenu(true);
+    setKpiSubTab('dashboard');
     // Simple mode is a single combined view — the Data Center tab is hidden.
     if (useAppStore.getState().activeTab === 'extract') setActiveTab('kpi');
     setCollapsedWidgets((prev) =>
@@ -432,7 +434,7 @@ export default function Home() {
             </button>
           )}
 
-          {activeTab === 'kpi' && (
+          {uiMode === 'expert' && activeTab === 'kpi' && (
             <button
               onClick={() => setShowKpiAnalyticsSubmenu(!showKpiAnalyticsSubmenu)}
               className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 font-medium shrink-0"
