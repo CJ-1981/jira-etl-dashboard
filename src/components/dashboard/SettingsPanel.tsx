@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
-  SaveAll, Download, Upload, Loader2, Info, Settings, Sliders, Save, Link2, Copy, ShieldCheck, Zap
+  SaveAll, Download, Upload, Loader2, Info, Settings, Sliders, Save, Link2, Copy, ShieldCheck, Zap, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { localConfig, type AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
@@ -23,8 +23,11 @@ import { getDataSource } from '@/lib/datasource';
 import { runtimeFeatures } from '@/lib/runtime/mode';
 import { useAppStore } from '@/store/app-store';
 
-export function SettingsPanel() {
+export function SettingsPanel({ simpleMode = false }: { simpleMode?: boolean } = {}) {
   const { settings, setSettings, storageConfig } = useAppStore();
+  // Simple mode: the General Settings & Rate Limiting card starts collapsed
+  // (per product decision) but can be expanded via the header chevron.
+  const [generalOpen, setGeneralOpen] = useState(!simpleMode);
   const [loading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -257,10 +260,20 @@ export function SettingsPanel() {
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5 text-slate-500 dark:text-slate-400" /> General Settings & Rate Limiting
-          </CardTitle>
+          <button
+            onClick={() => setGeneralOpen(!generalOpen)}
+            className="flex items-center gap-2 group text-left w-full"
+            aria-expanded={generalOpen}
+          >
+            <CardTitle className="flex items-center gap-2 text-base group-hover:text-emerald-400 transition-colors">
+              <Settings className="h-5 w-5 text-slate-500 dark:text-slate-400" /> General Settings & Rate Limiting
+            </CardTitle>
+            {generalOpen
+              ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+              : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+          </button>
         </CardHeader>
+        {generalOpen && (
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
@@ -314,6 +327,7 @@ export function SettingsPanel() {
             {hasUnsavedChanges && <div className="flex items-center gap-2 text-amber-600 text-sm"><Info className="h-4 w-4" />Unsaved changes</div>}
           </div>
         </CardContent>
+      )}
       </Card>
     </div>
   );

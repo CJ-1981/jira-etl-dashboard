@@ -46,6 +46,28 @@ const DEFAULT_SETTINGS_OBJ = {
 };
 
 describe('SettingsPanel', () => {
+  it('simple mode collapses the General Settings & Rate Limiting card by default', () => {
+    storeRef.current = createMockStore({ activeConnectionId: 'conn-1' });
+    renderWithProviders(<SettingsPanel simpleMode />);
+
+    const toggle = screen.getByRole('button', { name: /general settings & rate limiting/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // Collapsed: the rate-limiting controls are not rendered.
+    expect(screen.queryByText('API Rate Limiting')).not.toBeInTheDocument();
+  });
+
+  it('simple mode: the chevron expands the General card', () => {
+    storeRef.current = createMockStore({ activeConnectionId: 'conn-1' });
+    renderWithProviders(<SettingsPanel simpleMode />);
+    const toggle = screen.getByRole('button', { name: /general settings & rate limiting/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Delay (ms)')).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Delay (ms)')).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     storeRef.current = createMockStore();

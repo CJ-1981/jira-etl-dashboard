@@ -74,11 +74,12 @@ describe('SimpleModeWizard', () => {
     expect(screen.queryByText('Welcome to Jira ETL Dashboard')).not.toBeInTheDocument();
   });
 
-  it('"Set up Jira connection" navigates to the settings tab', () => {
+  it('"Set up Jira connection" switches to expert and opens the settings tab', () => {
     setup();
     renderWithProviders(<SimpleModeWizard />);
     fireEvent.click(screen.getByText('Set up Jira connection'));
     expect((storeRef.current as WizardMockState).activeTab).toBe('settings');
+    expect((storeRef.current as WizardMockState).uiMode).toBe('expert');
     expect(localConfigMock.saveDemoMode).not.toHaveBeenCalled();
   });
 

@@ -588,6 +588,11 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
+            {uiMode === 'simple' ? (
+              // Simple mode: Configuration only — no sub-menu strip, no
+              // Connections/Storage tabs (expert-only surfaces).
+              <SettingsPanel simpleMode />
+            ) : (
             <Tabs defaultValue="connections" className="space-y-6">
               {/* Sub-menu is always visible — Settings is opened via the header
                   gear icon, so there is no submenu toggle for it. */}
@@ -624,6 +629,7 @@ export default function Home() {
                 <SettingsPanel />
               </TabsContent>
             </Tabs>
+            )}
           </TabsContent>
         </Tabs>
         </main>

@@ -31,6 +31,7 @@ export const SimpleModeWizard = React.memo(function SimpleModeWizard() {
   const connections = useAppStore((s) => s.connections);
   const setActiveConnectionId = useAppStore((s) => s.setActiveConnectionId);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const setUiMode = useAppStore((s) => s.setUiMode);
   const setDateFrom = useAppStore((s) => s.setDateFrom);
   const setDateTo = useAppStore((s) => s.setDateTo);
 
@@ -39,11 +40,14 @@ export const SimpleModeWizard = React.memo(function SimpleModeWizard() {
     setOpen(false);
   }, []);
 
+  // Connection setup is an expert flow (the Connections tab is hidden in
+  // simple mode) — switching modes makes Settings → Connections reachable.
   const openConnectionSetup = useCallback(() => {
     sessionStorage.setItem(WIZARD_DISMISS_KEY, '1');
     setOpen(false);
+    setUiMode('expert');
     setActiveTab('settings');
-  }, [setActiveTab]);
+  }, [setUiMode, setActiveTab]);
 
   const tryDemoData = useCallback(() => {
     sessionStorage.setItem(WIZARD_DISMISS_KEY, '1');
@@ -87,7 +91,7 @@ export const SimpleModeWizard = React.memo(function SimpleModeWizard() {
             <Plug className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Set up Jira connection</span>
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              Add your Jira URL, email, and API token in Settings → Connections.
+              Switches to Expert mode and opens the connection setup (Jira URL, email, API token).
             </span>
           </button>
           <button
