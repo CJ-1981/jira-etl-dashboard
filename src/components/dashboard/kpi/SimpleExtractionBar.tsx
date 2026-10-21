@@ -102,7 +102,7 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
   const hasConnection = !!activeConnectionId;
 
   return (
-    <Card className="border-emerald-500/30 bg-white dark:bg-slate-900/50">
+    <Card className="mb-5 border-emerald-500/30 bg-white dark:bg-slate-900/50">
       <CardContent className="py-3">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="flex items-center gap-2 shrink-0 lg:w-56">
