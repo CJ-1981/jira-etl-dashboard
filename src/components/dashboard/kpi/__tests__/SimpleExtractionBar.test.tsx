@@ -67,8 +67,9 @@ describe('SimpleExtractionBar', () => {
     storeRef.current = createMockStore({
       activeConnectionId: 'conn-1',
       connections: CONNECTIONS,
-      dateFrom: '2026-07-23',
-      dateTo: '2026-10-20',
+      // Fixed dates that cannot collide with the computed 90-day window.
+      dateFrom: '2020-01-15',
+      dateTo: '2020-02-20',
     });
     renderWithProviders(<SimpleExtractionBar />, queryClient);
 
@@ -99,7 +100,7 @@ describe('SimpleExtractionBar', () => {
     // store's analysis period (2026-07-23).
     const expectedFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     expect(body.dateFrom).toBe(expectedFrom);
-    expect(body.dateFrom).not.toBe('2026-07-23');
+    expect(body.dateFrom).not.toBe('2020-01-15');
   });
 
   it('renders the connection name and disables Run without a connection', () => {
