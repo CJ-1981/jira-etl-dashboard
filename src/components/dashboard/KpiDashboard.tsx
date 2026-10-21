@@ -1151,7 +1151,14 @@ export function KpiDashboard() {
         pluginIds={sortedKpiResults.map(p => p.pluginId)}
         calculating={calculating}
         onScrollToPeriod={() => {
-          document.querySelector('[data-period-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Offset by the sticky header height — a plain scrollIntoView would
+          // tuck the period inputs underneath it, leaving the Advanced
+          // Filtering section as the first visible thing.
+          const el = document.querySelector('[data-period-section]');
+          if (el) {
+            const y = el.getBoundingClientRect().top + window.scrollY - 120;
+            window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+          }
         }}
         onOpenFilters={() => {
           setFilterPanelOpen(true);
@@ -1162,6 +1169,9 @@ export function KpiDashboard() {
         onGoToPlugins={() => {
           setActiveTab('kpi');
           setKpiSubTab('plugins');
+          // Reveal the sub-tab strip — with the sub-menu collapsed the user
+          // would land on Plugins Configuration with no visible way back.
+          useAppStore.getState().setShowKpiAnalyticsSubmenu(true);
           setTimeout(() => {
             document.querySelector('[data-plugins-section]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 100);

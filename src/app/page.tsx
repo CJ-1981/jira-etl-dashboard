@@ -208,13 +208,12 @@ export default function Home() {
     autoPopulateTicketsRef.current = true;
   }, [activeConnectionId, storageConfig.provider, storageConfig.url, storageConfig.directUrl, mounted]);
 
+  // The floating bar stays visible whenever a dataset is loaded — gating it
+  // on scroll depth made it undiscoverable (users never scroll far enough to
+  // learn Recalculate/filters exist).
   useEffect(() => {
-    const handleScroll = () => {
-      setShowFloatingBar(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    setShowFloatingBar(!!masterDatasetInfo?.issues?.length);
+  }, [masterDatasetInfo, setShowFloatingBar]);
 
   useEffect(() => {
     if (!mounted) return;

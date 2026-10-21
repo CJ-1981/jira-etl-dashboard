@@ -44,7 +44,8 @@ test.describe('Simple mode', () => {
     // mentions "demo data", hence exact matching)...
     await expect(page.getByText('Demo data', { exact: true })).toBeVisible();
     // ...and the KPI dashboard renders with the minimal plugin set visible.
-    await expect(page.getByRole('button', { name: 'Recalculate' })).toBeVisible();
+    // Two Recalculate buttons exist (KPI header + floating bar).
+    await expect(page.getByRole('button', { name: 'Recalculate' }).first()).toBeVisible();
   });
 
   test('extraction bar: quick window + Run Extraction (demo connection)', async ({ page }) => {

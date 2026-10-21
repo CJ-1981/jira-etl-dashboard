@@ -57,11 +57,11 @@ export function DashboardFloatingBar({
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-full shadow-2xl p-1.5 flex items-center justify-between gap-2 sm:gap-4">
             <div className="flex min-w-0 items-center gap-2 px-2 sm:gap-3 sm:px-3">
               <div
-                className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors"
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 transition-colors whitespace-nowrap"
                 onClick={onScrollToPeriod}
               >
                 <Calendar className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                <span className="truncate">
+                <span>
                   {dateFrom && dateTo ? `${new Date(dateFrom).toLocaleDateString()} - ${new Date(dateTo).toLocaleDateString()}` : 'No Period'}
                 </span>
               </div>
