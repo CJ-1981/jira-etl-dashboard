@@ -33,6 +33,7 @@ export function SettingsPanel({ simpleMode = false }: { simpleMode?: boolean } =
   // Simple mode: the General Settings & Rate Limiting card starts collapsed
   // (per product decision) but can be expanded via the header chevron.
   const [generalOpen, setGeneralOpen] = useState(!simpleMode);
+  const [webhookOpen, setWebhookOpen] = useState(!simpleMode);
   const [loading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -248,20 +249,34 @@ export function SettingsPanel({ simpleMode = false }: { simpleMode?: boolean } =
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2"><Link2 className="h-5 w-5 text-blue-500" /> Webhook Integration</CardTitle>
-              <CardDescription>Enable real-time synchronization from Jira via webhooks</CardDescription>
-            </div>
+            <button
+              onClick={() => setWebhookOpen(!webhookOpen)}
+              className="flex items-center gap-2 group text-left"
+              aria-expanded={webhookOpen}
+            >
+              <div>
+                <CardTitle className="flex items-center gap-2 group-hover:text-emerald-400 transition-colors">
+                  <Link2 className="h-5 w-5 text-blue-500" /> Webhook Integration
+                  {webhookOpen
+                    ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                    : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />}
+                </CardTitle>
+                <CardDescription>Enable real-time synchronization from Jira via webhooks</CardDescription>
+              </div>
+            </button>
+            {webhookOpen && (
             <div className="flex items-center gap-2">
               <Label htmlFor="webhook-toggle" className="text-xs font-bold text-slate-500">Enable Webhooks</Label>
-              <Switch 
+              <Switch
                 id="webhook-toggle"
                 checked={settings.webhooks?.enabled}
                 onCheckedChange={(checked) => setSettings({ ...settings, webhooks: { ...settings.webhooks, enabled: checked } })}
               />
             </div>
+            )}
           </div>
         </CardHeader>
+        {webhookOpen && (
         <CardContent className="space-y-4">
           <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 p-4">
             <div className="flex gap-3">
@@ -330,6 +345,7 @@ export function SettingsPanel({ simpleMode = false }: { simpleMode?: boolean } =
             <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">{saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : <><Save className="mr-2 h-4 w-4" />Save Webhook Config</>}</Button>
           </div>
         </CardContent>
+        )}
       </Card>
       )}
 
