@@ -198,7 +198,7 @@ export function SimpleTicketListWidget({
             aria-expanded={!isCollapsed}
           >
             <Ticket className="h-4 w-4 text-blue-500 shrink-0" />
-            <CardTitle className="flex items-center gap-2 text-base">Ticket List</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">Ticket List</CardTitle>
             {!isCollapsed ? (
               <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
             ) : (

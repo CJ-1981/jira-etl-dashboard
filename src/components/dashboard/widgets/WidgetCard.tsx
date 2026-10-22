@@ -33,6 +33,9 @@ export interface WidgetCardProps {
   onRestoreAll: (prefix: string) => void;
   /** Color classes for the "Restore All" button (varies per widget). */
   restoreAllClassName: string;
+  /** Hover highlight for title + chevron — usually the widget's accent color
+   *  (e.g. "group-hover/toggle:text-blue-600 dark:group-hover/toggle:text-blue-400"). */
+  accentClassName?: string;
   /** Body content rendered inside CardContent when expanded. */
   children: ReactNode;
 }
@@ -47,6 +50,7 @@ export function WidgetCard({
   hiddenPrefix,
   onRestoreAll,
   restoreAllClassName,
+  accentClassName = 'group-hover/toggle:text-slate-900 dark:group-hover/toggle:text-slate-100',
   children,
 }: WidgetCardProps) {
   const hasHidden = hiddenDimensions.some(k => k.startsWith(hiddenPrefix));
@@ -55,16 +59,27 @@ export function WidgetCard({
     <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <CardTitle className="flex items-center gap-2">{titleContent}</CardTitle>
-            <button
-              onClick={() => onToggleCollapse(pluginId)}
-              className="text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-              title={isExpanded ? "Collapse" : "Expand"}
-              aria-label={isExpanded ? "Collapse section" : "Expand section"}
-            >
-              {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
+          {/* Title and chevron toggle together and highlight together — the
+              shared hover/click pattern used by every dashboard widget. */}
+          <div className="group/toggle flex min-w-0 items-center gap-2">
+            <CardTitle className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onToggleCollapse(pluginId)}
+                className={`flex min-w-0 items-center gap-2 text-left transition-colors ${accentClassName}`}
+                title={isExpanded ? 'Collapse' : 'Expand'}
+              >
+                {titleContent}
+              </button>
+              <button
+                onClick={() => onToggleCollapse(pluginId)}
+                className={`text-slate-400 p-0.5 transition-colors ${accentClassName}`}
+                title={isExpanded ? 'Collapse' : 'Expand'}
+                aria-label={isExpanded ? 'Collapse section' : 'Expand section'}
+              >
+                {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            </CardTitle>
             <PluginInfoIcon pluginId={pluginId} description={pluginDescription} />
           </div>
           {hasHidden && (

@@ -248,7 +248,7 @@ export function TicketListWidget({
           aria-expanded={!isCollapsed}
         >
           <Ticket className="h-4 w-4 text-blue-500 shrink-0" />
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-base transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">
             Weekly Ticket Overview
           </CardTitle>
           {!isCollapsed ? (

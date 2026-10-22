@@ -47,6 +47,7 @@ export function StatusTimeWidget({
       hiddenDimensions={hiddenDimensions}
       hiddenPrefix={hiddenPrefix}
       onRestoreAll={onRestoreAll}
+      accentClassName="group-hover/toggle:text-blue-600 dark:group-hover/toggle:text-blue-400"
       restoreAllClassName="text-blue-400 hover:text-blue-500 hover:bg-blue-500/10"
     >
       {!kpi.results || kpi.results.length === 0 ? (

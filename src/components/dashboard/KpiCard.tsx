@@ -659,10 +659,19 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 min-w-0 group/charttitle">
-                  <CardTitle className="text-lg truncate">{displayTitle}</CardTitle>
+                  <CardTitle className="text-lg truncate">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleToggleExpanded(); }}
+                      className="block max-w-full truncate text-left transition-colors group-hover/charttitle:text-slate-900 dark:group-hover/charttitle:text-slate-100"
+                      title={expanded ? 'Collapse' : 'Expand'}
+                    >
+                      {displayTitle}
+                    </button>
+                  </CardTitle>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleToggleExpanded(); }}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-0.5 shrink-0"
+                    className="text-slate-400 group-hover/charttitle:text-slate-600 dark:group-hover/charttitle:text-slate-300 transition-colors p-0.5 shrink-0"
                     title={expanded ? "Collapse" : "Expand"}
                     aria-label={expanded ? "Collapse chart" : "Expand chart"}
                     data-export-ignore="true"

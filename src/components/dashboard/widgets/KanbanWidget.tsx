@@ -73,18 +73,26 @@ export function KanbanWidget({
     <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden shadow-sm">
       <CardHeader className="bg-slate-50/50 dark:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <CardTitle className="flex items-center gap-2 text-lg font-bold">
-              <Columns className="h-5 w-5 text-indigo-500" />
-              {title}
+          <div className="group/toggle flex items-center gap-2 min-w-0">
+            <CardTitle className="flex items-center gap-2 text-lg font-bold min-w-0">
+              <button
+                type="button"
+                onClick={() => onToggleCollapse(kpi.pluginId)}
+                className="flex items-center gap-2 text-left min-w-0 transition-colors group-hover/toggle:text-indigo-600 dark:group-hover/toggle:text-indigo-400"
+                title={isExpanded ? 'Collapse' : 'Expand'}
+              >
+                <Columns className="h-5 w-5 text-indigo-500 shrink-0" />
+                {title}
+              </button>
             </CardTitle>
             <Badge className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-none font-mono text-xs">
               {totalKanbanTickets} open tickets
             </Badge>
             <button
               onClick={() => onToggleCollapse(kpi.pluginId)}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 ml-1"
-              title={isExpanded ? "Collapse" : "Expand"}
+              className="text-slate-400 group-hover/toggle:text-indigo-500 transition-colors p-1 rounded ml-1"
+              title={isExpanded ? 'Collapse' : 'Expand'}
+              aria-label={isExpanded ? 'Collapse section' : 'Expand section'}
             >
               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>

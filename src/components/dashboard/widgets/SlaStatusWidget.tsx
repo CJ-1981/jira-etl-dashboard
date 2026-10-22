@@ -48,6 +48,7 @@ export function SlaStatusWidget({
       hiddenDimensions={hiddenDimensions}
       hiddenPrefix={hiddenPrefix}
       onRestoreAll={onRestoreAll}
+      accentClassName="group-hover/toggle:text-emerald-600 dark:group-hover/toggle:text-emerald-400"
       restoreAllClassName="text-emerald-400 hover:text-emerald-500 hover:bg-emerald-500/10"
     >
       <div className="space-y-3">
