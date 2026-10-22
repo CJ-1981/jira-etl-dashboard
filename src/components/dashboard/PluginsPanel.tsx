@@ -121,7 +121,7 @@ function SortablePluginItem({ plugin, isActive, onToggle, sortableId }: { plugin
 }
 
 export function PluginsPanel() {
-  const { settings, setSettings, region, setRegion, uiMode } = useAppStore();
+  const { settings, setSettings, setRegion, uiMode } = useAppStore();
   const isSimple = uiMode === 'simple';
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [initialSettings, setInitialSettings] = useState<AppSettings>(settings);
