@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
-  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown, Search, Star
+  Wand2, Save, Plug, Plus, CheckCircle2, XCircle, Info, RefreshCw, Calculator, Trash2, Activity, Target, AlertTriangle, Sliders, GripVertical, ChevronDown, ChevronUp, Search, Star
 } from 'lucide-react';
 import {
   DndContext,
@@ -121,7 +121,8 @@ function SortablePluginItem({ plugin, isActive, onToggle, sortableId }: { plugin
 }
 
 export function PluginsPanel() {
-  const { settings, setSettings } = useAppStore();
+  const { settings, setSettings, region, setRegion, uiMode } = useAppStore();
+  const isSimple = uiMode === 'simple';
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
   const [initialSettings, setInitialSettings] = useState<AppSettings>(settings);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -130,6 +131,12 @@ export function PluginsPanel() {
   const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'favorites'>('all');
   const [activeFilter, setActiveFilter] = useState<'all' | 'active'>('all');
   const [favoritePlugins, setFavoritePlugins] = useState<Set<string>>(new Set());
+
+  // Simple mode: settings cards start collapsed (expand via the card header).
+  const [customPluginsOpen, setCustomPluginsOpen] = useState(!isSimple);
+  const [slaTargetsOpen, setSlaTargetsOpen] = useState(!isSimple);
+  const [alertsOpen, setAlertsOpen] = useState(!isSimple);
+  const [defaultsOpen, setDefaultsOpen] = useState(!isSimple);
 
   // Widget ordering system
   const { widgetOrder, reorderWidget, toggleWidgetVisibility, initializeWidgetOrder } = useWidgetOrder();
@@ -796,9 +803,19 @@ export function PluginsPanel() {
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-purple-400" /> Custom Plugins</CardTitle>
+          <button
+            onClick={() => setCustomPluginsOpen(o => !o)}
+            className="flex items-center justify-between gap-3 w-full group text-left"
+            aria-expanded={customPluginsOpen}
+          >
+            <CardTitle className="flex items-center gap-2 group-hover:text-emerald-400 transition-colors"><Plug className="h-5 w-5 text-purple-400" /> Custom Plugins</CardTitle>
+            {customPluginsOpen
+              ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+              : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+          </button>
           <CardDescription className="text-slate-600 dark:text-slate-400">Manage custom KPI plugins. Upload your own plugins to extend functionality.</CardDescription>
         </CardHeader>
+        {customPluginsOpen && (
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -881,13 +898,24 @@ export function PluginsPanel() {
             </div>
           )}
         </CardContent>
+        )}
       </Card>
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
+          <button
+            onClick={() => setSlaTargetsOpen(o => !o)}
+            className="flex items-center justify-between gap-3 w-full group text-left"
+            aria-expanded={slaTargetsOpen}
+          >
+            <CardTitle className="flex items-center gap-2 group-hover:text-emerald-400 transition-colors"><Target className="h-5 w-5 text-amber-400" /> SLA Targets by Status</CardTitle>
+            {slaTargetsOpen
+              ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+              : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+          </button>
           <CardDescription className="text-slate-600 dark:text-slate-400">Define target hours per workflow status. Configure whose comments can reset the SLA clock.</CardDescription>
         </CardHeader>
+        {slaTargetsOpen && (
         <CardContent className="space-y-4">
             <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 p-3 shrink-0">
               <p className="text-xs text-amber-800 dark:text-amber-400">
@@ -1001,18 +1029,29 @@ export function PluginsPanel() {
               }} className="bg-amber-600 hover:bg-amber-700 w-auto min-w-[180px]" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save SLA Targets</Button>
             </div>
           </CardContent>
+          )}
         </Card>
 
         <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-400" />
-              KPI Alert Thresholds
-            </CardTitle>
+            <button
+              onClick={() => setAlertsOpen(o => !o)}
+              className="flex items-center justify-between gap-3 w-full group text-left"
+              aria-expanded={alertsOpen}
+            >
+              <CardTitle className="flex items-center gap-2 group-hover:text-emerald-400 transition-colors">
+                <AlertTriangle className="h-5 w-5 text-red-400" />
+                KPI Alert Thresholds
+              </CardTitle>
+              {alertsOpen
+                ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+            </button>
             <CardDescription className="text-slate-600 dark:text-slate-400">
               Define warning and critical limits for specific metrics to highlight performance issues.
             </CardDescription>
           </CardHeader>
+          {alertsOpen && (
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3 mb-2">
               <Button 
@@ -1140,13 +1179,23 @@ export function PluginsPanel() {
               </Button>
             </div>
           </CardContent>
+          )}
         </Card>
 
       <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5 text-blue-400" /> KPI Calculation Defaults</CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">Configure default values for KPI calculations</CardDescription>
+          <button
+            onClick={() => setDefaultsOpen(o => !o)}
+            className="flex items-center justify-between gap-3 w-full group text-left"
+            aria-expanded={defaultsOpen}
+          >
+            <CardTitle className="flex items-center gap-2 group-hover:text-emerald-400 transition-colors"><Calculator className="h-5 w-5 text-blue-400" /> KPI Calculation Defaults</CardTitle>
+            {defaultsOpen
+              ? <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+              : <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />}
+          </button>
         </CardHeader>
+        {defaultsOpen && (
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
             <div className="space-y-2">
@@ -1154,6 +1203,9 @@ export function PluginsPanel() {
               <Select value={settings.general?.defaultHolidayState} onValueChange={(v) => {
                 const general = settings.general ?? {};
                 setSettings({ ...settings, general: { ...general, defaultHolidayState: v } });
+                // Calculations read the store region, not settings — apply the
+                // selected state immediately, otherwise it never takes effect.
+                setRegion(v);
               }}>
                 <SelectTrigger className="bg-gray-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700"><SelectValue /></SelectTrigger>
                 <SelectContent>{GERMAN_STATES.map((s) => (<SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>))}</SelectContent>
@@ -1216,6 +1268,7 @@ export function PluginsPanel() {
             }} className="bg-blue-600 hover:bg-blue-700 w-auto min-w-[180px]" disabled={!hasUnsavedSettings}><Save className="mr-2 h-4 w-4" /> Save KPI Defaults</Button>
           </div>
         </CardContent>
+        )}
       </Card>
     </div>
   );
