@@ -62,6 +62,128 @@ const METRIC_TYPES = [
   { id: 'time', label: 'Time-to-X', icon: '⏱️' },
 ];
 
+// Rich starting points for the Plugin Builder — one press fills every field.
+// Three per language so novices can learn DSL and JavaScript shapes by example.
+const BUILDER_SAMPLES: Record<'dsl' | 'javascript', Array<{
+  label: string;
+  language?: 'dsl' | 'javascript';
+  data: { name: string; description: string; category: string; unit: string; metricType: string; statuses: string[]; priorities: string[]; dslFormula?: string; jsCode?: string; language?: 'dsl' | 'javascript' };
+}>> = {
+  dsl: [
+    {
+      label: 'Sample 1 — Critical Bug Resolution %',
+      data: {
+        name: 'Critical Bug Resolution %',
+        description: 'Percentage of all tickets that are Highest-priority bugs already done',
+        category: 'quality',
+        unit: '%',
+        metricType: 'percentage',
+        statuses: ['Done'],
+        priorities: ['Highest'],
+        dslFormula: 'PERCENTAGE(issueType = "Bug" AND priority = "Highest" AND status = "Done") OF true',
+        jsCode: '',
+        language: 'dsl',
+      },
+    },
+    {
+      label: 'Sample 2 — High-Priority Count',
+      data: {
+        name: 'High-Priority Ticket Count',
+        description: 'Counts open tickets with High or Highest priority',
+        category: 'throughput',
+        unit: 'tickets',
+        metricType: 'count',
+        statuses: [],
+        priorities: ['High', 'Highest'],
+        dslFormula: 'COUNT(priority = "High" AND priority = "Highest")',
+        jsCode: '',
+        language: 'dsl',
+      },
+    },
+    {
+      label: 'Sample 3 — Avg Story Points (Bugs)',
+      data: {
+        name: 'Average Story Points (Bugs)',
+        description: 'Average story points across bug tickets',
+        category: 'processing-time',
+        unit: 'points',
+        metricType: 'avg',
+        statuses: [],
+        priorities: [],
+        dslFormula: 'AVG(storyPoints) WHERE issueType = "Bug"',
+        jsCode: '',
+        language: 'dsl',
+      },
+    },
+  ],
+  javascript: [
+    {
+      label: 'Sample 1 — Resolved This Week',
+      language: 'javascript',
+      data: {
+        name: 'Resolved This Week',
+        description: 'Tickets resolved in the current calendar week (Mon-Sun)',
+        category: 'throughput',
+        unit: 'tickets',
+        metricType: 'count',
+        statuses: [],
+        priorities: [],
+        jsCode: `// Tickets resolved in the current calendar week (Mon-Sun)
+const now = new Date();
+const monday = new Date(now);
+monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+monday.setHours(0, 0, 0, 0);
+
+const resolved = context.issues.filter(i => i.resolved && new Date(i.resolved) >= monday);
+return [{ name: 'Resolved This Week', value: resolved.length, unit: 'tickets' }];`,
+      },
+    },
+    {
+      label: 'Sample 2 — Unassigned Open %',
+      language: 'javascript',
+      data: {
+        name: 'Unassigned Open Tickets',
+        description: 'Percentage of open tickets without an assignee',
+        category: 'quality',
+        unit: '%',
+        metricType: 'percentage',
+        statuses: [],
+        priorities: [],
+        jsCode: `// Percentage of open tickets without an assignee
+const open = context.issues.filter(i => !i.resolved);
+const unassigned = open.filter(i => !i.assignee || i.assignee === 'Unassigned');
+return open.length ? Math.round((unassigned.length / open.length) * 100) : 0;`,
+      },
+    },
+    {
+      label: 'Sample 3 — Bugs per Assignee',
+      language: 'javascript',
+      data: {
+        name: 'Resolved Bugs by Assignee',
+        description: 'Resolved bug count per assignee, as separate result rows',
+        category: 'assignee',
+        unit: 'bugs',
+        metricType: 'count',
+        statuses: [],
+        priorities: [],
+        jsCode: `// Resolved bugs per assignee, as result objects
+const byAssignee = {};
+context.issues
+  .filter(i => i.issueType === 'Bug' && i.resolved)
+  .forEach(i => {
+    const a = (i.assignee && i.assignee !== 'Unassigned') ? i.assignee : 'Unassigned';
+    byAssignee[a] = (byAssignee[a] || 0) + 1;
+  });
+return Object.entries(byAssignee).map(([assignee, count]) => ({
+  name: 'Resolved Bugs: ' + assignee,
+  value: count,
+  unit: 'bugs',
+}));`,
+      },
+    },
+  ],
+};
+
 
 
 const categoryLabels: Record<string, { label: string; color: string }> = {
@@ -458,6 +580,33 @@ export function PluginsPanel() {
     }
   };
 
+  // Load a rich sample into every field (language-aware), or wipe the form.
+  const applySample = (sample: typeof BUILDER_SAMPLES['dsl'][number]) => {
+    setBuilderData({
+      name: sample.data.name,
+      description: sample.data.description,
+      category: sample.data.category,
+      unit: sample.data.unit,
+      formula: sample.data.jsCode ?? sample.data.dslFormula ?? '',
+      metricType: sample.data.metricType,
+      statuses: sample.data.statuses,
+      priorities: sample.data.priorities,
+      issueTypes: [],
+      assignees: [],
+      customJql: '',
+    });
+    setBuilderLanguage(sample.language ?? builderLanguage);
+    toast.info(`Sample loaded: ${sample.label} — press Save Plugin to keep it`);
+  };
+
+  const clearBuilder = () => {
+    setBuilderData({
+      name: '', description: '', category: 'custom', unit: 'value', formula: '',
+      metricType: 'count', statuses: [], priorities: [], issueTypes: [], assignees: [], customJql: ''
+    });
+    toast.info('Builder cleared');
+  };
+
   const hasUnsavedSettings = JSON.stringify(settings) !== JSON.stringify(initialSettings);
 
   // Filter plugins based on search query and favorite filter
@@ -536,6 +685,25 @@ export function PluginsPanel() {
             <div className="flex flex-wrap items-center gap-2 mt-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-md w-fit max-w-full">
               <button onClick={() => setBuilderLanguage('dsl')} className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors ${builderLanguage === 'dsl' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Visual Builder (DSL)</button>
               <button onClick={() => setBuilderLanguage('javascript')} className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors ${builderLanguage === 'javascript' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Code (JavaScript)</button>
+              <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">Samples</span>
+              {(BUILDER_SAMPLES[builderLanguage] || []).map((sample, i) => (
+                <button
+                  key={sample.label}
+                  onClick={() => applySample(sample)}
+                  title={sample.data.description}
+                  className="px-2 py-1 text-xs font-medium rounded-md border border-dashed border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                >
+                  {`Sample ${i + 1}`}
+                </button>
+              ))}
+              <button
+                onClick={clearBuilder}
+                title="Clear all builder fields"
+                className="px-2 py-1 text-xs font-medium rounded-md border border-dashed border-red-500/40 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+              >
+                Clear
+              </button>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
