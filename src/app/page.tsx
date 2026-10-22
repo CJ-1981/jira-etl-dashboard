@@ -124,6 +124,13 @@ export default function Home() {
 
   const initialMountRef = useRef(false);
 
+  // Gear toggle: remember the most recent non-Settings view so clicking the
+  // gear again returns to it.
+  const lastNonSettingsTabRef = useRef<string>('kpi');
+  useEffect(() => {
+    if (activeTab && activeTab !== 'settings') lastNonSettingsTabRef.current = activeTab;
+  }, [activeTab]);
+
   useEffect(() => {
     if (!mounted) return;
 
@@ -476,9 +483,9 @@ export default function Home() {
             </div>
 
             <button
-              onClick={() => setActiveTab('settings')}
+              onClick={() => setActiveTab(activeTab === 'settings' ? lastNonSettingsTabRef.current : 'settings')}
               aria-label="Settings"
-              title="Settings"
+              title={activeTab === 'settings' ? 'Back to previous view' : 'Settings'}
               className={`p-1.5 rounded-full transition-colors shrink-0 ${
                 activeTab === 'settings'
                   ? 'bg-emerald-600 text-white shadow-sm'
