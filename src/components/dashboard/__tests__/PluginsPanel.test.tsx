@@ -1,6 +1,7 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PluginsPanel } from '../PluginsPanel';
 import { localConfig, DEFAULT_SETTINGS } from '@/lib/config/local-store';
 import { createMockStore, renderWithProviders } from '@/test/mock-store';
@@ -29,6 +30,8 @@ vi.mock('@/lib/config/local-store', () => ({
     saveFavoritePlugins: vi.fn(),
     getActiveConnectionId: vi.fn(() => ''),
     getStorageConfig: vi.fn(() => ({ provider: 'sqlite', url: '', isCustom: false })),
+    // Baseline for the Save buttons — same source the store is seeded from.
+    getSettings: vi.fn(() => JSON.parse(JSON.stringify(DEFAULT_SETTINGS))),
     saveSettings: vi.fn(),
   },
   KEYS: {
@@ -57,6 +60,17 @@ const BUILTIN_PLUGINS = [
 const fetchMock = vi.fn();
 
 describe('PluginsPanel', () => {
+  // jsdom lacks the pointer-capture APIs Radix Select's option rows call on click.
+  beforeAll(() => {
+    const proto = HTMLElement.prototype as unknown as Record<
+      'hasPointerCapture' | 'setPointerCapture' | 'releasePointerCapture',
+      () => void
+    >;
+    proto.hasPointerCapture = () => false;
+    proto.setPointerCapture = () => {};
+    proto.releasePointerCapture = () => {};
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
@@ -130,5 +144,27 @@ describe('PluginsPanel', () => {
     expect(localConfig.saveActivePlugins).toHaveBeenCalledWith(
       expect.arrayContaining(['ticket-count', 'avg-cycle-time']),
     );
+  });
+
+  // Regression: the old baseline (store snapshot + hydration heuristic that
+  // re-armed while settings equalled the defaults) swallowed the first edit,
+  // so picking only a German state left "Save KPI Defaults" disabled until a
+  // second field also changed.
+  it('enables Save KPI Defaults after changing only the German state', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const { rerender } = renderWithProviders(<PluginsPanel />, queryClient);
+    await waitForPlugins();
+    // Mock store is in simple mode — the settings cards start collapsed.
+    fireEvent.click(screen.getByText('KPI Calculation Defaults'));
+
+    const stateSelect = screen.getByRole('combobox');
+    fireEvent.pointerDown(stateSelect, { button: 0, ctrlKey: false });
+    fireEvent.click(stateSelect);
+    fireEvent.click(within(screen.getByRole('listbox')).getByText('Bayern'));
+
+    // The mock store mutates in place without notifying subscribers, so nudge
+    // a re-render for the dirty-check to run with the updated settings.
+    rerender(<QueryClientProvider client={queryClient}><PluginsPanel /></QueryClientProvider>);
+    expect(screen.getByRole('button', { name: /Save KPI Defaults/i })).toBeEnabled();
   });
 });

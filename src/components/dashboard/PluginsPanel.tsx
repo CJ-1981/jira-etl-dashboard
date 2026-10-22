@@ -44,7 +44,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { localConfig, KEYS, type KpiPlugin, AppSettings, DEFAULT_SETTINGS } from '@/lib/config/local-store';
+import { localConfig, KEYS, type KpiPlugin, AppSettings } from '@/lib/config/local-store';
 import { getDataSource } from '@/lib/datasource';
 import { runtimeFeatures } from '@/lib/runtime/mode';
 import { GERMAN_STATES } from '@/lib/config/constants';
@@ -246,8 +246,13 @@ export function PluginsPanel() {
   const { settings, setSettings, setRegion, uiMode } = useAppStore();
   const isSimple = uiMode === 'simple';
   const [plugins, setPlugins] = useState<Record<string, KpiPlugin[]>>({});
-  const [initialSettings, setInitialSettings] = useState<AppSettings>(settings);
-  const [isInitialized, setIsInitialized] = useState(false);
+  // Baseline for the Save buttons is the SAVED settings — the same source
+  // page.tsx hydrates the store from. The previous approach (store snapshot +
+  // a "wait until settings ≠ DEFAULT" hydration heuristic) swallowed the
+  // first edit whenever the saved settings equalled the defaults, so e.g.
+  // picking only a German state left Save KPI Defaults disabled until a
+  // second field (work hours) also changed.
+  const [initialSettings, setInitialSettings] = useState<AppSettings>(() => localConfig.getSettings());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'favorites'>('all');
@@ -263,13 +268,6 @@ export function PluginsPanel() {
   // Widget ordering system
   const { widgetOrder, reorderWidget, toggleWidgetVisibility, initializeWidgetOrder } = useWidgetOrder();
 
-  // Sync initialSettings once the store settings are loaded from localStorage
-  useEffect(() => {
-    if (!isInitialized && JSON.stringify(settings) !== JSON.stringify(DEFAULT_SETTINGS)) {
-      setInitialSettings(settings);
-      setIsInitialized(true);
-    }
-  }, [settings, isInitialized]);
   const [loading, setLoading] = useState(false);
   const [activePlugins, setActivePlugins] = useState<string[]>([]);
 
@@ -924,12 +922,14 @@ export function PluginsPanel() {
                 <p className="text-sm">No widgets to reorder</p>
               </div>
             ) : (
-              <WidgetResizeContainer
-                widgetId="widget-display-order"
-                defaultHeight={400}
-                minHeight={200}
-                className="space-y-2 overflow-y-auto pr-2 custom-scrollbar"
-              >
+              // Fills the card's remaining height so both side-by-side panels
+              // end at the same line: the grid row is sized by the registry
+              // card (whose fixed-height WidgetResizeContainer plus its search
+              // chrome make it the taller one) and this list grows into the
+              // rest. The min stays below the registry's own minimum total so
+              // this list never becomes the row-height driver (stacked view
+              // falls back to it).
+              <div className="flex-1 basis-0 min-h-[300px] space-y-2 overflow-y-auto pr-2 custom-scrollbar">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -963,7 +963,7 @@ export function PluginsPanel() {
                       })}
                   </SortableContext>
                 </DndContext>
-              </WidgetResizeContainer>
+              </div>
             )}
           </CardContent>
         </Card>
