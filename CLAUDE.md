@@ -52,6 +52,13 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
   Expert since it needs the hidden Connections tab. `e2e/helpers.ts` seeds `expert` by default so legacy specs keep
   testing the full shell — pass `{ mode: 'simple' }` for mode-specific specs.
 
+- **Metrics Overview filters** (`KpiDataTable.tsx`): Plugins, Dimensions, and Health States
+  are multi-select `FilterMultiSelect` dropdowns (shared with the extract preview) whose
+  selections intersect with each other and with the text search. Health mirrors the Health
+  column badge — each row's status is derived from the plugin's alert thresholds at render
+  time (`settings.alerts.thresholds`), not from any field on the calculation results, so
+  test fixtures must set threshold values (not an `alertStatus` property) to control it.
+
 - `jira/extract` — core ETL: JQL pull → `EtlRun` + `TicketSnapshot`/`TicketTransition` + `MasterTicket` upserts → KPI calculation → `KpiResult` storage. The run row starts as `extracting` and is promoted to `completed` only after the load succeeds (`failed` + errorLog on crash); old-run pruning happens after success. Deletion detection is conservative: it only runs for the app-generated broad-sync JQL, never for user-provided custom JQL. The Participants field (`JIRA_PARTICIPANTS_FIELD`, default `customfield_10032`) is always added to the requested field list so the extract preview can show participant names.
 - `jira/poll` — server-side background polling scheduler (keeps credentials in `globalThis` state)
 - `jira/connections/[connectionId]` — DELETE: cascades all of a connection's data (KPI results, dashboard views, transitions, snapshots, runs, master tickets) in one transaction
