@@ -1,4 +1,4 @@
-# Jira ETL Dashboard for Metabase
+# Jira ETL Dashboard
 
 A professional ETL dashboard that extracts ticket data from Jira Cloud or Server, calculates custom KPIs with **German holiday-aware business hour calculations**, and exports results to **Metabase** via CSV/JSON or PostgreSQL synchronization.
 
