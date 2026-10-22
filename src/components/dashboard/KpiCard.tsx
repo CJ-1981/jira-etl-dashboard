@@ -659,25 +659,29 @@ export function ChartCard({ config, kpiResults, hiddenDimensions, toggleDimensio
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 min-w-0 group/charttitle">
-                  <CardTitle className="text-lg truncate">
+                  {/* Title + chevron share the accent hover highlight; pencil
+                      and info icon stay outside that hover scope. */}
+                  <div className="group/toggle flex min-w-0 items-center gap-1.5">
+                    <CardTitle className="truncate text-lg">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleToggleExpanded(); }}
+                        className={`block max-w-full truncate text-left transition-colors ${isTimeSeries ? 'group-hover/toggle:text-blue-600 dark:group-hover/toggle:text-blue-400' : 'group-hover/toggle:text-emerald-600 dark:group-hover/toggle:text-emerald-400'}`}
+                        title={expanded ? 'Collapse' : 'Expand'}
+                      >
+                        {displayTitle}
+                      </button>
+                    </CardTitle>
                     <button
-                      type="button"
                       onClick={(e) => { e.stopPropagation(); handleToggleExpanded(); }}
-                      className="block max-w-full truncate text-left transition-colors group-hover/charttitle:text-slate-900 dark:group-hover/charttitle:text-slate-100"
-                      title={expanded ? 'Collapse' : 'Expand'}
+                      className={`text-slate-400 p-0.5 shrink-0 transition-colors ${isTimeSeries ? 'group-hover/toggle:text-blue-500 dark:group-hover/toggle:text-blue-400' : 'group-hover/toggle:text-emerald-500 dark:group-hover/toggle:text-emerald-400'}`}
+                      title={expanded ? "Collapse" : "Expand"}
+                      aria-label={expanded ? "Collapse chart" : "Expand chart"}
+                      data-export-ignore="true"
                     >
-                      {displayTitle}
+                      {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                     </button>
-                  </CardTitle>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleToggleExpanded(); }}
-                    className="text-slate-400 group-hover/charttitle:text-slate-600 dark:group-hover/charttitle:text-slate-300 transition-colors p-0.5 shrink-0"
-                    title={expanded ? "Collapse" : "Expand"}
-                    aria-label={expanded ? "Collapse chart" : "Expand chart"}
-                    data-export-ignore="true"
-                  >
-                    {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </button>
+                  </div>
                   {userManaged && (
                     <button
                       onClick={handleStartTitleEdit}
