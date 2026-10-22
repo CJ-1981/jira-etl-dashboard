@@ -22,17 +22,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  ArrowUpDown, Search, AlertTriangle,
-  ChevronDown, ChevronRight, Ticket, Tag, Filter,
+  ArrowUpDown, Search, AlertTriangle, Ticket,
 } from 'lucide-react';
 import { useAppStore } from '@/store/app-store';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { FilterMultiSelect } from './extract/ExtractionPreviewTable';
 
 interface KpiDataRow {
   id: string;
@@ -86,8 +79,9 @@ export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillD
   const { settings } = useAppStore();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'pluginId', desc: false }]);
   const [globalFilter, setGlobalFilter] = useState('');
-  const [pluginFilter, setPluginFilter] = useState<string>('all');
-  const [dimTypeFilter, setDimTypeFilter] = useState<string>('all');
+  const [pluginFilter, setPluginFilter] = useState<string[]>([]);
+  const [dimTypeFilter, setDimTypeFilter] = useState<string[]>([]);
+  const [healthFilter, setHealthFilter] = useState<string[]>([]);
 
   // @MX:ANCHOR: Data row derivation from raw plugin calculation results and alert settings
   // @MX:NOTE: Flattens hierarchical plugin results into standardized rows suitable for tabular display and filtering
@@ -154,13 +148,23 @@ export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillD
 
   // @MX:WARN: Filter precedence: pluginFilter and dimTypeFilter are applied directly to the full dataset before TanStack global filter
   // @MX:REASON: These filters narrow the dataset at source level, so TanStack globalFilter operates on a pre-filtered subset. Changing this order would break filter semantics where plugin/dimension filters act as hard constraints.
+  // Row health label — mirrors the Health column badge (Healthy when no
+  // alert threshold is configured or breached).
+  const healthOf = (row: KpiDataRow): string =>
+    row.alertStatus === 'critical' ? 'Critical' : row.alertStatus === 'warning' ? 'Warning' : 'Healthy';
+
+  // Dimension options carry display labels; rows are filtered by the same
+  // label so the multiselect and the table always agree.
+  const dimLabelOf = (row: KpiDataRow) => DIMENSION_TYPE_LABELS[row.dimensionType] || row.dimensionType;
+
   const filteredData = useMemo(() => {
     return data.filter(row => {
-      if (pluginFilter !== 'all' && row.pluginId !== pluginFilter) return false;
-      if (dimTypeFilter !== 'all' && row.dimensionType !== dimTypeFilter) return false;
+      if (pluginFilter.length > 0 && !pluginFilter.includes(row.pluginName)) return false;
+      if (dimTypeFilter.length > 0 && !dimTypeFilter.includes(dimLabelOf(row))) return false;
+      if (healthFilter.length > 0 && !healthFilter.includes(healthOf(row))) return false;
       return true;
     });
-  }, [data, pluginFilter, dimTypeFilter]);
+  }, [data, pluginFilter, dimTypeFilter, healthFilter]);
 
   const columnHelper = createColumnHelper<KpiDataRow>();
 
@@ -385,35 +389,29 @@ export const KpiDataTable = React.memo(function KpiDataTable({ results, onDrillD
           />
         </div>
 
-        {/* Plugin filter */}
-        <Select value={pluginFilter} onValueChange={setPluginFilter}>
-          <SelectTrigger className="h-8 w-[160px] text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-            <Filter className="h-3 w-3 mr-1 text-slate-400" />
-            <SelectValue placeholder="All Plugins" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">All Plugins</SelectItem>
-            {pluginOptions.map(([id, name]) => (
-              <SelectItem key={id} value={id} className="text-xs">{name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Plugin filter — multi-select by display name */}
+        <FilterMultiSelect
+          placeholder="All Plugins"
+          options={pluginOptions.map(([, name]) => name)}
+          selected={pluginFilter}
+          onChange={setPluginFilter}
+        />
 
-        {/* Dimension type filter */}
-        <Select value={dimTypeFilter} onValueChange={setDimTypeFilter}>
-          <SelectTrigger className="h-8 w-[150px] text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-            <Tag className="h-3 w-3 mr-1 text-slate-400" />
-            <SelectValue placeholder="All Dimensions" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">All Dimensions</SelectItem>
-            {dimTypeOptions.map((dt) => (
-              <SelectItem key={dt} value={dt} className="text-xs capitalize">
-                {DIMENSION_TYPE_LABELS[dt] || dt}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Dimension type filter — multi-select by display label */}
+        <FilterMultiSelect
+          placeholder="All Dimensions"
+          options={dimTypeOptions.map(dt => DIMENSION_TYPE_LABELS[dt] || dt)}
+          selected={dimTypeFilter}
+          onChange={setDimTypeFilter}
+        />
+
+        {/* Health filter — Healthy / Warning / Critical */}
+        <FilterMultiSelect
+          placeholder="All Health States"
+          options={['Healthy', 'Warning', 'Critical']}
+          selected={healthFilter}
+          onChange={setHealthFilter}
+        />
 
         {/* Count badge */}
         <div className="text-xs text-slate-500 font-medium ml-auto">
