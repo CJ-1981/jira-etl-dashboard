@@ -488,7 +488,7 @@ export default function Home() {
               title={activeTab === 'settings' ? 'Back to previous view' : 'Settings'}
               className={`p-1.5 rounded-full transition-colors shrink-0 ${
                 activeTab === 'settings'
-                  ? 'bg-emerald-600 text-white shadow-sm'
+                  ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-500 hover:text-slate-900'
                   : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
