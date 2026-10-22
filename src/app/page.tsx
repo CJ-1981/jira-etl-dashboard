@@ -260,52 +260,35 @@ export default function Home() {
 
       if (isDev) console.log('[App] Master dataset date range available');
 
-      // Simple mode: the analysis period is always the entire period of pulled
-      // tickets (dynamic) — saved/user-picked windows never override it.
-      if (uiMode === 'simple') {
-        if (isDev) console.log('[App] Simple mode: dynamic MAX range');
+      // MAX is the default in every mode; a period the user picked (persisted
+      // per connection and different from MAX) takes over — simple mode
+      // included, so its Analysis Period controls are real controls. Picking
+      // MAX again hands control back to the auto-expand-on-pull default.
+      const savedDatesDifferFromMax = savedState?.dateFrom && savedState?.dateTo &&
+        (savedState.dateFrom !== maxFromStr || savedState.dateTo !== maxToStr);
+
+      if (savedDatesDifferFromMax) {
+        if (isDev) console.log('[App] Using saved dates (user preference)');
+        setDateFrom(savedState.dateFrom!);
+        setDateTo(savedState.dateTo!);
+      } else {
+        if (isDev) console.log('[App] Defaulting to MAX range');
         setDateFrom(maxFromStr);
         setDateTo(maxToStr);
-      } else {
-        // Check if saved dates are different from MAX (user explicitly changed them)
-        const savedDatesDifferFromMax = savedState?.dateFrom && savedState?.dateTo &&
-          (savedState.dateFrom !== maxFromStr || savedState.dateTo !== maxToStr);
-
-        if (savedDatesDifferFromMax) {
-          if (isDev) console.log('[App] Using saved dates (user preference)');
-          setDateFrom(savedState.dateFrom!);
-          setDateTo(savedState.dateTo!);
-        } else {
-          if (isDev) console.log('[App] Defaulting to MAX range');
-          setDateFrom(maxFromStr);
-          setDateTo(maxToStr);
-        }
       }
     } else {
       if (isDev) console.log('[App] Master dataset date range not available yet');
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConnectionId, mounted, masterDatasetInfo, uiMode]);
-
-  // Simple mode pins the analysis period to the entire pulled range. The
-  // extraction bar's pull window is independent (it passes its own window via
-  // useExtraction's getWindow), so a window pick can never leak into the
-  // analysis period — and the "Data Truncated" mismatch cannot arise here.
-  useEffect(() => {
-    if (!mounted || uiMode !== 'simple') return;
-    const range = masterDatasetInfo?.dateRange;
-    if (!range?.from || !range?.to) return;
-    const fromStr = localDateKey(new Date(range.from));
-    const toStr = localDateKey(new Date(range.to));
-    if (dateFrom !== fromStr || dateTo !== toStr) {
-      setDateFrom(fromStr);
-      setDateTo(toStr);
-    }
-  }, [mounted, uiMode, dateFrom, dateTo, masterDatasetInfo, setDateFrom, setDateTo]);
+  }, [activeConnectionId, mounted, masterDatasetInfo]);
 
   useEffect(() => {
     if (!mounted || !activeConnectionId) return;
+    // An empty period is the uninitialized store default (e.g. at mount,
+    // before the master-range effect fills it) — persisting it would wipe the
+    // user's saved window before it is ever restored.
+    if (!dateFrom || !dateTo) return;
 
     const state = {
       globalFilters,
@@ -536,7 +519,11 @@ export default function Home() {
               )}
 
               <TabsContent value="jira-etl" className="mt-0">
-                <ExtractPanel />
+                {/* Expert-only: the panel restores the extract pull window into
+                    the shared dateFrom/dateTo on mount — in simple mode the bar
+                    replaces it and a hidden mount would silently overwrite the
+                    analysis period (the tab is briefly active at first render). */}
+                {uiMode === 'expert' && <ExtractPanel />}
               </TabsContent>
 
               <TabsContent value="db-export" className="mt-0">

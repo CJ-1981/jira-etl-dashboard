@@ -7,7 +7,7 @@ Built with **Next.js 16**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Ta
 ## 📸 Screenshots
 
 ### Simple Mode (default)
-One combined view for everyday use: quick extraction at the top (demo data shown), the analysis period automatically tracking every pulled ticket, and a minimal set of essential KPIs. A first-run wizard offers Jira setup or one-click demo data when nothing is configured yet.
+One combined view for everyday use: quick extraction at the top (demo data shown), the analysis period defaulting to every pulled ticket (overridable from the Analysis Period controls), and a minimal set of essential KPIs. A first-run wizard offers Jira setup or one-click demo data when nothing is configured yet.
 
 <p align="center">
   <img src="docs/screenshots/simple-mode.png" alt="Simple Mode - Combined View" width="800" />
@@ -50,7 +50,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 - **Modern Aesthetics** — Premium dark-mode interface with glassmorphism effects and smooth transitions.
 
 ### 🌓 Professional Dashboard UX
-- **Simple & Expert Mode** — Simple mode (default) is a single combined view: quick date selection and extraction at the top of the analytics dashboard, the analysis period automatically tracking every pulled ticket, a minimal essential plugin set, and a first-run wizard that offers Jira setup or one-click demo data when nothing is configured. Expert mode (header toggle) restores the full multi-tab experience. Settings in simple mode shows only the Configuration panel (General Settings & Rate Limiting and Webhooks collapsed by default); Connections and Storage are expert-only, and the wizard's setup action switches to Expert automatically.
+- **Simple & Expert Mode** — Simple mode (default) is a single combined view: quick date selection and extraction at the top of the analytics dashboard, the analysis period defaulting to every pulled ticket (a manually picked period overrides it), a minimal essential plugin set, and a first-run wizard that offers Jira setup or one-click demo data when nothing is configured. Expert mode (header toggle) restores the full multi-tab experience. Settings in simple mode shows only the Configuration panel (General Settings & Rate Limiting and Webhooks collapsed by default); Connections and Storage are expert-only, and the wizard's setup action switches to Expert automatically.
 - **Saved Views / Presets** — Save named dashboard states (Dates, JQL, Filters, Layouts) to switch between different reporting contexts instantly.
 - **Interactive Metrics Table** — Toggle between a grid of cards and a high-density, sortable/filterable data table for rapid metric scanning; multi-select filters for plugins, dimension types, and health states (Healthy / Warning / Critical) intersect with free-text search.
 - **KPI Alert Thresholds** — Set custom Warning and Critical limits for any plugin; includes animated pulse alerts and hover tooltips.

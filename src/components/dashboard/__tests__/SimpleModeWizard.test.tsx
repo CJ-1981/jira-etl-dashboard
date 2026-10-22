@@ -90,9 +90,10 @@ describe('SimpleModeWizard', () => {
     expect(localConfigMock.saveDemoMode).toHaveBeenCalledWith(true);
     const state = storeRef.current as WizardMockState;
     expect(state.activeConnectionId).toBe('demo');
-    // 90-day window covering the demo dataset.
-    expect(state.dateFrom).toBeTruthy();
-    expect(state.dateTo).toBeTruthy();
+    // No explicit window here — the dashboard defaults the analysis period to
+    // the demo dataset's full range once the dataset loads.
+    expect(state.dateFrom).toBe('');
+    expect(state.dateTo).toBe('');
   });
 
   it('"Skip for now" dismisses for the session only', () => {

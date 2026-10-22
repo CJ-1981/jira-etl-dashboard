@@ -78,6 +78,33 @@ test.describe('Simple mode', () => {
     await expect(page.getByRole('button', { name: /Export CSV/i })).toBeVisible();
   });
 
+  test('analysis period defaults to MAX but user edits take over', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: 'Jira ETL Dashboard' }).waitFor({ state: 'visible' });
+    await page.getByText('Try demo data').first().click();
+
+    // Default: the period tracks the full demo dataset (MAX).
+    const fromInput = page.locator("input[type='date']").first();
+    const toInput = page.locator("input[type='date']").nth(1);
+    await expect(fromInput).not.toHaveValue('');
+    await expect(toInput).not.toHaveValue('');
+    const defaultFrom = await fromInput.inputValue();
+    const defaultTo = await toInput.inputValue();
+
+    // User takeover: a manually picked window sticks (no snap back to MAX).
+    const month = defaultFrom.slice(0, 8) + '01';
+    await fromInput.fill(month);
+    await expect(fromInput).toHaveValue(month);
+    await page.waitForTimeout(1500);
+    await expect(fromInput).toHaveValue(month);
+    await expect(toInput).toHaveValue(defaultTo);
+
+    // The shorter window survives a dashboard refresh (persisted per
+    // connection) — it is a real control, not a decorative input.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator("input[type='date']").first()).toHaveValue(month);
+  });
+
   test('mode switch returns the expert two-tab shell', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Jira ETL Dashboard' }).waitFor({ state: 'visible' });

@@ -32,8 +32,6 @@ export const SimpleModeWizard = React.memo(function SimpleModeWizard() {
   const setActiveConnectionId = useAppStore((s) => s.setActiveConnectionId);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const setUiMode = useAppStore((s) => s.setUiMode);
-  const setDateFrom = useAppStore((s) => s.setDateFrom);
-  const setDateTo = useAppStore((s) => s.setDateTo);
 
   const skip = useCallback(() => {
     sessionStorage.setItem(WIZARD_DISMISS_KEY, '1');
@@ -54,16 +52,13 @@ export const SimpleModeWizard = React.memo(function SimpleModeWizard() {
     setOpen(false);
     localConfig.saveDemoMode(true);
     setActiveConnectionId(DEMO_CONNECTION_ID);
-    const now = new Date();
-    const from = new Date(now);
-    from.setDate(from.getDate() - 89);
-    setDateFrom(from.toISOString().split('T')[0]);
-    setDateTo(now.toISOString().split('T')[0]);
+    // No explicit window: the dashboard defaults the analysis period to the
+    // demo dataset's full range (MAX) once the dataset loads.
     toast.success('Demo mode enabled', {
       description: 'Exploring with artificial demo data — no Jira credentials used.',
       duration: 5000,
     });
-  }, [setActiveConnectionId, setDateFrom, setDateTo]);
+  }, [setActiveConnectionId]);
 
   // Self-heal: if a connection appears (or demo is on) while open, close.
   React.useEffect(() => {

@@ -15,9 +15,9 @@ import { useAppStore } from '@/store/app-store';
 /**
  * Simple-mode extraction bar: the essentials of the Data Center extraction
  * panel (quick date window + run button) in one compact row, shown at the top
- * of the combined KPI view. dateFrom/dateTo are the shared store fields, so a
- * pull window directly seeds the analysis period; after the pull the master
- * range effect re-expands the period to every pulled ticket.
+ * of the combined KPI view. The pull window is local to the bar; the analysis
+ * period defaults to the full pulled range and can be overridden from the
+ * dashboard's Analysis Period controls.
  */
 export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
   const {
@@ -36,9 +36,8 @@ export const SimpleExtractionBar = React.memo(function SimpleExtractionBar() {
   );
 
   // The pull window is LOCAL to the bar and independent of the analysis
-  // period: simple mode pins the analysis period to the entire pulled range
-  // (see page.tsx), so sharing the store dates would make every window pick
-  // snap back before the run.
+  // period: picking a window here never moves the dashboard's Analysis
+  // Period (which defaults to the full pulled range, overridable there).
   const dayIso = (daysBack: number) => {
     const d = new Date();
     d.setDate(d.getDate() - daysBack);

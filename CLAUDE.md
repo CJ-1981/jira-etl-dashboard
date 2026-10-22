@@ -39,9 +39,11 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
 - **Simple/Expert UI mode** (`cfg_ui_mode` in localStorage, default `simple`; header switch
   before the gear). Simple mode renders a single combined view: the top tabs and the
   ExtractPanel are hidden, a `SimpleExtractionBar` (reusing `useExtraction` +
-  `QuickDateSelector`) sits above `KpiDashboard`, the analysis period is forced to the
-  master-dataset range on every refresh (the bar's pull window is independent — passed
-  via useExtraction's getWindow override — so window picks never leak into it), the KPI
+  `QuickDateSelector`) sits above `KpiDashboard`, the analysis period defaults to the
+  master-dataset range and a user-picked period (per-connection saved dates differing
+  from MAX) overrides it — same rule as expert mode; the bar's pull window is local to
+  the bar (passed via useExtraction's getWindow override), so window picks never leak
+  into the analysis period, the KPI
   sub-menu strip and the extraction bar are always visible, Metrics Overview starts
   collapsed, and a minimal plugin set is seeded into `cfg_active_plugins` **only when that
   key is absent** (user-configured visibility always wins). A first-run wizard
