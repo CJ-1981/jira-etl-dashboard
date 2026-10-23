@@ -4,6 +4,12 @@ A professional ETL dashboard that extracts ticket data from Jira Cloud or Server
 
 Built with **Next.js 16**, **React 19**, **Prisma ORM**, **shadcn/ui**, and **Tailwind CSS 4**.
 
+> **🌐 Try it live:** [cj-1981.github.io/jira-etl-dashboard](https://cj-1981.github.io/jira-etl-dashboard/) —
+> the static (relay-mode) build deployed to GitHub Pages. Click **Try demo data** in the first-run
+> wizard to explore the full dashboard with an artificial dataset — no Jira credentials and nothing
+> to install. Connecting it to a real Jira instance requires the local relay; see
+> [docs/STATIC_RELAY_MODE.md](docs/STATIC_RELAY_MODE.md).
+
 ## Contents
 
 - [Screenshots](#-screenshots)
