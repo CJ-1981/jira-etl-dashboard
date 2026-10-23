@@ -43,7 +43,7 @@ The UI is one page (`src/app/page.tsx`, tabbed panels under `src/components/dash
   master-dataset range and a user-picked period (per-connection saved dates differing
   from MAX) overrides it — same rule as expert mode; the bar's pull window is local to
   the bar (passed via useExtraction's getWindow override), so window picks never leak
-  into the analysis period, the KPI
+  into the analysis period. The KPI
   sub-menu strip and the extraction bar are always visible, Metrics Overview starts
   collapsed, and a minimal plugin set is seeded into `cfg_active_plugins` **only when that
   key is absent** (user-configured visibility always wins). A first-run wizard
@@ -97,9 +97,11 @@ requires BOTH headers to be loopback and http(s) only.
 ### KPI engine & plugins
 - Engine singleton: `src/lib/kpi/engine.ts` (`getKpiEngine()`); helpers in `engine-utils.ts`.
 - 41 plugins registered statically in `src/lib/kpi/plugin-loader.ts`:
-  28 in `plugins/builtin/{processing-time,sla,turnaround,throughput,quality,assignee}`,
-  9 in `plugins/time-series/...`. To add a built-in plugin: create the file, import and
-  register it in `plugin-loader.ts`.
+  28 in `plugins/builtin/{processing-time,sla,turnaround,throughput,quality,assignee}`
+  and 13 trend plugins across 9 files in `plugins/time-series/...` (several files export
+  daily/weekly/monthly variants). To add a built-in plugin: create the file, import and
+  register it in `plugin-loader.ts`. The full catalog (IDs, units, examples) is documented
+  in `docs/PLUGINS.md` — keep it in sync when plugins change.
 - **Custom formulas are sandboxed** (`src/lib/kpi/custom-formula.ts`): the old
   `new Function(...)` compiler was replaced by a parser + tree-walking interpreter.
   DSL (`COUNT/AVG/SUM/PERCENTAGE` with `WHERE`/`CONTAINS`/comparisons) is fully supported;
@@ -259,4 +261,5 @@ Keep both suites green before committing; `npm run type-check` must stay at zero
   AI-tooling leftovers as project documentation; `docs/` is the canonical documentation
   folder.
 - `plan/`, `scratch/`, `_workspace/`, `docu/`, `enhancements/` are scratch areas.
-- Screenshots referenced by the README live in `docs/screenshots/`.
+- Screenshots referenced by the README live in `docs/screenshots/`. The README's
+  Documentation Index section lists every doc — update it when adding or moving documents.
