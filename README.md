@@ -101,6 +101,8 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
 
 **41 built-in plugins** (28 core + 13 time-series) organized by business domain. Every time-based KPI **excludes weekends and German holidays** (all 16 states supported), with configurable work hours.
 
+German holiday data is sourced at runtime from the MIT-licensed [feiertagejs](https://www.npmjs.com/package/feiertagejs) package and guarded by a statute-pinned regression test suite. Compared to the former hand-maintained table, the national list no longer shows the non-statutory Ostersonntag/Pfingstsonntag (Brandenburg still lists them — its holiday law includes both), while Buß- und Bettag (SN), Weltkindertag (TH, from 2019) and Frauentag (BE from 2019, MV from 2023) were added. Known state-granularity limitations: Mariä Himmelfahrt is listed statewide for BY (in law it applies only in majority-Catholic communities), the city-level Augsburger Friedensfest is not listed, and Fronleichnam's partial SN/TH coverage is omitted.
+
 | Domain | Plugins | Highlights |
 |--------|:-------:|------------|
 | Processing Time | 7 | Avg/median processing hours, working days, cycle-time histogram, aging WIP, first response, resolution by priority |

@@ -1,8 +1,19 @@
 /**
  * German Holiday Calendar
- * Supports all 16 German federal states with full and half holidays.
+ * Holiday data is sourced at runtime from feiertagejs and adapted to the
+ * GermanHoliday shape below: national (BUND) holidays get isNational: true with
+ * empty regions, state holidays get isNational: false with their state code(s).
+ * Supports all 16 German federal states.
  * Used by the KPI engine to exclude holidays from working hour calculations.
+ *
+ * @MX:NOTE: State-granularity limitations inherited from the source library's
+ * modeling: Mariä Himmelfahrt applies in BY only in majority-Catholic
+ * communities in law (listed statewide here); the Augsburger Friedensfest is
+ * city-level (not representable with state codes); Fronleichnam's partial
+ * SN/TH coverage is omitted. Finer granularity is intentionally not modeled.
  */
+
+import { getHolidays, type Holiday } from 'feiertagejs';
 
 export interface GermanHoliday {
   date: Date;
@@ -36,29 +47,83 @@ export const GERMAN_STATES = {
 export type GermanState = (typeof GERMAN_STATES)[keyof typeof GERMAN_STATES];
 
 /**
- * Calculate Easter Sunday using the Anonymous Gregorian algorithm
+ * @MX:NOTE: Adapter mapping — feiertagejs name keys to German/English display
+ * names. BUND output maps to isNational: true, regions: []; state output maps
+ * to isNational: false, regions: [state code(s)]. Dates are normalized to
+ * local midnight (the library returns noon-UTC Date objects; its
+ * dateString "YYYY-MM-DD" field is the timezone-safe source). Unmapped keys
+ * throw: the library must never inject unnamed holidays into KPI calculations.
+ * The Record<HolidayType, ...> typing makes a missing key a compile error on
+ * dependency bumps; the runtime throw below is the second guard.
  */
-function getEasterSunday(year: number): Date {
-  const a = year % 19;
-  const b = Math.floor(year / 100);
-  const c = year % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const month = Math.floor((h + l - 7 * m + 114) / 31);
-  const day = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(year, month - 1, day);
+const HOLIDAY_NAME_KEYS: Record<Holiday['name'], { name: string; nameEn: string }> = {
+  NEUJAHRSTAG: { name: 'Neujahr', nameEn: "New Year's Day" },
+  HEILIGEDREIKOENIGE: { name: 'Heilige Drei Könige', nameEn: 'Epiphany' },
+  KARFREITAG: { name: 'Karfreitag', nameEn: 'Good Friday' },
+  OSTERSONNTAG: { name: 'Ostersonntag', nameEn: 'Easter Sunday' },
+  OSTERMONTAG: { name: 'Ostermontag', nameEn: 'Easter Monday' },
+  TAG_DER_ARBEIT: { name: 'Tag der Arbeit', nameEn: 'Labour Day' },
+  CHRISTIHIMMELFAHRT: { name: 'Christi Himmelfahrt', nameEn: 'Ascension Day' },
+  MARIAHIMMELFAHRT: { name: 'Mariä Himmelfahrt', nameEn: 'Assumption Day' },
+  PFINGSTSONNTAG: { name: 'Pfingstsonntag', nameEn: 'Whit Sunday' },
+  PFINGSTMONTAG: { name: 'Pfingstmontag', nameEn: 'Whit Monday' },
+  FRONLEICHNAM: { name: 'Fronleichnam', nameEn: 'Corpus Christi' },
+  DEUTSCHEEINHEIT: { name: 'Tag der Deutschen Einheit', nameEn: 'German Unity Day' },
+  REFORMATIONSTAG: { name: 'Reformationstag', nameEn: 'Reformation Day' },
+  ALLERHEILIGEN: { name: 'Allerheiligen', nameEn: "All Saints' Day" },
+  BUBETAG: { name: 'Buß- und Bettag', nameEn: 'Day of Repentance and Prayer' },
+  ERSTERWEIHNACHTSFEIERTAG: { name: 'Erster Weihnachtstag', nameEn: 'Christmas Day' },
+  ZWEITERWEIHNACHTSFEIERTAG: { name: 'Zweiter Weihnachtstag', nameEn: 'Second Christmas Day' },
+  WELTKINDERTAG: { name: 'Weltkindertag', nameEn: "World Children's Day" },
+  WELTFRAUENTAG: { name: 'Frauentag', nameEn: "International Women's Day" },
+  // City-level (Augsburg only) — never returned for BUND or the 16 state codes,
+  // mapped here so the table stays exhaustive over the library's key union.
+  AUGSBURGER_FRIEDENSFEST: { name: 'Augsburger Friedensfest', nameEn: 'Augsburg Peace Festival' },
+};
+
+/** States whose permanent Reformation Day only starts in 2018 (see below). */
+const PRE_2018_REFORMATION_STATES: ReadonlySet<GermanState> = new Set([
+  GERMAN_STATES.HB, GERMAN_STATES.HH, GERMAN_STATES.NI, GERMAN_STATES.SH,
+]);
+
+/** All 16 state codes, in GERMAN_STATES declaration order (stable output order). */
+const ALL_STATE_CODES = [
+  GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.BE, GERMAN_STATES.BB,
+  GERMAN_STATES.HB, GERMAN_STATES.HH, GERMAN_STATES.HE, GERMAN_STATES.MV,
+  GERMAN_STATES.NI, GERMAN_STATES.NW, GERMAN_STATES.RP, GERMAN_STATES.SL,
+  GERMAN_STATES.SN, GERMAN_STATES.ST, GERMAN_STATES.SH, GERMAN_STATES.TH,
+] as const;
+
+/**
+ * Parse the library's "YYYY-MM-DD" dateString into a local-midnight Date.
+ * Never parse it into a UTC Date — that would shift the calendar day for
+ * negative UTC offsets and break the YYYY-MM-DD serialization contract.
+ */
+function toLocalMidnight(dateString: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+  if (!match) {
+    throw new Error(`feiertagejs returned an unexpected date format: "${dateString}"`);
+  }
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function mapHolidayName(nameKey: Holiday['name']): { name: string; nameEn: string } {
+  const mapped = HOLIDAY_NAME_KEYS[nameKey];
+  if (!mapped) {
+    throw new Error(`Unmapped feiertagejs holiday key: "${String(nameKey)}" — extend HOLIDAY_NAME_KEYS`);
+  }
+  return mapped;
 }
 
 /**
  * Get all German holidays for a given year (memoized)
- * @MX:NOTE: Returns all national and regional holidays for the year
+ * @MX:ANCHOR: Highest fan-in module entry — the API route, the static relay
+ * datasource and the KPI engine (22 files directly or transitively) all serve
+ * holiday data through this function.
+ * @MX:WARN: Runtime holiday authority is feiertagejs — on npm version bumps,
+ * re-run the statute-pinned matrix suite
+ * (src/lib/holidays/__tests__/german-holidays.pins.test.ts) before trusting
+ * changed output.
  */
 const holidayCache = new Map<string, GermanHoliday[]>();
 
@@ -68,59 +133,65 @@ export function getGermanHolidays(year: number): GermanHoliday[] {
   const cached = holidayCache.get(cacheKey);
   if (cached) return cached;
 
-  const easter = getEasterSunday(year);
+  // National (BUND) holidays — the library's federal scope holds exactly the
+  // statutory nationwide holidays (Ostersonntag/Pfingstsonntag, which the
+  // former hand table flagged nationally, are not federal holidays; Brandenburg
+  // still receives both from the state pass below, per its Feiertagsgesetz).
+  const holidays: GermanHoliday[] = [];
+  const nationalNameKeys = new Set<Holiday['name']>();
+  for (const entry of getHolidays(year, 'BUND')) {
+    nationalNameKeys.add(entry.name);
+    const { name, nameEn } = mapHolidayName(entry.name);
+    holidays.push({
+      date: toLocalMidnight(entry.dateString),
+      name,
+      nameEn,
+      isNational: true,
+      regions: [],
+    });
+  }
 
-  const addDays = (date: Date, days: number): Date => {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
-  };
+  // State holidays — collect per state, then group identical rules
+  // (same date + name key) into one entry carrying all its state codes, the
+  // same shape the former hand table used (API/UI render one row per rule).
+  // Duplicates of national rules (e.g. the 2017 one-off Reformation Day) are
+  // dropped so they are served by the national entry alone.
+  const stateEntries = new Map<string, { date: Date; nameKey: Holiday['name']; regions: GermanState[] }>();
+  for (const state of ALL_STATE_CODES) {
+    for (const entry of getHolidays(year, state)) {
+      if (nationalNameKeys.has(entry.name)) continue;
 
-  // Fixed date helper
-  const fixed = (month: number, day: number, name: string, nameEn: string, isNational: boolean, regions: GermanState[] = []): GermanHoliday => ({
-    date: new Date(year, month - 1, day),
-    name,
-    nameEn,
-    isNational,
-    regions,
-  });
+      // @MX:NOTE: Post-correction — feiertagejs emits Reformation Day for
+      // HB/HH/NI/SH in years before 2018, but the 2018 four-state law
+      // (Landtag Niedersachsen Drucksache 18/827) made it permanent only from
+      // 2018; the 2017 nationwide one-off is covered by the BUND entry above.
+      if (entry.name === 'REFORMATIONSTAG' && year < 2018 && PRE_2018_REFORMATION_STATES.has(state)) {
+        continue;
+      }
 
-  const fromEaster = (offset: number, name: string, nameEn: string, isNational: boolean, regions: GermanState[] = []): GermanHoliday => ({
-    date: addDays(easter, offset),
-    name,
-    nameEn,
-    isNational,
-    regions,
-  });
+      const groupKey = `${entry.dateString}|${entry.name}`;
+      const existing = stateEntries.get(groupKey);
+      if (existing) {
+        existing.regions.push(state);
+      } else {
+        stateEntries.set(groupKey, { date: toLocalMidnight(entry.dateString), nameKey: entry.name, regions: [state] });
+      }
+    }
+  }
 
-  const holidays: GermanHoliday[] = [
-    // National holidays (all states)
-    fixed(1, 1, 'Neujahr', 'New Year\'s Day', true),
-    fixed(5, 1, 'Tag der Arbeit', 'Labour Day', true),
-    fixed(10, 3, 'Tag der Deutschen Einheit', 'German Unity Day', true),
-    fixed(12, 25, 'Erster Weihnachtstag', 'Christmas Day', true),
-    fixed(12, 26, 'Zweiter Weihnachtstag', 'Second Christmas Day', true),
-    fromEaster(-2, 'Karfreitag', 'Good Friday', true),
-    fromEaster(0, 'Ostersonntag', 'Easter Sunday', true),
-    fromEaster(1, 'Ostermontag', 'Easter Monday', true),
-    fromEaster(39, 'Christi Himmelfahrt', 'Ascension Day', true),
-    fromEaster(49, 'Pfingstsonntag', 'Whit Sunday', true),
-    fromEaster(50, 'Pfingstmontag', 'Whit Monday', true),
+  for (const grouped of stateEntries.values()) {
+    const { name, nameEn } = mapHolidayName(grouped.nameKey);
+    holidays.push({
+      date: grouped.date,
+      name,
+      nameEn,
+      isNational: false,
+      regions: grouped.regions,
+    });
+  }
 
-    // Regional holidays
-    fixed(1, 6, 'Heilige Drei Könige', 'Epiphany', false, [GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.ST]),
-    fixed(8, 15, 'Mariä Himmelfahrt', 'Assumption Day', false, [GERMAN_STATES.SL, GERMAN_STATES.BY]),
-    fixed(10, 31, 'Reformationstag', 'Reformation Day', false, [
-      GERMAN_STATES.BB, GERMAN_STATES.MV, GERMAN_STATES.SN,
-      GERMAN_STATES.ST, GERMAN_STATES.TH, GERMAN_STATES.HB,
-      GERMAN_STATES.HH, GERMAN_STATES.NI, GERMAN_STATES.SH,
-      GERMAN_STATES.NW, GERMAN_STATES.HE, GERMAN_STATES.RP, GERMAN_STATES.SL,
-    ]),
-    fixed(11, 1, 'Allerheiligen', 'All Saints\' Day', false, [GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.NW, GERMAN_STATES.RP, GERMAN_STATES.SL]),
-    fromEaster(60, 'Fronleichnam', 'Corpus Christi', false, [GERMAN_STATES.BW, GERMAN_STATES.BY, GERMAN_STATES.HE, GERMAN_STATES.NW, GERMAN_STATES.RP, GERMAN_STATES.SL]),
-  ];
-
-  // @MX:NOTE: Store in cache with region-aware key
+  // @MX:NOTE: Store in the per-year cache (key is the year only; region
+  // filtering happens at query time)
   holidayCache.set(cacheKey, holidays);
   return holidays;
 }
@@ -410,7 +481,8 @@ function getWorkingDaysCacheKey(
   endDate: Date,
   regions: GermanState[]
 ): string {
-  const regionsKey = regions.length > 0 ? regions.sort().join(',') : 'none';
+  // Copy before sorting to avoid mutating the caller's array
+  const regionsKey = regions.length > 0 ? [...regions].sort().join(',') : 'none';
   return `${startDate.getTime()}-${endDate.getTime()}-${regionsKey}`;
 }
 
