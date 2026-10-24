@@ -124,7 +124,14 @@ export function HolidaysPanel() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end"><Button onClick={() => refetch()} variant="outline" className="border-slate-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
+            {/* Holiday data is a pure function of (year, region, code version) — the only
+                reason a manual refetch can change anything is a failed load, so the
+                retry affordance exists only in that state. */}
+            {isError && (
+              <div className="flex items-end">
+                <Button onClick={() => refetch()} variant="outline" className="border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"><RefreshCw className="mr-2 h-4 w-4" />Retry</Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -69,6 +69,7 @@ Manage Jira connections, storage engine configuration (SQLite/PostgreSQL), and a
   - `1`, `2`, `3` — Quick Tab Navigation (`1` is expert-only — Data Center is hidden in simple mode)
   - `T` — Copy the Ticket List widget as TSV
   - `Cmd/Ctrl + P` — Export to Print/PDF
+- **German Holiday Calendar** — Browse national and per-state holidays for any year (2000–current+5) in a dedicated panel; the selected state also drives holiday-aware KPI business-hour calculations. Holiday data is computed at runtime from the MIT-licensed [`feiertagejs`](https://www.npmjs.com/package/feiertagejs) package — fully offline, guarded by a statute-pinned regression suite (data-source details and state-granularity limitations in the KPI Engine section below).
 
 ### Visualization
 - **Analytics Plugins** — Cumulative Flow Diagrams (CFD), Cycle Time Distribution (Histogram), Aging WIP Analysis, and First Response Time metrics.
