@@ -99,3 +99,150 @@ Thumbs.db
 .vercel/
 .netlify/
 .firebase/
+# Virtual Environments
+*_token=*
+*-api-key.*
+*.key.*
+.claude/skills/*/*/*key*
+# Test Coverage
+# uv.lock is intentionally included for reproducible builds
+# Build Artifacts
+.venv/
+# Certificate files
+.moai/*
+*.backup/
+.TemporaryItems
+.claude/settings.local.json
+.moai/logs/
+# FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
+.moai/work/
+# ---------------------------------------------
+env/
+.tscache/
+*.sublime-workspace
+.moai/scripts/__pycache__/
+# MoAI Directory Management
+ehthumbs.db
+# User-generated content: logs/, cache/, reports/, etc.
+.claude/skills/*/secrets/
+private-key*
+.claude/local/
+__pycache__/
+*-key.*
+.VolumeIcon.icns
+*.sublime-project
+.moai/scripts/*sync*.sh
+# CI/CD
+# Add to .gitignore if needed per project
+# Tracked in git: config/, memory/, scripts/, specs/
+*-backup/
+*.dbm
+*.njsproj
+*_key.*
+# Private keys and certificates (specific patterns to avoid false positives)
+.claude/skills/*/*/*token*
+!.moai/specs/**
+*.egg
+# .moai local-only directories (user projects only)
+.moai/error_logs/
+# Windows
+# Logs & Temporary Files
+.moai/cache/
+.moai/scripts/phase*.sh
+.coverage
+.claude/settings.local.*.json
+# Purpose: Essential patterns for user projects
+.DocumentRevisions-V100
+# Old patterns caused false positives for: keyboard-config, hotkey, monkey-patch, etc.
+*.pyc
+!.moai/memory/
+.env/
+.ruff_cache/
+*.secret.*
+.uv-cache/
+# MoAI-ADK Package Distribution .gitignore
+# Claude Code Skills Secrets
+# .moai local development scripts (not distributed)
+.moai/docs/
+# Legacy config format (migrated to YAML in v0.32.0)
+.moai/archive/
+!.moai/memory/**
+.moai/scripts/phase*.py
+# IDE & Editors
+.directory
+api-key-*
+.#*
+.moai/scripts/sync-*.sh
+.fseventsd
+*.pyo
+.moai/backups/
+venv/
+.moai/scripts/sync-*.py
+.uv_cache/
+!.moai/config/
+.aws/config
+.Trashes
+.moai/temp/
+*_secret=*
+!.moai/config/**
+*.suo
+*-secret.*
+# Linux
+.AppleDouble
+.github/workflows/*.yml.bak
+.claude/skills/*/.env*
+# Mac
+# Environment Variables & Secrets
+# Claude Code Local Configuration
+secret-key-*
+.moai/config/config.json
+.moai/reports/
+# Backups
+.moai/archived-skills/
+*.rdb
+.mypy_cache/
+# uv.lock
+# Package Distribution
+*_secret.*
+.pytest_cache/
+# API credentials patterns
+*.pyd
+# Version: 0.28.0
+# Node.js (for docs/Nextra)
+# OS Files
+*.sln
+.aws/credentials
+!.moai/scripts/**
+.Spotlight-V100
+.claude/skills/*/*/*secret*
+.claude/.env.local*
+.LSOverride
+!.moai/scripts/
+.moai/analytics/
+secret-*.*
+.gitlab-ci.yml.bak
+htmlcov/
+*-secret-key.*
+# Cloud provider credentials
+*.egg-info/
+# Python Cache & Database
+*_backup_*/
+!.moai/specs/
+
+# ---------------------------------------------
+# ZCode (ported MoAI-ADK skills are tracked; local state ignored)
+# ---------------------------------------------
+.zcode/settings.local*
+.zcode/*.local.*
+
+# ZCode skills secrets (mirror moai-adk's .claude/skills rules)
+.zcode/skills/*/.env*
+.zcode/skills/*/secrets/
+.zcode/skills/*/*/*secret*
+.zcode/skills/*/*/*key*
+.zcode/skills/*/*/*token*
+
+# Local machine state (added by SPEC-HOLIDAY-001 hygiene)
+__pycache__/
+/tmux-*.log
+/db/
